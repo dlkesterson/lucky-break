@@ -24,7 +24,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
         onStart: async () => {
             // Initialize the game components
             const stage = await createStage({ parent: container });
-            
+
             // Set canvas to fill viewport
             stage.canvas.style.width = '100vw';
             stage.canvas.style.height = '100vh';
