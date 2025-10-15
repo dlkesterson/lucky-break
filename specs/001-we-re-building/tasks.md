@@ -76,13 +76,13 @@ description: "Task list for Lucky Break Core Experience"
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Assert SFX trigger latency with mocked Tone transport in `tests/unit/audio/sfx.spec.ts`
+- [X] T021 [P] [US2] Assert SFX trigger latency with mocked Tone transport in `tests/unit/audio/sfx.spec.ts`
 - [ ] T022 [P] [US2] Validate bar-synced scene transitions in `tests/unit/audio/music.spec.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T023 [P] [US2] Implement Tone transport scheduler with look-ahead in `src/audio/scheduler.ts`
-- [ ] T024 [P] [US2] Map gameplay events to SFX router in `src/audio/sfx.ts`
+- [X] T023 [P] [US2] Implement Tone transport scheduler with look-ahead in `src/audio/scheduler.ts`
+- [X] T024 [P] [US2] Map gameplay events to SFX router in `src/audio/sfx.ts`
 - [ ] T025 [US2] Implement music scene finite state machine in `src/audio/music.ts`
 - [ ] T026 [US2] Configure tone bus, shared FX, and manifest loading in `src/audio/toneBus.ts`
 - [ ] T027 [US2] Extend momentum metrics publishing for audio cues in `src/app/state.ts`
@@ -123,6 +123,8 @@ description: "Task list for Lucky Break Core Experience"
 - [ ] T037 Add HUD debug overlay and structured logging toggles in `src/render/hud/debugOverlay.ts`
 - [ ] T038 [P] Automate latest-major dependency audit script in `scripts/check-deps.mjs`
 - [ ] T039 Run full quality gate (`pnpm test` and CLI smoke) in CI workflow configuration `.github/workflows/ci.yml`
+- [ ] T040 [US1] Implement page visibility API autosuspend/resume in `src/app/loop.ts` and `src/app/state.ts`
+- [ ] T041 [US1] Add asset loading retry logic and error UI in `src/app/preloader.ts`
 
 ---
 

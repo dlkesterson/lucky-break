@@ -58,7 +58,13 @@ export interface PhysicsWorldHandle {
 
 const withDefaultVector = (vector: Vector | undefined, fallback: Vector): Vector => vector ?? fallback;
 
-const toBodyArray = (input: Body | readonly Body[]): Body[] => (Array.isArray(input) ? [...input] : [input]);
+const toBodyArray = (input: Body | readonly Body[]): Body[] => {
+    if (Array.isArray(input)) {
+        return [...input];
+    }
+
+    return [input as Body];
+};
 
 const configureGravity = (engine: Engine, gravity?: number): void => {
     engine.world.gravity.x = 0;

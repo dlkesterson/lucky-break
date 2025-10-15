@@ -67,10 +67,10 @@ Players adjust accessibility and comfort settings—such as volume, reduced moti
 - **FR-002**: The experience MUST present a clear start prompt that captures necessary permissions (e.g., audio) before gameplay begins.
 - **FR-003**: Players MUST be able to control the paddle using keyboard, mouse, or touch input with consistent responsiveness across devices.
 - **FR-004**: The system MUST track score, lives, remaining bricks, and rally metrics in real time and reflect changes in the on-screen HUD.
-- **FR-005**: The game MUST provide reactive sound effects for paddle hits, brick breaks, wall impacts, and power-up events.
+- **FR-005**: The game MUST provide reactive sound effects for paddle hits, brick breaks, wall impacts, and power-up events, with <100ms perceived latency and no audio artifacts under normal load.
 - **FR-006**: The musical backdrop MUST adapt to momentum indicators (e.g., volley length, brick density) and transition at musical bar boundaries.
 - **FR-007**: The experience MUST expose player-adjustable settings for master volume, mute toggle, and reduced-motion visuals, all accessible during play.
-- **FR-008**: The system MUST autosuspend gameplay when the page loses visibility and resume smoothly when focus returns.
+- **FR-008**: The system MUST autosuspend gameplay when the page loses visibility (pause physics, audio, and loop; display pause UI) and resume smoothly when focus returns (restore state without loss).
 - **FR-009**: The game MUST handle asset loading failures by retrying, offering fallback cues, and clearly informing the player when critical assets remain unavailable.
 - **FR-010**: The experience MUST record end-of-round outcomes (win, loss, score, elapsed time) for display in post-round summaries.
 

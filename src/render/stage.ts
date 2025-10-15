@@ -116,15 +116,15 @@ export const createStage = async (config: StageConfig = {}): Promise<StageHandle
     root.sortableChildren = true;
 
     const playfield = new Container();
-    playfield.name = 'playfield';
+    playfield.label = 'playfield';
     playfield.zIndex = 10;
 
     const effects = new Container();
-    effects.name = 'effects';
+    effects.label = 'effects';
     effects.zIndex = 20;
 
     const hud = new Container();
-    hud.name = 'hud';
+    hud.label = 'hud';
     hud.zIndex = 30;
 
     root.addChild(playfield, effects, hud);

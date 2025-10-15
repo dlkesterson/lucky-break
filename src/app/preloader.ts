@@ -109,6 +109,9 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
             await options.onStart?.();
             updateState('completed');
             removePrompt();
+            if (root.parentElement === container) {
+                root.remove();
+            }
         } catch (error) {
             fail(error);
         } finally {

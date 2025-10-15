@@ -5,6 +5,7 @@ vi.mock('pixi.js', async () => {
         public children: unknown[] = [];
         public sortableChildren = false;
         public name = '';
+        public label = '';
         public parent: Container | null = null;
 
         addChild<T>(...items: T[]): T {
@@ -82,9 +83,9 @@ describe('createStage', () => {
 
         expect(stage.app.renderer.width).toBe(1024);
         expect(stage.app.renderer.height).toBe(768);
-        expect(stage.layers.playfield.name).toBe('playfield');
-        expect(stage.layers.hud.name).toBe('hud');
-        expect(stage.layers.effects.name).toBe('effects');
+        expect(stage.layers.playfield.label).toBe('playfield');
+        expect(stage.layers.hud.label).toBe('hud');
+        expect(stage.layers.effects.label).toBe('effects');
 
         stage.destroy();
         expect((stage.app as { destroyed?: boolean }).destroyed).toBe(true);

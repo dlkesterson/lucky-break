@@ -1,35 +1,41 @@
-# Implementation Plan: Lucky Break Core Experience
+# Implementation Plan: [FEATURE]
 
-**Branch**: `001-we-re-building` | **Date**: 2025-10-15 | **Spec**: [spec.md](c:/Code/lucky-break/specs/001-we-re-building/spec.md)
-**Input**: Feature specification from `/specs/001-we-re-building/spec.md`
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This plan captures design intent through Phase 2 of the planning workflow. Implementation is out of scope for `/speckit.plan`.
+**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Deliver a browser-based Lucky Break experience that marries PixiJS rendering, Matter.js physics, and Tone.js audio into a tightly synchronized Breakout loop. Players must launch, clear, and replay rounds with responsive visuals, momentum-aware music shifts, and accessibility controls that honor the spec’s success criteria.
+[Extract from feature spec: primary requirement + technical approach from research]
 
 ## Technical Context
 
-**Language/Version**: TypeScript 5.x (strict mode)  
-**Primary Dependencies**: PixiJS 8, Matter.js 0.19, Tone.js 14, Vite 5 build tooling  
-**Storage**: N/A (session lives entirely in memory; no persistent datastore)  
-**Testing**: Vitest (jsdom) + @testing-library/pixi for unit-level logic  
-**Target Platform**: Modern desktop and mobile browsers with WebGL2 or Canvas fallback support  
-**Project Type**: Single-page web application served via static hosting  
-**Performance Goals**: Maintain ≥60 FPS on desktop and ≥45 FPS on mobile; fire >95% of collision SFX within 100 ms perceived latency; music transitions lock to bar boundaries  
-**Constraints**: Keep audio glitch-free on mobile Safari/Chrome, respect SampleSwap licensing (local manifest, attribution), minimize GC by pooling sprites/events, operate offline after initial asset load  
-**Scale/Scope**: Single-player arcade session with modular subsystems (app, physics, audio) and supporting CLI automation for headless simulation
+<!--
+  ACTION REQUIRED: Replace the content in this section with the technical details
+  for the project. The structure here is presented in advisory capacity to guide
+  the iteration process.
+-->
+
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
+**Testing**: [e.g., Vitest (jsdom) or NEEDS CLARIFICATION]  
+**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Project Type**: [single/web/mobile - determines source structure]  
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
+**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- [ ] **I. Library-First**: Ship gameplay subsystems (`src/app`, `src/audio`, `src/physics`, `src/render`) as reusable modules with documented entry points; verification via module export review and unit coverage per package.
-- [ ] **II. CLI Interface**: Provide headless simulation and asset tooling commands under `src/cli` exposed as `lucky-break <command>`; verification via CLI smoke test documented in `quickstart.md`.
-- [ ] **III. Vitest Unit Tests (NON-NEGOTIABLE)**: Each implementation PR includes failing Vitest jsdom specs committed before production code, captured in development log; verification via unit test diffs and CI history.
-- [ ] **IV. Observability, Versioning & Simplicity**: Add structured console logging with subsystem tags, HUD debug overlay toggles, and semantic version output through CLI; verification via instrumentation review and release notes update.
-- [ ] **Additional Constraints – Dependency Justification**: Limit runtime dependencies to PixiJS, Matter.js, Tone.js, Vite ecosystem, and document any additions in plan updates; verification through dependency audit.
+- [x] **I. Library-First**: Ship gameplay subsystems (`src/app`, `src/physics`, `src/audio`, `src/render`) as reusable modules with documented entry points; verification via module export review and unit coverage per package.
+- [x] **II. CLI Interface**: Provide headless simulation and asset tooling commands under `src/cli` exposed as `lucky-break <command>`; verification via CLI smoke test documented in `quickstart.md`.
+- [x] **III. Vitest Unit Tests (NON-NEGOTIABLE)**: Each implementation PR includes failing Vitest jsdom specs committed before production code, captured in development log; verification via unit test diffs and CI history.
+- [x] **IV. Observability, Versioning & Simplicity**: Add structured console logging with subsystem tags, HUD debug overlay toggles, and semantic version output through CLI; verification via instrumentation review and release notes update.
+- [x] **Additional Constraints – Dependency Justification**: Limit runtime dependencies to PixiJS, Matter.js, Tone.js, Vite ecosystem, and document any additions in plan updates; verification through dependency audit.
 
 ## Project Structure
 
@@ -54,19 +60,41 @@ specs/[###-feature]/
 -->
 
 ```
+# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
 src/
-├── app/            # boot, loop, input, state orchestrators
-├── physics/        # Matter.js setup, bodies, collision routing
-├── render/         # PixiJS stage, HUD, sprite pools, beat VFX
-├── audio/          # Tone.js bus init, music FSM, SFX bindings
-├── util/           # shared helpers (rng, pooling, timing)
-└── cli/            # headless simulation + asset preprocessing adapters
+├── models/
+├── services/
+├── cli/
+└── lib/
 
 tests/
-└── unit/           # Vitest (jsdom) suites for state, audio, and UI adapters
+└── unit/
+
+# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
+backend/
+├── src/
+│   ├── models/
+│   ├── services/
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
+api/
+└── [same as backend above]
+
+ios/ or android/
+└── [platform-specific structure: feature modules, UI flows, platform tests]
 ```
 
-**Structure Decision**: Single-project web client with subsystems mapped to dedicated directories; CLI utilities co-reside under `src/cli`, and tests mirror runtime packages via focused Vitest unit suites.
+**Structure Decision**: [Document the selected structure and reference the real
+directories captured above]
 
 ## Complexity Tracking
 
@@ -74,4 +102,5 @@ tests/
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-|  |  |  |
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
