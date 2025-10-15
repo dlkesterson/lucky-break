@@ -88,7 +88,7 @@ const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): Phy
     const ball: PhysicsFactories['ball'] = (options) => {
         const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
         const body = Bodies.circle(position.x, position.y, options.radius, {
-            restitution: options.restitution ?? 0.98,
+            restitution: options.restitution ?? 1, // Perfect energy-preserving bounces
             friction: 0,
             frictionAir: 0,  // Remove air resistance for consistent ball speed
             label: options.label ?? 'ball',
@@ -170,9 +170,9 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
     const engine = Engine.create({
         enableSleeping: config.enableSleeping ?? false,
-        constraintIterations: 2,
-        velocityIterations: 6,
-        positionIterations: 2,
+        constraintIterations: 4,
+        velocityIterations: 8,
+        positionIterations: 8, // Increased for better collision accuracy and prevent tunneling
     });
     configureGravity(engine, config.gravity);
     const timeStep = config.timeStepMs ?? DEFAULT_TIMESTEP_MS;

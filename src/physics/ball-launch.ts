@@ -7,14 +7,14 @@
  */
 
 import type { Ball, Vector2 } from './contracts';
-import { createPhysicsWorld } from './world';
+import { Body, Vector } from 'matter-js';
 
 export interface BallLaunchController {
     /**
      * Launch a ball with specified direction and speed
      * @param ball - Ball to launch
      * @param direction - Launch direction (normalized automatically)
-     * @param speed - Launch speed (default: 300)
+     * @param speed - Launch speed (default: 8)
      */
     launch(ball: Ball, direction?: Vector2, speed?: number): void;
 
@@ -48,8 +48,7 @@ export interface BallLaunchDebugInfo {
 }
 
 export class PhysicsBallLaunchController implements BallLaunchController {
-    private physicsWorld = createPhysicsWorld();
-    private readonly defaultLaunchSpeed = 300;
+    private readonly defaultLaunchSpeed = 8; // Consistent speed for Breakout-style game
     private lastLaunchDirection: Vector2 | null = null;
 
     launch(ball: Ball, direction: Vector2 = { x: 0, y: -1 }, speed = this.defaultLaunchSpeed): void {
@@ -59,14 +58,14 @@ export class PhysicsBallLaunchController implements BallLaunchController {
 
         // Detach ball from paddle if attached
         if (ball.isAttached) {
-            this.physicsWorld.detachBallFromPaddle(ball.physicsBody);
+            // Detach will be handled by physics world in main.ts
             ball.isAttached = false;
         }
 
-        // Calculate and apply launch velocity
-        const velocity = this.calculateLaunchVelocity(direction, speed);
-        ball.physicsBody.velocity.x = velocity.x;
-        ball.physicsBody.velocity.y = velocity.y;
+        // Calculate and apply launch velocity using setVelocity for consistent speed
+        const normalized = Vector.normalise(direction as Vector);
+        const velocity = Vector.mult(normalized, speed);
+        Body.setVelocity(ball.physicsBody, velocity);
 
         this.lastLaunchDirection = { ...direction };
     }
