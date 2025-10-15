@@ -56,11 +56,11 @@ description: "Task list for Lucky Break Core Experience"
 ### Implementation for User Story 1
 
 - [X] T013 [P] [US1] Implement GameSession manager with score/life tracking in `src/app/state.ts`
-- [ ] T014 [P] [US1] Build Matter.js world bootstrap and body factory in `src/physics/world.ts`
-- [ ] T015 [P] [US1] Construct Pixi stage, sprite pools, and layout in `src/render/stage.ts`
-- [ ] T016 [US1] Implement fixed-step loop and render pump in `src/app/loop.ts`
+- [X] T014 [P] [US1] Build Matter.js world bootstrap and body factory in `src/physics/world.ts`
+- [X] T015 [P] [US1] Construct Pixi stage, sprite pools, and layout in `src/render/stage.ts`
+- [X] T016 [US1] Implement fixed-step loop and render pump in `src/app/loop.ts`
 - [ ] T017 [US1] Implement preloader and start prompt flow in `src/app/preloader.ts`
-- [ ] T018 [US1] Render HUD scoreboard and life indicators in `src/render/hud.ts`
+- [X] T018 [US1] Render HUD scoreboard and life indicators in `src/render/hud.ts`
 - [ ] T019 [US1] Wire scoring and round completion events in `src/app/events.ts`
 - [ ] T020 [US1] Implement headless simulation command in `src/cli/simulate.ts`
 
