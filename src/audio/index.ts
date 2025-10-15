@@ -1,12 +1,12 @@
 export interface AudioBootstrapOptions {
-  readonly enableMusic?: boolean;
-  readonly enableSfx?: boolean;
+    readonly enableMusic?: boolean;
+    readonly enableSfx?: boolean;
 }
 
 export interface AudioSubsystem {
-  readonly shutdown: () => void;
+    readonly shutdown: () => void;
 }
 
 export function bootstrapAudio(_options: AudioBootstrapOptions = {}): AudioSubsystem {
-  throw new Error('bootstrapAudio not implemented');
+    throw new Error('bootstrapAudio not implemented');
 }

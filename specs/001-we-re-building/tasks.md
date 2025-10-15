@@ -50,12 +50,12 @@ description: "Task list for Lucky Break Core Experience"
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Author GameSession state transition specs in `tests/unit/app/state.spec.ts`
-- [ ] T012 [P] [US1] Verify HUD scoreboard rendering in `tests/unit/render/hud.spec.ts`
+- [X] T011 [P] [US1] Author GameSession state transition specs in `tests/unit/app/state.spec.ts`
+- [X] T012 [P] [US1] Verify HUD scoreboard rendering in `tests/unit/render/hud.spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Implement GameSession manager with score/life tracking in `src/app/state.ts`
+- [X] T013 [P] [US1] Implement GameSession manager with score/life tracking in `src/app/state.ts`
 - [ ] T014 [P] [US1] Build Matter.js world bootstrap and body factory in `src/physics/world.ts`
 - [ ] T015 [P] [US1] Construct Pixi stage, sprite pools, and layout in `src/render/stage.ts`
 - [ ] T016 [US1] Implement fixed-step loop and render pump in `src/app/loop.ts`
