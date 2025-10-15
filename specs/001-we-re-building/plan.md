@@ -1,41 +1,35 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan: Lucky Break Core Experience
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**Branch**: `001-we-re-building` | **Date**: 2025-10-15 | **Spec**: specs/001-we-re-building/spec.md
+**Input**: Feature specification from `/specs/001-we-re-building/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+Browser-based single-player arcade game featuring physics-based brick-breaking gameplay with audio-synced music transitions and customizable accessibility settings. Implemented as a modular web application using PixiJS for rendering, Matter.js for physics simulation, Tone.js for audio management, TypeScript for type safety, and Vite for build tooling.
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., Vitest (jsdom) or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Language/Version**: TypeScript 5.x (strict mode)  
+**Primary Dependencies**: PixiJS 8, Matter.js 0.19, Tone.js 14, Vite 7  
+**Storage**: N/A (session lives entirely in memory; no persistent datastore)  
+**Testing**: Vitest with jsdom environment  
+**Target Platform**: Modern web browsers (desktop and mobile)  
+**Project Type**: Web application (single-page game)  
+**Performance Goals**: <10s initial load, <100ms audio latency, 60fps gameplay  
+**Constraints**: Browser-compatible, no server dependencies, offline-capable, <200KB initial bundle  
+**Scale/Scope**: Single-player experience, supports 1 concurrent session per browser tab
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- [x] **I. Library-First**: Ship gameplay subsystems (`src/app`, `src/physics`, `src/audio`, `src/render`) as reusable modules with documented entry points; verification via module export review and unit coverage per package.
-- [x] **II. CLI Interface**: Provide headless simulation and asset tooling commands under `src/cli` exposed as `lucky-break <command>`; verification via CLI smoke test documented in `quickstart.md`.
-- [x] **III. Vitest Unit Tests (NON-NEGOTIABLE)**: Each implementation PR includes failing Vitest jsdom specs committed before production code, captured in development log; verification via unit test diffs and CI history.
-- [x] **IV. Observability, Versioning & Simplicity**: Add structured console logging with subsystem tags, HUD debug overlay toggles, and semantic version output through CLI; verification via instrumentation review and release notes update.
-- [x] **Additional Constraints – Dependency Justification**: Limit runtime dependencies to PixiJS, Matter.js, Tone.js, Vite ecosystem, and document any additions in plan updates; verification through dependency audit.
+Gates determined based on the repository Constitution (see `.specify/memory/constitution.md`).
+This section MUST list which constitution principles apply to the feature and how compliance will be
+verified (for example: tests required, API contract stability, migration steps for breaking changes).
+Populate this section with boolean gates or short pass/fail checks so the Phase 0 research team can
+validate compliance before Phase 1 design.
 
 ## Project Structure
 
@@ -52,49 +46,61 @@ specs/[###-feature]/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
 
 ```
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
 src/
-├── models/
-├── services/
+├── app/
+│   ├── events.ts
+│   ├── loop.ts
+│   ├── main.ts
+│   ├── preloader.ts
+│   ├── state.ts
+│   └── preferences.ts
+├── physics/
+│   └── world.ts
+├── render/
+│   ├── hud.ts
+│   ├── stage.ts
+│   └── settingsPanel.ts
+├── audio/
+│   ├── index.ts
+│   ├── scheduler.ts
+│   ├── sfx.ts
+│   ├── music.ts
+│   └── toneBus.ts
 ├── cli/
-└── lib/
-
-tests/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
+│   ├── index.ts
+│   └── simulate.ts
+├── types/
+├── util/
+│   ├── index.ts
+│   ├── log.ts
+│   └── storage.ts
 └── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+    ├── setup/
+    │   └── vitest.setup.ts
+    └── unit/
+        ├── bootstrap.spec.ts
+        ├── app/
+        │   ├── loop.spec.ts
+        │   ├── preloader.spec.ts
+        │   ├── state.spec.ts
+        │   └── preferences.spec.ts
+        ├── audio/
+        │   ├── mocks.ts
+        │   ├── sfx.spec.ts
+        │   └── music.spec.ts
+        ├── cli/
+        │   └── simulate.spec.ts
+        ├── physics/
+        │   └── world.spec.ts
+        └── render/
+            ├── hud.spec.ts
+            ├── stage.spec.ts
+            └── settingsPanel.spec.ts
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**: Web application structure selected for browser-based game with clear separation of concerns: app (game logic), physics (simulation), render (graphics), audio (sound), cli (headless tools), util (shared utilities).
 
 ## Complexity Tracking
 

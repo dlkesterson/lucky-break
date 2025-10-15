@@ -16,6 +16,7 @@ export default defineConfig({
             '@audio': resolveFromRoot('src/audio'),
             '@util': resolveFromRoot('src/util'),
             '@cli': resolveFromRoot('src/cli'),
+            '@input': resolveFromRoot('src/input'),
         },
     },
     test: {

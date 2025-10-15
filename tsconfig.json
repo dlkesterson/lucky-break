@@ -21,7 +21,8 @@
       "@render/*": ["src/render/*"],
       "@audio/*": ["src/audio/*"],
       "@util/*": ["src/util/*"],
-      "@cli/*": ["src/cli/*"]
+      "@cli/*": ["src/cli/*"],
+      "@input/*": ["src/input/*"]
     }
   },
   "include": [

@@ -20,7 +20,8 @@ export default defineConfig({
             "@render": resolveFromRoot("./src/render"),
             "@audio": resolveFromRoot("./src/audio"),
             "@util": resolveFromRoot("./src/util"),
-            "@cli": resolveFromRoot("./src/cli")
+            "@cli": resolveFromRoot("./src/cli"),
+            "@input": resolveFromRoot("./src/input")
         }
     },
     server: {
