@@ -1,4 +1,9 @@
-import { type LifeLostCause } from './events';
+import {
+    type BrickType,
+    type LifeLostCause,
+    type LuckyBreakEventBus,
+    createScoringEventEmitter,
+} from './events';
 
 export type GameStatus = 'pending' | 'active' | 'paused' | 'completed' | 'failed';
 
@@ -85,6 +90,12 @@ interface StartRoundConfig {
 
 interface BrickBreakDetails {
     readonly points: number;
+    readonly event?: {
+        readonly row: number;
+        readonly col: number;
+        readonly velocity: number;
+        readonly brickType: BrickType;
+    };
 }
 
 export interface GameSessionManager {
@@ -100,6 +111,7 @@ export interface GameSessionOptions {
     readonly initialLives?: number;
     readonly now?: () => number;
     readonly preferences?: Partial<PlayerPreferences>;
+    readonly eventBus?: LuckyBreakEventBus;
 }
 
 const DEFAULT_LIVES = 3;
@@ -207,6 +219,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
     const now = options.now ?? Date.now;
     const sessionId = options.sessionId ?? `session-${Math.random().toString(16).slice(2)}`;
     const preferences: PlayerPreferences = { ...INITIAL_PREFERENCES, ...options.preferences };
+    const scoringEvents = options.eventBus ? createScoringEventEmitter(options.eventBus) : undefined;
 
     let status: GameStatus = 'pending';
     let score = 0;
@@ -290,7 +303,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         lastOutcome = undefined;
     };
 
-    const recordBrickBreak: GameSessionManager['recordBrickBreak'] = ({ points }) => {
+    const recordBrickBreak: GameSessionManager['recordBrickBreak'] = ({ points, event }) => {
         if (status !== 'active') {
             return;
         }
@@ -306,6 +319,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         momentum.speedPressure = clamp01(momentum.speedPressure + 0.08);
         momentum.brickDensity = brickTotal === 0 ? 0 : brickRemaining / brickTotal;
         momentum.updatedAt = timestamp;
+
+        if (scoringEvents && event) {
+            scoringEvents.brickBreak({
+                sessionId,
+                row: event.row,
+                col: event.col,
+                velocity: event.velocity,
+                brickType: event.brickType,
+                comboHeat: momentum.comboHeat,
+                timestamp,
+            });
+        }
     };
 
     const recordLifeLost: GameSessionManager['recordLifeLost'] = (cause) => {
@@ -353,6 +378,14 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             durationMs: elapsedMs,
             timestamp,
         };
+
+        scoringEvents?.roundCompleted({
+            sessionId,
+            round,
+            scoreAwarded: score,
+            durationMs: elapsedMs,
+            timestamp,
+        });
     }; // Round outcome stored for HUD summary
 
     return {

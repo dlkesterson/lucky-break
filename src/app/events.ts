@@ -79,6 +79,29 @@ export interface LuckyBreakEventBus {
     listeners<EventName extends LuckyBreakEventName>(type: EventName): readonly EventListener<EventName>[];
 }
 
+export interface BrickBreakEventInput {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+    readonly brickType: BrickType;
+    readonly comboHeat: number;
+    readonly timestamp?: number;
+}
+
+export interface RoundCompletedEventInput {
+    readonly sessionId: string;
+    readonly round: number;
+    readonly scoreAwarded: number;
+    readonly durationMs: number;
+    readonly timestamp?: number;
+}
+
+export interface ScoringEventEmitter {
+    readonly brickBreak: (event: BrickBreakEventInput) => void;
+    readonly roundCompleted: (event: RoundCompletedEventInput) => void;
+}
+
 type InternalListener = EventListener<LuckyBreakEventName>;
 
 type ListenerRegistry = Map<LuckyBreakEventName, Set<InternalListener>>;
@@ -172,5 +195,40 @@ export const createEventBus = (): LuckyBreakEventBus => {
         unsubscribe,
         clear,
         listeners,
+    };
+};
+
+export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEventEmitter => {
+    const publishBrickBreak: ScoringEventEmitter['brickBreak'] = (event) => {
+        bus.publish(
+            'BrickBreak',
+            {
+                sessionId: event.sessionId,
+                row: event.row,
+                col: event.col,
+                velocity: event.velocity,
+                brickType: event.brickType,
+                comboHeat: event.comboHeat,
+            },
+            event.timestamp,
+        );
+    };
+
+    const publishRoundCompleted: ScoringEventEmitter['roundCompleted'] = (event) => {
+        bus.publish(
+            'RoundCompleted',
+            {
+                sessionId: event.sessionId,
+                round: event.round,
+                scoreAwarded: event.scoreAwarded,
+                durationMs: event.durationMs,
+            },
+            event.timestamp,
+        );
+    };
+
+    return {
+        brickBreak: publishBrickBreak,
+        roundCompleted: publishRoundCompleted,
     };
 };

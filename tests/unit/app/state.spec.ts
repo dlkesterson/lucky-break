@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createEventBus } from '@app/events';
 import { createGameSessionManager, type GameSessionSnapshot } from '@app/state';
 
 interface FakeClock {
@@ -122,6 +123,79 @@ describe('createGameSessionManager', () => {
 
         const hud = expectHud(snapshot);
         expect(hud.prompts[0]).toMatchObject({ id: 'round-complete' });
+    });
+
+    it('emits brick break events with scoring details when available', () => {
+        const bus = createEventBus();
+        const publishSpy: unknown[] = [];
+        bus.subscribe('BrickBreak', (event) => {
+            publishSpy.push(event);
+        });
+
+        const manager = createGameSessionManager({
+            sessionId: 'session-emit-1',
+            eventBus: bus,
+        });
+
+        manager.startRound({ breakableBricks: 1 });
+        manager.recordBrickBreak({
+            points: 125,
+            event: {
+                row: 2,
+                col: 5,
+                velocity: 9.2,
+                brickType: 'standard',
+            },
+        });
+
+        expect(publishSpy).toHaveLength(1);
+        const [event] = publishSpy;
+        expect(event).toMatchObject({
+            type: 'BrickBreak',
+            payload: {
+                sessionId: 'session-emit-1',
+                row: 2,
+                col: 5,
+                velocity: 9.2,
+                brickType: 'standard',
+                comboHeat: expect.any(Number),
+            },
+            timestamp: expect.any(Number),
+        });
+    });
+
+    it('emits round completion event when a round finishes', () => {
+        const bus = createEventBus();
+        const roundEvents: unknown[] = [];
+        bus.subscribe('RoundCompleted', (event) => {
+            roundEvents.push(event);
+        });
+
+        const clock = createFakeClock();
+        const manager = createGameSessionManager({
+            sessionId: 'session-emit-2',
+            now: clock.now,
+            eventBus: bus,
+        });
+
+        manager.startRound({ breakableBricks: 1 });
+        clock.tick(250);
+        manager.recordBrickBreak({ points: 50 });
+        clock.tick(500);
+        manager.completeRound();
+
+        expect(roundEvents).toHaveLength(1);
+        const [event] = roundEvents;
+        expect(event).toMatchObject({
+            type: 'RoundCompleted',
+            payload: {
+                sessionId: 'session-emit-2',
+                round: 1,
+                scoreAwarded: 50,
+                durationMs: 750,
+            },
+            timestamp: expect.any(Number),
+        });
     });
 
     it('transitions to failed when all lives are lost', () => {
