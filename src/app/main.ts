@@ -1,13 +1,13 @@
 import { createPreloader } from './preloader';
-import { createStage } from '@render/stage';
-import { createPhysicsWorld } from '@physics/world';
+import { createStage } from 'render/stage';
+import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
-import { buildHudScoreboard } from '@render/hud';
-import { BallAttachmentController } from '@physics/ball-attachment';
-import { PaddleBodyController } from '@render/paddle-body';
-import { GameInputManager } from '@input/input-manager';
-import { PhysicsBallLaunchController } from '@physics/ball-launch';
+import { buildHudScoreboard } from 'render/hud';
+import { BallAttachmentController } from 'physics/ball-attachment';
+import { PaddleBodyController } from 'render/paddle-body';
+import { GameInputManager } from 'input/input-manager';
+import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { reflectOffPaddle } from 'util/paddle-reflection';
 import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo } from 'util/scoring';
@@ -16,9 +16,9 @@ import { generateLevelLayout, getLevelSpec } from 'util/levels';
 import { Text, Container, Graphics, Sprite } from 'pixi.js';
 import type { Body } from 'matter-js';
 import { Events, Body as MatterBody } from 'matter-js';
-import { createEventBus } from '@app/events';
-import { createToneScheduler } from '@audio/scheduler';
-import { createSfxRouter } from '@audio/sfx';
+import { createEventBus } from 'app/events';
+import { createToneScheduler } from 'audio/scheduler';
+import { createSfxRouter } from 'audio/sfx';
 import { Synth, Panner, start as toneStart } from 'tone';
 
 export interface LuckyBreakOptions {
