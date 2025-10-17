@@ -47,6 +47,7 @@ The content is organized as follows:
 .prettierignore
 .prettierrc
 eslint.config.js
+improve_coverage.md
 index.html
 package.json
 pnpm-workspace.yaml
@@ -92,23 +93,37 @@ tests/setup/vitest.setup.ts
 tests/unit/app/loop.spec.ts
 tests/unit/app/preloader.spec.ts
 tests/unit/app/state.spec.ts
+tests/unit/audio/index.spec.ts
 tests/unit/audio/mocks.ts
 tests/unit/audio/sfx.spec.ts
 tests/unit/bootstrap.spec.ts
+tests/unit/cli/index.spec.ts
 tests/unit/cli/simulate.spec.ts
 tests/unit/input/contracts.spec.ts
+tests/unit/input/index.spec.ts
 tests/unit/input/input-normalization.spec.ts
 tests/unit/input/launch-detection.spec.ts
+tests/unit/physics/ball-attachment-controller.spec.ts
 tests/unit/physics/ball-attachment.spec.ts
+tests/unit/physics/ball-launch-controller.spec.ts
 tests/unit/physics/ball-launch.spec.ts
 tests/unit/physics/contracts.spec.ts
+tests/unit/physics/index.spec.ts
 tests/unit/physics/world.spec.ts
 tests/unit/render/contracts.spec.ts
+tests/unit/render/debug-overlay.spec.ts
 tests/unit/render/hud.spec.ts
+tests/unit/render/index.spec.ts
 tests/unit/render/paddle-constraints.spec.ts
 tests/unit/render/paddle-positioning.spec.ts
 tests/unit/render/stage.spec.ts
+tests/unit/types/index.spec.ts
+tests/unit/util/geometry.spec.ts
+tests/unit/util/index.spec.ts
+tests/unit/util/input-helpers.spec.ts
+tests/unit/util/log.spec.ts
 tests/unit/util/paddle-reflection.spec.ts
+tests/unit/util/power-ups.spec.ts
 tests/unit/util/scoring.spec.ts
 tests/unit/util/speed-regulation.spec.ts
 tsconfig.json
@@ -201,77 +216,200 @@ export default tseslint.config(
 );
 </file>
 
+<file path="improve_coverage.md">
+# Wave 1 (Fast gains → to ~70–75%)
+
+**Goal:** Cover zero-covered “barrel” modules and simple utilities; add smoke tests that also exercise import paths.
+
+1. **Barrels @ `index.ts` (audio/cli/input/physics/render/types/util) — currently 0%**
+
+* Add one smoke test per barrel that imports *named* exports and asserts type/function presence.
+* This lifts statement/lines across 6 files quickly.
+
+2. **`util/geometry.ts` — 0%**
+
+* Unit-test each pure function (create/add/subtract/multiply/normalize/dot/center/intersect/clamp/lerp/deg↔rad).
+* Edge cases: zero-length normalize, rectangle borders touching, negative sizes.
+
+3. **`render/paddle-constraints.ts` — 0% (despite existing specs referencing constraints)**
+
+* Write direct unit tests against `PaddleBoundaryConstraints`:
+
+  * `constrainToBounds` clamps at all edges.
+  * `isWithinBounds` true/false at edges and just-outside.
+  * `distanceToBoundary` for ±x/±y directions and zero-vector direction (Infinity).
+
+4. **`render/debug-overlay.ts` — 0%**
+
+* Add a minimal jsdom test that instantiates the overlay (mock PIXI if needed) and asserts it attaches/detaches nodes or calls draw hooks.
+
+5. **`util/log.ts` — 0%**
+
+* Add tests for log levels / formatting (stub console methods) to verify no-throw and correct routing.
+
+6. **`util/input-helpers.ts` (~43%)**
+
+* Cover branches around normalization edge cases: simultaneous inputs, NaN/undefined, clamping, and debounce paths.
+
+# Wave 2 (Core gameplay gaps → to ~85%)
+
+**Goal:** Cover gameplay glue and physics that users *feel*.
+
+7. **`physics/ball-attachment.ts` (~10%)**
+
+* Tests:
+
+  * Creates attached ball w/ options (radius, restitution).
+  * `updateAttachment` keeps offset on paddle move.
+  * `resetToAttached` toggles state correctly.
+  * `isAttached` true/false transitions.
+* Use Matter.Body stubs or light real bodies with a test world.
+
+8. **`physics/ball-launch.ts` (~47%)**
+
+* Tests:
+
+  * Default upward launch vector and override direction.
+  * Prevent re-launch when already free (if applicable).
+  * Interaction with speed-regulation (if invoked).
+
+9. **`audio/index.ts` / `audio/scheduler.ts` (~0% / ~89%)**
+
+* Add one “wiring” test for `audio/index.ts` that exports/creates a scheduler or SFX facade.
+* `scheduler`: add negative/zero lookAhead, cancel/dispose behavior (verify Transport.scheduleOnce/clear/cancel mocks called once).
+
+10. **`util/power-ups.ts` (~47%)**
+
+* Determinism: inject `now()` & `Math.random` seeds/mocks.
+* Tests:
+
+  * `shouldSpawnPowerUp` hit/miss boundaries,
+  * `createPowerUpEffect` duration/start,
+  * `updatePowerUpEffect` expiry removal,
+  * `isPowerUpFadingOut` boundary timing,
+  * `calculatePaddleWidthScale` / `calculateBallSpeedScale` across 0%, 50%, 100% fade,
+  * `PowerUpManager` activate→update→expire cycle.
+
+11. **`app/loop.ts` (already pretty good)**
+
+* Add explicit tests for `maxStepsPerFrame` clamping and fallback RAF (setTimeout) path.
+
+# Wave 3 (Bootstrap & integration polish → 90%+)
+
+**Goal:** Tackle the biggest single hole and ensure user-visible flows are exercised.
+
+12. **`app/main.ts` (~5%)**
+
+* Create a **bootstrap test** with jsdom that:
+
+  * Mocks `PIXI.Application`, `Tone` (Transport/now), and any canvas.
+  * Calls the default entry (or exported init) and asserts:
+
+    * Stage/world initialized,
+    * Event listeners bound,
+    * Game loop started & stopped cleanly.
+* Add a second test for “guard rails”: when a required DOM container is missing, it no-throws and logs a clear error.
+
+13. **CLI coverage**
+
+* `cli/index.ts` (0%): smoke test that imports and runs the command entry with stubbed `process.argv`; assert it delegates to `simulate`.
+* `cli/simulate.ts` (~97% but with a few missed lines): add one scenario to hit lines 170–172 & 183–185 (e.g., invalid args or dry-run flag).
+
+14. **Integration edge cases**
+
+* Expand `tests/integration/paddle-ball-flow.spec.ts` to:
+
+  * Include one “sticky paddle” power-up flow.
+  * Include reflection-at-edge vs center (ties into `paddle-reflection` which is already at 100% but adds end-to-end confidence).
+
+---
+
+## Quality gates & config hardening
+
+* In `vitest.config.ts`: set thresholds to keep gains (**example**: `lines: 75, statements: 75, branches: 70, functions: 75` for Wave 1; bump to 85/80 in Wave 2). Also exclude generated/bundled files only—keep barrels in coverage to force imports. (You’re already on V8 coverage.) 
+* Add `ci` script that runs: `pnpm lint && pnpm test --coverage` and fails on threshold drops. 
+
+## Concrete next PRs (bite-sized)
+
+1. **PR A – Barrels & Geometry**
+
+   * `tests/unit/util/geometry.spec.ts`
+   * `tests/unit/{audio,cli,input,physics,render,types,util}/index.spec.ts`
+2. **PR B – Paddle constraints & Debug overlay**
+
+   * `tests/unit/render/paddle-constraints.spec.ts` (direct to class)
+   * `tests/unit/render/debug-overlay.spec.ts`
+3. **PR C – Power-ups package**
+
+   * `tests/unit/util/power-ups.spec.ts`
+4. **PR D – Physics attach/launch**
+
+   * `tests/unit/physics/ball-attachment.spec.ts` (expanded)
+   * `tests/unit/physics/ball-launch.spec.ts` (expanded)
+5. **PR E – Bootstrap & CLI**
+
+   * `tests/unit/app/main.bootstrap.spec.ts`
+   * `tests/unit/cli/index.spec.ts` & add args case in `simulate.spec.ts`
+6. **PR F – Integration edge**
+
+   * Extend `paddle-ball-flow.spec.ts` with one power-up + sticky paddle scenario.
+
+## Tiny code examples (ready to paste)
+
+**Barrel smoke (works for each `index.ts`):**
+
+```ts
+import * as Audio from '../../src/audio';
+
+it('exports scheduler factory', () => {
+  expect(Audio).toBeDefined();
+  expect(typeof Audio).toBe('object');
+});
+```
+
+**Geometry edge:**
+
+```ts
+import { normalizeVector, rectanglesIntersect } from '../../src/util/geometry';
+
+it('normalizes zero vector to (0,0)', () => {
+  expect(normalizeVector({x:0,y:0})).toEqual({x:0,y:0});
+});
+
+it('detects touching edges as intersecting = false', () => {
+  expect(rectanglesIntersect({x:0,y:0,width:10,height:10},{x:10,y:0,width:10,height:10})).toBe(false);
+});
+```
+
+**Power-ups timing:**
+
+```ts
+import { createPowerUpEffect, updatePowerUpEffect, isPowerUpFadingOut } from '../../src/util/power-ups';
+
+it('fades in last 25%', () => {
+  const start = 1000; let now = start;
+  const effect = createPowerUpEffect('paddle-width', { defaultDuration: 4 }, () => now);
+  // advance 3.1s => remaining 0.9s => in fade window
+  updatePowerUpEffect(effect, 3.1);
+  expect(isPowerUpFadingOut(effect)).toBe(true);
+});
+```
+
+**Bootstrap main with mocks (pattern):**
+
+```ts
+vi.mock('pixi.js', () => ({ Application: vi.fn().mockImplementation(() => ({ stage:{ addChild:vi.fn() }, ticker:{ add:vi.fn() } })) }));
+vi.mock('tone', () => ({ Transport: { start: vi.fn(), scheduleOnce: vi.fn(), clear: vi.fn(), cancel: vi.fn() }, now: () => 0 }));
+document.body.innerHTML = `<div id="game"></div>`;
+await import('../../src/app/main');
+```
+
+---
+</file>
+
 <file path="pnpm-workspace.yaml">
 packages:
   - .
-</file>
-
-<file path="src/audio/scheduler.ts">
-import { Transport, now as toneNow } from 'tone';
-
-export interface ScheduledEventHandle {
-    readonly id: number;
-    readonly time: number;
-}
-
-export interface ToneSchedulerOptions {
-    readonly lookAheadMs?: number;
-    readonly now?: () => number;
-    readonly schedule?: (callback: (time: number) => void, at: number) => number;
-    readonly clear?: (id: number) => void;
-    readonly cancel?: (time?: number) => void;
-}
-
-export interface ToneScheduler {
-    readonly lookAheadMs: number;
-    readonly schedule: (callback: (time: number) => void, offsetMs?: number) => ScheduledEventHandle;
-    readonly cancel: (handle: ScheduledEventHandle) => void;
-    readonly dispose: () => void;
-}
-
-const toSeconds = (milliseconds: number): number => milliseconds / 1000;
-
-export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneScheduler => {
-    const lookAheadMs = Math.max(0, options.lookAheadMs ?? 120);
-    const now = options.now ?? toneNow;
-    const scheduleFn = options.schedule ?? ((callback, at) => Transport.scheduleOnce(callback, at));
-    const clearFn = options.clear ?? ((id) => Transport.clear(id));
-    const cancelFn = options.cancel ?? ((time = 0) => Transport.cancel(time));
-
-    const active = new Set<number>();
-
-    const schedule: ToneScheduler['schedule'] = (callback, offsetMs = 0) => {
-        const targetTime = now() + toSeconds(lookAheadMs + offsetMs);
-        const id = scheduleFn((scheduledTime) => {
-            active.delete(id);
-            callback(scheduledTime);
-        }, targetTime);
-        active.add(id);
-        return { id, time: targetTime };
-    };
-
-    const cancel: ToneScheduler['cancel'] = (handle) => {
-        if (active.has(handle.id)) {
-            active.delete(handle.id);
-            clearFn(handle.id);
-        }
-    };
-
-    const dispose: ToneScheduler['dispose'] = () => {
-        for (const id of active) {
-            clearFn(id);
-        }
-        active.clear();
-        cancelFn(0);
-    };
-
-    return {
-        lookAheadMs,
-        schedule,
-        cancel,
-        dispose,
-    };
-};
 </file>
 
 <file path="src/input/contracts.ts">
@@ -306,6 +444,12 @@ export interface InputManager {
      * Reset launch trigger state after processing
      */
     resetLaunchTrigger(): void;
+
+    /**
+     * Sync the internal paddle reference used for movement-based launch triggers
+     * @param position - Current paddle position or null to clear tracking
+     */
+    syncPaddlePosition(position: Vector2 | null): void;
 
     /**
      * Get current input state for debugging
@@ -1350,236 +1494,6 @@ export function getHitOffset(ballX: number, paddleX: number, paddleWidth: number
 }
 </file>
 
-<file path="src/util/power-ups.ts">
-/**
- * Power-Up System
- *
- * Adapted from Banana Music Game's power-up mechanics
- * Spawns temporary power-ups on brick breaks with visual and gameplay effects
- */
-
-export type PowerUpType = 'paddle-width' | 'ball-speed' | 'multi-ball' | 'sticky-paddle';
-
-export interface PowerUpEffect {
-    /** Type of power-up */
-    readonly type: PowerUpType;
-    /** Duration in seconds */
-    readonly duration: number;
-    /** Remaining time (updated each frame) */
-    remainingTime: number;
-    /** Start timestamp */
-    readonly startTime: number;
-}
-
-export interface PowerUpConfig {
-    /** Probability of spawning power-up on brick break (0-1) */
-    readonly spawnChance?: number;
-    /** Default duration for power-ups in seconds */
-    readonly defaultDuration?: number;
-    /** Paddle width multiplier for paddle-width power-up */
-    readonly paddleWidthMultiplier?: number;
-    /** Ball speed multiplier for ball-speed power-up */
-    readonly ballSpeedMultiplier?: number;
-}
-
-const DEFAULT_SPAWN_CHANCE = 0.25; // 25% chance
-const DEFAULT_DURATION = 2.5; // seconds
-const DEFAULT_PADDLE_WIDTH_MULTIPLIER = 1.5;
-const DEFAULT_BALL_SPEED_MULTIPLIER = 1.3;
-
-/**
- * Determine if power-up should spawn
- *
- * @param config - Power-up configuration
- * @returns True if power-up should spawn
- */
-export function shouldSpawnPowerUp(config: PowerUpConfig = {}): boolean {
-    const chance = config.spawnChance ?? DEFAULT_SPAWN_CHANCE;
-    return Math.random() < chance;
-}
-
-/**
- * Select random power-up type
- *
- * @returns Random power-up type
- */
-export function selectRandomPowerUpType(): PowerUpType {
-    const types: PowerUpType[] = ['paddle-width', 'ball-speed', 'multi-ball', 'sticky-paddle'];
-    return types[Math.floor(Math.random() * types.length)];
-}
-
-/**
- * Create a new power-up effect
- *
- * @param type - Type of power-up
- * @param config - Power-up configuration
- * @param now - Current timestamp (defaults to Date.now)
- * @returns New power-up effect
- */
-export function createPowerUpEffect(
-    type: PowerUpType,
-    config: PowerUpConfig = {},
-    now: () => number = Date.now,
-): PowerUpEffect {
-    const duration = config.defaultDuration ?? DEFAULT_DURATION;
-    const startTime = now();
-
-    return {
-        type,
-        duration,
-        remainingTime: duration,
-        startTime,
-    };
-}
-
-/**
- * Update power-up effect timer
- *
- * @param effect - Power-up effect to update (mutates in place)
- * @param deltaSeconds - Time elapsed since last update
- * @returns True if effect is still active, false if expired
- */
-export function updatePowerUpEffect(effect: PowerUpEffect, deltaSeconds: number): boolean {
-    effect.remainingTime = Math.max(0, effect.remainingTime - deltaSeconds);
-    return effect.remainingTime > 0;
-}
-
-/**
- * Check if power-up is in fade-out period (last 25% of duration)
- *
- * @param effect - Power-up effect
- * @returns True if in fade-out period
- */
-export function isPowerUpFadingOut(effect: PowerUpEffect): boolean {
-    const fadeThreshold = effect.duration * 0.25;
-    return effect.remainingTime > 0 && effect.remainingTime <= fadeThreshold;
-}
-
-/**
- * Get power-up intensity factor (1.0 at start, fades to 0 during fade-out)
- *
- * @param effect - Power-up effect
- * @returns Intensity factor (0-1)
- */
-export function getPowerUpIntensity(effect: PowerUpEffect): number {
-    if (effect.remainingTime <= 0) {
-        return 0;
-    }
-
-    const fadeThreshold = effect.duration * 0.25;
-    if (effect.remainingTime <= fadeThreshold) {
-        // Fade from 1 to 0 during last 25%
-        return effect.remainingTime / fadeThreshold;
-    }
-
-    return 1;
-}
-
-/**
- * Calculate paddle width scale based on active power-up
- *
- * @param effect - Power-up effect (or null if none active)
- * @param config - Power-up configuration
- * @returns Scale multiplier (1.0 = normal, >1.0 = wider)
- */
-export function calculatePaddleWidthScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
-    if (!effect || effect.type !== 'paddle-width' || effect.remainingTime <= 0) {
-        return 1.0;
-    }
-
-    const maxMultiplier = config.paddleWidthMultiplier ?? DEFAULT_PADDLE_WIDTH_MULTIPLIER;
-    const intensity = getPowerUpIntensity(effect);
-
-    // Lerp from 1.0 to maxMultiplier based on intensity
-    return 1.0 + (maxMultiplier - 1.0) * intensity;
-}
-
-/**
- * Calculate ball speed scale based on active power-up
- *
- * @param effect - Power-up effect (or null if none active)
- * @param config - Power-up configuration
- * @returns Scale multiplier (1.0 = normal, >1.0 = faster)
- */
-export function calculateBallSpeedScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
-    if (!effect || effect.type !== 'ball-speed' || effect.remainingTime <= 0) {
-        return 1.0;
-    }
-
-    const maxMultiplier = config.ballSpeedMultiplier ?? DEFAULT_BALL_SPEED_MULTIPLIER;
-    const intensity = getPowerUpIntensity(effect);
-
-    return 1.0 + (maxMultiplier - 1.0) * intensity;
-}
-
-/**
- * Power-up manager to track multiple active effects
- */
-export class PowerUpManager {
-    private effects: Map<PowerUpType, PowerUpEffect> = new Map();
-
-    /**
-     * Activate a power-up (replaces existing effect of same type)
-     *
-     * @param type - Power-up type
-     * @param config - Power-up configuration
-     * @param now - Current timestamp function
-     */
-    activate(type: PowerUpType, config: PowerUpConfig = {}, now: () => number = Date.now): void {
-        const effect = createPowerUpEffect(type, config, now);
-        this.effects.set(type, effect);
-    }
-
-    /**
-     * Update all active power-ups
-     *
-     * @param deltaSeconds - Time elapsed since last update
-     */
-    update(deltaSeconds: number): void {
-        for (const [type, effect] of this.effects) {
-            if (!updatePowerUpEffect(effect, deltaSeconds)) {
-                this.effects.delete(type);
-            }
-        }
-    }
-
-    /**
-     * Get active effect of specific type
-     *
-     * @param type - Power-up type
-     * @returns Active effect or null
-     */
-    getEffect(type: PowerUpType): PowerUpEffect | null {
-        return this.effects.get(type) ?? null;
-    }
-
-    /**
-     * Check if power-up is active
-     *
-     * @param type - Power-up type
-     * @returns True if active
-     */
-    isActive(type: PowerUpType): boolean {
-        const effect = this.effects.get(type);
-        return effect !== undefined && effect.remainingTime > 0;
-    }
-
-    /**
-     * Clear all active power-ups
-     */
-    clearAll(): void {
-        this.effects.clear();
-    }
-
-    /**
-     * Get all active effects
-     */
-    getActiveEffects(): PowerUpEffect[] {
-        return Array.from(this.effects.values());
-    }
-}
-</file>
-
 <file path="src/util/scoring.ts">
 /**
  * Combo-Based Scoring System
@@ -1834,6 +1748,826 @@ export function getSpeedDebugInfo(
 }
 </file>
 
+<file path="tests/unit/audio/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { bootstrapAudio } from 'audio/index';
+
+describe('audio barrel', () => {
+    it('exposes bootstrapAudio factory', () => {
+        expect(typeof bootstrapAudio).toBe('function');
+    });
+});
+</file>
+
+<file path="tests/unit/cli/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { createCli } from 'cli/index';
+
+describe('cli barrel', () => {
+    it('provides a createCli command factory', () => {
+        const cli = createCli();
+        expect(cli).toBeDefined();
+        expect(typeof cli.execute).toBe('function');
+    });
+});
+</file>
+
+<file path="tests/unit/input/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { GameInputManager, PaddleLaunchManager } from 'input/index';
+
+describe('input barrel', () => {
+    it('re-exports input manager implementations', () => {
+        expect(typeof GameInputManager).toBe('function');
+        expect(typeof PaddleLaunchManager).toBe('function');
+    });
+});
+</file>
+
+<file path="tests/unit/physics/ball-attachment-controller.spec.ts">
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('physics/world', () => ({
+    createPhysicsWorld: vi.fn(),
+}));
+
+import { createPhysicsWorld } from 'physics/world';
+import { BallAttachmentController } from 'physics/ball-attachment';
+import { Body } from 'matter-js';
+import type { Vector2 } from 'physics/contracts';
+
+type StubWorld = ReturnType<typeof createStubWorld>;
+
+const createPhysicsWorldMock = vi.mocked(createPhysicsWorld);
+
+const createStubWorld = () => {
+    let nextId = 1;
+    const factory = {
+        ball: vi.fn((options: { position: Vector2; radius: number; restitution: number }) => ({
+            id: nextId++,
+            position: { x: options.position.x, y: options.position.y },
+            velocity: { x: 0, y: 0 },
+            angularVelocity: 0,
+            force: { x: 0, y: 0 },
+            circleRadius: options.radius,
+        })),
+        paddle: vi.fn((options: { position: Vector2; size: { width: number; height: number } }) => ({
+            id: `paddle-${nextId++}`,
+            position: { x: options.position.x, y: options.position.y },
+            size: options.size,
+        })),
+        brick: vi.fn(),
+        bounds: vi.fn(),
+    };
+
+    return {
+        factory,
+        attachBallToPaddle: vi.fn(),
+        detachBallFromPaddle: vi.fn(),
+        updateBallAttachment: vi.fn(),
+        isBallAttached: vi.fn(() => true),
+        getBallAttachment: vi.fn(() => ({
+            isAttached: true,
+            attachmentOffset: { x: 0, y: -15 },
+            paddlePosition: { x: 0, y: 0 },
+        })),
+    };
+};
+
+describe('BallAttachmentController', () => {
+    let controller: BallAttachmentController;
+    let stubWorld: StubWorld;
+    let setPositionSpy: ReturnType<typeof vi.spyOn>;
+    let setVelocitySpy: ReturnType<typeof vi.spyOn>;
+    let setAngularVelocitySpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        setPositionSpy = vi.spyOn(Body, 'setPosition') as ReturnType<typeof vi.spyOn>;
+        setPositionSpy.mockImplementation((body: any, position: Vector2) => {
+            body.position = { ...position };
+            return body;
+        });
+        setVelocitySpy = vi.spyOn(Body, 'setVelocity') as ReturnType<typeof vi.spyOn>;
+        setVelocitySpy.mockImplementation((body: any, velocity: Vector2) => {
+            body.velocity = { ...velocity };
+            return body;
+        });
+        setAngularVelocitySpy = vi.spyOn(Body, 'setAngularVelocity') as ReturnType<typeof vi.spyOn>;
+        setAngularVelocitySpy.mockImplementation((body: any, angularVelocity: number) => {
+            body.angularVelocity = angularVelocity;
+            return body;
+        });
+
+        stubWorld = createStubWorld();
+        createPhysicsWorldMock.mockReturnValue(stubWorld as any);
+        controller = new BallAttachmentController();
+    });
+
+    afterEach(() => {
+        setPositionSpy.mockRestore();
+        setVelocitySpy.mockRestore();
+        setAngularVelocitySpy.mockRestore();
+        createPhysicsWorldMock.mockReset();
+        vi.clearAllMocks();
+    });
+
+    it('creates an attached ball with expected defaults', () => {
+        const paddlePosition: Vector2 = { x: 200, y: 300 };
+        const ball = controller.createAttachedBall(paddlePosition, { radius: 12, restitution: 0.9 });
+
+        expect(stubWorld.factory.ball).toHaveBeenCalledWith({
+            position: { x: 200, y: 278 },
+            radius: 12,
+            restitution: 0.9,
+        });
+        expect(stubWorld.factory.paddle).toHaveBeenCalledWith({
+            position: paddlePosition,
+            size: { width: 100, height: 20 },
+        });
+        expect(stubWorld.attachBallToPaddle).toHaveBeenCalledWith(
+            ball.physicsBody,
+            expect.any(Object),
+            { x: 0, y: -22 },
+        );
+        expect(ball.isAttached).toBe(true);
+        expect(ball.attachmentOffset).toEqual({ x: 0, y: -22 });
+        expect(ball.radius).toBe(12);
+    });
+
+    it('updates attachment while the ball remains attached', () => {
+        const paddlePosition: Vector2 = { x: 100, y: 250 };
+        const ball = controller.createAttachedBall(paddlePosition, { radius: 10 });
+
+        setPositionSpy.mockClear();
+        setVelocitySpy.mockClear();
+        setAngularVelocitySpy.mockClear();
+
+        controller.updateAttachment(ball, { x: 140, y: 260 });
+
+        expect(setPositionSpy).toHaveBeenCalledWith(ball.physicsBody, { x: 140, y: 240 });
+        expect(setVelocitySpy).toHaveBeenCalledWith(ball.physicsBody, { x: 0, y: 0 });
+        expect(setAngularVelocitySpy).toHaveBeenCalledWith(ball.physicsBody, 0);
+    });
+
+    it('skips attachment updates for detached balls', () => {
+        const ball = controller.createAttachedBall({ x: 50, y: 60 });
+        ball.isAttached = false;
+
+        controller.updateAttachment(ball, { x: 70, y: 90 });
+
+        expect(setPositionSpy).not.toHaveBeenCalled();
+    });
+
+    it('launches the ball and normalises the provided direction', () => {
+        const ball = controller.createAttachedBall({ x: 0, y: 0 }, { radius: 10 });
+
+        controller.launchBall(ball, { x: 3, y: 4 });
+
+        expect(ball.isAttached).toBe(false);
+        expect(ball.physicsBody.velocity).toEqual({ x: 180, y: 240 });
+    });
+
+    it('defaults to upward launch when zero direction is provided', () => {
+        const ball = controller.createAttachedBall({ x: 0, y: 0 }, { radius: 8 });
+
+        controller.launchBall(ball, { x: 0, y: 0 });
+
+        expect(ball.physicsBody.velocity).toEqual({ x: 0, y: -300 });
+    });
+
+    it('resets the ball back to attached state with derived offset', () => {
+        const ball = controller.createAttachedBall({ x: 20, y: 40 }, { radius: 9 });
+        ball.isAttached = false;
+        ball.physicsBody.force = { x: 5, y: -3 };
+
+        setPositionSpy.mockClear();
+        setVelocitySpy.mockClear();
+        setAngularVelocitySpy.mockClear();
+
+        controller.resetToAttached(ball, { x: 30, y: 80 });
+
+        expect(ball.isAttached).toBe(true);
+        expect(ball.attachmentOffset).toEqual({ x: 0, y: -19 });
+        expect(setPositionSpy).toHaveBeenCalledWith(ball.physicsBody, { x: 30, y: 61 });
+        expect(setVelocitySpy).toHaveBeenCalledWith(ball.physicsBody, { x: 0, y: 0 });
+        expect(setAngularVelocitySpy).toHaveBeenCalledWith(ball.physicsBody, 0);
+        expect(ball.physicsBody.force).toEqual({ x: 0, y: 0 });
+    });
+
+    it('reports attachment state via getter', () => {
+        const ball = controller.createAttachedBall({ x: 0, y: 0 });
+        expect(controller.isAttached(ball)).toBe(true);
+
+        ball.isAttached = false;
+        expect(controller.isAttached(ball)).toBe(false);
+    });
+
+    it('returns debug info referencing the underlying physics body', () => {
+        const ball = controller.createAttachedBall({ x: 10, y: 20 });
+        ball.physicsBody.velocity = { x: 5, y: -2 };
+
+        const info = controller.getDebugInfo(ball);
+
+        expect(stubWorld.getBallAttachment).toHaveBeenCalledWith(ball.physicsBody);
+        expect(info).toEqual({
+            position: ball.physicsBody.position,
+            velocity: ball.physicsBody.velocity,
+            isAttached: ball.isAttached,
+            attachmentOffset: ball.attachmentOffset,
+            physicsBodyId: ball.physicsBody.id,
+        });
+    });
+});
+</file>
+
+<file path="tests/unit/physics/ball-launch-controller.spec.ts">
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+interface MutableVector {
+    x: number;
+    y: number;
+}
+
+const matterMocks = vi.hoisted(() => {
+    const setVelocityMock = vi.fn((body: { velocity: MutableVector }, velocity: MutableVector) => {
+        body.velocity = { ...velocity };
+    });
+    const normaliseMock = vi.fn((vector: MutableVector): MutableVector => {
+        const length = Math.hypot(vector.x, vector.y);
+        if (length === 0) {
+            return { x: 0, y: 0 };
+        }
+        return { x: vector.x / length, y: vector.y / length };
+    });
+    const multMock = vi.fn((vector: MutableVector, scalar: number): MutableVector => ({
+        x: vector.x * scalar,
+        y: vector.y * scalar,
+    }));
+
+    return { setVelocityMock, normaliseMock, multMock };
+});
+
+vi.mock('matter-js', () => ({
+    Body: {
+        setVelocity: matterMocks.setVelocityMock,
+    },
+    Vector: {
+        normalise: matterMocks.normaliseMock,
+        mult: matterMocks.multMock,
+    },
+}));
+
+import { PhysicsBallLaunchController } from 'physics/ball-launch';
+import type { Ball, Vector2 } from 'physics/contracts';
+
+const createBall = (overrides: Partial<Ball> = {}): Ball => ({
+    id: 'ball-test',
+    physicsBody: {
+        velocity: { x: 0, y: 0 },
+    },
+    isAttached: true,
+    attachmentOffset: { x: 0, y: 0 },
+    radius: 8,
+    ...overrides,
+});
+
+describe('PhysicsBallLaunchController', () => {
+    let controller: PhysicsBallLaunchController;
+
+    beforeEach(() => {
+        matterMocks.setVelocityMock.mockClear();
+        matterMocks.normaliseMock.mockClear();
+        matterMocks.multMock.mockClear();
+        controller = new PhysicsBallLaunchController();
+    });
+
+    it('launches attached balls upward with default speed', () => {
+        const ball = createBall();
+
+        controller.launch(ball);
+
+        expect(ball.isAttached).toBe(false);
+        expect(matterMocks.setVelocityMock).toHaveBeenCalledWith(ball.physicsBody, { x: 0, y: -8 });
+        expect(ball.physicsBody.velocity).toEqual({ x: 0, y: -8 });
+        expect(matterMocks.normaliseMock).toHaveBeenCalledWith({ x: 0, y: -1 });
+        expect(matterMocks.multMock).toHaveBeenCalledWith({ x: 0, y: -1 }, 8);
+
+        const debug = controller.getLaunchDebugInfo(ball);
+        expect(debug).toEqual({
+            canLaunch: false,
+            currentVelocity: { x: 0, y: -8 },
+            launchSpeed: 8,
+            lastLaunchDirection: { x: 0, y: -1 },
+        });
+    });
+
+    it('does nothing when attempting to launch a free ball', () => {
+        const ball = createBall({ isAttached: false });
+
+        controller.launch(ball);
+
+        expect(matterMocks.setVelocityMock).not.toHaveBeenCalled();
+        expect(ball.physicsBody.velocity).toEqual({ x: 0, y: 0 });
+        const debug = controller.getLaunchDebugInfo(ball);
+        expect(debug.lastLaunchDirection).toBeUndefined();
+        expect(debug.canLaunch).toBe(false);
+    });
+
+    it('applies custom direction and speed when launching', () => {
+        const ball = createBall();
+        const direction: Vector2 = { x: 3, y: 4 };
+
+        controller.launch(ball, direction, 12);
+
+        expect(matterMocks.setVelocityMock).toHaveBeenCalledTimes(1);
+        const [, appliedVelocity] = matterMocks.setVelocityMock.mock.calls[0];
+        expect(appliedVelocity.x).toBeCloseTo(7.2, 5);
+        expect(appliedVelocity.y).toBeCloseTo(9.6, 5);
+        expect(ball.physicsBody.velocity.x).toBeCloseTo(7.2, 5);
+        expect(ball.physicsBody.velocity.y).toBeCloseTo(9.6, 5);
+        expect(controller.getLaunchDebugInfo(ball).lastLaunchDirection).toEqual(direction);
+    });
+
+    it('calculates launch velocity with normalization and zero-vector fallback', () => {
+        expect(controller.calculateLaunchVelocity({ x: 3, y: 4 }, 10)).toEqual({ x: 6, y: 8 });
+        expect(controller.calculateLaunchVelocity({ x: 0, y: 0 }, 15)).toEqual({ x: 0, y: -15 });
+    });
+
+    it('reports launch availability based on attachment', () => {
+        const attached = createBall({ isAttached: true });
+        const detached = createBall({ isAttached: false });
+        expect(controller.canLaunch(attached)).toBe(true);
+        expect(controller.canLaunch(detached)).toBe(false);
+    });
+});
+</file>
+
+<file path="tests/unit/physics/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { createPhysicsWorld } from 'physics/index';
+
+describe('physics barrel', () => {
+    it('exposes the world factory', () => {
+        expect(typeof createPhysicsWorld).toBe('function');
+    });
+});
+</file>
+
+<file path="tests/unit/render/debug-overlay.spec.ts">
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('pixi.js', () => {
+    class Container {
+        children: any[] = [];
+        destroy = vi.fn();
+        addChild(...nodes: any[]): void {
+            this.children.push(...nodes);
+        }
+    }
+
+    class Graphics {
+        clear = vi.fn();
+        setStrokeStyle = vi.fn();
+        rect = vi.fn();
+        stroke = vi.fn();
+        setFillStyle = vi.fn();
+        circle = vi.fn();
+        fill = vi.fn();
+        moveTo = vi.fn();
+        lineTo = vi.fn();
+        destroy = vi.fn();
+    }
+
+    class TextStyle {
+        constructor(public options: unknown) { }
+    }
+
+    class Text {
+        x = 0;
+        y = 0;
+        destroy = vi.fn();
+        constructor(public text: string, public style: TextStyle) { }
+    }
+
+    return { Container, Graphics, Text, TextStyle };
+});
+
+import { Container, Graphics, Text } from 'pixi.js';
+import { InputDebugOverlay } from 'render/debug-overlay';
+
+describe('InputDebugOverlay', () => {
+    const mockInputState = {
+        activeInputs: ['keyboard'],
+        mousePosition: { x: 320, y: 200 },
+        keyboardPressed: ['ArrowLeft'],
+        paddleTarget: { x: 200, y: 0 },
+        launchPending: true,
+    };
+    const mockPaddleDebug = {
+        position: { x: 150.123, y: 70.987 },
+        velocity: { x: 0, y: 0 },
+        bounds: { x: 100, y: 50, width: 200, height: 40 },
+        physicsBodyId: 1,
+        inputState: mockInputState,
+    };
+    const mockBallDebug = {
+        isAttached: true,
+        position: { x: 180.4, y: 65.2 },
+        velocity: { x: 2.3, y: -4.1 },
+        attachmentOffset: { x: 10, y: -15 },
+    };
+
+    const createOverlay = () =>
+        new InputDebugOverlay({
+            inputManager: { getDebugState: () => mockInputState } as any,
+            paddleController: { getDebugInfo: () => mockPaddleDebug } as any,
+            ballController: { getDebugInfo: () => mockBallDebug } as any,
+            paddle: {},
+            ball: {},
+        });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('initializes overlay content and updates drawing primitives', () => {
+        const overlay = createOverlay();
+        const container = overlay.getContainer();
+        expect(container).toBeInstanceOf(Container);
+        expect(container.children.length).toBeGreaterThanOrEqual(5);
+
+        overlay.update();
+
+        const overlayGraphics = container.children[0] as Graphics;
+        expect(overlayGraphics.rect).toHaveBeenCalledWith(100, 50, 200, 40);
+        expect(overlayGraphics.circle).toHaveBeenCalledWith(180.4, 65.2, 5);
+
+        const texts = container.children.filter((child): child is Text => child instanceof Text);
+        expect(texts[0].text).toContain('Input: keyboard');
+        expect(texts[1].text).toContain('(150.1, 71.0)');
+    });
+
+    it('cleans up PIXI resources on destroy', () => {
+        const overlay = createOverlay();
+        const container = overlay.getContainer();
+        const overlayGraphics = container.children[0] as Graphics;
+        const texts = container.children.filter((child): child is Text => child instanceof Text);
+
+        overlay.destroy();
+
+        expect(overlayGraphics.destroy).toHaveBeenCalledTimes(1);
+        texts.forEach((text) => expect(text.destroy).toHaveBeenCalledTimes(1));
+        expect((container as any).destroy).toHaveBeenCalledTimes(1);
+    });
+});
+</file>
+
+<file path="tests/unit/render/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { createStage } from 'render/index';
+
+describe('render barrel', () => {
+    it('exports the stage factory', () => {
+        expect(typeof createStage).toBe('function');
+    });
+});
+</file>
+
+<file path="tests/unit/types/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import type { InputType, Vector2 } from 'types/index';
+
+describe('types barrel', () => {
+    it('re-exports Vector2 type definition', () => {
+        const vector: Vector2 = { x: 1, y: 2 };
+        expect(vector).toEqual({ x: 1, y: 2 });
+    });
+
+    it('includes the InputType union', () => {
+        const inputType: InputType = 'mouse';
+        expect(inputType).toBe('mouse');
+    });
+});
+</file>
+
+<file path="tests/unit/util/geometry.spec.ts">
+import { describe, expect, it } from 'vitest';
+import {
+    addVectors,
+    clamp,
+    createRectangle,
+    createVector2,
+    degreesToRadians,
+    distance,
+    dotProduct,
+    lerp,
+    multiplyVector,
+    normalizeVector,
+    pointInRectangle,
+    radiansToDegrees,
+    rectangleCenter,
+    rectanglesIntersect,
+    subtractVectors,
+} from 'util/geometry';
+
+describe('geometry utilities', () => {
+    it('creates vectors with default zero values', () => {
+        expect(createVector2()).toEqual({ x: 0, y: 0 });
+        expect(createVector2(3, -2)).toEqual({ x: 3, y: -2 });
+    });
+
+    it('performs vector math', () => {
+        const a = { x: 4, y: -1 };
+        const b = { x: -6, y: 8 };
+        expect(addVectors(a, b)).toEqual({ x: -2, y: 7 });
+        expect(subtractVectors(a, b)).toEqual({ x: 10, y: -9 });
+        expect(multiplyVector(a, 2)).toEqual({ x: 8, y: -2 });
+        expect(distance(a, b)).toBeCloseTo(Math.sqrt((4 + 6) ** 2 + (-1 - 8) ** 2));
+        expect(dotProduct(a, b)).toBe(4 * -6 + -1 * 8);
+    });
+
+    it('normalizes vectors and handles zero length', () => {
+        expect(normalizeVector({ x: 3, y: 4 })).toEqual({ x: 3 / 5, y: 4 / 5 });
+        expect(normalizeVector({ x: 0, y: 0 })).toEqual({ x: 0, y: 0 });
+    });
+
+    it('creates rectangles and derives properties', () => {
+        const rect = createRectangle(2, 4, 10, 6);
+        expect(rectangleCenter(rect)).toEqual({ x: 7, y: 7 });
+        expect(pointInRectangle({ x: 2, y: 4 }, rect)).toBe(true);
+        expect(pointInRectangle({ x: 12, y: 10 }, rect)).toBe(true);
+        expect(pointInRectangle({ x: 12.1, y: 10 }, rect)).toBe(false);
+    });
+
+    it('detects rectangle intersections excluding touching edges', () => {
+        const a = createRectangle(0, 0, 10, 10);
+        const b = createRectangle(10, 0, 5, 5);
+        const c = createRectangle(5, 5, 10, 10);
+        expect(rectanglesIntersect(a, b)).toBe(false);
+        expect(rectanglesIntersect(a, c)).toBe(true);
+    });
+
+    it('clamps and interpolates scalars', () => {
+        expect(clamp(-5, 0, 10)).toBe(0);
+        expect(clamp(15, 0, 10)).toBe(10);
+        expect(clamp(6, 0, 10)).toBe(6);
+        expect(lerp(0, 10, 0.25)).toBe(2.5);
+        expect(lerp(5, 15, 0.5)).toBe(10);
+    });
+
+    it('converts angles between degrees and radians', () => {
+        expect(degreesToRadians(180)).toBeCloseTo(Math.PI);
+        expect(radiansToDegrees(Math.PI / 2)).toBeCloseTo(90);
+    });
+});
+</file>
+
+<file path="tests/unit/util/index.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { noop } from 'util/index';
+
+describe('util barrel', () => {
+    it('provides a noop helper', () => {
+        expect(typeof noop).toBe('function');
+        expect(noop()).toBeUndefined();
+    });
+});
+</file>
+
+<file path="tests/unit/util/input-helpers.spec.ts">
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+    eventsToInputState,
+    getActiveInputTypes,
+    getPaddleTarget,
+    hasPaddleMovement,
+    type KeyboardEventData,
+    type MouseEventData,
+    type TouchEventData,
+    normalizeKeyboardEvent,
+    normalizeMouseEvent,
+    normalizeTouchEvent,
+} from 'util/input-helpers';
+
+const createCanvas = (): HTMLCanvasElement => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    canvas.getBoundingClientRect = () => ({
+        left: 10,
+        top: 20,
+        right: 410,
+        bottom: 320,
+        width: 400,
+        height: 300,
+        x: 10,
+        y: 20,
+        toJSON: () => ({}),
+    });
+    return canvas;
+};
+
+describe('input helpers', () => {
+    let canvas: HTMLCanvasElement;
+
+    beforeEach(() => {
+        canvas = createCanvas();
+    });
+
+    it('normalizes mouse events into canvas coordinates', () => {
+        const mouseDown = normalizeMouseEvent({
+            clientX: 110,
+            clientY: 170,
+            button: 0,
+            type: 'mousedown',
+        } as MouseEvent, canvas);
+        expect(mouseDown).toEqual({ x: 200, y: 300, button: 'left', pressed: true });
+
+        const mouseUp = normalizeMouseEvent({
+            clientX: 210,
+            clientY: 220,
+            button: 2,
+            type: 'mouseup',
+        } as MouseEvent, canvas);
+        expect(mouseUp).toEqual({ x: 400, y: 400, button: 'right', pressed: false });
+    });
+
+    it('normalizes keyboard events using physical key codes', () => {
+        const keyDown = normalizeKeyboardEvent({ code: 'ArrowLeft', type: 'keydown' } as KeyboardEvent);
+        expect(keyDown).toEqual({ key: 'ArrowLeft', pressed: true });
+
+        const keyUp = normalizeKeyboardEvent({ code: 'Space', type: 'keyup' } as KeyboardEvent);
+        expect(keyUp).toEqual({ key: 'Space', pressed: false });
+    });
+
+    it('normalizes touch events and scales coordinates', () => {
+        const touch = { clientX: 210, clientY: 120 } as Touch;
+        const touches = {
+            length: 1,
+            item: (index: number) => (index === 0 ? touch : null),
+            0: touch,
+        } as unknown as TouchList;
+        const touchEvent = { touches } as TouchEvent;
+
+        expect(normalizeTouchEvent(touchEvent, canvas)).toEqual({ touches: [{ x: 400, y: 200 }] });
+    });
+
+    it('builds input state from mixed device events', () => {
+        const mouseEvent: MouseEventData = { x: 200, y: 100, button: 'left', pressed: true };
+        const keyboardEvents: KeyboardEventData[] = [
+            { key: 'KeyA', pressed: true },
+            { key: 'KeyD', pressed: true },
+            { key: 'Space', pressed: false },
+        ];
+        const touchEvent: TouchEventData = { touches: [{ x: 300, y: 0 }] };
+
+        const state = eventsToInputState(mouseEvent, keyboardEvents, touchEvent);
+        expect(state).toEqual({
+            leftPressed: true,
+            rightPressed: true,
+            mouseX: 200,
+            touchX: 300,
+            launchRequested: true,
+        });
+    });
+
+    it('derives active input sources', () => {
+        const mouseOnly: MouseEventData = { x: 0, y: 0, button: 'left', pressed: false };
+        const keyboardOnly: KeyboardEventData[] = [{ key: 'KeyA', pressed: true }];
+        const allInputsTouch: TouchEventData = { touches: [] };
+
+        expect(getActiveInputTypes()).toEqual([]);
+        expect(getActiveInputTypes(mouseOnly)).toEqual(['mouse']);
+        expect(getActiveInputTypes(undefined, keyboardOnly)).toEqual(['keyboard']);
+        expect(getActiveInputTypes(mouseOnly, keyboardOnly, allInputsTouch)).toEqual([
+            'mouse',
+            'keyboard',
+            'touch',
+        ]);
+    });
+
+    it('detects paddle movement intent', () => {
+        expect(hasPaddleMovement({ leftPressed: false, rightPressed: false, launchRequested: false })).toBe(false);
+        expect(hasPaddleMovement({ leftPressed: true, rightPressed: false, launchRequested: false })).toBe(true);
+        expect(hasPaddleMovement({ leftPressed: false, rightPressed: false, mouseX: 10, launchRequested: false })).toBe(true);
+        expect(hasPaddleMovement({ leftPressed: false, rightPressed: false, touchX: 10, launchRequested: false })).toBe(true);
+    });
+
+    it('calculates paddle targets with precedence and clamping', () => {
+        expect(getPaddleTarget({ leftPressed: true, rightPressed: false, launchRequested: false }, 800, 100)).toEqual({ x: 50, y: 0 });
+        expect(getPaddleTarget({ leftPressed: false, rightPressed: true, launchRequested: false }, 800, 100)).toEqual({ x: 750, y: 0 });
+        expect(
+            getPaddleTarget({ leftPressed: false, rightPressed: false, mouseX: -100, launchRequested: false }, 800, 100),
+        ).toEqual({ x: 50, y: 0 });
+        expect(
+            getPaddleTarget({ leftPressed: false, rightPressed: false, mouseX: 900, launchRequested: false }, 800, 100),
+        ).toEqual({ x: 750, y: 0 });
+        expect(
+            getPaddleTarget({ leftPressed: false, rightPressed: false, touchX: 400, launchRequested: false }, 800, 100),
+        ).toEqual({ x: 400, y: 0 });
+        expect(getPaddleTarget({ leftPressed: false, rightPressed: false, launchRequested: false }, 800, 100)).toBeNull();
+    });
+});
+</file>
+
+<file path="tests/unit/util/log.spec.ts">
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const createConsoleMock = (overrides: Partial<Console> = {}): Console => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    log: vi.fn(),
+    ...overrides,
+} as unknown as Console);
+
+describe('logging utilities', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.unstubAllGlobals();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('routes log entries to matching console sink', async () => {
+        const consoleMock = createConsoleMock();
+        vi.stubGlobal('console', consoleMock);
+        const { defaultLogWriter } = await import('util/log');
+
+        defaultLogWriter({ level: 'warn', subsystem: 'test', message: 'something happened', timestamp: 0 });
+
+        expect(consoleMock.warn).toHaveBeenCalledWith('1970-01-01T00:00:00.000Z [WARN][test] something happened');
+    });
+
+    it('falls back to console.log when specific sink missing', async () => {
+        const fallback = vi.fn();
+        const consoleMock = createConsoleMock({ warn: undefined as unknown as Console['warn'], log: fallback });
+        vi.stubGlobal('console', consoleMock);
+        const { defaultLogWriter } = await import('util/log');
+
+        defaultLogWriter({ level: 'warn', subsystem: 'fallback', message: 'missing sink', timestamp: 0 });
+
+        expect(fallback).toHaveBeenCalledWith('1970-01-01T00:00:00.000Z [WARN][fallback] missing sink');
+    });
+
+    it('serializes context objects alongside the message', async () => {
+        const consoleMock = createConsoleMock();
+        vi.stubGlobal('console', consoleMock);
+        const { defaultLogWriter } = await import('util/log');
+
+        defaultLogWriter({ level: 'info', subsystem: 'ctx', message: 'payload', timestamp: 0, context: { value: 42 } });
+
+        expect(consoleMock.info).toHaveBeenCalledWith('1970-01-01T00:00:00.000Z [INFO][ctx] payload', { value: 42 });
+    });
+
+    it('creates loggers that normalise subsystem names and propagate options', async () => {
+        const writer = vi.fn();
+        const now = vi.fn(() => 123);
+        const { createLogger } = await import('util/log');
+
+        const logger = createLogger(' gameplay ', { writer, now });
+        logger.debug('tick');
+        logger.error('boom', { reason: 'badness' });
+
+        expect(writer).toHaveBeenNthCalledWith(1, {
+            level: 'debug',
+            subsystem: 'gameplay',
+            message: 'tick',
+            context: undefined,
+            timestamp: 123,
+        });
+        expect(writer).toHaveBeenNthCalledWith(2, {
+            level: 'error',
+            subsystem: 'gameplay',
+            message: 'boom',
+            context: { reason: 'badness' },
+            timestamp: 123,
+        });
+    });
+
+    it('creates child loggers with derived subsystem names', async () => {
+        const writer = vi.fn();
+        const now = vi.fn(() => 555);
+        const { createLogger } = await import('util/log');
+
+        const parent = createLogger(' gameplay ', { writer, now });
+        const child = parent.child(' network ');
+        child.info('ready');
+
+        expect(writer).toHaveBeenCalledWith({
+            level: 'info',
+            subsystem: 'gameplay:network',
+            message: 'ready',
+            context: undefined,
+            timestamp: 555,
+        });
+    });
+});
+</file>
+
 <file path=".gitignore">
 # Logs
 logs
@@ -1986,52 +2720,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.swp
-</file>
-
-<file path="package.json">
-{
-  "name": "lucky-break",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@8.15.4",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --no-error-on-unmatched-pattern",
-    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
-    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,html}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,html}\"",
-    "cli:simulate": "node ./dist/cli/index.js"
-  },
-  "dependencies": {
-    "matter-js": "^0.20.0",
-    "pixi.js": "^8.14.0",
-    "tone": "^15.1.22"
-  },
-  "devDependencies": {
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@types/matter-js": "^0.20.2",
-    "@types/node": "^24.7.2",
-  "@types/jsdom": "^21.1.7",
-    "@typescript-eslint/eslint-plugin": "^8.46.1",
-    "@typescript-eslint/parser": "^8.46.1",
-    "@vitest/coverage-v8": "^1.6.0",
-    "eslint": "^9.37.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-import": "^2.32.0",
-    "jsdom": "^27.0.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.1",
-    "vite": "^7.1.10",
-    "vitest": "^1.6.0"
-  }
-}
 </file>
 
 <file path="src/app/loop.ts">
@@ -2422,128 +3110,78 @@ export function bootstrapAudio(_options: AudioBootstrapOptions = {}): AudioSubsy
 }
 </file>
 
-<file path="src/audio/sfx.ts">
-import type { LuckyBreakEventBus, EventEnvelope, BrickBreakPayload } from 'app/events';
-import type { ScheduledEventHandle, ToneScheduler } from './scheduler';
+<file path="src/audio/scheduler.ts">
+import { Transport, now as toneNow, getContext } from 'tone';
 
-export interface SfxTriggerDescriptor {
-    readonly id: string;
+export interface ScheduledEventHandle {
+    readonly id: number;
     readonly time: number;
-    readonly gain: number;
-    readonly detune: number;
-    readonly pan: number;
-    readonly source: {
-        readonly event: 'BrickBreak';
-        readonly row: number;
-        readonly velocity: number;
-    };
 }
 
-export interface SfxRouterOptions {
-    readonly bus: LuckyBreakEventBus;
-    readonly scheduler: ToneScheduler;
-    readonly trigger?: (descriptor: SfxTriggerDescriptor) => void;
-    readonly brickSampleId?: string;
-    readonly brickSampleIds?: readonly string[];
+export interface ToneSchedulerOptions {
+    readonly lookAheadMs?: number;
+    readonly now?: () => number;
+    readonly schedule?: (callback: (time: number) => void, at: number | string) => number;
+    readonly clear?: (id: number) => void;
+    readonly cancel?: (time?: number) => void;
 }
 
-export interface SfxRouter {
+export interface ToneScheduler {
+    readonly lookAheadMs: number;
+    readonly schedule: (callback: (time: number) => void, offsetMs?: number) => ScheduledEventHandle;
+    readonly cancel: (handle: ScheduledEventHandle) => void;
     readonly dispose: () => void;
+    readonly context: AudioContext;
 }
 
-const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const toSeconds = (milliseconds: number): number => milliseconds / 1000;
 
-const defaultTrigger = (_descriptor: SfxTriggerDescriptor): void => {
-    // Intentionally blank: production wiring occurs in audio bootstrap.
-};
+export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneScheduler => {
+    const lookAheadMs = Math.max(0, options.lookAheadMs ?? 120);
+    const now = options.now ?? toneNow;
+    const scheduleFn = options.schedule ?? ((callback, at) => Transport.scheduleOnce(callback, at));
+    const clearFn = options.clear ?? ((id) => Transport.clear(id));
+    const cancelFn = options.cancel ?? ((time = 0) => Transport.cancel(time));
+    const usingTransport = options.schedule === undefined;
+    const audioContext = getContext().rawContext as AudioContext;
 
-const normalizePan = (column: number): number => {
-    const normalized = (column - 5.5) / 5.5;
-    return clamp(Number(normalized.toFixed(2)), -1, 1);
-};
+    const active = new Set<number>();
 
-const calculateGain = (velocity: number): number => {
-    const base = 0.55 + velocity / 20;
-    return Number(clamp(base, 0.4, 1).toFixed(2));
-};
+    const schedule: ToneScheduler['schedule'] = (callback, offsetMs = 0) => {
+        const offsetSeconds = toSeconds(lookAheadMs + offsetMs);
+        const targetTime = now() + offsetSeconds;
+        const scheduleAt = usingTransport ? `+${offsetSeconds}` : targetTime;
 
-const calculateDetune = (comboHeat: number, row: number): number => {
-    const detune = (comboHeat - 5) * 6 + (row - 3) * 4;
-    return Math.round(detune);
-};
-
-const createBrickTrigger = (
-    payload: BrickBreakPayload,
-    time: number,
-    sampleId: string,
-): SfxTriggerDescriptor => ({
-    id: sampleId,
-    time,
-    gain: calculateGain(payload.velocity),
-    detune: calculateDetune(payload.comboHeat, payload.row),
-    pan: normalizePan(payload.col),
-    source: {
-        event: 'BrickBreak',
-        row: payload.row,
-        velocity: payload.velocity,
-    },
-});
-
-const toSampleList = (options: SfxRouterOptions): readonly string[] => {
-    if (options.brickSampleIds && options.brickSampleIds.length > 0) {
-        return options.brickSampleIds;
-    }
-
-    if (options.brickSampleId) {
-        return [options.brickSampleId];
-    }
-
-    return ['brick-hit'];
-};
-
-const selectSampleId = (samples: readonly string[], payload: BrickBreakPayload): string => {
-    if (samples.length === 1) {
-        return samples[0];
-    }
-
-    const hash = (payload.row * 31 + payload.col * 17 + Math.round(payload.velocity * 10)) | 0;
-    const index = Math.abs(hash) % samples.length;
-    return samples[index];
-};
-
-export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
-    const trigger = options.trigger ?? defaultTrigger;
-    const samples = toSampleList(options);
-
-    const pending = new Set<ScheduledEventHandle>();
-
-    const handleBrickBreak = (event: EventEnvelope<'BrickBreak'>) => {
-        const handle = options.scheduler.schedule((scheduledTime) => {
-            pending.delete(handle);
-            const sampleId = selectSampleId(samples, event.payload);
-            trigger(createBrickTrigger(event.payload, scheduledTime, sampleId));
-        });
-        pending.add(handle);
+        const id = scheduleFn((scheduledTime) => {
+            active.delete(id);
+            const resolvedTime = Number.isFinite(scheduledTime) ? scheduledTime : targetTime;
+            callback(resolvedTime);
+        }, scheduleAt);
+        active.add(id);
+        return { id, time: targetTime };
     };
 
-    const subscriptions: Array<() => void> = [
-        options.bus.subscribe('BrickBreak', handleBrickBreak),
-    ];
-
-    const dispose: SfxRouter['dispose'] = () => {
-        for (const unsubscribe of subscriptions) {
-            unsubscribe();
+    const cancel: ToneScheduler['cancel'] = (handle) => {
+        if (active.has(handle.id)) {
+            active.delete(handle.id);
+            clearFn(handle.id);
         }
-        subscriptions.length = 0;
+    };
 
-        for (const handle of pending) {
-            options.scheduler.cancel(handle);
+    const dispose: ToneScheduler['dispose'] = () => {
+        for (const id of active) {
+            clearFn(id);
         }
-        pending.clear();
+        active.clear();
+        cancelFn(0);
     };
 
     return {
+        lookAheadMs,
+        schedule,
+        cancel,
         dispose,
+        context: audioContext,
     };
 };
 </file>
@@ -2927,6 +3565,10 @@ export class GameInputManager implements InputManager {
 
     resetLaunchTrigger(): void {
         this.launchManager.reset();
+    }
+
+    syncPaddlePosition(position: Vector2 | null): void {
+        this.previousPaddlePosition = position ? { ...position } : null;
     }
 
     /**
@@ -3895,6 +4537,250 @@ export const createLogger = (subsystem: string, options: LoggerOptions = {}): Lo
 export const rootLogger = createLogger('app');
 </file>
 
+<file path="src/util/power-ups.ts">
+/**
+ * Power-Up System
+ *
+ * Adapted from Banana Music Game's power-up mechanics
+ * Spawns temporary power-ups on brick breaks with visual and gameplay effects
+ */
+
+export type PowerUpType = 'paddle-width' | 'ball-speed' | 'multi-ball' | 'sticky-paddle';
+
+export interface PowerUpEffect {
+    /** Type of power-up */
+    readonly type: PowerUpType;
+    /** Duration in seconds */
+    readonly duration: number;
+    /** Remaining time (updated each frame) */
+    remainingTime: number;
+    /** Start timestamp */
+    readonly startTime: number;
+}
+
+export interface PowerUpConfig {
+    /** Probability of spawning power-up on brick break (0-1) */
+    readonly spawnChance?: number;
+    /** Default duration for power-ups in seconds */
+    readonly defaultDuration?: number;
+    /** Paddle width multiplier for paddle-width power-up */
+    readonly paddleWidthMultiplier?: number;
+    /** Ball speed multiplier for ball-speed power-up */
+    readonly ballSpeedMultiplier?: number;
+}
+
+const DEFAULT_SPAWN_CHANCE = 0.25; // 25% chance
+const DEFAULT_DURATION = 2.5; // seconds
+const DEFAULT_PADDLE_WIDTH_MULTIPLIER = 1.5;
+const DEFAULT_BALL_SPEED_MULTIPLIER = 1.3;
+
+/**
+ * Determine if power-up should spawn
+ *
+ * @param config - Power-up configuration
+ * @returns True if power-up should spawn
+ */
+export function shouldSpawnPowerUp(config: PowerUpConfig = {}): boolean {
+    const chance = config.spawnChance ?? DEFAULT_SPAWN_CHANCE;
+    return Math.random() < chance;
+}
+
+/**
+ * Select random power-up type
+ *
+ * @returns Random power-up type
+ */
+export function selectRandomPowerUpType(): PowerUpType {
+    const types: PowerUpType[] = ['paddle-width', 'ball-speed', 'multi-ball', 'sticky-paddle'];
+    return types[Math.floor(Math.random() * types.length)];
+}
+
+/**
+ * Create a new power-up effect
+ *
+ * @param type - Type of power-up
+ * @param config - Power-up configuration
+ * @param now - Current timestamp (defaults to Date.now)
+ * @returns New power-up effect
+ */
+export function createPowerUpEffect(
+    type: PowerUpType,
+    config: PowerUpConfig = {},
+    now: () => number = Date.now,
+): PowerUpEffect {
+    const duration = config.defaultDuration ?? DEFAULT_DURATION;
+    const startTime = now();
+
+    return {
+        type,
+        duration,
+        remainingTime: duration,
+        startTime,
+    };
+}
+
+/**
+ * Update power-up effect timer
+ *
+ * @param effect - Power-up effect to update (mutates in place)
+ * @param deltaSeconds - Time elapsed since last update
+ * @returns True if effect is still active, false if expired
+ */
+export function updatePowerUpEffect(effect: PowerUpEffect, deltaSeconds: number): boolean {
+    effect.remainingTime = Math.max(0, effect.remainingTime - deltaSeconds);
+    return effect.remainingTime > 0;
+}
+
+/**
+ * Check if power-up is in fade-out period (last 25% of duration)
+ *
+ * @param effect - Power-up effect
+ * @returns True if in fade-out period
+ */
+export function isPowerUpFadingOut(effect: PowerUpEffect): boolean {
+    const fadeThreshold = effect.duration * 0.25;
+    return effect.remainingTime > 0 && effect.remainingTime <= fadeThreshold;
+}
+
+/**
+ * Get power-up intensity factor (1.0 at start, fades to 0 during fade-out)
+ *
+ * @param effect - Power-up effect
+ * @returns Intensity factor (0-1)
+ */
+export function getPowerUpIntensity(effect: PowerUpEffect): number {
+    if (effect.remainingTime <= 0) {
+        return 0;
+    }
+
+    const fadeThreshold = effect.duration * 0.25;
+    if (effect.remainingTime <= fadeThreshold) {
+        // Fade from 1 to 0 during last 25%
+        return effect.remainingTime / fadeThreshold;
+    }
+
+    return 1;
+}
+
+/**
+ * Calculate paddle width scale based on active power-up
+ *
+ * @param effect - Power-up effect (or null if none active)
+ * @param config - Power-up configuration
+ * @returns Scale multiplier (1.0 = normal, >1.0 = wider)
+ */
+export function calculatePaddleWidthScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
+    if (!effect || effect.type !== 'paddle-width' || effect.remainingTime <= 0) {
+        return 1.0;
+    }
+
+    const maxMultiplier = config.paddleWidthMultiplier ?? DEFAULT_PADDLE_WIDTH_MULTIPLIER;
+    const intensity = getPowerUpIntensity(effect);
+
+    // Lerp from 1.0 to maxMultiplier based on intensity
+    return 1.0 + (maxMultiplier - 1.0) * intensity;
+}
+
+/**
+ * Calculate ball speed scale based on active power-up
+ *
+ * @param effect - Power-up effect (or null if none active)
+ * @param config - Power-up configuration
+ * @returns Scale multiplier (1.0 = normal, >1.0 = faster)
+ */
+export function calculateBallSpeedScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
+    if (!effect || effect.type !== 'ball-speed' || effect.remainingTime <= 0) {
+        return 1.0;
+    }
+
+    const maxMultiplier = config.ballSpeedMultiplier ?? DEFAULT_BALL_SPEED_MULTIPLIER;
+    const intensity = getPowerUpIntensity(effect);
+
+    return 1.0 + (maxMultiplier - 1.0) * intensity;
+}
+
+/**
+ * Power-up manager to track multiple active effects
+ */
+export class PowerUpManager {
+    private effects: Map<PowerUpType, PowerUpEffect> = new Map();
+
+    /**
+     * Activate a power-up (replaces existing effect of same type)
+     *
+     * @param type - Power-up type
+     * @param config - Power-up configuration
+     * @param now - Current timestamp function
+     */
+    activate(type: PowerUpType, config: PowerUpConfig = {}, now: () => number = Date.now): void {
+        const existing = this.effects.get(type);
+        const additionalDuration = config.defaultDuration ?? DEFAULT_DURATION;
+
+        if (existing && existing.remainingTime > 0) {
+            const extendedDuration = existing.remainingTime + additionalDuration;
+            this.effects.set(type, {
+                type,
+                duration: extendedDuration,
+                remainingTime: extendedDuration,
+                startTime: now(),
+            });
+            return;
+        }
+
+        const effect = createPowerUpEffect(type, config, now);
+        this.effects.set(type, effect);
+    }
+
+    /**
+     * Update all active power-ups
+     *
+     * @param deltaSeconds - Time elapsed since last update
+     */
+    update(deltaSeconds: number): void {
+        for (const [type, effect] of this.effects) {
+            if (!updatePowerUpEffect(effect, deltaSeconds)) {
+                this.effects.delete(type);
+            }
+        }
+    }
+
+    /**
+     * Get active effect of specific type
+     *
+     * @param type - Power-up type
+     * @returns Active effect or null
+     */
+    getEffect(type: PowerUpType): PowerUpEffect | null {
+        return this.effects.get(type) ?? null;
+    }
+
+    /**
+     * Check if power-up is active
+     *
+     * @param type - Power-up type
+     * @returns True if active
+     */
+    isActive(type: PowerUpType): boolean {
+        const effect = this.effects.get(type);
+        return effect !== undefined && effect.remainingTime > 0;
+    }
+
+    /**
+     * Clear all active power-ups
+     */
+    clearAll(): void {
+        this.effects.clear();
+    }
+
+    /**
+     * Get all active effects
+     */
+    getActiveEffects(): PowerUpEffect[] {
+        return Array.from(this.effects.values());
+    }
+}
+</file>
+
 <file path="tests/integration/paddle-ball-flow.spec.ts">
 /**
  * Paddle Ball Flow Integration Test
@@ -4483,116 +5369,6 @@ describe('createPreloader', () => {
         container.remove();
     });
 });
-</file>
-
-<file path="tests/unit/audio/mocks.ts">
-import { vi } from 'vitest';
-
-export interface ToneMockContext {
-    readonly transport: {
-        readonly schedule: ReturnType<typeof vi.fn>;
-        readonly scheduleOnce: ReturnType<typeof vi.fn>;
-        readonly clear: ReturnType<typeof vi.fn>;
-        readonly cancel: ReturnType<typeof vi.fn>;
-        readonly start: ReturnType<typeof vi.fn>;
-        readonly stop: ReturnType<typeof vi.fn>;
-        readonly seconds: number;
-    };
-    readonly advanceBy: (milliseconds: number) => void;
-    readonly now: () => number;
-    readonly restore: () => void;
-}
-
-export const installToneMock = (): ToneMockContext => {
-    type ScheduledCallback = {
-        id: number;
-        at: number;
-        callback: (scheduledTime: number) => void;
-    };
-
-    let nowSeconds = 0;
-    const scheduled: ScheduledCallback[] = [];
-
-    const schedule = vi.fn((callback: (scheduledTime: number) => void, at: number | string) => {
-        const asSeconds = typeof at === 'number' ? at : parseFloat(String(at));
-        const entry: ScheduledCallback = {
-            id: scheduled.length,
-            at: asSeconds,
-            callback,
-        };
-        scheduled.push(entry);
-        return entry.id;
-    });
-
-    const scheduleOnce = vi.fn((callback: (scheduledTime: number) => void, at: number | string) => {
-        return schedule(callback, at);
-    });
-
-    const clear = vi.fn((id: number) => {
-        const index = scheduled.findIndex((item) => item.id === id);
-        if (index !== -1) {
-            scheduled.splice(index, 1);
-        }
-    });
-
-    const cancel = vi.fn(() => {
-        scheduled.length = 0;
-    });
-
-    const start = vi.fn();
-    const stop = vi.fn();
-
-    const transportCore = {
-        schedule: schedule as ReturnType<typeof vi.fn>,
-        scheduleOnce: scheduleOnce as ReturnType<typeof vi.fn>,
-        clear: clear as ReturnType<typeof vi.fn>,
-        cancel: cancel as ReturnType<typeof vi.fn>,
-        start: start as ReturnType<typeof vi.fn>,
-        stop: stop as ReturnType<typeof vi.fn>,
-    } as Record<string, ReturnType<typeof vi.fn>>;
-
-    Object.defineProperty(transportCore, 'seconds', {
-        get: () => nowSeconds,
-    });
-
-    const transport = transportCore as unknown as ToneMockContext['transport'];
-
-    vi.doMock('tone', () => ({
-        Transport: transport,
-        now: () => nowSeconds,
-        Destination: {
-            volume: {
-                value: 0,
-            },
-        },
-    }));
-
-    const advanceBy = (milliseconds: number): void => {
-        nowSeconds += milliseconds / 1000;
-
-        for (const entry of [...scheduled]) {
-            if (entry.at <= nowSeconds) {
-                entry.callback(nowSeconds);
-                const index = scheduled.findIndex((item) => item.id === entry.id);
-                if (index !== -1) {
-                    scheduled.splice(index, 1);
-                }
-            }
-        }
-    };
-
-    const restore = () => {
-        vi.resetModules();
-        vi.doUnmock('tone');
-    };
-
-    return {
-        transport,
-        advanceBy,
-        now: () => nowSeconds,
-        restore,
-    };
-};
 </file>
 
 <file path="tests/unit/cli/simulate.spec.ts">
@@ -5943,236 +6719,6 @@ describe('buildHudScoreboard', () => {
 });
 </file>
 
-<file path="tests/unit/render/paddle-constraints.spec.ts">
-/**
- * Paddle Boundary Constraints Test Suite
- *
- * Feature: Paddle Control and Ball Launch
- * Date: 2025-10-15
- * Purpose: Test paddle boundary constraints and collision detection
- */
-
-import { describe, it, expect, beforeEach } from 'vitest';
-import { PaddleBodyController } from 'render/paddle-body';
-import type { Vector2, Rectangle } from 'render/contracts';
-
-describe('Paddle Boundary Constraints', () => {
-    let paddleController: PaddleBodyController;
-    let mockPaddle: any;
-
-    beforeEach(() => {
-        paddleController = new PaddleBodyController();
-        mockPaddle = {
-            id: 'test-paddle',
-            physicsBody: {
-                position: { x: 400, y: 350 },
-                isStatic: true,
-            },
-            width: 100,
-            height: 20,
-            speed: 300,
-            position: { x: 400, y: 350 },
-        };
-    });
-
-    describe('Paddle Bounds Calculation', () => {
-        it('should calculate paddle bounds correctly', () => {
-            const bounds = paddleController.getPaddleBounds(mockPaddle);
-
-            expect(bounds.x).toBe(350); // center - half width
-            expect(bounds.y).toBe(340); // center - half height
-            expect(bounds.width).toBe(100);
-            expect(bounds.height).toBe(20);
-        });
-
-        it('should calculate paddle center correctly', () => {
-            const center = paddleController.getPaddleCenter(mockPaddle);
-            expect(center).toEqual({ x: 400, y: 350 });
-        });
-
-        it('should handle different paddle sizes', () => {
-            const largePaddle = { ...mockPaddle, width: 150, height: 30 };
-            const bounds = paddleController.getPaddleBounds(largePaddle);
-
-            expect(bounds.x).toBe(325); // 400 - 75
-            expect(bounds.y).toBe(335); // 350 - 15
-            expect(bounds.width).toBe(150);
-            expect(bounds.height).toBe(30);
-        });
-    });
-
-    describe('Boundary Collision Detection', () => {
-        it('should detect left boundary collision', () => {
-            // Paddle at left edge
-            mockPaddle.position.x = 50; // Half width (50) touches left boundary
-            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
-
-            expect(collision.left).toBe(true);
-            expect(collision.right).toBe(false);
-        });
-
-        it('should detect right boundary collision', () => {
-            // Paddle at right edge
-            mockPaddle.position.x = 750; // 800 - half width (50)
-            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
-
-            expect(collision.left).toBe(false);
-            expect(collision.right).toBe(true);
-        });
-
-        it('should detect no collision when paddle is centered', () => {
-            mockPaddle.position.x = 400;
-            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
-
-            expect(collision.left).toBe(false);
-            expect(collision.right).toBe(false);
-        });
-
-        it('should handle different screen widths', () => {
-            // Narrow screen
-            mockPaddle.position.x = 475; // 500 - 25 (half width)
-            const collision = paddleController.checkBoundaryCollision(mockPaddle, 500);
-
-            expect(collision.right).toBe(true);
-        });
-    });
-
-    describe('Position Constraints', () => {
-        it('should constrain paddle within left boundary', () => {
-            const outOfBoundsPosition: Vector2 = { x: 20, y: 350 }; // Too far left
-            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
-
-            expect(mockPaddle.position.x).toBe(50); // Constrained to half width
-            expect(mockPaddle.position.y).toBe(350);
-        });
-
-        it('should constrain paddle within right boundary', () => {
-            const outOfBoundsPosition: Vector2 = { x: 1300, y: 350 }; // Too far right
-            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
-
-            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50 (half width)
-            expect(mockPaddle.position.y).toBe(350);
-        });
-
-        it('should allow valid positions', () => {
-            const validPosition: Vector2 = { x: 400, y: 350 };
-            paddleController.setPaddlePosition(mockPaddle, validPosition);
-
-            expect(mockPaddle.position.x).toBe(400);
-            expect(mockPaddle.position.y).toBe(350);
-        });
-
-        it('should constrain to boundaries during updates', () => {
-            // Simulate update that would go out of bounds
-            const inputState = {
-                leftPressed: false,
-                rightPressed: false,
-                mouseX: 20, // Out of bounds
-                touchX: undefined,
-                launchRequested: false,
-            };
-
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
-
-            expect(mockPaddle.position.x).toBe(50); // Constrained
-        });
-    });
-
-    describe('Movement Updates', () => {
-        it('should update paddle position based on mouse input', () => {
-            const inputState = {
-                leftPressed: false,
-                rightPressed: false,
-                mouseX: 500,
-                touchX: undefined,
-                launchRequested: false,
-            };
-
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
-
-            expect(mockPaddle.position.x).toBe(500);
-        });
-
-        it('should prioritize mouse over touch input', () => {
-            const inputState = {
-                leftPressed: false,
-                rightPressed: false,
-                mouseX: 300,
-                touchX: 600, // Should be ignored
-                launchRequested: false,
-            };
-
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
-
-            expect(mockPaddle.position.x).toBe(300);
-        });
-
-        it('should handle keyboard input simulation', () => {
-            // Note: Keyboard input is handled differently in the actual implementation
-            // This test verifies the interface
-            expect(typeof paddleController.updatePaddle).toBe('function');
-        });
-
-        it('should maintain vertical position stability', () => {
-            const initialY = mockPaddle.position.y;
-
-            const inputState = {
-                leftPressed: false,
-                rightPressed: false,
-                mouseX: 500,
-                touchX: undefined,
-                launchRequested: false,
-            };
-
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
-
-            expect(mockPaddle.position.y).toBe(initialY);
-        });
-    });
-
-    describe('Physics Body Synchronization', () => {
-        it('should sync physics body with paddle position', () => {
-            const newPosition: Vector2 = { x: 450, y: 355 };
-            paddleController.setPaddlePosition(mockPaddle, newPosition);
-
-            expect(mockPaddle.physicsBody.position.x).toBe(450);
-            expect(mockPaddle.physicsBody.position.y).toBe(355);
-        });
-
-        it('should maintain physics body static property', () => {
-            expect(mockPaddle.physicsBody.isStatic).toBe(true);
-        });
-    });
-
-    describe('Edge Cases', () => {
-        it('should handle zero-sized paddle', () => {
-            const zeroPaddle = { ...mockPaddle, width: 0, height: 0 };
-            const bounds = paddleController.getPaddleBounds(zeroPaddle);
-
-            expect(bounds.x).toBe(400);
-            expect(bounds.y).toBe(350);
-            expect(bounds.width).toBe(0);
-            expect(bounds.height).toBe(0);
-        });
-
-        it('should handle negative positions', () => {
-            const negativePosition: Vector2 = { x: -100, y: -50 };
-            paddleController.setPaddlePosition(mockPaddle, negativePosition);
-
-            expect(mockPaddle.position.x).toBe(50); // Constrained
-            expect(mockPaddle.position.y).toBe(-50); // Y not constrained in this implementation
-        });
-
-        it('should handle very large screen widths', () => {
-            const largeScreenPosition: Vector2 = { x: 2000, y: 350 };
-            paddleController.setPaddlePosition(mockPaddle, largeScreenPosition);
-
-            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50
-        });
-    });
-});
-</file>
-
 <file path="tests/unit/render/paddle-positioning.spec.ts">
 /**
  * Paddle Positioning Test Suite
@@ -6487,6 +7033,131 @@ describe('paddle-reflection', () => {
             const offset = getHitOffset(200, 100, 100);
             expect(offset).toBe(1);
         });
+    });
+});
+</file>
+
+<file path="tests/unit/util/power-ups.spec.ts">
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+    PowerUpManager,
+    calculateBallSpeedScale,
+    calculatePaddleWidthScale,
+    createPowerUpEffect,
+    getPowerUpIntensity,
+    isPowerUpFadingOut,
+    selectRandomPowerUpType,
+    shouldSpawnPowerUp,
+    updatePowerUpEffect,
+} from 'util/power-ups';
+
+describe('power-up helpers', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('spawns according to chance', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.1);
+        expect(shouldSpawnPowerUp({ spawnChance: 0.2 })).toBe(true);
+
+        vi.spyOn(Math, 'random').mockReturnValue(0.3);
+        expect(shouldSpawnPowerUp({ spawnChance: 0.2 })).toBe(false);
+    });
+
+    it('selects random type from deterministic index', () => {
+        vi.spyOn(Math, 'random').mockReturnValue(0.99);
+        expect(selectRandomPowerUpType()).toBe('sticky-paddle');
+        vi.spyOn(Math, 'random').mockReturnValue(0.36);
+        expect(selectRandomPowerUpType()).toBe('ball-speed');
+    });
+
+    it('creates effects using supplied clock and duration', () => {
+        const now = vi.fn(() => 1000);
+        const effect = createPowerUpEffect('paddle-width', { defaultDuration: 4 }, now);
+        expect(effect).toEqual({
+            type: 'paddle-width',
+            duration: 4,
+            remainingTime: 4,
+            startTime: 1000,
+        });
+    });
+
+    it('updates effect lifetimes and reports expiration', () => {
+        const effect = createPowerUpEffect('ball-speed', { defaultDuration: 3 }, () => 0);
+        expect(updatePowerUpEffect(effect, 1)).toBe(true);
+        expect(effect.remainingTime).toBe(2);
+        expect(updatePowerUpEffect(effect, 2)).toBe(false);
+        expect(effect.remainingTime).toBe(0);
+    });
+
+    it('computes fade-out status and intensity ramp', () => {
+        const effect = createPowerUpEffect('paddle-width', { defaultDuration: 4 }, () => 0);
+        expect(isPowerUpFadingOut(effect)).toBe(false);
+        expect(getPowerUpIntensity(effect)).toBe(1);
+
+        effect.remainingTime = 1;
+        expect(isPowerUpFadingOut(effect)).toBe(true);
+        effect.remainingTime = 0.25;
+        expect(isPowerUpFadingOut(effect)).toBe(true);
+        expect(getPowerUpIntensity(effect)).toBeCloseTo(0.25, 5);
+
+        effect.remainingTime = 0;
+        expect(getPowerUpIntensity(effect)).toBe(0);
+        expect(isPowerUpFadingOut(effect)).toBe(false);
+    });
+
+    it('scales paddle width and ball speed only for matching effect types', () => {
+        const paddleEffect = createPowerUpEffect('paddle-width', { defaultDuration: 4 }, () => 0);
+        expect(calculatePaddleWidthScale(paddleEffect, { paddleWidthMultiplier: 2 })).toBe(2);
+        expect(calculatePaddleWidthScale(null)).toBe(1);
+
+        const ballEffect = createPowerUpEffect('ball-speed', { defaultDuration: 4 }, () => 0);
+        expect(calculateBallSpeedScale(ballEffect, { ballSpeedMultiplier: 1.5 })).toBe(1.5);
+        ballEffect.remainingTime = 0.25;
+        expect(calculateBallSpeedScale(ballEffect, { ballSpeedMultiplier: 1.5 })).toBeCloseTo(1.125, 5);
+        expect(calculateBallSpeedScale(null)).toBe(1);
+    });
+});
+
+describe('PowerUpManager', () => {
+    it('activates, updates, and clears effects', () => {
+        const manager = new PowerUpManager();
+        const now = vi.fn(() => 0);
+
+        manager.activate('paddle-width', { defaultDuration: 4 }, now);
+        manager.activate('ball-speed', { defaultDuration: 2 }, now);
+
+        expect(manager.isActive('paddle-width')).toBe(true);
+        expect(manager.getActiveEffects()).toHaveLength(2);
+
+        manager.update(1);
+        expect(manager.isActive('ball-speed')).toBe(true);
+        expect(manager.isActive('paddle-width')).toBe(true);
+
+        manager.update(1.5); // ball-speed expires
+        expect(manager.isActive('ball-speed')).toBe(false);
+
+        manager.update(2.5); // paddle-width expires
+        expect(manager.getActiveEffects()).toHaveLength(0);
+
+        manager.activate('sticky-paddle', { defaultDuration: 1 }, now);
+        manager.clearAll();
+        expect(manager.getActiveEffects()).toHaveLength(0);
+    });
+
+    it('extends duration when the same power-up is collected again', () => {
+        const manager = new PowerUpManager();
+        const now = vi.fn(() => 0);
+
+        manager.activate('sticky-paddle', { defaultDuration: 5 }, now);
+        manager.update(2);
+
+        now.mockReturnValue(2000);
+        manager.activate('sticky-paddle', { defaultDuration: 5 }, now);
+
+        const effect = manager.getEffect('sticky-paddle');
+        expect(effect?.remainingTime).toBeCloseTo(8, 5);
+        expect(effect?.duration).toBeCloseTo(8, 5);
     });
 });
 </file>
@@ -6880,241 +7551,50 @@ TypeScript 5.x (strict mode): Follow standard conventions
 </html>
 </file>
 
-<file path="src/app/events.ts">
-export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up';
-export type WallHitSide = 'top' | 'left' | 'right';
-export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
-
-export interface BrickBreakPayload {
-    readonly sessionId: string;
-    readonly row: number;
-    readonly col: number;
-    readonly velocity: number;
-    readonly brickType: BrickType;
-    readonly comboHeat: number;
+<file path="package.json">
+{
+  "name": "lucky-break",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@8.15.4",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,html}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,html}\"",
+    "cli:simulate": "node ./dist/cli/index.js"
+  },
+  "dependencies": {
+    "matter-js": "^0.20.0",
+    "pixi.js": "^8.14.0",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/matter-js": "^0.20.2",
+    "@types/node": "^24.7.2",
+  "@types/jsdom": "^21.1.7",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "@vitest/coverage-v8": "^1.6.0",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "jsdom": "^27.0.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.1",
+    "vite": "^7.1.10",
+    "vitest": "^1.6.0"
+  }
 }
-
-export interface PaddleHitPayload {
-    readonly sessionId: string;
-    readonly angle: number;
-    readonly speed: number;
-    readonly impactOffset: number;
-}
-
-export interface WallHitPayload {
-    readonly sessionId: string;
-    readonly side: WallHitSide;
-    readonly speed: number;
-}
-
-export interface LifeLostPayload {
-    readonly sessionId: string;
-    readonly livesRemaining: number;
-    readonly cause: LifeLostCause;
-}
-
-export interface RoundCompletedPayload {
-    readonly sessionId: string;
-    readonly round: number;
-    readonly scoreAwarded: number;
-    readonly durationMs: number;
-}
-
-export type LuckyBreakEventMap = {
-    readonly BrickBreak: BrickBreakPayload;
-    readonly PaddleHit: PaddleHitPayload;
-    readonly WallHit: WallHitPayload;
-    readonly LifeLost: LifeLostPayload;
-    readonly RoundCompleted: RoundCompletedPayload;
-};
-
-export type LuckyBreakEventName = keyof LuckyBreakEventMap;
-
-export interface EventEnvelope<EventName extends LuckyBreakEventName> {
-    readonly type: EventName;
-    readonly timestamp: number;
-    readonly payload: LuckyBreakEventMap[EventName];
-}
-
-export type EventListener<EventName extends LuckyBreakEventName> = (
-    event: EventEnvelope<EventName>,
-) => void;
-
-export interface LuckyBreakEventBus {
-    publish<EventName extends LuckyBreakEventName>(
-        type: EventName,
-        payload: LuckyBreakEventMap[EventName],
-        timestamp?: number,
-    ): void;
-    subscribe<EventName extends LuckyBreakEventName>(
-        type: EventName,
-        listener: EventListener<EventName>,
-    ): () => void;
-    subscribeOnce<EventName extends LuckyBreakEventName>(
-        type: EventName,
-        listener: EventListener<EventName>,
-    ): () => void;
-    unsubscribe<EventName extends LuckyBreakEventName>(
-        type: EventName,
-        listener: EventListener<EventName>,
-    ): void;
-    clear(): void;
-    listeners<EventName extends LuckyBreakEventName>(type: EventName): readonly EventListener<EventName>[];
-}
-
-export interface BrickBreakEventInput {
-    readonly sessionId: string;
-    readonly row: number;
-    readonly col: number;
-    readonly velocity: number;
-    readonly brickType: BrickType;
-    readonly comboHeat: number;
-    readonly timestamp?: number;
-}
-
-export interface RoundCompletedEventInput {
-    readonly sessionId: string;
-    readonly round: number;
-    readonly scoreAwarded: number;
-    readonly durationMs: number;
-    readonly timestamp?: number;
-}
-
-export interface ScoringEventEmitter {
-    readonly brickBreak: (event: BrickBreakEventInput) => void;
-    readonly roundCompleted: (event: RoundCompletedEventInput) => void;
-}
-
-type InternalListener = EventListener<LuckyBreakEventName>;
-
-type ListenerRegistry = Map<LuckyBreakEventName, Set<InternalListener>>;
-
-const ensureListenerSet = (registry: ListenerRegistry, type: LuckyBreakEventName): Set<InternalListener> => {
-    const existing = registry.get(type);
-    if (existing) {
-        return existing;
-    }
-
-    const created = new Set<InternalListener>();
-    registry.set(type, created);
-    return created;
-};
-
-const toEnvelope = <EventName extends LuckyBreakEventName>(
-    type: EventName,
-    payload: LuckyBreakEventMap[EventName],
-    timestamp: number,
-): EventEnvelope<EventName> => ({
-    type,
-    payload,
-    timestamp,
-});
-
-export const createEventBus = (): LuckyBreakEventBus => {
-    const registry: ListenerRegistry = new Map();
-
-    const publish: LuckyBreakEventBus['publish'] = (type, payload, timestamp = Date.now()) => {
-        const listeners = registry.get(type);
-        if (!listeners || listeners.size === 0) {
-            return;
-        }
-
-        const envelope = toEnvelope(type, payload, timestamp);
-        for (const listener of listeners) {
-            listener(envelope);
-        }
-    };
-
-    const unsubscribe: LuckyBreakEventBus['unsubscribe'] = (type, listener) => {
-        const listeners = registry.get(type);
-        if (!listeners) {
-            return;
-        }
-
-        listeners.delete(listener as InternalListener);
-        if (listeners.size === 0) {
-            registry.delete(type);
-        }
-    };
-
-    const subscribe: LuckyBreakEventBus['subscribe'] = (type, listener) => {
-        const listeners = ensureListenerSet(registry, type);
-        listeners.add(listener as InternalListener);
-        return () => unsubscribe(type, listener);
-    };
-
-    const subscribeOnceInternal = <EventName extends LuckyBreakEventName>(
-        type: EventName,
-        listener: EventListener<EventName>,
-    ): (() => void) => {
-        let unsubscribeRef: (() => void) | undefined;
-        const wrapped: EventListener<EventName> = (event) => {
-            unsubscribeRef?.();
-            listener(event);
-        };
-        unsubscribeRef = subscribe(type, wrapped);
-        return unsubscribeRef;
-    };
-
-    const subscribeOnce = subscribeOnceInternal as LuckyBreakEventBus['subscribeOnce'];
-
-    const clear: LuckyBreakEventBus['clear'] = () => {
-        registry.clear();
-    };
-
-    const listeners: LuckyBreakEventBus['listeners'] = (type) => {
-        const listenersForType = registry.get(type);
-        if (!listenersForType) {
-            return [];
-        }
-
-        return Array.from(listenersForType) as EventListener<typeof type>[];
-    };
-
-    return {
-        publish,
-        subscribe,
-        subscribeOnce,
-        unsubscribe,
-        clear,
-        listeners,
-    };
-};
-
-export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEventEmitter => {
-    const publishBrickBreak: ScoringEventEmitter['brickBreak'] = (event) => {
-        bus.publish(
-            'BrickBreak',
-            {
-                sessionId: event.sessionId,
-                row: event.row,
-                col: event.col,
-                velocity: event.velocity,
-                brickType: event.brickType,
-                comboHeat: event.comboHeat,
-            },
-            event.timestamp,
-        );
-    };
-
-    const publishRoundCompleted: ScoringEventEmitter['roundCompleted'] = (event) => {
-        bus.publish(
-            'RoundCompleted',
-            {
-                sessionId: event.sessionId,
-                round: event.round,
-                scoreAwarded: event.scoreAwarded,
-                durationMs: event.durationMs,
-            },
-            event.timestamp,
-        );
-    };
-
-    return {
-        brickBreak: publishBrickBreak,
-        roundCompleted: publishRoundCompleted,
-    };
-};
 </file>
 
 <file path="src/app/state.ts">
@@ -7523,6 +8003,241 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 };
 </file>
 
+<file path="src/audio/sfx.ts">
+import type {
+    LuckyBreakEventBus,
+    EventEnvelope,
+    BrickBreakPayload,
+    BrickHitPayload,
+    PaddleHitPayload,
+    WallHitPayload,
+} from 'app/events';
+import type { ScheduledEventHandle, ToneScheduler } from './scheduler';
+
+type BrickBreakSource = { readonly event: 'BrickBreak' } & BrickBreakPayload;
+type BrickHitSource = { readonly event: 'BrickHit' } & BrickHitPayload;
+type PaddleHitSource = { readonly event: 'PaddleHit' } & PaddleHitPayload;
+type WallHitSource = { readonly event: 'WallHit' } & WallHitPayload;
+
+type SfxSource = BrickBreakSource | BrickHitSource | PaddleHitSource | WallHitSource;
+
+export interface SfxTriggerDescriptor {
+    readonly id: string;
+    readonly time: number;
+    readonly gain: number;
+    readonly detune: number;
+    readonly pan: number;
+    readonly source: SfxSource;
+}
+
+export interface SfxRouterOptions {
+    readonly bus: LuckyBreakEventBus;
+    readonly scheduler: ToneScheduler;
+    readonly trigger?: (descriptor: SfxTriggerDescriptor) => void;
+    readonly brickSampleId?: string;
+    readonly brickSampleIds?: readonly string[];
+    readonly brickImpactSampleId?: string;
+    readonly paddleSampleId?: string;
+    readonly wallSampleId?: string;
+}
+
+export interface SfxRouter {
+    readonly dispose: () => void;
+}
+
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+const defaultTrigger = (_descriptor: SfxTriggerDescriptor): void => {
+    // Intentionally blank: production wiring occurs in audio bootstrap.
+};
+
+const normalizeBrickPan = (column: number): number => {
+    const normalized = (column - 5.5) / 5.5;
+    return clamp(Number(normalized.toFixed(2)), -1, 1);
+};
+
+const calculateGain = (velocity: number): number => {
+    const base = 0.55 + velocity / 20;
+    return Number(clamp(base, 0.4, 1).toFixed(2));
+};
+
+const calculateDetune = (comboHeat: number, row: number): number => {
+    const detune = (comboHeat - 5) * 6 + (row - 3) * 4;
+    return Math.round(detune);
+};
+
+const toSampleList = (options: SfxRouterOptions): readonly string[] => {
+    if (options.brickSampleIds && options.brickSampleIds.length > 0) {
+        return options.brickSampleIds;
+    }
+
+    if (options.brickSampleId) {
+        return [options.brickSampleId];
+    }
+
+    return ['brick-hit'];
+};
+
+interface BrickSamplePayload {
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+}
+
+const selectSampleId = (samples: readonly string[], payload: BrickSamplePayload): string => {
+    if (samples.length === 1) {
+        return samples[0];
+    }
+
+    const hash = (payload.row * 31 + payload.col * 17 + Math.round(payload.velocity * 10)) | 0;
+    const index = Math.abs(hash) % samples.length;
+    return samples[index];
+};
+
+const buildBrickBreakDescriptor = (
+    samples: readonly string[],
+    time: number,
+    payload: BrickBreakPayload,
+): SfxTriggerDescriptor => ({
+    id: selectSampleId(samples, payload),
+    time,
+    gain: calculateGain(payload.velocity),
+    detune: calculateDetune(payload.comboHeat, payload.row),
+    pan: normalizeBrickPan(payload.col),
+    source: { event: 'BrickBreak', ...payload },
+});
+
+const buildBrickHitDescriptor = (
+    samples: readonly string[],
+    impactSampleId: string | undefined,
+    time: number,
+    payload: BrickHitPayload,
+): SfxTriggerDescriptor => ({
+    id: impactSampleId ?? selectSampleId(samples, payload),
+    time,
+    gain: clamp(calculateGain(payload.velocity) * 0.8, 0.3, 0.9),
+    detune: Math.round(calculateDetune(payload.comboHeat, payload.row) * 0.75),
+    pan: normalizeBrickPan(payload.col),
+    source: { event: 'BrickHit', ...payload },
+});
+
+const buildPaddleHitDescriptor = (
+    sampleId: string,
+    time: number,
+    payload: PaddleHitPayload,
+): SfxTriggerDescriptor => ({
+    id: sampleId,
+    time,
+    gain: clamp(0.45 + payload.speed / 12, 0.35, 0.85),
+    detune: Math.round(payload.impactOffset * 120),
+    pan: clamp(Number(payload.impactOffset.toFixed(2)), -1, 1),
+    source: { event: 'PaddleHit', ...payload },
+});
+
+const buildWallHitDescriptor = (
+    sampleId: string,
+    time: number,
+    payload: WallHitPayload,
+): SfxTriggerDescriptor => {
+    const pan = (() => {
+        switch (payload.side) {
+            case 'left': return -0.7;
+            case 'right': return 0.7;
+            default: return 0;
+        }
+    })();
+
+    const detune = (() => {
+        switch (payload.side) {
+            case 'top': return -40;
+            case 'bottom': return -60;
+            case 'right': return 30;
+            case 'left': return -30;
+            default: return 0;
+        }
+    })();
+
+    return {
+        id: sampleId,
+        time,
+        gain: clamp(0.4 + payload.speed / 15, 0.3, 0.8),
+        detune,
+        pan,
+        source: { event: 'WallHit', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
+
+export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
+    const trigger = options.trigger ?? defaultTrigger;
+    const samples = toSampleList(options);
+    const brickImpactSampleId = options.brickImpactSampleId;
+    const paddleSample = options.paddleSampleId ?? samples[0];
+    const wallSample = options.wallSampleId ?? samples[0];
+
+    const pending = new Set<ScheduledEventHandle>();
+
+    const scheduleSource = (source: SfxSource) => {
+        const handle = options.scheduler.schedule((scheduledTime) => {
+            pending.delete(handle);
+            let descriptor: SfxTriggerDescriptor | null = null;
+
+            switch (source.event) {
+                case 'BrickBreak':
+                    descriptor = buildBrickBreakDescriptor(samples, scheduledTime, source);
+                    break;
+                case 'BrickHit':
+                    descriptor = buildBrickHitDescriptor(samples, brickImpactSampleId, scheduledTime, source);
+                    break;
+                case 'PaddleHit':
+                    descriptor = buildPaddleHitDescriptor(paddleSample, scheduledTime, source);
+                    break;
+                case 'WallHit':
+                    descriptor = buildWallHitDescriptor(wallSample, scheduledTime, source);
+                    break;
+                default:
+                    descriptor = null;
+            }
+
+            if (descriptor) {
+                trigger(descriptor);
+            }
+        });
+        pending.add(handle);
+    };
+
+    const subscriptions: Array<() => void> = [
+        options.bus.subscribe('BrickBreak', (event: EventEnvelope<'BrickBreak'>) => {
+            scheduleSource({ event: 'BrickBreak', ...event.payload });
+        }),
+        options.bus.subscribe('BrickHit', (event: EventEnvelope<'BrickHit'>) => {
+            scheduleSource({ event: 'BrickHit', ...event.payload });
+        }),
+        options.bus.subscribe('PaddleHit', (event: EventEnvelope<'PaddleHit'>) => {
+            scheduleSource({ event: 'PaddleHit', ...event.payload });
+        }),
+        options.bus.subscribe('WallHit', (event: EventEnvelope<'WallHit'>) => {
+            scheduleSource({ event: 'WallHit', ...event.payload });
+        }),
+    ];
+
+    const dispose: SfxRouter['dispose'] = () => {
+        for (const unsubscribe of subscriptions) {
+            unsubscribe();
+        }
+        subscriptions.length = 0;
+
+        for (const handle of pending) {
+            options.scheduler.cancel(handle);
+        }
+        pending.clear();
+    };
+
+    return {
+        dispose,
+    };
+};
+</file>
+
 <file path="src/cli/index.ts">
 import { runHeadlessSimulation } from './simulate';
 
@@ -7575,93 +8290,6 @@ export function createCli(): CliCommand {
     return {
         execute,
     };
-}
-</file>
-
-<file path="tests/setup/vitest.setup.ts">
-import '@testing-library/jest-dom/vitest';
-import { JSDOM } from 'jsdom';
-import { afterEach, vi } from 'vitest';
-
-// Provide a minimal DOM using jsdom when the chosen test environment lacks window/document.
-if (typeof globalThis.window === 'undefined' || typeof globalThis.document === 'undefined') {
-    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
-
-    const { window } = dom;
-    globalThis.window = window as unknown as typeof globalThis.window;
-    globalThis.document = window.document;
-    globalThis.navigator = window.navigator;
-
-    // Expose commonly used window properties on the global object for convenience.
-    Object.getOwnPropertyNames(window).forEach((property) => {
-        if (!(property in globalThis)) {
-            Object.defineProperty(globalThis, property, {
-                configurable: true,
-                get: () => (window as any)[property],
-            });
-        }
-    });
-}
-
-afterEach(() => {
-    document.body.innerHTML = '';
-    document.head.innerHTML = '';
-});
-
-if (typeof globalThis.requestAnimationFrame === 'undefined') {
-    const raf = (callback: FrameRequestCallback): number => {
-        return setTimeout(() => {
-            callback(performance.now());
-        }, 16) as unknown as number;
-    };
-
-    vi.stubGlobal('requestAnimationFrame', raf);
-}
-
-if (typeof globalThis.cancelAnimationFrame === 'undefined') {
-    const cancelRaf = (handle: number): void => {
-        clearTimeout(handle);
-    };
-
-    vi.stubGlobal('cancelAnimationFrame', cancelRaf);
-}
-
-if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype.getContext) {
-    (HTMLCanvasElement.prototype.getContext as unknown) = vi.fn(() => null);
-}
-
-// Mock Touch API for testing
-if (typeof globalThis.Touch === 'undefined') {
-    globalThis.Touch = class Touch {
-        readonly identifier: number;
-        readonly target: EventTarget;
-        readonly clientX: number;
-        readonly clientY: number;
-        readonly screenX: number;
-        readonly screenY: number;
-        readonly pageX: number;
-        readonly pageY: number;
-
-        constructor(options: {
-            identifier: number;
-            target: EventTarget;
-            clientX?: number;
-            clientY?: number;
-            screenX?: number;
-            screenY?: number;
-            pageX?: number;
-            pageY?: number;
-        }) {
-            this.identifier = options.identifier;
-            this.target = options.target;
-            this.clientX = options.clientX ?? 0;
-            this.clientY = options.clientY ?? 0;
-            this.screenX = options.screenX ?? 0;
-            this.screenY = options.screenY ?? 0;
-            this.pageX = options.pageX ?? 0;
-            this.pageY = options.pageY ?? 0;
-        }
-    } as any;
 }
 </file>
 
@@ -8239,6 +8867,271 @@ describe('Ball Launch Mechanics', () => {
 });
 </file>
 
+<file path="tests/unit/render/paddle-constraints.spec.ts">
+/**
+ * Paddle Boundary Constraints Test Suite
+ *
+ * Feature: Paddle Control and Ball Launch
+ * Date: 2025-10-15
+ * Purpose: Test paddle boundary constraints and collision detection
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import { PaddleBodyController } from 'render/paddle-body';
+import { PaddleBoundaryConstraints } from 'render/paddle-constraints';
+import type { Vector2, Rectangle } from 'render/contracts';
+
+describe('Paddle Boundary Constraints', () => {
+    let paddleController: PaddleBodyController;
+    let mockPaddle: any;
+
+    beforeEach(() => {
+        paddleController = new PaddleBodyController();
+        mockPaddle = {
+            id: 'test-paddle',
+            physicsBody: {
+                position: { x: 400, y: 350 },
+                isStatic: true,
+            },
+            width: 100,
+            height: 20,
+            speed: 300,
+            position: { x: 400, y: 350 },
+        };
+    });
+
+    describe('Paddle Bounds Calculation', () => {
+        it('should calculate paddle bounds correctly', () => {
+            const bounds = paddleController.getPaddleBounds(mockPaddle);
+
+            expect(bounds.x).toBe(350); // center - half width
+            expect(bounds.y).toBe(340); // center - half height
+            expect(bounds.width).toBe(100);
+            expect(bounds.height).toBe(20);
+        });
+
+        it('should calculate paddle center correctly', () => {
+            const center = paddleController.getPaddleCenter(mockPaddle);
+            expect(center).toEqual({ x: 400, y: 350 });
+        });
+
+        it('should handle different paddle sizes', () => {
+            const largePaddle = { ...mockPaddle, width: 150, height: 30 };
+            const bounds = paddleController.getPaddleBounds(largePaddle);
+
+            expect(bounds.x).toBe(325); // 400 - 75
+            expect(bounds.y).toBe(335); // 350 - 15
+            expect(bounds.width).toBe(150);
+            expect(bounds.height).toBe(30);
+        });
+    });
+
+    describe('Boundary Collision Detection', () => {
+        it('should detect left boundary collision', () => {
+            // Paddle at left edge
+            mockPaddle.position.x = 50; // Half width (50) touches left boundary
+            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
+
+            expect(collision.left).toBe(true);
+            expect(collision.right).toBe(false);
+        });
+
+        it('should detect right boundary collision', () => {
+            // Paddle at right edge
+            mockPaddle.position.x = 750; // 800 - half width (50)
+            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
+
+            expect(collision.left).toBe(false);
+            expect(collision.right).toBe(true);
+        });
+
+        it('should detect no collision when paddle is centered', () => {
+            mockPaddle.position.x = 400;
+            const collision = paddleController.checkBoundaryCollision(mockPaddle, 800);
+
+            expect(collision.left).toBe(false);
+            expect(collision.right).toBe(false);
+        });
+
+        it('should handle different screen widths', () => {
+            // Narrow screen
+            mockPaddle.position.x = 475; // 500 - 25 (half width)
+            const collision = paddleController.checkBoundaryCollision(mockPaddle, 500);
+
+            expect(collision.right).toBe(true);
+        });
+    });
+
+    describe('Position Constraints', () => {
+        it('should constrain paddle within left boundary', () => {
+            const outOfBoundsPosition: Vector2 = { x: 20, y: 350 }; // Too far left
+            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
+
+            expect(mockPaddle.position.x).toBe(50); // Constrained to half width
+            expect(mockPaddle.position.y).toBe(350);
+        });
+
+        it('should constrain paddle within right boundary', () => {
+            const outOfBoundsPosition: Vector2 = { x: 1300, y: 350 }; // Too far right
+            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
+
+            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50 (half width)
+            expect(mockPaddle.position.y).toBe(350);
+        });
+
+        it('should allow valid positions', () => {
+            const validPosition: Vector2 = { x: 400, y: 350 };
+            paddleController.setPaddlePosition(mockPaddle, validPosition);
+
+            expect(mockPaddle.position.x).toBe(400);
+            expect(mockPaddle.position.y).toBe(350);
+        });
+
+        it('should constrain to boundaries during updates', () => {
+            // Simulate update that would go out of bounds
+            const inputState = {
+                leftPressed: false,
+                rightPressed: false,
+                mouseX: 20, // Out of bounds
+                touchX: undefined,
+                launchRequested: false,
+            };
+
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+
+            expect(mockPaddle.position.x).toBe(50); // Constrained
+        });
+    });
+
+    describe('Movement Updates', () => {
+        it('should update paddle position based on mouse input', () => {
+            const inputState = {
+                leftPressed: false,
+                rightPressed: false,
+                mouseX: 500,
+                touchX: undefined,
+                launchRequested: false,
+            };
+
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+
+            expect(mockPaddle.position.x).toBe(500);
+        });
+
+        it('should prioritize mouse over touch input', () => {
+            const inputState = {
+                leftPressed: false,
+                rightPressed: false,
+                mouseX: 300,
+                touchX: 600, // Should be ignored
+                launchRequested: false,
+            };
+
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+
+            expect(mockPaddle.position.x).toBe(300);
+        });
+
+        it('should handle keyboard input simulation', () => {
+            // Note: Keyboard input is handled differently in the actual implementation
+            // This test verifies the interface
+            expect(typeof paddleController.updatePaddle).toBe('function');
+        });
+
+        it('should maintain vertical position stability', () => {
+            const initialY = mockPaddle.position.y;
+
+            const inputState = {
+                leftPressed: false,
+                rightPressed: false,
+                mouseX: 500,
+                touchX: undefined,
+                launchRequested: false,
+            };
+
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+
+            expect(mockPaddle.position.y).toBe(initialY);
+        });
+    });
+
+    describe('Physics Body Synchronization', () => {
+        it('should sync physics body with paddle position', () => {
+            const newPosition: Vector2 = { x: 450, y: 355 };
+            paddleController.setPaddlePosition(mockPaddle, newPosition);
+
+            expect(mockPaddle.physicsBody.position.x).toBe(450);
+            expect(mockPaddle.physicsBody.position.y).toBe(355);
+        });
+
+        it('should maintain physics body static property', () => {
+            expect(mockPaddle.physicsBody.isStatic).toBe(true);
+        });
+    });
+
+    describe('Edge Cases', () => {
+        it('should handle zero-sized paddle', () => {
+            const zeroPaddle = { ...mockPaddle, width: 0, height: 0 };
+            const bounds = paddleController.getPaddleBounds(zeroPaddle);
+
+            expect(bounds.x).toBe(400);
+            expect(bounds.y).toBe(350);
+            expect(bounds.width).toBe(0);
+            expect(bounds.height).toBe(0);
+        });
+
+        it('should handle negative positions', () => {
+            const negativePosition: Vector2 = { x: -100, y: -50 };
+            paddleController.setPaddlePosition(mockPaddle, negativePosition);
+
+            expect(mockPaddle.position.x).toBe(50); // Constrained
+            expect(mockPaddle.position.y).toBe(-50); // Y not constrained in this implementation
+        });
+
+        it('should handle very large screen widths', () => {
+            const largeScreenPosition: Vector2 = { x: 2000, y: 350 };
+            paddleController.setPaddlePosition(mockPaddle, largeScreenPosition);
+
+            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50
+        });
+    });
+
+    describe('PaddleBoundaryConstraints core', () => {
+        const bounds: Rectangle = { x: 100, y: 50, width: 200, height: 40 };
+        let constraints: PaddleBoundaryConstraints;
+
+        beforeEach(() => {
+            constraints = new PaddleBoundaryConstraints();
+        });
+
+        it('constrains positions to the boundary box', () => {
+            expect(constraints.constrainToBounds({ x: 50, y: 200 }, bounds)).toEqual({ x: 100, y: 90 });
+            expect(constraints.constrainToBounds({ x: 350, y: 0 }, bounds)).toEqual({ x: 300, y: 50 });
+            expect(constraints.constrainToBounds({ x: 150, y: 70 }, bounds)).toEqual({ x: 150, y: 70 });
+        });
+
+        it('detects positions on edges as within bounds', () => {
+            expect(constraints.isWithinBounds({ x: 100, y: 50 }, bounds)).toBe(true);
+            expect(constraints.isWithinBounds({ x: 300, y: 90 }, bounds)).toBe(true);
+            expect(constraints.isWithinBounds({ x: 99.9, y: 90 }, bounds)).toBe(false);
+            expect(constraints.isWithinBounds({ x: 150, y: 90.1 }, bounds)).toBe(false);
+        });
+
+        it('computes distance to each boundary', () => {
+            const origin = { x: 150, y: 70 };
+            expect(constraints.distanceToBoundary(origin, { x: 2, y: 0 }, bounds)).toBeCloseTo(150);
+            expect(constraints.distanceToBoundary(origin, { x: -1, y: 0 }, bounds)).toBeCloseTo(50);
+            expect(constraints.distanceToBoundary(origin, { x: 0, y: 4 }, bounds)).toBeCloseTo(20);
+            expect(constraints.distanceToBoundary(origin, { x: 0, y: -3 }, bounds)).toBeCloseTo(20);
+        });
+
+        it('returns infinity when direction is zero vector', () => {
+            expect(constraints.distanceToBoundary({ x: 150, y: 70 }, { x: 0, y: 0 }, bounds)).toBe(Infinity);
+        });
+    });
+});
+</file>
+
 <file path="tests/unit/render/stage.spec.ts">
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8395,6 +9288,468 @@ export default defineConfig({
 });
 </file>
 
+<file path="src/app/events.ts">
+export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up';
+export type WallHitSide = 'top' | 'left' | 'right' | 'bottom';
+export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
+
+export interface BrickBreakPayload {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+    readonly brickType: BrickType;
+    readonly comboHeat: number;
+}
+
+export interface PaddleHitPayload {
+    readonly sessionId: string;
+    readonly angle: number;
+    readonly speed: number;
+    readonly impactOffset: number;
+}
+
+export interface WallHitPayload {
+    readonly sessionId: string;
+    readonly side: WallHitSide;
+    readonly speed: number;
+}
+
+export interface BrickHitPayload {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+    readonly brickType: BrickType;
+    readonly comboHeat: number;
+    readonly remainingHp: number;
+}
+
+export interface LifeLostPayload {
+    readonly sessionId: string;
+    readonly livesRemaining: number;
+    readonly cause: LifeLostCause;
+}
+
+export interface RoundCompletedPayload {
+    readonly sessionId: string;
+    readonly round: number;
+    readonly scoreAwarded: number;
+    readonly durationMs: number;
+}
+
+export type LuckyBreakEventMap = {
+    readonly BrickBreak: BrickBreakPayload;
+    readonly BrickHit: BrickHitPayload;
+    readonly PaddleHit: PaddleHitPayload;
+    readonly WallHit: WallHitPayload;
+    readonly LifeLost: LifeLostPayload;
+    readonly RoundCompleted: RoundCompletedPayload;
+};
+
+export type LuckyBreakEventName = keyof LuckyBreakEventMap;
+
+export interface EventEnvelope<EventName extends LuckyBreakEventName> {
+    readonly type: EventName;
+    readonly timestamp: number;
+    readonly payload: LuckyBreakEventMap[EventName];
+}
+
+export type EventListener<EventName extends LuckyBreakEventName> = (
+    event: EventEnvelope<EventName>,
+) => void;
+
+export interface LuckyBreakEventBus {
+    publish<EventName extends LuckyBreakEventName>(
+        type: EventName,
+        payload: LuckyBreakEventMap[EventName],
+        timestamp?: number,
+    ): void;
+    subscribe<EventName extends LuckyBreakEventName>(
+        type: EventName,
+        listener: EventListener<EventName>,
+    ): () => void;
+    subscribeOnce<EventName extends LuckyBreakEventName>(
+        type: EventName,
+        listener: EventListener<EventName>,
+    ): () => void;
+    unsubscribe<EventName extends LuckyBreakEventName>(
+        type: EventName,
+        listener: EventListener<EventName>,
+    ): void;
+    clear(): void;
+    listeners<EventName extends LuckyBreakEventName>(type: EventName): readonly EventListener<EventName>[];
+}
+
+export interface BrickBreakEventInput {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+    readonly brickType: BrickType;
+    readonly comboHeat: number;
+    readonly timestamp?: number;
+}
+
+export interface RoundCompletedEventInput {
+    readonly sessionId: string;
+    readonly round: number;
+    readonly scoreAwarded: number;
+    readonly durationMs: number;
+    readonly timestamp?: number;
+}
+
+export interface ScoringEventEmitter {
+    readonly brickBreak: (event: BrickBreakEventInput) => void;
+    readonly roundCompleted: (event: RoundCompletedEventInput) => void;
+}
+
+type InternalListener = EventListener<LuckyBreakEventName>;
+
+type ListenerRegistry = Map<LuckyBreakEventName, Set<InternalListener>>;
+
+const ensureListenerSet = (registry: ListenerRegistry, type: LuckyBreakEventName): Set<InternalListener> => {
+    const existing = registry.get(type);
+    if (existing) {
+        return existing;
+    }
+
+    const created = new Set<InternalListener>();
+    registry.set(type, created);
+    return created;
+};
+
+const toEnvelope = <EventName extends LuckyBreakEventName>(
+    type: EventName,
+    payload: LuckyBreakEventMap[EventName],
+    timestamp: number,
+): EventEnvelope<EventName> => ({
+    type,
+    payload,
+    timestamp,
+});
+
+export const createEventBus = (): LuckyBreakEventBus => {
+    const registry: ListenerRegistry = new Map();
+
+    const publish: LuckyBreakEventBus['publish'] = (type, payload, timestamp = Date.now()) => {
+        const listeners = registry.get(type);
+        if (!listeners || listeners.size === 0) {
+            return;
+        }
+
+        const envelope = toEnvelope(type, payload, timestamp);
+        for (const listener of listeners) {
+            listener(envelope);
+        }
+    };
+
+    const unsubscribe: LuckyBreakEventBus['unsubscribe'] = (type, listener) => {
+        const listeners = registry.get(type);
+        if (!listeners) {
+            return;
+        }
+
+        listeners.delete(listener as InternalListener);
+        if (listeners.size === 0) {
+            registry.delete(type);
+        }
+    };
+
+    const subscribe: LuckyBreakEventBus['subscribe'] = (type, listener) => {
+        const listeners = ensureListenerSet(registry, type);
+        listeners.add(listener as InternalListener);
+        return () => unsubscribe(type, listener);
+    };
+
+    const subscribeOnceInternal = <EventName extends LuckyBreakEventName>(
+        type: EventName,
+        listener: EventListener<EventName>,
+    ): (() => void) => {
+        let unsubscribeRef: (() => void) | undefined;
+        const wrapped: EventListener<EventName> = (event) => {
+            unsubscribeRef?.();
+            listener(event);
+        };
+        unsubscribeRef = subscribe(type, wrapped);
+        return unsubscribeRef;
+    };
+
+    const subscribeOnce = subscribeOnceInternal as LuckyBreakEventBus['subscribeOnce'];
+
+    const clear: LuckyBreakEventBus['clear'] = () => {
+        registry.clear();
+    };
+
+    const listeners: LuckyBreakEventBus['listeners'] = (type) => {
+        const listenersForType = registry.get(type);
+        if (!listenersForType) {
+            return [];
+        }
+
+        return Array.from(listenersForType) as EventListener<typeof type>[];
+    };
+
+    return {
+        publish,
+        subscribe,
+        subscribeOnce,
+        unsubscribe,
+        clear,
+        listeners,
+    };
+};
+
+export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEventEmitter => {
+    const publishBrickBreak: ScoringEventEmitter['brickBreak'] = (event) => {
+        bus.publish(
+            'BrickBreak',
+            {
+                sessionId: event.sessionId,
+                row: event.row,
+                col: event.col,
+                velocity: event.velocity,
+                brickType: event.brickType,
+                comboHeat: event.comboHeat,
+            },
+            event.timestamp,
+        );
+    };
+
+    const publishRoundCompleted: ScoringEventEmitter['roundCompleted'] = (event) => {
+        bus.publish(
+            'RoundCompleted',
+            {
+                sessionId: event.sessionId,
+                round: event.round,
+                scoreAwarded: event.scoreAwarded,
+                durationMs: event.durationMs,
+            },
+            event.timestamp,
+        );
+    };
+
+    return {
+        brickBreak: publishBrickBreak,
+        roundCompleted: publishRoundCompleted,
+    };
+};
+</file>
+
+<file path="tests/unit/audio/mocks.ts">
+import { vi } from 'vitest';
+
+export interface ToneMockContext {
+    readonly transport: {
+        readonly schedule: ReturnType<typeof vi.fn>;
+        readonly scheduleOnce: ReturnType<typeof vi.fn>;
+        readonly clear: ReturnType<typeof vi.fn>;
+        readonly cancel: ReturnType<typeof vi.fn>;
+        readonly start: ReturnType<typeof vi.fn>;
+        readonly stop: ReturnType<typeof vi.fn>;
+        readonly seconds: number;
+    };
+    readonly advanceBy: (milliseconds: number) => void;
+    readonly now: () => number;
+    readonly restore: () => void;
+}
+
+export const installToneMock = (): ToneMockContext => {
+    type ScheduledCallback = {
+        id: number;
+        at: number;
+        callback: (scheduledTime: number) => void;
+    };
+
+    let nowSeconds = 0;
+    const scheduled: ScheduledCallback[] = [];
+
+    const schedule = vi.fn((callback: (scheduledTime: number) => void, at: number | string) => {
+        const asSeconds = typeof at === 'number' ? at : parseFloat(String(at));
+        const entry: ScheduledCallback = {
+            id: scheduled.length,
+            at: asSeconds,
+            callback,
+        };
+        scheduled.push(entry);
+        return entry.id;
+    });
+
+    const scheduleOnce = vi.fn((callback: (scheduledTime: number) => void, at: number | string) => {
+        return schedule(callback, at);
+    });
+
+    const clear = vi.fn((id: number) => {
+        const index = scheduled.findIndex((item) => item.id === id);
+        if (index !== -1) {
+            scheduled.splice(index, 1);
+        }
+    });
+
+    const cancel = vi.fn(() => {
+        scheduled.length = 0;
+    });
+
+    let transportState: 'started' | 'stopped' = 'stopped';
+    const start = vi.fn(async () => {
+        transportState = 'started';
+    });
+    const stop = vi.fn(() => {
+        transportState = 'stopped';
+    });
+
+    const transportCore = {
+        schedule: schedule as ReturnType<typeof vi.fn>,
+        scheduleOnce: scheduleOnce as ReturnType<typeof vi.fn>,
+        clear: clear as ReturnType<typeof vi.fn>,
+        cancel: cancel as ReturnType<typeof vi.fn>,
+        start: start as ReturnType<typeof vi.fn>,
+        stop: stop as ReturnType<typeof vi.fn>,
+    } as Record<string, ReturnType<typeof vi.fn>>;
+
+    Object.defineProperty(transportCore, 'seconds', {
+        get: () => nowSeconds,
+    });
+    Object.defineProperty(transportCore, 'state', {
+        get: () => transportState,
+    });
+
+    const transport = transportCore as unknown as ToneMockContext['transport'];
+
+    const audioContextStub = {
+        state: 'running' as AudioContextState,
+        currentTime: nowSeconds,
+        resume: vi.fn(async () => {
+            audioContextStub.state = 'running';
+        }),
+    };
+
+    vi.doMock('tone', () => ({
+        Transport: transport,
+        now: () => nowSeconds,
+        getContext: () => ({ rawContext: audioContextStub as unknown as AudioContext }),
+        Destination: {
+            volume: {
+                value: 0,
+            },
+        },
+    }));
+
+    const advanceBy = (milliseconds: number): void => {
+        nowSeconds += milliseconds / 1000;
+        audioContextStub.currentTime = nowSeconds;
+
+        for (const entry of [...scheduled]) {
+            if (entry.at <= nowSeconds) {
+                entry.callback(nowSeconds);
+                const index = scheduled.findIndex((item) => item.id === entry.id);
+                if (index !== -1) {
+                    scheduled.splice(index, 1);
+                }
+            }
+        }
+    };
+
+    const restore = () => {
+        vi.resetModules();
+        vi.doUnmock('tone');
+    };
+
+    return {
+        transport,
+        advanceBy,
+        now: () => nowSeconds,
+        restore,
+    };
+};
+</file>
+
+<file path="tests/unit/bootstrap.spec.ts">
+import { describe, expect, it } from 'vitest';
+import { bootstrapLuckyBreak } from 'app/main';
+
+describe('bootstrapLuckyBreak', () => {
+    it('initializes without throwing', () => {
+        const container = document.createElement('div');
+        expect(() => bootstrapLuckyBreak({ container })).not.toThrow();
+    });
+});
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+  "skipLibCheck": true,
+    "types": [
+      "vite/client",
+      "node"
+    ],
+    "baseUrl": "./",
+    "paths": {
+      "app/*": ["src/app/*"],
+      "physics/*": ["src/physics/*"],
+      "render/*": ["src/render/*"],
+      "audio/*": ["src/audio/*"],
+      "util/*": ["src/util/*"],
+      "cli/*": ["src/cli/*"],
+      "input/*": ["src/input/*"],
+      "types/*": ["src/types/*"]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "vite.config.ts"
+  ]
+}
+</file>
+
+<file path="vitest.config.ts">
+import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const resolveFromRoot = (relativePath: string): string => {
+    const rootDir = path.dirname(fileURLToPath(import.meta.url));
+    return path.resolve(rootDir, relativePath);
+};
+
+export default defineConfig({
+    resolve: {
+        alias: {
+            'app': resolveFromRoot('src/app'),
+            'physics': resolveFromRoot('src/physics'),
+            'render': resolveFromRoot('src/render'),
+            'audio': resolveFromRoot('src/audio'),
+            'util': resolveFromRoot('src/util'),
+            'cli': resolveFromRoot('src/cli'),
+            'input': resolveFromRoot('src/input'),
+            'types': resolveFromRoot('src/types'),
+        },
+    },
+    test: {
+        environment: 'jsdom',
+        include: ['tests/unit/**/*.spec.ts'],
+        setupFiles: ['tests/setup/vitest.setup.ts'],
+        clearMocks: true,
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'html'],
+            include: ['src/**/*.{ts,tsx}'],
+        },
+    },
+});
+</file>
+
 <file path="src/render/stage.ts">
 import { Application, Container, Sprite } from 'pixi.js';
 
@@ -8465,7 +9820,7 @@ export interface StageHandle {
     readonly destroy: () => void;
 }
 
-const DEFAULT_BACKGROUND = 0x000000;
+const DEFAULT_BACKGROUND = 0xFFEE00;
 
 const resolveResolution = (config: StageConfig): number => {
     if (config.resolution) {
@@ -8595,90 +9950,99 @@ export const createStage = async (config: StageConfig = {}): Promise<StageHandle
 };
 </file>
 
-<file path="tests/unit/bootstrap.spec.ts">
-import { describe, expect, it } from 'vitest';
-import { bootstrapLuckyBreak } from 'app/main';
+<file path="tests/setup/vitest.setup.ts">
+import { JSDOM } from 'jsdom';
+import { afterEach, vi } from 'vitest';
 
-describe('bootstrapLuckyBreak', () => {
-    it('initializes without throwing', () => {
-        const container = document.createElement('div');
-        expect(() => bootstrapLuckyBreak({ container })).not.toThrow();
-    });
-});
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-  "skipLibCheck": true,
-    "types": [
-      "vite/client",
-      "node"
-    ],
-    "baseUrl": "./",
-    "paths": {
-      "app/*": ["src/app/*"],
-      "physics/*": ["src/physics/*"],
-      "render/*": ["src/render/*"],
-      "audio/*": ["src/audio/*"],
-      "util/*": ["src/util/*"],
-      "cli/*": ["src/cli/*"],
-      "input/*": ["src/input/*"],
-      "types/*": ["src/types/*"]
+const ensureDomGlobals = () => {
+    if (typeof globalThis.window !== 'undefined' && typeof globalThis.document !== 'undefined') {
+        return;
     }
-  },
-  "include": [
-    "src",
-    "tests",
-    "vite.config.ts"
-  ]
-}
-</file>
 
-<file path="vitest.config.ts">
-import { defineConfig } from 'vitest/config';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
+    const { window } = dom;
 
-const resolveFromRoot = (relativePath: string): string => {
-    const rootDir = path.dirname(fileURLToPath(import.meta.url));
-    return path.resolve(rootDir, relativePath);
+    const propagate = (property: string | symbol) => {
+        if (!(property in globalThis)) {
+            Object.defineProperty(globalThis, property, {
+                configurable: true,
+                get: () => (window as any)[property],
+            });
+        }
+    };
+
+    globalThis.window = window as unknown as typeof globalThis.window;
+    globalThis.document = window.document;
+    globalThis.navigator = window.navigator;
+
+    for (const property of Reflect.ownKeys(window)) {
+        propagate(property);
+    }
 };
 
-export default defineConfig({
-    resolve: {
-        alias: {
-            'app': resolveFromRoot('src/app'),
-            'physics': resolveFromRoot('src/physics'),
-            'render': resolveFromRoot('src/render'),
-            'audio': resolveFromRoot('src/audio'),
-            'util': resolveFromRoot('src/util'),
-            'cli': resolveFromRoot('src/cli'),
-            'input': resolveFromRoot('src/input'),
-            'types': resolveFromRoot('src/types'),
-        },
-    },
-    test: {
-        environment: 'jsdom',
-        include: ['tests/unit/**/*.spec.ts'],
-        setupFiles: ['tests/setup/vitest.setup.ts'],
-        clearMocks: true,
-        coverage: {
-            provider: 'v8',
-            reporter: ['text', 'html'],
-            include: ['src/**/*.{ts,tsx}'],
-        },
-    },
+ensureDomGlobals();
+await import('@testing-library/jest-dom/vitest');
+
+afterEach(() => {
+    document.body.innerHTML = '';
+    document.head.innerHTML = '';
 });
+
+if (typeof globalThis.requestAnimationFrame === 'undefined') {
+    const raf = (callback: FrameRequestCallback): number => {
+        return setTimeout(() => {
+            callback(performance.now());
+        }, 16) as unknown as number;
+    };
+
+    vi.stubGlobal('requestAnimationFrame', raf);
+}
+
+if (typeof globalThis.cancelAnimationFrame === 'undefined') {
+    const cancelRaf = (handle: number): void => {
+        clearTimeout(handle);
+    };
+
+    vi.stubGlobal('cancelAnimationFrame', cancelRaf);
+}
+
+if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype.getContext) {
+    (HTMLCanvasElement.prototype.getContext as unknown) = vi.fn(() => null);
+}
+
+// Mock Touch API for testing
+if (typeof globalThis.Touch === 'undefined') {
+    globalThis.Touch = class Touch {
+        readonly identifier: number;
+        readonly target: EventTarget;
+        readonly clientX: number;
+        readonly clientY: number;
+        readonly screenX: number;
+        readonly screenY: number;
+        readonly pageX: number;
+        readonly pageY: number;
+
+        constructor(options: {
+            identifier: number;
+            target: EventTarget;
+            clientX?: number;
+            clientY?: number;
+            screenX?: number;
+            screenY?: number;
+            pageX?: number;
+            pageY?: number;
+        }) {
+            this.identifier = options.identifier;
+            this.target = options.target;
+            this.clientX = options.clientX ?? 0;
+            this.clientY = options.clientY ?? 0;
+            this.screenX = options.screenX ?? 0;
+            this.screenY = options.screenY ?? 0;
+            this.pageX = options.pageX ?? 0;
+            this.pageY = options.pageY ?? 0;
+        }
+    } as any;
+}
 </file>
 
 <file path="src/physics/world.ts">
@@ -8979,7 +10343,7 @@ import { BallAttachmentController } from 'physics/ball-attachment';
 import { PaddleBodyController } from 'render/paddle-body';
 import { GameInputManager } from 'input/input-manager';
 import { PhysicsBallLaunchController } from 'physics/ball-launch';
-import { reflectOffPaddle } from 'util/paddle-reflection';
+import { reflectOffPaddle, calculateReflectionData } from 'util/paddle-reflection';
 import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
 import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale, calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
@@ -8991,7 +10355,7 @@ import { Events, Body as MatterBody, Bodies, Vector as MatterVector } from 'matt
 import { createEventBus } from 'app/events';
 import { createToneScheduler } from 'audio/scheduler';
 import { createSfxRouter } from 'audio/sfx';
-import { Players, Panner, Volume, start as toneStart } from 'tone';
+import { Players, Panner, Volume, Transport } from 'tone';
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -9031,11 +10395,19 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             stage.canvas.style.touchAction = 'none';
             stage.canvas.style.userSelect = 'none';
 
-            await toneStart();  // Start Tone.js audio context (call once)
-
             const bus = createEventBus();  // Create event bus
 
             const scheduler = createToneScheduler({ lookAheadMs: 120 });
+            const ensureAudioIsRunning = async () => {
+                const ctx = scheduler.context;
+                if (ctx.state === 'suspended') {
+                    await ctx.resume();
+                }
+                if (Transport.state !== 'started') {
+                    await Transport.start();
+                }
+            };
+            await ensureAudioIsRunning();
 
             const toDecibels = (gain: number): number => {
                 if (gain <= 0) {
@@ -9063,20 +10435,29 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const brickPlayers = new Players(brickSampleUrls).connect(volume);
             await brickPlayers.loaded;
 
+            const lastPlayerStart = new Map<string, number>();
+
             const router = createSfxRouter({
                 bus,
                 scheduler,
                 brickSampleIds: Object.keys(brickSampleUrls),
                 trigger: (descriptor) => {
+                    void ensureAudioIsRunning().catch(console.warn);
                     const player = brickPlayers.player(descriptor.id);
                     if (!player) {
                         return;
                     }
 
+                    const nowTime = scheduler.context.currentTime;
+                    const lastStart = lastPlayerStart.get(descriptor.id) ?? -Infinity;
+                    const minTime = Math.max(nowTime + 0.01, lastStart + 0.01);
+                    const targetTime = Math.max(descriptor.time, minTime);
+
                     player.playbackRate = toPlaybackRate(descriptor.detune);
                     player.volume.value = toDecibels(descriptor.gain);
-                    panner.pan.setValueAtTime(descriptor.pan, descriptor.time);
-                    player.start(descriptor.time);
+                    panner.pan.setValueAtTime(descriptor.pan, targetTime);
+                    player.start(targetTime);
+                    lastPlayerStart.set(descriptor.id, targetTime);
                 },
             });
 
@@ -9153,7 +10534,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             // Game configuration
             const BALL_BASE_SPEED = 8;
             const BALL_MAX_SPEED = 14;
-            const BALL_LAUNCH_SPEED = 8;
+            const BALL_LAUNCH_SPEED = 9;
+            const MULTI_BALL_MULTIPLIER = 3;
             const BRICK_WIDTH = 100;
             const BRICK_HEIGHT = 40;
             const POWER_UP_RADIUS = 16;
@@ -9259,7 +10641,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 powerUpChanceMultiplier = levelSpec.powerUpChanceMultiplier ?? 1;
 
                 // Create bricks from layout
-                layout.bricks.forEach(brickSpec => {
+                layout.bricks.forEach((brickSpec) => {
                     const brick = physics.factory.brick({
                         size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
                         position: { x: brickSpec.x, y: brickSpec.y },
@@ -9268,10 +10650,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                     // Add visual brick with color based on HP
                     const color = getBrickColor(brickSpec.hp);
-                    const brickVisual = new Graphics()
-                        .beginFill(color)
-                        .drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT)
-                        .endFill();
+                    const brickVisual = new Graphics();
+                    brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
+                    brickVisual.fill({ color });
                     brickVisual.position.set(brickSpec.x, brickSpec.y);
                     brickVisual.zIndex = 5;
                     brickVisual.eventMode = 'none';
@@ -9290,6 +10671,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             Events.on(physics.engine, 'collisionStart', (event) => {
                 event.pairs.forEach((pair) => {
                     const { bodyA, bodyB } = pair;
+                    const sessionId = session.snapshot().sessionId;
 
                     // Brick contact
                     if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
@@ -9298,6 +10680,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                         const currentHp = brickHealth.get(brick) ?? 1;
                         const nextHp = currentHp - 1;
+                        const metadata = brickMetadata.get(brick);
+                        const row = metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT);
+                        const col = metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH);
+                        const velocity = ballBody.speed;
 
                         if (nextHp > 0) {
                             brickHealth.set(brick, nextHp);
@@ -9305,18 +10691,25 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             const brickVisual = visualBodies.get(brick);
                             if (brickVisual instanceof Graphics) {
                                 brickVisual.clear();
-                                brickVisual.beginFill(getBrickColor(nextHp));
-                                brickVisual.drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
-                                brickVisual.endFill();
+                                brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
+                                brickVisual.fill({ color: getBrickColor(nextHp) });
                             }
-                        } else {
-                            const metadata = brickMetadata.get(brick);
 
+                            bus.publish('BrickHit', {
+                                sessionId,
+                                row,
+                                col,
+                                velocity,
+                                brickType: 'standard',
+                                comboHeat: scoringState.combo,
+                                remainingHp: nextHp,
+                            });
+                        } else {
                             bus.publish('BrickBreak', {
-                                sessionId: session.snapshot().sessionId,
-                                row: metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT),
-                                col: metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH),
-                                velocity: ballBody.speed,
+                                sessionId,
+                                row,
+                                col,
+                                velocity,
                                 comboHeat: scoringState.combo,
                                 brickType: 'standard', // TODO: Should be dynamic once types exist
                             });
@@ -9328,7 +10721,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                     ? {
                                         row: metadata.row,
                                         col: metadata.col,
-                                        velocity: ballBody.speed,
+                                        velocity,
                                         brickType: 'standard',
                                     }
                                     : undefined,
@@ -9357,6 +10750,15 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
                         const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
                         const paddleBody = bodyA.label === 'paddle' ? bodyA : bodyB;
+                        const reflectionData = calculateReflectionData(
+                            ballBody.position.x,
+                            paddleBody.position.x,
+                            {
+                                paddleWidth: paddle.width,
+                                minSpeed: currentBaseSpeed,
+                            },
+                        );
+                        const impactSpeed = MatterVector.magnitude(ballBody.velocity);
 
                         if (powerUpManager.isActive('sticky-paddle') && ballBody === ball.physicsBody) {
                             const offsetX = ball.physicsBody.position.x - paddle.physicsBody.position.x;
@@ -9372,6 +10774,33 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             reflectOffPaddle(ballBody, paddleBody, {
                                 paddleWidth: paddle.width,
                                 minSpeed: currentBaseSpeed,
+                            });
+                        }
+
+                        bus.publish('PaddleHit', {
+                            sessionId,
+                            angle: reflectionData.angle,
+                            speed: impactSpeed,
+                            impactOffset: reflectionData.impactOffset,
+                        });
+                    }
+
+                    // Ball colliding with arena walls
+                    if ((bodyA.label === 'ball' && bodyB.label.startsWith('wall-')) || (bodyB.label === 'ball' && bodyA.label.startsWith('wall-'))) {
+                        const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+                        const wallBody = bodyA.label === 'ball' ? bodyB : bodyA;
+                        const wallToSide: Record<string, 'left' | 'right' | 'top' | 'bottom'> = {
+                            'wall-left': 'left',
+                            'wall-right': 'right',
+                            'wall-top': 'top',
+                            'wall-bottom': 'bottom',
+                        };
+                        const side = wallToSide[wallBody.label];
+                        if (side) {
+                            bus.publish('WallHit', {
+                                sessionId,
+                                side,
+                                speed: MatterVector.magnitude(ballBody.velocity),
                             });
                         }
                     }
@@ -9426,7 +10855,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Create HUD container
             const hudContainer = new Container();
-            stage.layers.root.addChild(hudContainer);
+            stage.layers.hud.addChild(hudContainer);
 
             const overlayContainer = new Container();
             overlayContainer.visible = false;
@@ -9461,6 +10890,31 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             overlayAction.anchor.set(0.5);
             overlayAction.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 80);
             overlayContainer.addChild(overlayAction);
+
+            const overlayLegendTitle = new Text({
+                text: '',
+                style: { fill: 0xffffff, fontSize: 22, fontWeight: 'bold', align: 'center' },
+            });
+            overlayLegendTitle.anchor.set(0.5);
+            overlayLegendTitle.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 150);
+            overlayLegendTitle.visible = false;
+            overlayContainer.addChild(overlayLegendTitle);
+
+            const overlayLegendBody = new Text({
+                text: '',
+                style: { fill: 0xffffff, fontSize: 16, align: 'center', lineHeight: 26 },
+            });
+            overlayLegendBody.anchor.set(0.5);
+            overlayLegendBody.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 220);
+            overlayLegendBody.visible = false;
+            overlayContainer.addChild(overlayLegendBody);
+
+            const pauseLegendLines = [
+                'Cyan Paddle Width - Widens your paddle for extra coverage.',
+                'Orange Ball Speed - Speeds up the ball and boosts scoring.',
+                'Pink Multi Ball - Splits the active ball into additional balls.',
+                'Green Sticky Paddle - Catches the ball until you launch again.',
+            ] as const;
 
             stage.layers.hud.addChild(overlayContainer);
 
@@ -9554,28 +11008,45 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 overlayContainer.visible = false;
                 overlayContainer.eventMode = 'none';
                 overlayContainer.cursor = 'auto';
+                overlayLegendTitle.visible = false;
+                overlayLegendTitle.text = '';
+                overlayLegendBody.visible = false;
+                overlayLegendBody.text = '';
                 overlayContainer.removeAllListeners();
                 clearOverlayPointerHandler();
             };
 
-            const showOverlay = (
-                title: string,
-                message: string,
-                actionLabel: string | null,
-                onAction?: () => void,
-            ) => {
-                overlayTitle.text = title;
-                overlayMessage.text = message;
+            interface OverlayConfig {
+                readonly title: string;
+                readonly message: string;
+                readonly actionLabel?: string | null;
+                readonly onAction?: () => void;
+                readonly legendTitle?: string | null;
+                readonly legendLines?: readonly string[];
+            }
+
+            const showOverlay = (config: OverlayConfig) => {
+                const actionLabel = config.actionLabel ?? null;
+
+                overlayTitle.text = config.title;
+                overlayMessage.text = config.message;
                 overlayAction.text = actionLabel ?? '';
                 overlayAction.visible = Boolean(actionLabel);
 
+                const legendTitle = config.legendTitle ?? null;
+                const legendContent = config.legendLines?.join('\n') ?? '';
+                overlayLegendTitle.text = legendTitle ?? '';
+                overlayLegendTitle.visible = Boolean(legendTitle);
+                overlayLegendBody.text = legendContent;
+                overlayLegendBody.visible = legendContent.length > 0;
+
                 overlayContainer.removeAllListeners();
-                if (onAction) {
+                if (config.onAction) {
                     overlayContainer.eventMode = 'static';
                     overlayContainer.cursor = 'pointer';
                     const runAction = () => {
                         hideOverlay();
-                        onAction();
+                        config.onAction?.();
                     };
                     overlayContainer.on('pointertap', runAction);
                     registerOverlayPointerHandler(runAction);
@@ -9606,18 +11077,21 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const bounds = physics.factory.bounds();
             physics.add(bounds);
 
-            // Create visual bounds (walls)
-            bounds.forEach(bound => {
-                const graphics = new Graphics();
-                graphics.rect(bound.position.x - bound.bounds.max.x + bound.bounds.min.x,
-                    bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
-                    bound.bounds.max.x - bound.bounds.min.x,
-                    bound.bounds.max.y - bound.bounds.min.y);
-                graphics.fill({ color: 0x111111, alpha: 0.45 });
-                graphics.eventMode = 'none';
-                gameContainer.addChild(graphics);
-                visualBodies.set(bound, graphics);
-            });
+            const SHOW_BOUNDARY_OVERLAY = false;
+
+            if (SHOW_BOUNDARY_OVERLAY) {
+                bounds.forEach(bound => {
+                    const graphics = new Graphics();
+                    graphics.rect(bound.position.x - bound.bounds.max.x + bound.bounds.min.x,
+                        bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
+                        bound.bounds.max.x - bound.bounds.min.x,
+                        bound.bounds.max.y - bound.bounds.min.y);
+                    graphics.fill({ color: 0x111111, alpha: 0.45 });
+                    graphics.eventMode = 'none';
+                    gameContainer.addChild(graphics);
+                    visualBodies.set(bound, graphics);
+                });
+            }
 
             // Create controllers
             const ballController = new BallAttachmentController();
@@ -9676,6 +11150,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 ball.attachmentOffset = attachmentOffset;
                 MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
                 MatterBody.setAngularVelocity(ball.physicsBody, 0);
+                inputManager.resetLaunchTrigger();
+                inputManager.syncPaddlePosition(paddleController.getPaddleCenter(paddle));
             }
 
             function startLevel(levelIndex: number, options: { resetScore?: boolean } = {}): void {
@@ -9701,16 +11177,16 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 loop?.stop();
 
                 const completedLevel = currentLevelIndex + 1;
-                showOverlay(
-                    `Level ${completedLevel} Complete`,
-                    `Score: ${scoringState.score}`,
-                    'Tap to continue',
-                    () => {
+                showOverlay({
+                    title: `Level ${completedLevel} Complete`,
+                    message: `Score: ${scoringState.score}`,
+                    actionLabel: 'Tap to continue',
+                    onAction: () => {
                         currentLevelIndex += 1;
                         startLevel(currentLevelIndex);
                         loop?.start();
                     },
-                );
+                });
             }
 
             function handleGameOver(): void {
@@ -9718,58 +11194,82 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 isPaused = false;
                 loop?.stop();
 
-                showOverlay(
-                    'Game Over',
-                    `Final Score: ${scoringState.score}`,
-                    'Tap to restart',
-                    () => {
+                showOverlay({
+                    title: 'Game Over',
+                    message: `Final Score: ${scoringState.score}`,
+                    actionLabel: 'Tap to restart',
+                    onAction: () => {
                         session = createSession();
                         currentLevelIndex = 0;
                         startLevel(currentLevelIndex, { resetScore: true });
                         loop?.start();
                     },
-                );
+                });
             }
 
+            const collectBallBodies = (): Body[] => {
+                return [
+                    ball.physicsBody,
+                    ...Array.from(extraBalls.values()).map((entry) => entry.body),
+                ];
+            };
+
+            const createAngularOffsets = (count: number): number[] => {
+                if (count <= 0) {
+                    return [];
+                }
+                if (count === 1) {
+                    return [0.25];
+                }
+
+                const spread = 0.35;
+                const midpoint = (count - 1) / 2;
+                return Array.from({ length: count }, (_, index) => (index - midpoint) * spread);
+            };
+
             const spawnExtraBalls = () => {
-                if (extraBalls.size >= 2) {
+                const sourceBodies = collectBallBodies();
+                const clonesPerBall = MULTI_BALL_MULTIPLIER - 1;
+
+                if (clonesPerBall <= 0 || sourceBodies.length === 0) {
                     return;
                 }
 
-                const baseVelocity = ball.physicsBody.velocity;
-                const baseSpeed = MatterVector.magnitude(baseVelocity);
-                const hasMotion = baseSpeed > 0.01;
-                const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
-                const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
-                const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
-                const offsets = [-0.35, 0.35];
+                sourceBodies.forEach((sourceBody) => {
+                    const baseVelocity = sourceBody.velocity;
+                    const baseSpeed = MatterVector.magnitude(baseVelocity);
+                    const hasMotion = baseSpeed > 0.01;
+                    const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
+                    const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
+                    const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
+                    const offsets = createAngularOffsets(clonesPerBall);
 
-                offsets.forEach((offset) => {
-                    if (extraBalls.size >= 2) {
-                        return;
-                    }
+                    offsets.forEach((offset, index) => {
+                        const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
+                        const velocity = MatterVector.mult(rotated, effectiveSpeed);
+                        const lateralNormal = { x: -rotated.y, y: rotated.x };
+                        const separation = (index - (offsets.length - 1) / 2) * 12;
+                        const spawnPosition = {
+                            x: sourceBody.position.x + lateralNormal.x * separation,
+                            y: sourceBody.position.y + lateralNormal.y * separation,
+                        };
 
-                    const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
-                    const velocity = MatterVector.mult(rotated, effectiveSpeed);
+                        const extraBody = physics.factory.ball({
+                            radius: ball.radius,
+                            position: spawnPosition,
+                            restitution: 0.98,
+                        });
 
-                    const extraBody = physics.factory.ball({
-                        radius: ball.radius,
-                        position: {
-                            x: ball.physicsBody.position.x,
-                            y: ball.physicsBody.position.y,
-                        },
-                        restitution: 0.98,
+                        MatterBody.setVelocity(extraBody, velocity);
+                        physics.add(extraBody);
+
+                        const extraVisual = new Graphics();
+                        extraVisual.circle(0, 0, ball.radius);
+                        extraVisual.fill({ color: 0xffcc00 });
+                        gameContainer.addChild(extraVisual);
+                        visualBodies.set(extraBody, extraVisual);
+                        extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
                     });
-
-                    MatterBody.setVelocity(extraBody, velocity);
-                    physics.add(extraBody);
-
-                    const extraVisual = new Graphics();
-                    extraVisual.circle(0, 0, ball.radius);
-                    extraVisual.fill({ color: 0xffcc00 });
-                    gameContainer.addChild(extraVisual);
-                    visualBodies.set(extraBody, extraVisual);
-                    extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
                 });
             };
 
@@ -9846,11 +11346,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         // Process input
                         const paddleTarget = inputManager.getPaddleTarget();
                         if (paddleTarget) {
-                            const rect = stage.canvas.getBoundingClientRect();  // Ensure relative to canvas
-                            const canvasX = paddleTarget.x - rect.left;  // Explicitly correct for any offset
-                            const canvasY = paddleTarget.y - rect.top;
-
-                            const pf = toPlayfield({ x: canvasX, y: canvasY });  // Use corrected canvas coords
+                            const pf = toPlayfield(paddleTarget);
 
                             const targetX = pf.x;
                             const halfPaddleWidth = paddle.width / 2;
@@ -9862,12 +11358,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         // Ensure paddle state stays synchronized with physics body
                         paddle.position.y = paddle.physicsBody.position.y;
 
-                        // Update ball attachment to follow paddle
-                        ballController.updateAttachment(ball, paddleController.getPaddleCenter(paddle));
+                        const paddleCenter = paddleController.getPaddleCenter(paddle);
 
-                        // Check for launch triggers
-                        if (inputManager.shouldLaunch() ||
-                            inputManager.checkMovementLaunch(paddleController.getPaddleCenter(paddle))) {
+                        // Update ball attachment to follow paddle
+                        ballController.updateAttachment(ball, paddleCenter);
+
+                        if (ball.isAttached) {
+                            inputManager.syncPaddlePosition(paddleCenter);
+                        }
+
+                        // Check for launch triggers (tap/click only)
+                        if (ball.isAttached && inputManager.shouldLaunch()) {
                             physics.detachBallFromPaddle(ball.physicsBody);
                             launchController.launch(ball, undefined, currentLaunchSpeed);
                             inputManager.resetLaunchTrigger();
@@ -9910,14 +11411,16 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 isPaused = true;
                 loop.stop();
-                showOverlay(
-                    'Paused',
-                    `Score: ${scoringState.score}\nPress P or Esc to resume`,
-                    'Tap to resume',
-                    () => {
+                showOverlay({
+                    title: 'Paused',
+                    message: `Score: ${scoringState.score}\nPress P or Esc to resume`,
+                    actionLabel: 'Tap to resume',
+                    legendTitle: 'Power-Up Legend',
+                    legendLines: pauseLegendLines,
+                    onAction: () => {
                         resumeFromPause();
                     },
-                );
+                });
             };
 
             const handleGlobalKeyDown = (event: KeyboardEvent) => {

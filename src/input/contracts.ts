@@ -31,6 +31,12 @@ export interface InputManager {
     resetLaunchTrigger(): void;
 
     /**
+     * Sync the internal paddle reference used for movement-based launch triggers
+     * @param position - Current paddle position or null to clear tracking
+     */
+    syncPaddlePosition(position: Vector2 | null): void;
+
+    /**
      * Get current input state for debugging
      */
     getDebugState(): InputDebugState;

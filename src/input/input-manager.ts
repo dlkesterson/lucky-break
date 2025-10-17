@@ -177,6 +177,10 @@ export class GameInputManager implements InputManager {
         this.launchManager.reset();
     }
 
+    syncPaddlePosition(position: Vector2 | null): void {
+        this.previousPaddlePosition = position ? { ...position } : null;
+    }
+
     /**
      * Check for launch based on paddle movement
      * @param currentPaddlePosition - Current paddle position
