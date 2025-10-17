@@ -28,6 +28,18 @@ export interface LuckyBreakOptions {
 
 export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const container = options.container ?? document.body;
+    const PLAYFIELD_WIDTH = 1280;
+    const PLAYFIELD_HEIGHT = 720;
+    const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
+    const HALF_PLAYFIELD_HEIGHT = PLAYFIELD_HEIGHT / 2;
+
+    container.style.position = 'relative';
+    container.style.margin = '0';
+    container.style.padding = '0';
+    container.style.width = '100vw';
+    container.style.height = '100vh';
+    container.style.overflow = 'hidden';
+    container.style.backgroundColor = '#000000';
 
     const preloader = createPreloader({
         container,
@@ -35,12 +47,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             // Initialize the game components
             const stage = await createStage({ parent: container });
 
+            stage.layers.playfield.sortableChildren = true;
+
             // Set canvas to fill viewport
             stage.canvas.style.width = '100vw';
             stage.canvas.style.height = '100vh';
             stage.canvas.style.position = 'absolute';
             stage.canvas.style.top = '0';
             stage.canvas.style.left = '0';
+            stage.canvas.style.display = 'block';
+            stage.canvas.style.backgroundColor = '#000000';
+            stage.canvas.style.touchAction = 'none';
+            stage.canvas.style.userSelect = 'none';
 
             await toneStart();  // Start Tone.js audio context (call once)
 
@@ -97,9 +115,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 const h = window.innerHeight;
                 stage.resize({ width: w, height: h });
 
-                const TARGET_WIDTH = 1280;
-                const TARGET_HEIGHT = 720;
-                const targetRatio = TARGET_WIDTH / TARGET_HEIGHT;
+                const targetRatio = PLAYFIELD_WIDTH / PLAYFIELD_HEIGHT;
                 const windowRatio = w / h;
 
                 let scale = 1;
@@ -107,21 +123,21 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 let offsetY = 0;
 
                 if (windowRatio > targetRatio) {
-                    scale = h / TARGET_HEIGHT;
-                    offsetX = (w - TARGET_WIDTH * scale) / 2;
+                    scale = h / PLAYFIELD_HEIGHT;
+                    offsetX = (w - PLAYFIELD_WIDTH * scale) / 2;
                 } else {
-                    scale = w / TARGET_WIDTH;
-                    offsetY = (h - TARGET_HEIGHT * scale) / 2;
+                    scale = w / PLAYFIELD_WIDTH;
+                    offsetY = (h - PLAYFIELD_HEIGHT * scale) / 2;
                 }
 
-                stage.layers.root.scale.set(scale);
-                stage.layers.root.position.set(offsetX, offsetY);
+                stage.layers.root.scale.set(scale, scale);
+                stage.layers.root.position.set(Math.round(offsetX), Math.round(offsetY));
             };
             window.addEventListener('resize', handleResize);
             handleResize();  // Initial resize
             // Create physics world
             const physics = createPhysicsWorld({
-                dimensions: { width: 1280, height: 720 },
+                dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
                 gravity: 0
             });
 
@@ -268,7 +284,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 // Generate new level layout
                 const levelSpec = getLevelSpec(levelIndex);
-                const layout = generateLevelLayout(levelSpec, BRICK_WIDTH, BRICK_HEIGHT, 1280);
+                const layout = generateLevelLayout(levelSpec, BRICK_WIDTH, BRICK_HEIGHT, PLAYFIELD_WIDTH);
                 powerUpChanceMultiplier = levelSpec.powerUpChanceMultiplier ?? 1;
 
                 // Create bricks from layout
@@ -286,6 +302,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         .drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT)
                         .endFill();
                     brickVisual.position.set(brickSpec.x, brickSpec.y);
+                    brickVisual.zIndex = 5;
+                    brickVisual.eventMode = 'none';
                     visualBodies.set(brick, brickVisual);
                     stage.layers.playfield.addChild(brickVisual);
 
@@ -396,6 +414,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             return;
                         }
 
+                        if (promoteExtraBallToPrimary(ballBody)) {
+                            return;
+                        }
+
                         // Lose a life and reset combo
                         session.recordLifeLost('ball-drop');
                         resetCombo(scoringState);
@@ -433,14 +455,14 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Create HUD container
             const hudContainer = new Container();
-            stage.layers.root.addChild(hudContainer);
+            stage.layers.hud.addChild(hudContainer);
 
             const overlayContainer = new Container();
             overlayContainer.visible = false;
             overlayContainer.eventMode = 'none';
 
             const overlayBackground = new Graphics();
-            overlayBackground.rect(0, 0, 1280, 720);
+            overlayBackground.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
             overlayBackground.fill({ color: 0x000000, alpha: 0.6 });
             overlayBackground.eventMode = 'none';
             overlayContainer.addChild(overlayBackground);
@@ -450,7 +472,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 style: { fill: 0xffffff, fontSize: 64, fontWeight: 'bold', align: 'center' },
             });
             overlayTitle.anchor.set(0.5);
-            overlayTitle.position.set(640, 300);
+            overlayTitle.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT - 60);
             overlayContainer.addChild(overlayTitle);
 
             const overlayMessage = new Text({
@@ -458,7 +480,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 style: { fill: 0xffffff, fontSize: 24, align: 'center' },
             });
             overlayMessage.anchor.set(0.5);
-            overlayMessage.position.set(640, 380);
+            overlayMessage.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 20);
             overlayContainer.addChild(overlayMessage);
 
             const overlayAction = new Text({
@@ -466,7 +488,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 style: { fill: 0xffff66, fontSize: 20, align: 'center' },
             });
             overlayAction.anchor.set(0.5);
-            overlayAction.position.set(640, 440);
+            overlayAction.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 80);
             overlayContainer.addChild(overlayAction);
 
             stage.layers.hud.addChild(overlayContainer);
@@ -595,9 +617,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 overlayContainer.visible = true;
             };
 
+            const playfieldBackground = new Graphics();
+            playfieldBackground.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
+            playfieldBackground.fill({ color: 0x080808, alpha: 1 });
+            playfieldBackground.stroke({ color: 0x2a2a2a, width: 4, alignment: 0 });
+            playfieldBackground.eventMode = 'none';
+            playfieldBackground.zIndex = -100;
+            stage.layers.playfield.addChild(playfieldBackground);
+
             // Create game objects container
             let gameContainer: Container;
             gameContainer = new Container();
+            gameContainer.zIndex = 10;
             stage.addToLayer('playfield', gameContainer);
 
             // Add some initial game objects for testing
@@ -611,7 +642,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
                     bound.bounds.max.x - bound.bounds.min.x,
                     bound.bounds.max.y - bound.bounds.min.y);
-                graphics.fill({ color: 0x444444 });
+                graphics.fill({ color: 0x111111, alpha: 0.45 });
+                graphics.eventMode = 'none';
                 gameContainer.addChild(graphics);
                 visualBodies.set(bound, graphics);
             });
@@ -624,7 +656,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Create paddle first at center bottom
             const paddle = paddleController.createPaddle(
-                { x: 640, y: 650 },
+                { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
                 { width: 100, height: 20, speed: 300 }
             );
             physics.add(paddle.physicsBody);
@@ -656,7 +688,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             // Initialize input manager AFTER preloader completes to avoid capturing the "Tap to Start" click
             inputManager.initialize(container);
 
-            // Helper to convert canvas coordinates to playfield (1280×720) coordinates
+            // Helper to convert canvas coordinates to playfield (PLAYFIELD_WIDTH × PLAYFIELD_HEIGHT) coordinates
             const toPlayfield = (canvasPt: { x: number; y: number }) => {
                 const root = stage.layers.root;
                 const s = root.scale.x; // uniform scale
@@ -770,6 +802,36 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 });
             };
 
+            // Promote a surviving extra ball when the primary ball exits the playfield
+            const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
+                const iterator = extraBalls.entries().next();
+                if (iterator.done) {
+                    return false;
+                }
+
+                const [extraId, extra] = iterator.value;
+                extraBalls.delete(extraId);
+
+                visualBodies.delete(expiredBody);
+                physics.remove(expiredBody);
+
+                if (extra.visual.parent) {
+                    extra.visual.parent.removeChild(extra.visual);
+                }
+                extra.visual.destroy();
+
+                ball.physicsBody = extra.body;
+                ball.isAttached = false;
+                ball.attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
+
+                visualBodies.set(extra.body, ballGraphics);
+                ballGraphics.x = extra.body.position.x;
+                ballGraphics.y = extra.body.position.y;
+                ballGraphics.rotation = extra.body.angle;
+
+                return true;
+            };
+
             function handlePowerUpActivation(type: PowerUpType): void {
                 if (type === 'multi-ball') {
                     spawnExtraBalls();
@@ -821,7 +883,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                             const targetX = pf.x;
                             const halfPaddleWidth = paddle.width / 2;
-                            const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, 1280 - halfPaddleWidth));
+                            const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, PLAYFIELD_WIDTH - halfPaddleWidth));
                             MatterBody.setPosition(paddle.physicsBody, { x: clampedX, y: paddle.physicsBody.position.y });
                             paddle.position.x = clampedX;
                         }

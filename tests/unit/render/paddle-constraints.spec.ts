@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PaddleBodyController } from 'render/paddle-body';
+import { PaddleBoundaryConstraints } from 'render/paddle-constraints';
 import type { Vector2, Rectangle } from 'render/contracts';
 
 describe('Paddle Boundary Constraints', () => {
@@ -222,6 +223,40 @@ describe('Paddle Boundary Constraints', () => {
             paddleController.setPaddlePosition(mockPaddle, largeScreenPosition);
 
             expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50
+        });
+    });
+
+    describe('PaddleBoundaryConstraints core', () => {
+        const bounds: Rectangle = { x: 100, y: 50, width: 200, height: 40 };
+        let constraints: PaddleBoundaryConstraints;
+
+        beforeEach(() => {
+            constraints = new PaddleBoundaryConstraints();
+        });
+
+        it('constrains positions to the boundary box', () => {
+            expect(constraints.constrainToBounds({ x: 50, y: 200 }, bounds)).toEqual({ x: 100, y: 90 });
+            expect(constraints.constrainToBounds({ x: 350, y: 0 }, bounds)).toEqual({ x: 300, y: 50 });
+            expect(constraints.constrainToBounds({ x: 150, y: 70 }, bounds)).toEqual({ x: 150, y: 70 });
+        });
+
+        it('detects positions on edges as within bounds', () => {
+            expect(constraints.isWithinBounds({ x: 100, y: 50 }, bounds)).toBe(true);
+            expect(constraints.isWithinBounds({ x: 300, y: 90 }, bounds)).toBe(true);
+            expect(constraints.isWithinBounds({ x: 99.9, y: 90 }, bounds)).toBe(false);
+            expect(constraints.isWithinBounds({ x: 150, y: 90.1 }, bounds)).toBe(false);
+        });
+
+        it('computes distance to each boundary', () => {
+            const origin = { x: 150, y: 70 };
+            expect(constraints.distanceToBoundary(origin, { x: 2, y: 0 }, bounds)).toBeCloseTo(150);
+            expect(constraints.distanceToBoundary(origin, { x: -1, y: 0 }, bounds)).toBeCloseTo(50);
+            expect(constraints.distanceToBoundary(origin, { x: 0, y: 4 }, bounds)).toBeCloseTo(20);
+            expect(constraints.distanceToBoundary(origin, { x: 0, y: -3 }, bounds)).toBeCloseTo(20);
+        });
+
+        it('returns infinity when direction is zero vector', () => {
+            expect(constraints.distanceToBoundary({ x: 150, y: 70 }, { x: 0, y: 0 }, bounds)).toBe(Infinity);
         });
     });
 });
