@@ -8,14 +8,18 @@ import { BallAttachmentController } from '@physics/ball-attachment';
 import { PaddleBodyController } from '@render/paddle-body';
 import { GameInputManager } from '@input/input-manager';
 import { PhysicsBallLaunchController } from '@physics/ball-launch';
-import { reflectOffPaddle } from '../util/paddle-reflection';
-import { regulateSpeed } from '../util/speed-regulation';
-import { createScoring, awardBrickPoints, decayCombo } from '../util/scoring';
-import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale } from '../util/power-ups';
-import { generateLevelLayout, getLevelSpec } from '../util/levels';
+import { reflectOffPaddle } from 'util/paddle-reflection';
+import { regulateSpeed } from 'util/speed-regulation';
+import { createScoring, awardBrickPoints, decayCombo } from 'util/scoring';
+import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale } from 'util/power-ups';
+import { generateLevelLayout, getLevelSpec } from 'util/levels';
 import { Text, Container, Graphics, Sprite } from 'pixi.js';
 import type { Body } from 'matter-js';
 import { Events, Body as MatterBody } from 'matter-js';
+import { createEventBus } from '@app/events';
+import { createToneScheduler } from '@audio/scheduler';
+import { createSfxRouter } from '@audio/sfx';
+import { Synth, Panner, start as toneStart } from 'tone';
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -37,18 +41,43 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             stage.canvas.style.top = '0';
             stage.canvas.style.left = '0';
 
+            await toneStart();  // Start Tone.js audio context (call once)
+
+            const bus = createEventBus();  // Create event bus
+
+            const scheduler = createToneScheduler({ lookAheadMs: 120 });
+
+            const panner = new Panner(0).toDestination();
+            const synth = new Synth().connect(panner);
+
+            const router = createSfxRouter({
+                bus,
+                scheduler,
+                brickSampleId: 'brick-hit',  // Placeholder ID
+                trigger: (descriptor) => {
+                    // Play sound based on descriptor (e.g., pan/detune from brick hit)
+                    synth.triggerAttackRelease(
+                        'C4',  // Note (tune based on detune)
+                        '8n',  // Duration
+                        descriptor.time,
+                        descriptor.gain
+                    );
+                    panner.pan.setValueAtTime(descriptor.pan, descriptor.time);
+                    synth.detune.setValueAtTime(descriptor.detune, descriptor.time);
+                },
+            });
+
             // Add resize listener
             const handleResize = () => {
                 const w = window.innerWidth;
                 const h = window.innerHeight;
                 stage.resize({ width: w, height: h });
 
-                // Scale playfield to maintain aspect (optional: for fixed physics)
+                // Change to stretch-fill instead of aspect-preserved scale
                 const scaleX = w / 1280;
                 const scaleY = h / 720;
-                const scale = Math.min(scaleX, scaleY);
-                stage.layers.root.scale.set(scale);
-                stage.layers.root.position.set((w - 1280 * scale) / 2, (h - 720 * scale) / 2);
+                stage.layers.root.scale.set(scaleX, scaleY);
+                stage.layers.root.position.set(0, 0);  // No centering—fill from top-left
             };
             window.addEventListener('resize', handleResize);
             handleResize();  // Initial resize
@@ -122,6 +151,15 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         const brick = bodyA.label === 'brick' ? bodyA : bodyB;
                         const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
 
+                        bus.publish('BrickBreak', {
+                            sessionId: session.snapshot().sessionId,
+                            row: Math.floor((brick.position.y - 100) / BRICK_HEIGHT),  // Estimate row/col from position
+                            col: Math.floor((brick.position.x - 50) / BRICK_WIDTH),
+                            velocity: ball.physicsBody.speed,  // From ball
+                            comboHeat: scoringState.combo,
+                            brickType: 'standard', //TODO: This should be dynamic
+                        });
+
                         // Award points with combo system
                         const points = awardBrickPoints(scoringState);
                         session.recordBrickBreak({ points });
@@ -185,7 +223,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Create HUD container
             const hudContainer = new Container();
-            stage.addToLayer('hud', hudContainer);
+            stage.layers.root.addChild(hudContainer);
 
             // Create game objects container
             const gameContainer = new Container();
@@ -216,10 +254,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const inputManager = new GameInputManager();
             const launchController = new PhysicsBallLaunchController();
 
-            // Initialize input manager
-            inputManager.initialize(container);
-
-            // Create paddle first
+            // Create paddle first at center bottom
             const paddle = paddleController.createPaddle(
                 { x: 640, y: 650 },
                 { width: 100, height: 20, speed: 300 }
@@ -249,6 +284,19 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Load initial level
             loadLevel(currentLevelIndex);
+
+            // Initialize input manager AFTER preloader completes to avoid capturing the "Tap to Start" click
+            inputManager.initialize(container);
+
+            // Helper to convert canvas coordinates to playfield (1280×720) coordinates
+            const toPlayfield = (canvasPt: { x: number; y: number }) => {
+                const root = stage.layers.root;
+                const s = root.scale.x; // uniform scale
+                return {
+                    x: (canvasPt.x - root.position.x) / s,
+                    y: (canvasPt.y - root.position.y) / s,
+                };
+            };
 
             const loop = createGameLoop({
                 world: physics,
@@ -280,8 +328,13 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         // Process input
                         const paddleTarget = inputManager.getPaddleTarget();
                         if (paddleTarget) {
-                            // Update paddle position
-                            const targetX = paddleTarget.x;
+                            const rect = stage.canvas.getBoundingClientRect();  // Ensure relative to canvas
+                            const canvasX = paddleTarget.x - rect.left;  // Explicitly correct for any offset
+                            const canvasY = paddleTarget.y - rect.top;
+
+                            const pf = toPlayfield({ x: canvasX, y: canvasY });  // Use corrected canvas coords
+
+                            const targetX = pf.x;
                             const halfPaddleWidth = paddle.width / 2;
                             const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, 1280 - halfPaddleWidth));
                             MatterBody.setPosition(paddle.physicsBody, { x: clampedX, y: paddle.physicsBody.position.y });
@@ -379,6 +432,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Start the game loop
             loop.start();
+
+            // Add dispose on unload (optional):
+            window.addEventListener('beforeunload', () => {
+                router.dispose();
+                scheduler.dispose();
+            });
         }
     });
 

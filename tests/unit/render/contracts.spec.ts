@@ -16,7 +16,7 @@ import type {
     BoundaryCollision,
     PaddleDebugInfo,
     Vector2
-} from '../../../src/render/contracts';
+} from 'render/contracts';
 
 describe('Render Contracts', () => {
     describe('PaddleController Interface', () => {

@@ -6,7 +6,7 @@
  * Purpose: Normalize browser input events into game input state
  */
 
-import type { Vector2, InputState, InputType } from '../types';
+import type { Vector2, InputState, InputType } from 'types/input';
 
 /**
  * Mouse event data
@@ -45,7 +45,7 @@ export function normalizeMouseEvent(event: MouseEvent, canvas: HTMLCanvasElement
         x: (event.clientX - rect.left) * scaleX,
         y: (event.clientY - rect.top) * scaleY,
         button: getMouseButton(event.button),
-        pressed: event.type === 'mousedown' || event.type === 'mousemove',
+        pressed: event.type === 'mousedown',
     };
 }
 
@@ -99,7 +99,7 @@ export function eventsToInputState(
 
     // Launch requested if space pressed or screen tapped
     const spacePressed = keyboardEvents.some(e => e.pressed && e.key === 'Space');
-    const screenTapped = touchEvent !== undefined || (mouseEvent && mouseEvent.pressed && mouseEvent.button === 'left');
+    const screenTapped = touchEvent !== undefined || (mouseEvent !== undefined && mouseEvent.pressed && mouseEvent.button === 'left');
 
     return {
         leftPressed,

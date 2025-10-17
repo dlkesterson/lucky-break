@@ -8,18 +8,29 @@
 
 import type { InputManager, InputDebugState, InputType, Vector2 } from './contracts';
 import { PaddleLaunchManager } from './launch-manager';
+import { normalizeMouseEvent, normalizeTouchEvent } from 'util/input-helpers';
 
 export class GameInputManager implements InputManager {
     private container: HTMLElement | null = null;
+    private canvas: HTMLCanvasElement | null = null;
     private mousePosition: Vector2 | null = null;
     private touchPosition: Vector2 | null = null;
     private keyboardState = new Map<string, boolean>();
     private activeInputs = new Set<InputType>();
     private launchManager = new PaddleLaunchManager();
     private previousPaddlePosition: Vector2 | null = null;
+    private hasReceivedInput = false; // Track if user has moved mouse/touch since initialization
 
     initialize(container: HTMLElement): void {
         this.container = container;
+        // Find the canvas element within the container
+        this.canvas = container.querySelector('canvas') || null;
+
+        // Clear any stale positions from before initialization
+        this.mousePosition = null;
+        this.touchPosition = null;
+        this.hasReceivedInput = false;
+
         this.setupEventListeners();
     }
 
@@ -46,13 +57,30 @@ export class GameInputManager implements InputManager {
 
     private handleMouseDown(event: MouseEvent): void {
         this.activeInputs.add('mouse');
-        this.mousePosition = { x: event.clientX, y: event.clientY };
+        this.hasReceivedInput = true; // User has interacted
+
+        if (this.canvas) {
+            const normalized = normalizeMouseEvent(event, this.canvas);
+            this.mousePosition = { x: normalized.x, y: normalized.y };
+        } else {
+            // Fallback: use raw client coordinates
+            this.mousePosition = { x: event.clientX, y: event.clientY };
+        }
+
         this.launchManager.triggerTapLaunch(this.mousePosition);
     }
 
     private handleMouseMove(event: MouseEvent): void {
         this.activeInputs.add('mouse');
-        this.mousePosition = { x: event.clientX, y: event.clientY };
+        this.hasReceivedInput = true; // User has moved mouse
+
+        if (this.canvas) {
+            const normalized = normalizeMouseEvent(event, this.canvas);
+            this.mousePosition = { x: normalized.x, y: normalized.y };
+        } else {
+            // Fallback: use raw client coordinates
+            this.mousePosition = { x: event.clientX, y: event.clientY };
+        }
     }
 
     private handleMouseUp(event: MouseEvent): void {
@@ -61,18 +89,41 @@ export class GameInputManager implements InputManager {
 
     private handleTouchStart(event: TouchEvent): void {
         this.activeInputs.add('touch');
+        this.hasReceivedInput = true; // User has touched
+
         if (event.touches.length > 0) {
             const touch = event.touches[0];
-            this.touchPosition = { x: touch.clientX, y: touch.clientY };
-            this.launchManager.triggerTapLaunch(this.touchPosition);
+
+            if (this.canvas) {
+                const normalized = normalizeTouchEvent(event, this.canvas);
+                if (normalized.touches.length > 0) {
+                    this.touchPosition = { x: normalized.touches[0].x, y: normalized.touches[0].y };
+                    this.launchManager.triggerTapLaunch(this.touchPosition);
+                }
+            } else {
+                // Fallback: use raw client coordinates
+                this.touchPosition = { x: touch.clientX, y: touch.clientY };
+                this.launchManager.triggerTapLaunch(this.touchPosition);
+            }
         }
     }
 
     private handleTouchMove(event: TouchEvent): void {
         this.activeInputs.add('touch');
+        this.hasReceivedInput = true; // User has moved touch
+
         if (event.touches.length > 0) {
             const touch = event.touches[0];
-            this.touchPosition = { x: touch.clientX, y: touch.clientY };
+
+            if (this.canvas) {
+                const normalized = normalizeTouchEvent(event, this.canvas);
+                if (normalized.touches.length > 0) {
+                    this.touchPosition = { x: normalized.touches[0].x, y: normalized.touches[0].y };
+                }
+            } else {
+                // Fallback: use raw client coordinates
+                this.touchPosition = { x: touch.clientX, y: touch.clientY };
+            }
         }
     }
 
@@ -90,6 +141,11 @@ export class GameInputManager implements InputManager {
     }
 
     getPaddleTarget(): Vector2 | null {
+        // Don't return mouse/touch position until user has actually moved after initialization
+        if (!this.hasReceivedInput) {
+            return null;
+        }
+
         // Priority: mouse > touch > keyboard
         if (this.mousePosition) {
             return { ...this.mousePosition };

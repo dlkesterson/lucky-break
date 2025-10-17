@@ -23,8 +23,8 @@ describe('createSfxRouter', () => {
 
     beforeAll(async () => {
         tone = installToneMock();
-        ({ createToneScheduler } = await import('../../../src/audio/scheduler'));
-        ({ createSfxRouter } = await import('../../../src/audio/sfx'));
+        ({ createToneScheduler } = await import('audio/scheduler'));
+        ({ createSfxRouter } = await import('audio/sfx'));
     });
 
     afterAll(() => {

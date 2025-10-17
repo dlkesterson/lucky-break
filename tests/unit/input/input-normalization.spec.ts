@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GameInputManager } from '../../../src/input/input-manager';
+import { GameInputManager } from 'input/input-manager';
 
 describe('Input Normalization', () => {
     let inputManager: GameInputManager;

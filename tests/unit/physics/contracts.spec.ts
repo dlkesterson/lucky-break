@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { BallController, Ball, BallOptions, BallDebugInfo, Vector2 } from '../../../src/physics/contracts';
+import type { BallController, Ball, BallOptions, BallDebugInfo, Vector2 } from 'physics/contracts';
 
 describe('Physics Contracts', () => {
     describe('BallController Interface', () => {

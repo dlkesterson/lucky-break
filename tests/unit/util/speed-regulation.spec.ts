@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo } from '../../../src/util/speed-regulation';
+import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo } from 'util/speed-regulation';
 import { Bodies, Body, Vector } from 'matter-js';
 
 describe('speed-regulation', () => {

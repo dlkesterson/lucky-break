@@ -8,8 +8,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Bodies } from 'matter-js';
-import type { BallController, Ball, Vector2 } from '../../../src/physics/contracts';
-import { createPhysicsWorld } from '../../../src/physics/world';
+import type { BallController, Ball, Vector2 } from 'physics/contracts';
+import { createPhysicsWorld } from 'physics/world';
 
 describe('Ball Launch Mechanics', () => {
     let world: ReturnType<typeof createPhysicsWorld>;

@@ -7,9 +7,9 @@
  */
 
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
-import type { GameInputManager } from '../input/input-manager';
+import type { GameInputManager } from 'input/input-manager';
 import type { PaddleBodyController } from './paddle-body';
-import type { BallAttachmentController } from '../physics/ball-attachment';
+import type { BallAttachmentController } from 'physics/ball-attachment';
 
 export interface DebugOverlayOptions {
     inputManager: GameInputManager;

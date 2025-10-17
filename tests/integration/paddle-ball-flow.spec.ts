@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GameInputManager } from '../../src/input/input-manager';
-import { PaddleBodyController } from '../../src/render/paddle-body';
-import { BallAttachmentController } from '../../src/physics/ball-attachment';
-import { PhysicsBallLaunchController } from '../../src/physics/ball-launch';
-import { createPhysicsWorld } from '../../src/physics/world';
+import { GameInputManager } from 'input/input-manager';
+import { PaddleBodyController } from 'render/paddle-body';
+import { BallAttachmentController } from 'physics/ball-attachment';
+import { PhysicsBallLaunchController } from 'physics/ball-launch';
+import { createPhysicsWorld } from 'physics/world';
 
 describe('Paddle Ball Flow Integration', () => {
     let inputManager: GameInputManager;

@@ -16,13 +16,14 @@
     ],
     "baseUrl": "./",
     "paths": {
-      "@app/*": ["src/app/*"],
-      "@physics/*": ["src/physics/*"],
-      "@render/*": ["src/render/*"],
-      "@audio/*": ["src/audio/*"],
-      "@util/*": ["src/util/*"],
-      "@cli/*": ["src/cli/*"],
-      "@input/*": ["src/input/*"]
+      "app/*": ["src/app/*"],
+      "physics/*": ["src/physics/*"],
+      "render/*": ["src/render/*"],
+      "audio/*": ["src/audio/*"],
+      "util/*": ["src/util/*"],
+      "cli/*": ["src/cli/*"],
+      "input/*": ["src/input/*"],
+      "types/*": ["src/types/*"]
     }
   },
   "include": [

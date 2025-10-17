@@ -8,8 +8,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Bodies } from 'matter-js';
-import type { PaddleController, Paddle, PaddleOptions, Vector2, Rectangle } from '../../../src/render/contracts';
-import { createPhysicsWorld } from '../../../src/physics/world';
+import type { PaddleController, Paddle, PaddleOptions, Vector2, Rectangle } from 'render/contracts';
+import { createPhysicsWorld } from 'physics/world';
 
 describe('Paddle Positioning', () => {
     let world: ReturnType<typeof createPhysicsWorld>;

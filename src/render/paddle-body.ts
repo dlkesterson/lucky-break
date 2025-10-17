@@ -16,7 +16,7 @@ import type {
     PaddleDebugInfo,
     InputState
 } from './contracts';
-import { createPhysicsWorld } from '../physics/world';
+import { createPhysicsWorld } from 'physics/world';
 
 export class PaddleBodyController implements PaddleController {
     private physicsWorld = createPhysicsWorld();
@@ -65,9 +65,9 @@ export class PaddleBodyController implements PaddleController {
             targetX = inputState.touchX;
         }
 
-        // Constrain to screen bounds (assuming 800px width)
+        // Constrain to screen bounds (1280px width to match physics world)
         const halfWidth = paddle.width / 2;
-        targetX = Math.max(halfWidth, Math.min(800 - halfWidth, targetX));
+        targetX = Math.max(halfWidth, Math.min(1280 - halfWidth, targetX));
 
         // Update physics body position
         paddle.physicsBody.position.x = targetX;
@@ -81,9 +81,9 @@ export class PaddleBodyController implements PaddleController {
      * Set paddle position directly (for initialization or reset)
      */
     setPaddlePosition(paddle: Paddle, position: Vector2): void {
-        // Constrain to screen bounds
+        // Constrain to screen bounds (1280px width to match physics world)
         const halfWidth = paddle.width / 2;
-        const constrainedX = Math.max(halfWidth, Math.min(800 - halfWidth, position.x));
+        const constrainedX = Math.max(halfWidth, Math.min(1280 - halfWidth, position.x));
 
         paddle.physicsBody.position.x = constrainedX;
         paddle.physicsBody.position.y = position.y;

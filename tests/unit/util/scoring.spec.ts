@@ -11,7 +11,7 @@ import {
     getComboMultiplier,
     isComboMilestone,
     getScoringDebugInfo,
-} from '../../../src/util/scoring';
+} from 'util/scoring';
 
 describe('scoring', () => {
     describe('createScoring', () => {

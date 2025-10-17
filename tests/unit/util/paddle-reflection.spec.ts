@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { reflectOffPaddle, calculateReflectionData, getHitOffset } from '../../../src/util/paddle-reflection';
+import { reflectOffPaddle, calculateReflectionData, getHitOffset } from 'util/paddle-reflection';
 import { Bodies, Body } from 'matter-js';
 
 describe('paddle-reflection', () => {

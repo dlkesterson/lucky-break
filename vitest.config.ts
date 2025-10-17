@@ -10,13 +10,14 @@ const resolveFromRoot = (relativePath: string): string => {
 export default defineConfig({
     resolve: {
         alias: {
-            '@app': resolveFromRoot('src/app'),
-            '@physics': resolveFromRoot('src/physics'),
-            '@render': resolveFromRoot('src/render'),
-            '@audio': resolveFromRoot('src/audio'),
-            '@util': resolveFromRoot('src/util'),
-            '@cli': resolveFromRoot('src/cli'),
-            '@input': resolveFromRoot('src/input'),
+            'app': resolveFromRoot('src/app'),
+            'physics': resolveFromRoot('src/physics'),
+            'render': resolveFromRoot('src/render'),
+            'audio': resolveFromRoot('src/audio'),
+            'util': resolveFromRoot('src/util'),
+            'cli': resolveFromRoot('src/cli'),
+            'input': resolveFromRoot('src/input'),
+            'types': resolveFromRoot('src/types'),
         },
     },
     test: {

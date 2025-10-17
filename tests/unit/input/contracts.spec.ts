@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { InputManager, InputDebugState, InputType, Vector2 } from '../../../src/input/contracts';
+import type { InputManager, InputDebugState, InputType, Vector2 } from 'input/contracts';
 
 describe('Input Contracts', () => {
     describe('InputManager Interface', () => {

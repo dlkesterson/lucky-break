@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PaddleBodyController } from '../../../src/render/paddle-body';
-import type { Vector2, Rectangle } from '../../../src/render/contracts';
+import { PaddleBodyController } from 'render/paddle-body';
+import type { Vector2, Rectangle } from 'render/contracts';
 
 describe('Paddle Boundary Constraints', () => {
     let paddleController: PaddleBodyController;
@@ -101,10 +101,10 @@ describe('Paddle Boundary Constraints', () => {
         });
 
         it('should constrain paddle within right boundary', () => {
-            const outOfBoundsPosition: Vector2 = { x: 780, y: 350 }; // Too far right
+            const outOfBoundsPosition: Vector2 = { x: 1300, y: 350 }; // Too far right
             paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
 
-            expect(mockPaddle.position.x).toBe(750); // Constrained to screen width - half width
+            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50 (half width)
             expect(mockPaddle.position.y).toBe(350);
         });
 
@@ -221,7 +221,7 @@ describe('Paddle Boundary Constraints', () => {
             const largeScreenPosition: Vector2 = { x: 2000, y: 350 };
             paddleController.setPaddlePosition(mockPaddle, largeScreenPosition);
 
-            expect(mockPaddle.position.x).toBe(750); // Constrained to 800 - 50
+            expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50
         });
     });
 });
