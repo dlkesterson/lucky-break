@@ -12,6 +12,7 @@ export interface MomentumMetrics {
     readonly speedPressure: number;
     readonly brickDensity: number;
     readonly comboHeat: number;
+    readonly comboTimer: number; // Time remaining before combo resets (in seconds)
     readonly updatedAt: number;
 }
 
@@ -201,6 +202,7 @@ const toHudSnapshot = (
         speedPressure: state.momentum.speedPressure,
         brickDensity: state.momentum.brickDensity,
         comboHeat: state.momentum.comboHeat,
+        comboTimer: state.momentum.comboTimer,
     },
     audio: {
         scene: state.audio.scene,
@@ -237,6 +239,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         speedPressure: 0,
         brickDensity: 1,
         comboHeat: 0,
+        comboTimer: 0,
         updatedAt: now(),
     };
 
@@ -297,6 +300,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         elapsedMs = 0;
         momentum.volleyLength = 0;
         momentum.comboHeat = 0;
+        momentum.comboTimer = 0;
         momentum.speedPressure = 0;
         momentum.brickDensity = brickTotal === 0 ? 0 : 1;
         momentum.updatedAt = timestamp;
@@ -345,6 +349,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 
         momentum.volleyLength = 0;
         momentum.comboHeat = 0;
+        momentum.comboTimer = 0;
         momentum.speedPressure = clamp01(momentum.speedPressure * 0.5);
         momentum.updatedAt = timestamp;
 

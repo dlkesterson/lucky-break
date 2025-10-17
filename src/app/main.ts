@@ -8,6 +8,11 @@ import { BallAttachmentController } from '@physics/ball-attachment';
 import { PaddleBodyController } from '@render/paddle-body';
 import { GameInputManager } from '@input/input-manager';
 import { PhysicsBallLaunchController } from '@physics/ball-launch';
+import { reflectOffPaddle } from '../util/paddle-reflection';
+import { regulateSpeed } from '../util/speed-regulation';
+import { createScoring, awardBrickPoints, decayCombo } from '../util/scoring';
+import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale } from '../util/power-ups';
+import { generateLevelLayout, getLevelSpec } from '../util/levels';
 import { Text, Container, Graphics, Sprite } from 'pixi.js';
 import type { Body } from 'matter-js';
 import { Events, Body as MatterBody } from 'matter-js';
@@ -53,50 +58,130 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 gravity: 0
             });
 
-            // Add collision event handling
-            Events.on(physics.engine, 'collisionStart', (event) => {
-                event.pairs.forEach((pair) => {
-                    const { bodyA, bodyB } = pair;
-                    if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
-                        const brick = bodyA.label === 'brick' ? bodyA : bodyB;
-                        physics.remove(brick);
-                        // TODO: Update score in state, play SFX, check win condition
-                        const visual = visualBodies.get(brick);
-                        if (visual) {
-                            stage.removeFromLayer(visual);
-                            visualBodies.delete(brick);
-                        }
-                    }
-                    // Add paddle-ball bounce variation
-                    if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
-                        const ball = bodyA.label === 'ball' ? bodyA : bodyB;
-                        const paddle = bodyA.label === 'paddle' ? bodyA : bodyB;
-                        const relativeX = (ball.position.x - paddle.position.x) / (paddle.bounds.max.x - paddle.bounds.min.x);
-                        ball.velocity.x += (relativeX - 0.5) * 4;  // Add horizontal velocity based on hit spot (-2 to +2)
-                    }
-                    // Handle ball hitting bottom (lose life)
-                    if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
-                        // Lose a life and reset ball
-                        session.recordLifeLost('ball-drop');
-                        if (session.snapshot().livesRemaining > 0) {
-                            // Reset ball to paddle
-                            physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody);
-                        } else {
-                            // Game over
-                            console.log('Game Over');
-                        }
-                    }
-                });
-            });
-
             // Create game session manager
             const session = createGameSessionManager({
                 sessionId: 'game-session',
                 initialLives: 3
             });
 
-            // Start the round
-            session.startRound({ breakableBricks: 18 });
+            // Create scoring and power-up systems
+            const scoringState = createScoring();
+            const powerUpManager = new PowerUpManager();
+            let currentLevelIndex = 0;
+
+            // Game configuration
+            const BALL_BASE_SPEED = 8;
+            const BALL_MAX_SPEED = 14;
+            const BRICK_WIDTH = 100;
+            const BRICK_HEIGHT = 40;
+
+            // Function to load a level
+            const loadLevel = (levelIndex: number) => {
+                // Clear existing bricks
+                visualBodies.forEach((visual, body) => {
+                    if (body.label === 'brick') {
+                        physics.remove(body);
+                        stage.removeFromLayer(visual);
+                        visualBodies.delete(body);
+                    }
+                });
+
+                // Generate new level layout
+                const layout = generateLevelLayout(getLevelSpec(levelIndex), BRICK_WIDTH, BRICK_HEIGHT, 1280);
+
+                // Create bricks from layout
+                layout.bricks.forEach(brickSpec => {
+                    const brick = physics.factory.brick({
+                        size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
+                        position: { x: brickSpec.x, y: brickSpec.y },
+                    });
+                    physics.add(brick);
+
+                    // Add visual brick with color based on HP
+                    const color = brickSpec.hp === 1 ? 0xaaaaaa : brickSpec.hp === 2 ? 0xff8844 : 0xff4444;
+                    const brickVisual = new Graphics()
+                        .beginFill(color)
+                        .drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT)
+                        .endFill();
+                    brickVisual.position.set(brickSpec.x, brickSpec.y);
+                    visualBodies.set(brick, brickVisual);
+                    stage.layers.playfield.addChild(brickVisual);
+                });
+
+                // Start the round
+                session.startRound({ breakableBricks: layout.breakableCount });
+            };
+
+            // Add collision event handling
+            Events.on(physics.engine, 'collisionStart', (event) => {
+                event.pairs.forEach((pair) => {
+                    const { bodyA, bodyB } = pair;
+
+                    // Brick break
+                    if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
+                        const brick = bodyA.label === 'brick' ? bodyA : bodyB;
+                        const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+
+                        // Award points with combo system
+                        const points = awardBrickPoints(scoringState);
+                        session.recordBrickBreak({ points });
+
+                        // Check for power-up spawn
+                        if (shouldSpawnPowerUp({ spawnChance: 0.25 })) {
+                            const powerUpType = selectRandomPowerUpType();
+                            powerUpManager.activate(powerUpType, { defaultDuration: 2.5 });
+                            console.log(`Power-up activated: ${powerUpType}`);
+                        }
+
+                        // Remove brick
+                        physics.remove(brick);
+                        const visual = visualBodies.get(brick);
+                        if (visual) {
+                            stage.removeFromLayer(visual);
+                            visualBodies.delete(brick);
+                        }
+
+                        // Check win condition
+                        if (session.snapshot().brickRemaining === 0) {
+                            session.completeRound();
+                            setTimeout(() => {
+                                currentLevelIndex += 1;
+                                loadLevel(currentLevelIndex);
+                            }, 500);
+                        }
+                    }
+
+                    // Paddle-ball collision with advanced reflection
+                    if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
+                        const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+                        const paddleBody = bodyA.label === 'paddle' ? bodyA : bodyB;
+
+                        // Apply paddle reflection
+                        reflectOffPaddle(ballBody, paddleBody, {
+                            paddleWidth: paddle.width,
+                            minSpeed: BALL_BASE_SPEED,
+                        });
+                    }
+
+                    // Ball hitting bottom (lose life)
+                    if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
+                        const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+
+                        // Lose a life and reset combo
+                        session.recordLifeLost('ball-drop');
+                        scoringState.combo = 0;
+                        scoringState.comboTimer = 0;
+
+                        if (session.snapshot().livesRemaining > 0) {
+                            // Reset ball to paddle
+                            physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody);
+                        } else {
+                            // Game over
+                            console.log('Game Over - Final Score:', scoringState.score);
+                        }
+                    }
+                });
+            });
 
             // Create HUD container
             const hudContainer = new Container();
@@ -162,35 +247,36 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             gameContainer.addChild(paddleGraphics);
             visualBodies.set(paddle.physicsBody, paddleGraphics);
 
-            // Create bricks
-            const BRICK_WIDTH = 100, BRICK_HEIGHT = 40, COLS = 6, ROWS = 3;
-            const START_X = 100, START_Y = 100, GAP = 20;
+            // Load initial level
+            loadLevel(currentLevelIndex);
 
-            for (let row = 0; row < ROWS; row++) {
-                for (let col = 0; col < COLS; col++) {
-                    const x = START_X + col * (BRICK_WIDTH + GAP);
-                    const y = START_Y + row * (BRICK_HEIGHT + GAP);
-                    const brick = physics.factory.brick({
-                        size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
-                        position: { x, y },
-                    });
-                    physics.add(brick);
-
-                    // Add visual brick
-                    const brickVisual = new Graphics()
-                        .beginFill(0xaaaaaa)  // Gray bricks
-                        .drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT)
-                        .endFill();
-                    brickVisual.position.set(x, y);
-                    visualBodies.set(brick, brickVisual);
-                    stage.layers.playfield.addChild(brickVisual);
-                }
-            }
             const loop = createGameLoop({
                 world: physics,
                 stage,
                 hooks: {
                     beforeStep: (deltaMs) => {
+                        const deltaSeconds = deltaMs / 1000;
+
+                        // Update power-ups
+                        powerUpManager.update(deltaSeconds);
+
+                        // Update paddle size based on power-ups
+                        const paddleScale = calculatePaddleWidthScale(
+                            powerUpManager.getEffect('paddle-width'),
+                            { paddleWidthMultiplier: 1.5 }
+                        );
+                        const basePaddleWidth = 100;
+                        paddle.width = basePaddleWidth * paddleScale;
+
+                        // Update paddle visual
+                        paddleGraphics.clear();
+                        paddleGraphics.rect(-paddle.width / 2, -paddle.height / 2, paddle.width, paddle.height);
+                        const paddleColor = powerUpManager.isActive('paddle-width') ? 0xffff66 : 0x00ff00;
+                        paddleGraphics.fill({ color: paddleColor });
+
+                        // Decay combo timer
+                        decayCombo(scoringState, deltaSeconds);
+
                         // Process input
                         const paddleTarget = inputManager.getPaddleTarget();
                         if (paddleTarget) {
@@ -213,6 +299,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         }
                     },
                     afterStep: () => {
+                        // Regulate ball speed
+                        regulateSpeed(ball.physicsBody, {
+                            baseSpeed: BALL_BASE_SPEED,
+                            maxSpeed: BALL_MAX_SPEED,
+                        });
+
                         // Update visual positions to match physics bodies
                         visualBodies.forEach((visual, body) => {
                             visual.x = body.position.x;
@@ -257,6 +349,29 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             entryText.x = 20;
                             entryText.y = 80 + index * 20;
                             hudContainer.addChild(entryText);
+                        });
+
+                        // Add combo info
+                        if (scoringState.combo > 0) {
+                            const comboText = new Text({
+                                text: `Combo: ${scoringState.combo}x (${scoringState.comboTimer.toFixed(1)}s)`,
+                                style: { fill: 0xffff00, fontSize: 14, fontWeight: 'bold' }
+                            });
+                            comboText.x = 20;
+                            comboText.y = 80 + hudView.entries.length * 20 + 10;
+                            hudContainer.addChild(comboText);
+                        }
+
+                        // Add active power-ups
+                        const activePowerUps = powerUpManager.getActiveEffects();
+                        activePowerUps.forEach((effect, index) => {
+                            const powerUpText = new Text({
+                                text: `${effect.type}: ${effect.remainingTime.toFixed(1)}s`,
+                                style: { fill: 0x00ffff, fontSize: 12 }
+                            });
+                            powerUpText.x = 20;
+                            powerUpText.y = 80 + hudView.entries.length * 20 + 35 + index * 18;
+                            hudContainer.addChild(powerUpText);
                         });
                     }
                 }
