@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSimulateCommand, runHeadlessSimulation } from '@cli/simulate';
+import { createSimulateCommand, runHeadlessSimulation } from 'cli/simulate';
 
 describe('simulate CLI command', () => {
     it('produces deterministic results for the same seed', async () => {

@@ -1,5 +1,5 @@
-import type { PhysicsWorldHandle } from '@physics/world';
-import type { StageHandle } from '@render/stage';
+import type { PhysicsWorldHandle } from 'physics/world';
+import type { StageHandle } from 'render/stage';
 
 let fallbackHandle = 1;
 const fallbackTimers = new Map<number, ReturnType<typeof setTimeout>>();

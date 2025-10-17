@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bootstrapLuckyBreak } from '@app/main';
+import { bootstrapLuckyBreak } from 'app/main';
 
 describe('bootstrapLuckyBreak', () => {
     it('initializes without throwing', () => {

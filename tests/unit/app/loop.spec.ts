@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Application } from 'pixi.js';
-import { createGameLoop, DEFAULT_STEP_MS } from '@app/loop';
+import { createGameLoop, DEFAULT_STEP_MS } from 'app/loop';
 
 type RafHandle = number;
 

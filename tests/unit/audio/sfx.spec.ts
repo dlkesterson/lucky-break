@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createEventBus } from '@app/events';
+import { createEventBus } from 'app/events';
 import { installToneMock, type ToneMockContext } from './mocks';
 
 interface RecordedTrigger {

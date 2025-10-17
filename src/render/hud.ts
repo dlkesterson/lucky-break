@@ -1,4 +1,4 @@
-import type { GameSessionSnapshot, HudPromptSeverity } from '@app/state';
+import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
 
 export interface HudScoreboardEntry {
     readonly id: 'score' | 'lives' | 'bricks' | 'momentum' | 'audio';

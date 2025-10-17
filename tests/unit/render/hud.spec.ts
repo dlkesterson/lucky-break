@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildHudScoreboard } from '@render/hud';
-import type { GameSessionSnapshot } from '@app/state';
+import { buildHudScoreboard } from 'render/hud';
+import type { GameSessionSnapshot } from 'app/state';
 
 const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessionSnapshot => {
     const base: GameSessionSnapshot = {

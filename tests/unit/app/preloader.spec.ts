@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPreloader, type ProgressReporter } from '@app/preloader';
+import { createPreloader, type ProgressReporter } from 'app/preloader';
 
 describe('createPreloader', () => {
     const createContainer = () => {

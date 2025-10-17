@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createEventBus } from '@app/events';
-import { createGameSessionManager, type GameSessionSnapshot } from '@app/state';
+import { createEventBus } from 'app/events';
+import { createGameSessionManager, type GameSessionSnapshot } from 'app/state';
 
 interface FakeClock {
     readonly now: () => number;

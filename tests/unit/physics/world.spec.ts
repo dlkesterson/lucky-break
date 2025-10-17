@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Body } from 'matter-js';
-import { createPhysicsWorld } from '@physics/world';
+import { createPhysicsWorld } from 'physics/world';
 
 describe('createPhysicsWorld', () => {
     it('applies gravity and steps bodies forward', () => {

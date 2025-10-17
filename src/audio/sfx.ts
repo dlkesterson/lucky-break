@@ -1,4 +1,4 @@
-import type { LuckyBreakEventBus, EventEnvelope, BrickBreakPayload } from '@app/events';
+import type { LuckyBreakEventBus, EventEnvelope, BrickBreakPayload } from 'app/events';
 import type { ScheduledEventHandle, ToneScheduler } from './scheduler';
 
 export interface SfxTriggerDescriptor {
@@ -19,6 +19,7 @@ export interface SfxRouterOptions {
     readonly scheduler: ToneScheduler;
     readonly trigger?: (descriptor: SfxTriggerDescriptor) => void;
     readonly brickSampleId?: string;
+    readonly brickSampleIds?: readonly string[];
 }
 
 export interface SfxRouter {
@@ -63,15 +64,38 @@ const createBrickTrigger = (
     },
 });
 
+const toSampleList = (options: SfxRouterOptions): readonly string[] => {
+    if (options.brickSampleIds && options.brickSampleIds.length > 0) {
+        return options.brickSampleIds;
+    }
+
+    if (options.brickSampleId) {
+        return [options.brickSampleId];
+    }
+
+    return ['brick-hit'];
+};
+
+const selectSampleId = (samples: readonly string[], payload: BrickBreakPayload): string => {
+    if (samples.length === 1) {
+        return samples[0];
+    }
+
+    const hash = (payload.row * 31 + payload.col * 17 + Math.round(payload.velocity * 10)) | 0;
+    const index = Math.abs(hash) % samples.length;
+    return samples[index];
+};
+
 export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
     const trigger = options.trigger ?? defaultTrigger;
-    const sampleId = options.brickSampleId ?? 'brick/snare-01';
+    const samples = toSampleList(options);
 
     const pending = new Set<ScheduledEventHandle>();
 
     const handleBrickBreak = (event: EventEnvelope<'BrickBreak'>) => {
         const handle = options.scheduler.schedule((scheduledTime) => {
             pending.delete(handle);
+            const sampleId = selectSampleId(samples, event.payload);
             trigger(createBrickTrigger(event.payload, scheduledTime, sampleId));
         });
         pending.add(handle);

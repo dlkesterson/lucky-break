@@ -7,6 +7,7 @@
  */
 
 import type { BallController, Ball, BallOptions, Vector2, BallDebugInfo } from './contracts';
+import { Body } from 'matter-js';
 import { createPhysicsWorld } from './world';
 
 export class BallAttachmentController implements BallController {
@@ -16,7 +17,7 @@ export class BallAttachmentController implements BallController {
      * Create a new ball attached to the paddle
      */
     createAttachedBall(paddlePosition: Vector2, options: BallOptions = {}): Ball {
-        const radius = options.radius ?? 8;
+        const radius = options.radius ?? 10;
         const attachmentOffset = { x: 0, y: -radius - 10 }; // Position ball above paddle
 
         const physicsBody = this.physicsWorld.factory.ball({
@@ -50,9 +51,16 @@ export class BallAttachmentController implements BallController {
      * Update ball position to stay attached to paddle
      */
     updateAttachment(ball: Ball, paddlePosition: Vector2): void {
-        if (ball.isAttached) {
-            this.physicsWorld.updateBallAttachment(ball.physicsBody, paddlePosition);
+        if (!ball.isAttached) {
+            return;
         }
+
+        Body.setPosition(ball.physicsBody, {
+            x: paddlePosition.x + ball.attachmentOffset.x,
+            y: paddlePosition.y + ball.attachmentOffset.y,
+        });
+        Body.setVelocity(ball.physicsBody, { x: 0, y: 0 });
+        Body.setAngularVelocity(ball.physicsBody, 0);
     }
 
     /**
@@ -60,7 +68,6 @@ export class BallAttachmentController implements BallController {
      */
     launchBall(ball: Ball, direction: Vector2 = { x: 0, y: -1 }): void {
         if (ball.isAttached) {
-            this.physicsWorld.detachBallFromPaddle(ball.physicsBody);
             ball.isAttached = false;
         }
 
@@ -80,21 +87,27 @@ export class BallAttachmentController implements BallController {
      * Check if ball is currently attached to paddle
      */
     isAttached(ball: Ball): boolean {
-        return this.physicsWorld.isBallAttached(ball.physicsBody);
+        return ball.isAttached;
     }
 
     /**
      * Reset ball to attached state
      */
     resetToAttached(ball: Ball, paddlePosition: Vector2): void {
-        // Create a temporary paddle body for attachment
-        const tempPaddleBody = this.physicsWorld.factory.paddle({
-            position: paddlePosition,
-            size: { width: 100, height: 20 },
-        });
-
-        this.physicsWorld.attachBallToPaddle(ball.physicsBody, tempPaddleBody, ball.attachmentOffset);
+        const attachmentOffset = { x: 0, y: -ball.radius - 10 };
+        ball.attachmentOffset = attachmentOffset;
         ball.isAttached = true;
+
+        Body.setPosition(ball.physicsBody, {
+            x: paddlePosition.x + attachmentOffset.x,
+            y: paddlePosition.y + attachmentOffset.y,
+        });
+        Body.setVelocity(ball.physicsBody, { x: 0, y: 0 });
+        Body.setAngularVelocity(ball.physicsBody, 0);
+        if (ball.physicsBody.force) {
+            ball.physicsBody.force.x = 0;
+            ball.physicsBody.force.y = 0;
+        }
     }
 
     /**

@@ -1,5 +1,5 @@
-import { createEventBus, type EventEnvelope, type LuckyBreakEventBus, type LuckyBreakEventName } from '@app/events';
-import { createGameSessionManager } from '@app/state';
+import { createEventBus, type EventEnvelope, type LuckyBreakEventBus, type LuckyBreakEventName } from 'app/events';
+import { createGameSessionManager } from 'app/state';
 
 export interface SimulateCommandIO {
     readonly readStdin: () => Promise<string>;

@@ -75,7 +75,7 @@ vi.mock('pixi.js', async () => {
     };
 });
 
-import { createStage } from '@render/stage';
+import { createStage } from 'render/stage';
 
 describe('createStage', () => {
     it('initialises the stage with layered containers', async () => {
