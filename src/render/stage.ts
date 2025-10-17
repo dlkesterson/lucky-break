@@ -67,7 +67,7 @@ export interface StageHandle {
     readonly destroy: () => void;
 }
 
-const DEFAULT_BACKGROUND = 0x000000;
+const DEFAULT_BACKGROUND = 0xFFEE00;
 
 const resolveResolution = (config: StageConfig): number => {
     if (config.resolution) {

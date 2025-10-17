@@ -20,7 +20,7 @@ import { Events, Body as MatterBody, Bodies, Vector as MatterVector } from 'matt
 import { createEventBus } from 'app/events';
 import { createToneScheduler } from 'audio/scheduler';
 import { createSfxRouter } from 'audio/sfx';
-import { Players, Panner, Volume, start as toneStart } from 'tone';
+import { Players, Panner, Volume, Transport } from 'tone';
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -60,11 +60,19 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             stage.canvas.style.touchAction = 'none';
             stage.canvas.style.userSelect = 'none';
 
-            await toneStart();  // Start Tone.js audio context (call once)
-
             const bus = createEventBus();  // Create event bus
 
             const scheduler = createToneScheduler({ lookAheadMs: 120 });
+            const ensureAudioIsRunning = async () => {
+                const ctx = scheduler.context;
+                if (ctx.state === 'suspended') {
+                    await ctx.resume();
+                }
+                if (Transport.state !== 'started') {
+                    await Transport.start();
+                }
+            };
+            await ensureAudioIsRunning();
 
             const toDecibels = (gain: number): number => {
                 if (gain <= 0) {
@@ -92,20 +100,29 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const brickPlayers = new Players(brickSampleUrls).connect(volume);
             await brickPlayers.loaded;
 
+            const lastPlayerStart = new Map<string, number>();
+
             const router = createSfxRouter({
                 bus,
                 scheduler,
                 brickSampleIds: Object.keys(brickSampleUrls),
                 trigger: (descriptor) => {
+                    void ensureAudioIsRunning().catch(console.warn);
                     const player = brickPlayers.player(descriptor.id);
                     if (!player) {
                         return;
                     }
 
+                    const nowTime = scheduler.context.currentTime;
+                    const lastStart = lastPlayerStart.get(descriptor.id) ?? -Infinity;
+                    const minTime = Math.max(nowTime + 0.01, lastStart + 0.01);
+                    const targetTime = Math.max(descriptor.time, minTime);
+
                     player.playbackRate = toPlaybackRate(descriptor.detune);
                     player.volume.value = toDecibels(descriptor.gain);
-                    panner.pan.setValueAtTime(descriptor.pan, descriptor.time);
-                    player.start(descriptor.time);
+                    panner.pan.setValueAtTime(descriptor.pan, targetTime);
+                    player.start(targetTime);
+                    lastPlayerStart.set(descriptor.id, targetTime);
                 },
             });
 
@@ -288,7 +305,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 powerUpChanceMultiplier = levelSpec.powerUpChanceMultiplier ?? 1;
 
                 // Create bricks from layout
-                layout.bricks.forEach(brickSpec => {
+                layout.bricks.forEach((brickSpec) => {
                     const brick = physics.factory.brick({
                         size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
                         position: { x: brickSpec.x, y: brickSpec.y },
@@ -297,10 +314,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                     // Add visual brick with color based on HP
                     const color = getBrickColor(brickSpec.hp);
-                    const brickVisual = new Graphics()
-                        .beginFill(color)
-                        .drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT)
-                        .endFill();
+                    const brickVisual = new Graphics();
+                    brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
+                    brickVisual.fill({ color });
                     brickVisual.position.set(brickSpec.x, brickSpec.y);
                     brickVisual.zIndex = 5;
                     brickVisual.eventMode = 'none';
@@ -334,9 +350,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             const brickVisual = visualBodies.get(brick);
                             if (brickVisual instanceof Graphics) {
                                 brickVisual.clear();
-                                brickVisual.beginFill(getBrickColor(nextHp));
-                                brickVisual.drawRect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
-                                brickVisual.endFill();
+                                brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
+                                brickVisual.fill({ color: getBrickColor(nextHp) });
                             }
                         } else {
                             const metadata = brickMetadata.get(brick);
@@ -635,18 +650,21 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const bounds = physics.factory.bounds();
             physics.add(bounds);
 
-            // Create visual bounds (walls)
-            bounds.forEach(bound => {
-                const graphics = new Graphics();
-                graphics.rect(bound.position.x - bound.bounds.max.x + bound.bounds.min.x,
-                    bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
-                    bound.bounds.max.x - bound.bounds.min.x,
-                    bound.bounds.max.y - bound.bounds.min.y);
-                graphics.fill({ color: 0x111111, alpha: 0.45 });
-                graphics.eventMode = 'none';
-                gameContainer.addChild(graphics);
-                visualBodies.set(bound, graphics);
-            });
+            const SHOW_BOUNDARY_OVERLAY = false;
+
+            if (SHOW_BOUNDARY_OVERLAY) {
+                bounds.forEach(bound => {
+                    const graphics = new Graphics();
+                    graphics.rect(bound.position.x - bound.bounds.max.x + bound.bounds.min.x,
+                        bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
+                        bound.bounds.max.x - bound.bounds.min.x,
+                        bound.bounds.max.y - bound.bounds.min.y);
+                    graphics.fill({ color: 0x111111, alpha: 0.45 });
+                    graphics.eventMode = 'none';
+                    gameContainer.addChild(graphics);
+                    visualBodies.set(bound, graphics);
+                });
+            }
 
             // Create controllers
             const ballController = new BallAttachmentController();
@@ -875,11 +893,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         // Process input
                         const paddleTarget = inputManager.getPaddleTarget();
                         if (paddleTarget) {
-                            const rect = stage.canvas.getBoundingClientRect();  // Ensure relative to canvas
-                            const canvasX = paddleTarget.x - rect.left;  // Explicitly correct for any offset
-                            const canvasY = paddleTarget.y - rect.top;
-
-                            const pf = toPlayfield({ x: canvasX, y: canvasY });  // Use corrected canvas coords
+                            const pf = toPlayfield(paddleTarget);
 
                             const targetX = pf.x;
                             const halfPaddleWidth = paddle.width / 2;

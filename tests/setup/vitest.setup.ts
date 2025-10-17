@@ -1,26 +1,34 @@
-import '@testing-library/jest-dom/vitest';
 import { JSDOM } from 'jsdom';
 import { afterEach, vi } from 'vitest';
 
-// Provide a minimal DOM using jsdom when the chosen test environment lacks window/document.
-if (typeof globalThis.window === 'undefined' || typeof globalThis.document === 'undefined') {
+const ensureDomGlobals = () => {
+    if (typeof globalThis.window !== 'undefined' && typeof globalThis.document !== 'undefined') {
+        return;
+    }
+
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
-
     const { window } = dom;
-    globalThis.window = window as unknown as typeof globalThis.window;
-    globalThis.document = window.document;
-    globalThis.navigator = window.navigator;
 
-    // Expose commonly used window properties on the global object for convenience.
-    Object.getOwnPropertyNames(window).forEach((property) => {
+    const propagate = (property: string | symbol) => {
         if (!(property in globalThis)) {
             Object.defineProperty(globalThis, property, {
                 configurable: true,
                 get: () => (window as any)[property],
             });
         }
-    });
-}
+    };
+
+    globalThis.window = window as unknown as typeof globalThis.window;
+    globalThis.document = window.document;
+    globalThis.navigator = window.navigator;
+
+    for (const property of Reflect.ownKeys(window)) {
+        propagate(property);
+    }
+};
+
+ensureDomGlobals();
+await import('@testing-library/jest-dom/vitest');
 
 afterEach(() => {
     document.body.innerHTML = '';

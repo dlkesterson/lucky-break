@@ -51,8 +51,13 @@ export const installToneMock = (): ToneMockContext => {
         scheduled.length = 0;
     });
 
-    const start = vi.fn();
-    const stop = vi.fn();
+    let transportState: 'started' | 'stopped' = 'stopped';
+    const start = vi.fn(async () => {
+        transportState = 'started';
+    });
+    const stop = vi.fn(() => {
+        transportState = 'stopped';
+    });
 
     const transportCore = {
         schedule: schedule as ReturnType<typeof vi.fn>,
@@ -66,12 +71,24 @@ export const installToneMock = (): ToneMockContext => {
     Object.defineProperty(transportCore, 'seconds', {
         get: () => nowSeconds,
     });
+    Object.defineProperty(transportCore, 'state', {
+        get: () => transportState,
+    });
 
     const transport = transportCore as unknown as ToneMockContext['transport'];
+
+    const audioContextStub = {
+        state: 'running' as AudioContextState,
+        currentTime: nowSeconds,
+        resume: vi.fn(async () => {
+            audioContextStub.state = 'running';
+        }),
+    };
 
     vi.doMock('tone', () => ({
         Transport: transport,
         now: () => nowSeconds,
+        getContext: () => ({ rawContext: audioContextStub as unknown as AudioContext }),
         Destination: {
             volume: {
                 value: 0,
@@ -81,6 +98,7 @@ export const installToneMock = (): ToneMockContext => {
 
     const advanceBy = (milliseconds: number): void => {
         nowSeconds += milliseconds / 1000;
+    audioContextStub.currentTime = nowSeconds;
 
         for (const entry of [...scheduled]) {
             if (entry.at <= nowSeconds) {

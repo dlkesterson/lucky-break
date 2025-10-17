@@ -1,4 +1,4 @@
-import { Transport, now as toneNow } from 'tone';
+import { Transport, now as toneNow, getContext } from 'tone';
 
 export interface ScheduledEventHandle {
     readonly id: number;
@@ -8,7 +8,7 @@ export interface ScheduledEventHandle {
 export interface ToneSchedulerOptions {
     readonly lookAheadMs?: number;
     readonly now?: () => number;
-    readonly schedule?: (callback: (time: number) => void, at: number) => number;
+    readonly schedule?: (callback: (time: number) => void, at: number | string) => number;
     readonly clear?: (id: number) => void;
     readonly cancel?: (time?: number) => void;
 }
@@ -18,6 +18,7 @@ export interface ToneScheduler {
     readonly schedule: (callback: (time: number) => void, offsetMs?: number) => ScheduledEventHandle;
     readonly cancel: (handle: ScheduledEventHandle) => void;
     readonly dispose: () => void;
+    readonly context: AudioContext;
 }
 
 const toSeconds = (milliseconds: number): number => milliseconds / 1000;
@@ -28,15 +29,21 @@ export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneSch
     const scheduleFn = options.schedule ?? ((callback, at) => Transport.scheduleOnce(callback, at));
     const clearFn = options.clear ?? ((id) => Transport.clear(id));
     const cancelFn = options.cancel ?? ((time = 0) => Transport.cancel(time));
+    const usingTransport = options.schedule === undefined;
+    const audioContext = getContext().rawContext as AudioContext;
 
     const active = new Set<number>();
 
     const schedule: ToneScheduler['schedule'] = (callback, offsetMs = 0) => {
-        const targetTime = now() + toSeconds(lookAheadMs + offsetMs);
+        const offsetSeconds = toSeconds(lookAheadMs + offsetMs);
+        const targetTime = now() + offsetSeconds;
+        const scheduleAt = usingTransport ? `+${offsetSeconds}` : targetTime;
+
         const id = scheduleFn((scheduledTime) => {
             active.delete(id);
-            callback(scheduledTime);
-        }, targetTime);
+            const resolvedTime = Number.isFinite(scheduledTime) ? scheduledTime : targetTime;
+            callback(resolvedTime);
+        }, scheduleAt);
         active.add(id);
         return { id, time: targetTime };
     };
@@ -61,5 +68,6 @@ export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneSch
         schedule,
         cancel,
         dispose,
+        context: audioContext,
     };
 };
