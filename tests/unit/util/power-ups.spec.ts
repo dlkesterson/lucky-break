@@ -104,4 +104,19 @@ describe('PowerUpManager', () => {
         manager.clearAll();
         expect(manager.getActiveEffects()).toHaveLength(0);
     });
+
+    it('extends duration when the same power-up is collected again', () => {
+        const manager = new PowerUpManager();
+        const now = vi.fn(() => 0);
+
+        manager.activate('sticky-paddle', { defaultDuration: 5 }, now);
+        manager.update(2);
+
+        now.mockReturnValue(2000);
+        manager.activate('sticky-paddle', { defaultDuration: 5 }, now);
+
+        const effect = manager.getEffect('sticky-paddle');
+        expect(effect?.remainingTime).toBeCloseTo(8, 5);
+        expect(effect?.duration).toBeCloseTo(8, 5);
+    });
 });

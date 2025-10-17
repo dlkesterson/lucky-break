@@ -98,7 +98,7 @@ export const installToneMock = (): ToneMockContext => {
 
     const advanceBy = (milliseconds: number): void => {
         nowSeconds += milliseconds / 1000;
-    audioContextStub.currentTime = nowSeconds;
+        audioContextStub.currentTime = nowSeconds;
 
         for (const entry of [...scheduled]) {
             if (entry.at <= nowSeconds) {

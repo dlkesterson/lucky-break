@@ -1,5 +1,5 @@
 export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up';
-export type WallHitSide = 'top' | 'left' | 'right';
+export type WallHitSide = 'top' | 'left' | 'right' | 'bottom';
 export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
 
 export interface BrickBreakPayload {
@@ -24,6 +24,16 @@ export interface WallHitPayload {
     readonly speed: number;
 }
 
+export interface BrickHitPayload {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly velocity: number;
+    readonly brickType: BrickType;
+    readonly comboHeat: number;
+    readonly remainingHp: number;
+}
+
 export interface LifeLostPayload {
     readonly sessionId: string;
     readonly livesRemaining: number;
@@ -39,6 +49,7 @@ export interface RoundCompletedPayload {
 
 export type LuckyBreakEventMap = {
     readonly BrickBreak: BrickBreakPayload;
+    readonly BrickHit: BrickHitPayload;
     readonly PaddleHit: PaddleHitPayload;
     readonly WallHit: WallHitPayload;
     readonly LifeLost: LifeLostPayload;

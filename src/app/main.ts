@@ -199,7 +199,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             // Game configuration
             const BALL_BASE_SPEED = 8;
             const BALL_MAX_SPEED = 14;
-            const BALL_LAUNCH_SPEED = 8;
+            const BALL_LAUNCH_SPEED = 9;
+            const MULTI_BALL_MULTIPLIER = 3;
             const BRICK_WIDTH = 100;
             const BRICK_HEIGHT = 40;
             const POWER_UP_RADIUS = 16;
@@ -778,45 +779,69 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 );
             }
 
+            const collectBallBodies = (): Body[] => {
+                return [
+                    ball.physicsBody,
+                    ...Array.from(extraBalls.values()).map((entry) => entry.body),
+                ];
+            };
+
+            const createAngularOffsets = (count: number): number[] => {
+                if (count <= 0) {
+                    return [];
+                }
+                if (count === 1) {
+                    return [0.25];
+                }
+
+                const spread = 0.35;
+                const midpoint = (count - 1) / 2;
+                return Array.from({ length: count }, (_, index) => (index - midpoint) * spread);
+            };
+
             const spawnExtraBalls = () => {
-                if (extraBalls.size >= 2) {
+                const sourceBodies = collectBallBodies();
+                const clonesPerBall = MULTI_BALL_MULTIPLIER - 1;
+
+                if (clonesPerBall <= 0 || sourceBodies.length === 0) {
                     return;
                 }
 
-                const baseVelocity = ball.physicsBody.velocity;
-                const baseSpeed = MatterVector.magnitude(baseVelocity);
-                const hasMotion = baseSpeed > 0.01;
-                const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
-                const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
-                const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
-                const offsets = [-0.35, 0.35];
+                sourceBodies.forEach((sourceBody) => {
+                    const baseVelocity = sourceBody.velocity;
+                    const baseSpeed = MatterVector.magnitude(baseVelocity);
+                    const hasMotion = baseSpeed > 0.01;
+                    const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
+                    const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
+                    const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
+                    const offsets = createAngularOffsets(clonesPerBall);
 
-                offsets.forEach((offset) => {
-                    if (extraBalls.size >= 2) {
-                        return;
-                    }
+                    offsets.forEach((offset, index) => {
+                        const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
+                        const velocity = MatterVector.mult(rotated, effectiveSpeed);
+                        const lateralNormal = { x: -rotated.y, y: rotated.x };
+                        const separation = (index - (offsets.length - 1) / 2) * 12;
+                        const spawnPosition = {
+                            x: sourceBody.position.x + lateralNormal.x * separation,
+                            y: sourceBody.position.y + lateralNormal.y * separation,
+                        };
 
-                    const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
-                    const velocity = MatterVector.mult(rotated, effectiveSpeed);
+                        const extraBody = physics.factory.ball({
+                            radius: ball.radius,
+                            position: spawnPosition,
+                            restitution: 0.98,
+                        });
 
-                    const extraBody = physics.factory.ball({
-                        radius: ball.radius,
-                        position: {
-                            x: ball.physicsBody.position.x,
-                            y: ball.physicsBody.position.y,
-                        },
-                        restitution: 0.98,
+                        MatterBody.setVelocity(extraBody, velocity);
+                        physics.add(extraBody);
+
+                        const extraVisual = new Graphics();
+                        extraVisual.circle(0, 0, ball.radius);
+                        extraVisual.fill({ color: 0xffcc00 });
+                        gameContainer.addChild(extraVisual);
+                        visualBodies.set(extraBody, extraVisual);
+                        extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
                     });
-
-                    MatterBody.setVelocity(extraBody, velocity);
-                    physics.add(extraBody);
-
-                    const extraVisual = new Graphics();
-                    extraVisual.circle(0, 0, ball.radius);
-                    extraVisual.fill({ color: 0xffcc00 });
-                    gameContainer.addChild(extraVisual);
-                    visualBodies.set(extraBody, extraVisual);
-                    extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
                 });
             };
 

@@ -173,6 +173,20 @@ export class PowerUpManager {
      * @param now - Current timestamp function
      */
     activate(type: PowerUpType, config: PowerUpConfig = {}, now: () => number = Date.now): void {
+        const existing = this.effects.get(type);
+        const additionalDuration = config.defaultDuration ?? DEFAULT_DURATION;
+
+        if (existing && existing.remainingTime > 0) {
+            const extendedDuration = existing.remainingTime + additionalDuration;
+            this.effects.set(type, {
+                type,
+                duration: extendedDuration,
+                remainingTime: extendedDuration,
+                startTime: now(),
+            });
+            return;
+        }
+
         const effect = createPowerUpEffect(type, config, now);
         this.effects.set(type, effect);
     }
