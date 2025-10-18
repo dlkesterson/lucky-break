@@ -23,7 +23,8 @@ export default defineConfig({
             "cli": resolveFromRoot("./src/cli"),
             "input": resolveFromRoot("./src/input"),
             "types": resolveFromRoot("./src/types"),
-            "scenes": resolveFromRoot("./src/scenes")
+            "scenes": resolveFromRoot("./src/scenes"),
+            "game": resolveFromRoot("./src/game")
         }
     },
     server: {
