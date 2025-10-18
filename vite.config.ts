@@ -22,7 +22,8 @@ export default defineConfig({
             "util": resolveFromRoot("./src/util"),
             "cli": resolveFromRoot("./src/cli"),
             "input": resolveFromRoot("./src/input"),
-            "types": resolveFromRoot("./src/types")
+            "types": resolveFromRoot("./src/types"),
+            "scenes": resolveFromRoot("./src/scenes")
         }
     },
     server: {

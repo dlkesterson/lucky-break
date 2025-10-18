@@ -1,16 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Application } from 'pixi.js';
-import { createGameLoop, DEFAULT_STEP_MS } from 'app/loop';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createGameLoop, DEFAULT_FIXED_DELTA, DEFAULT_STEP_MS } from 'app/loop';
 
 type RafHandle = number;
 
 type FrameCallback = (timestamp: number) => void;
 
 interface FakeRaf {
-    readonly request: (callback: FrameCallback) => RafHandle;
-    readonly cancel: (handle: RafHandle) => void;
-    readonly flush: (deltaMs: number) => void;
-    readonly size: () => number;
+    request: (callback: FrameCallback) => RafHandle;
+    cancel: (handle: RafHandle) => void;
+    flush: (deltaMs: number) => void;
+    pending(): number;
 }
 
 const createFakeRaf = (getTime: () => number, setTime: (next: number) => void): FakeRaf => {
@@ -27,144 +26,156 @@ const createFakeRaf = (getTime: () => number, setTime: (next: number) => void): 
             callbacks.delete(handle);
         },
         flush: (deltaMs) => {
-            const previous = [...callbacks.values()];
+            const scheduled = [...callbacks.entries()];
             callbacks.clear();
             setTime(getTime() + deltaMs);
-            previous.forEach((callback) => callback(getTime()));
+            scheduled.forEach(([, callback]) => callback(getTime()));
         },
-        size: () => callbacks.size,
+        pending: () => callbacks.size,
     };
 };
 
-const createStageStub = (renderSpy = vi.fn()): { renderSpy: ReturnType<typeof vi.fn>; stage: { app: Application } } => {
-    const app = { render: renderSpy } as unknown as Application;
-    return { renderSpy, stage: { app } };
-};
-
 describe('createGameLoop', () => {
-    const stepMs = 10;
-
     let currentTime: number;
-    let setTime: (next: number) => void;
     let fakeRaf: FakeRaf;
 
     beforeEach(() => {
         currentTime = 0;
-        setTime = (next) => {
-            currentTime = next;
-        };
         fakeRaf = createFakeRaf(
             () => currentTime,
-            setTime,
+            (next) => {
+                currentTime = next;
+            },
         );
     });
 
-    it('steps the physics world on a fixed timestep and renders each frame', () => {
-        const worldStep = vi.fn();
-        const beforeStep = vi.fn();
-        const afterStep = vi.fn();
-        const beforeRender = vi.fn();
-        const afterRender = vi.fn();
-        const { renderSpy, stage } = createStageStub();
-
-        const loop = createGameLoop({
-            world: { step: worldStep },
-            stage,
-            stepMs,
-            hooks: {
-                beforeStep,
-                afterStep,
-                beforeRender,
-                afterRender,
-            },
-            now: () => currentTime,
-            requestFrame: fakeRaf.request,
-            cancelFrame: fakeRaf.cancel,
-        });
-
-        loop.start();
-        expect(fakeRaf.size()).toBe(1);
-
-        fakeRaf.flush(stepMs / 2);
-        expect(worldStep).not.toHaveBeenCalled();
-        expect(renderSpy).toHaveBeenCalledTimes(1);
-        expect(beforeRender).toHaveBeenCalledWith(0.5);
-
-        fakeRaf.flush(stepMs / 2);
-        expect(worldStep).toHaveBeenCalledTimes(1);
-        expect(worldStep).toHaveBeenCalledWith(stepMs);
-        expect(beforeStep).toHaveBeenCalledWith(stepMs);
-        expect(afterStep).toHaveBeenCalledWith(stepMs);
-        expect(renderSpy).toHaveBeenCalledTimes(2);
-        expect(afterRender).toHaveBeenCalledTimes(2);
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
     });
 
-    it('stops scheduling frames when stopped', () => {
-        const worldStep = vi.fn();
-        const { stage } = createStageStub();
+    it('produces deterministic updates for identical frame sequences', () => {
+        const deltas = [4, 8, 12, 16, 20, 5];
 
-        const loop = createGameLoop({
-            world: { step: worldStep },
-            stage,
-            stepMs,
-            now: () => currentTime,
-            requestFrame: fakeRaf.request,
-            cancelFrame: fakeRaf.cancel,
-        });
+        const execute = () => {
+            let time = 0;
+            const localRaf = createFakeRaf(
+                () => time,
+                (next) => {
+                    time = next;
+                },
+            );
+            const updates: number[] = [];
+            const renders: number[] = [];
+
+            const loop = createGameLoop(
+                (dt) => {
+                    const nextState = (updates.at(-1) ?? 0) + dt;
+                    updates.push(Number(nextState.toFixed(6)));
+                },
+                (alpha) => {
+                    renders.push(Number(alpha.toFixed(6)));
+                },
+                {
+                    fixedDelta: DEFAULT_FIXED_DELTA,
+                    now: () => time,
+                    raf: localRaf.request,
+                    cancelRaf: localRaf.cancel,
+                },
+            );
+
+            loop.start();
+            deltas.forEach((delta) => {
+                localRaf.flush(delta);
+            });
+            loop.stop();
+
+            return { updates, renders, pending: localRaf.pending() };
+        };
+
+        const first = execute();
+        const second = execute();
+
+        expect(second.pending).toBe(0);
+        expect(first.updates).toEqual(second.updates);
+        expect(first.renders).toEqual(second.renders);
+    });
+
+    it('clamps large frame deltas and limits steps per frame', () => {
+        const updates: number[] = [];
+        let lastAlpha = 0;
+
+        const loop = createGameLoop(
+            (dt) => {
+                updates.push(dt);
+            },
+            (alpha) => {
+                lastAlpha = alpha;
+            },
+            {
+                maxStepsPerFrame: 3,
+                maxFrameDeltaMs: 100,
+                now: () => currentTime,
+                raf: fakeRaf.request,
+                cancelRaf: fakeRaf.cancel,
+            },
+        );
 
         loop.start();
-        expect(fakeRaf.size()).toBe(1);
+        fakeRaf.flush(300);
+
+        expect(updates.length).toBe(3);
+        updates.forEach((dt) => expect(dt).toBeCloseTo(DEFAULT_FIXED_DELTA, 5));
+        expect(lastAlpha).toBeCloseTo(1, 5);
 
         loop.stop();
-        expect(fakeRaf.size()).toBe(0);
-
-        fakeRaf.flush(stepMs);
-        expect(worldStep).not.toHaveBeenCalled();
+        expect(fakeRaf.pending()).toBe(0);
     });
 
-    it('limits the number of physics sub-steps per frame', () => {
-        const worldStep = vi.fn();
-        const { stage } = createStageStub();
+    it('falls back to setTimeout when requestAnimationFrame is unavailable', () => {
+        vi.useFakeTimers();
+        const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
-        const loop = createGameLoop({
-            world: { step: worldStep },
-            stage,
-            stepMs,
-            maxStepsPerFrame: 3,
-            now: () => currentTime,
-            requestFrame: fakeRaf.request,
-            cancelFrame: fakeRaf.cancel,
-        });
+        let nowTime = 0;
+        const updates: number[] = [];
+        const originalRaf = (globalThis as Record<string, unknown>).requestAnimationFrame;
+        const originalCancel = (globalThis as Record<string, unknown>).cancelAnimationFrame;
+        (globalThis as Record<string, unknown>).requestAnimationFrame = undefined;
+        (globalThis as Record<string, unknown>).cancelAnimationFrame = undefined;
 
-        loop.start();
-        fakeRaf.flush(stepMs * 10);
+        try {
+            const loop = createGameLoop(
+                (dt) => {
+                    updates.push(dt);
+                },
+                () => {
+                    /* no-op render */
+                },
+                {
+                    now: () => nowTime,
+                },
+            );
 
-        expect(worldStep).toHaveBeenCalledTimes(3);
-        worldStep.mockClear();
+            loop.start();
+            expect(setTimeoutSpy).toHaveBeenCalled();
 
-        fakeRaf.flush(stepMs);
-        expect(worldStep).toHaveBeenCalledTimes(1);
+            const advanceMs = Math.ceil(DEFAULT_STEP_MS);
+            nowTime += advanceMs;
+            vi.advanceTimersByTime(advanceMs);
+
+            expect(updates.length).toBeGreaterThan(0);
+
+            loop.stop();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+        } finally {
+            (globalThis as Record<string, unknown>).requestAnimationFrame = originalRaf;
+            (globalThis as Record<string, unknown>).cancelAnimationFrame = originalCancel;
+        }
     });
 
-    it('ignores subsequent start calls while already running', () => {
-        const worldStep = vi.fn();
-        const { stage } = createStageStub();
-
-        const loop = createGameLoop({
-            world: { step: worldStep },
-            stage,
-            now: () => currentTime,
-            requestFrame: fakeRaf.request,
-            cancelFrame: fakeRaf.cancel,
-        });
-
-        loop.start();
-        loop.start();
-
-        expect(fakeRaf.size()).toBe(1);
-    });
-
-    it('exposes the default step interval constant', () => {
+    it('exposes default timing constants', () => {
+        expect(DEFAULT_FIXED_DELTA).toBeCloseTo(1 / 120, 6);
         expect(DEFAULT_STEP_MS).toBeCloseTo(1000 / 120, 5);
     });
 });

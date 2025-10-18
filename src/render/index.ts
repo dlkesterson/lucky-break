@@ -7,6 +7,16 @@
  */
 
 export * from './contracts';
-export * from './stage';
+export {
+    createSceneManager,
+    type SceneManagerConfig,
+    type SceneManagerHandle,
+    type SceneContext,
+    type Scene,
+    type SceneFactory,
+    type SceneLayerName,
+    type StageLayers,
+} from './scene-manager';
+export { createStage, type StageConfig, type StageHandle } from './stage';
 export * from './hud';
 export * from './debug-overlay';

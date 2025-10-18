@@ -23,7 +23,8 @@
       "util/*": ["src/util/*"],
       "cli/*": ["src/cli/*"],
       "input/*": ["src/input/*"],
-      "types/*": ["src/types/*"]
+      "types/*": ["src/types/*"],
+      "scenes/*": ["src/scenes/*"]
     }
   },
   "include": [

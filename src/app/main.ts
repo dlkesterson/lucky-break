@@ -1,9 +1,14 @@
 import { createPreloader } from './preloader';
-import { createStage } from 'render/stage';
+import { createSceneManager } from 'render/scene-manager';
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
 import { buildHudScoreboard } from 'render/hud';
+import { createMainMenuScene } from 'scenes/main-menu';
+import { createGameplayScene } from 'scenes/gameplay';
+import { createLevelCompleteScene } from 'scenes/level-complete';
+import { createGameOverScene } from 'scenes/game-over';
+import { createPauseScene } from 'scenes/pause';
 import { BallAttachmentController } from 'physics/ball-attachment';
 import { PaddleBodyController } from 'render/paddle-body';
 import { GameInputManager } from 'input/input-manager';
@@ -33,6 +38,35 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const HALF_PLAYFIELD_HEIGHT = PLAYFIELD_HEIGHT / 2;
 
+    const preloadFonts = async (
+        report: (progress: { loaded: number; total: number }) => void,
+    ): Promise<void> => {
+        const descriptors = [
+            '400 32px "Overpass"',
+            '600 56px "Overpass"',
+            '700 64px "Overpass"',
+        ];
+        const total = descriptors.length;
+
+        report({ loaded: 0, total });
+
+        const fontFaceSet = document.fonts;
+        if (!fontFaceSet) {
+            report({ loaded: total, total });
+            return;
+        }
+
+        let loaded = 0;
+        for (const descriptor of descriptors) {
+            await fontFaceSet.load(descriptor);
+            loaded += 1;
+            report({ loaded, total });
+        }
+
+        await fontFaceSet.ready;
+        report({ loaded: total, total });
+    };
+
     container.style.position = 'relative';
     container.style.margin = '0';
     container.style.padding = '0';
@@ -43,9 +77,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
     const preloader = createPreloader({
         container,
+        loadAssets: async (report) => {
+            await preloadFonts(report);
+        },
         onStart: async () => {
             // Initialize the game components
-            const stage = await createStage({ parent: container });
+            const stage = await createSceneManager({ parent: container });
 
             stage.layers.playfield.sortableChildren = true;
 
@@ -72,7 +109,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     await Transport.start();
                 }
             };
-            await ensureAudioIsRunning();
 
             const toDecibels = (gain: number): number => {
                 if (gain <= 0) {
@@ -99,6 +135,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             const brickPlayers = new Players(brickSampleUrls).connect(volume);
             await brickPlayers.loaded;
+
+            // Ensure the audio graph and Tone transport are primed before any collision events fire.
+            await ensureAudioIsRunning();
 
             const lastPlayerStart = new Map<string, number>();
 
@@ -521,58 +560,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             // Create HUD container
             const hudContainer = new Container();
             stage.layers.hud.addChild(hudContainer);
-
-            const overlayContainer = new Container();
-            overlayContainer.visible = false;
-            overlayContainer.eventMode = 'none';
-
-            const overlayBackground = new Graphics();
-            overlayBackground.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
-            overlayBackground.fill({ color: 0x000000, alpha: 0.6 });
-            overlayBackground.eventMode = 'none';
-            overlayContainer.addChild(overlayBackground);
-
-            const overlayTitle = new Text({
-                text: '',
-                style: { fill: 0xffffff, fontSize: 64, fontWeight: 'bold', align: 'center' },
-            });
-            overlayTitle.anchor.set(0.5);
-            overlayTitle.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT - 60);
-            overlayContainer.addChild(overlayTitle);
-
-            const overlayMessage = new Text({
-                text: '',
-                style: { fill: 0xffffff, fontSize: 24, align: 'center' },
-            });
-            overlayMessage.anchor.set(0.5);
-            overlayMessage.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 20);
-            overlayContainer.addChild(overlayMessage);
-
-            const overlayAction = new Text({
-                text: '',
-                style: { fill: 0xffff66, fontSize: 20, align: 'center' },
-            });
-            overlayAction.anchor.set(0.5);
-            overlayAction.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 80);
-            overlayContainer.addChild(overlayAction);
-
-            const overlayLegendTitle = new Text({
-                text: '',
-                style: { fill: 0xffffff, fontSize: 22, fontWeight: 'bold', align: 'center' },
-            });
-            overlayLegendTitle.anchor.set(0.5);
-            overlayLegendTitle.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 150);
-            overlayLegendTitle.visible = false;
-            overlayContainer.addChild(overlayLegendTitle);
-
-            const overlayLegendBody = new Text({
-                text: '',
-                style: { fill: 0xffffff, fontSize: 16, align: 'center', lineHeight: 26 },
-            });
-            overlayLegendBody.anchor.set(0.5);
-            overlayLegendBody.position.set(HALF_PLAYFIELD_WIDTH, HALF_PLAYFIELD_HEIGHT + 220);
-            overlayLegendBody.visible = false;
-            overlayContainer.addChild(overlayLegendBody);
+            hudContainer.visible = false;
 
             const pauseLegendLines = [
                 'Cyan Paddle Width - Widens your paddle for extra coverage.',
@@ -580,38 +568,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 'Pink Multi Ball - Splits the active ball into additional balls.',
                 'Green Sticky Paddle - Catches the ball until you launch again.',
             ] as const;
-
-            stage.layers.hud.addChild(overlayContainer);
-
-            let overlayPointerHandler: ((event: PointerEvent) => void) | null = null;
-
-            const clearOverlayPointerHandler = () => {
-                if (!overlayPointerHandler) {
-                    return;
-                }
-
-                stage.canvas.removeEventListener('pointerup', overlayPointerHandler);
-                overlayPointerHandler = null;
-            };
-
-            const registerOverlayPointerHandler = (handler: () => void) => {
-                clearOverlayPointerHandler();
-
-                overlayPointerHandler = (event: PointerEvent) => {
-                    if (!overlayContainer.visible) {
-                        return;
-                    }
-
-                    // Ignore right/middle clicks to avoid accidental resumes
-                    if (event.button && event.button !== 0) {
-                        return;
-                    }
-
-                    handler();
-                };
-
-                stage.canvas.addEventListener('pointerup', overlayPointerHandler);
-            };
 
             const refreshHud = () => {
                 const snapshot = session.snapshot();
@@ -669,61 +625,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 });
             };
 
-            const hideOverlay = () => {
-                overlayContainer.visible = false;
-                overlayContainer.eventMode = 'none';
-                overlayContainer.cursor = 'auto';
-                overlayLegendTitle.visible = false;
-                overlayLegendTitle.text = '';
-                overlayLegendBody.visible = false;
-                overlayLegendBody.text = '';
-                overlayContainer.removeAllListeners();
-                clearOverlayPointerHandler();
-            };
-
-            interface OverlayConfig {
-                readonly title: string;
-                readonly message: string;
-                readonly actionLabel?: string | null;
-                readonly onAction?: () => void;
-                readonly legendTitle?: string | null;
-                readonly legendLines?: readonly string[];
-            }
-
-            const showOverlay = (config: OverlayConfig) => {
-                const actionLabel = config.actionLabel ?? null;
-
-                overlayTitle.text = config.title;
-                overlayMessage.text = config.message;
-                overlayAction.text = actionLabel ?? '';
-                overlayAction.visible = Boolean(actionLabel);
-
-                const legendTitle = config.legendTitle ?? null;
-                const legendContent = config.legendLines?.join('\n') ?? '';
-                overlayLegendTitle.text = legendTitle ?? '';
-                overlayLegendTitle.visible = Boolean(legendTitle);
-                overlayLegendBody.text = legendContent;
-                overlayLegendBody.visible = legendContent.length > 0;
-
-                overlayContainer.removeAllListeners();
-                if (config.onAction) {
-                    overlayContainer.eventMode = 'static';
-                    overlayContainer.cursor = 'pointer';
-                    const runAction = () => {
-                        hideOverlay();
-                        config.onAction?.();
-                    };
-                    overlayContainer.on('pointertap', runAction);
-                    registerOverlayPointerHandler(runAction);
-                } else {
-                    overlayContainer.eventMode = 'none';
-                    overlayContainer.cursor = 'auto';
-                    clearOverlayPointerHandler();
-                }
-
-                overlayContainer.visible = true;
-            };
-
             const playfieldBackground = new Graphics();
             playfieldBackground.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
             playfieldBackground.fill({ color: 0x080808, alpha: 1 });
@@ -737,6 +638,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             gameContainer = new Container();
             gameContainer.zIndex = 10;
             stage.addToLayer('playfield', gameContainer);
+            gameContainer.visible = false;
 
             // Add some initial game objects for testing
             const bounds = physics.factory.bounds();
@@ -792,9 +694,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             gameContainer.addChild(paddleGraphics);
             visualBodies.set(paddle.physicsBody, paddleGraphics);
 
-            // Load initial level
-            startLevel(currentLevelIndex, { resetScore: true });
-
             // Initialize input manager AFTER preloader completes to avoid capturing the "Tap to Start" click
             inputManager.initialize(container);
 
@@ -820,8 +719,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             }
 
             function startLevel(levelIndex: number, options: { resetScore?: boolean } = {}): void {
-                hideOverlay();
                 isPaused = false;
+
+                gameContainer.visible = true;
+                hudContainer.visible = true;
 
                 if (options.resetScore) {
                     scoringState = createScoring();
@@ -842,15 +743,22 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 loop?.stop();
 
                 const completedLevel = currentLevelIndex + 1;
-                showOverlay({
-                    title: `Level ${completedLevel} Complete`,
-                    message: `Score: ${scoringState.score}`,
-                    actionLabel: 'Tap to continue',
-                    onAction: () => {
-                        currentLevelIndex += 1;
-                        startLevel(currentLevelIndex);
-                        loop?.start();
-                    },
+                let handled = false;
+                const continueToNextLevel = async () => {
+                    if (handled) {
+                        return;
+                    }
+                    handled = true;
+                    currentLevelIndex += 1;
+                    startLevel(currentLevelIndex);
+                    await stage.switch('gameplay');
+                    loop?.start();
+                };
+
+                void stage.switch('level-complete', {
+                    level: completedLevel,
+                    score: scoringState.score,
+                    onContinue: continueToNextLevel,
                 });
             }
 
@@ -858,18 +766,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 clearExtraBalls();
                 isPaused = false;
                 loop?.stop();
-
-                showOverlay({
-                    title: 'Game Over',
-                    message: `Final Score: ${scoringState.score}`,
-                    actionLabel: 'Tap to restart',
-                    onAction: () => {
-                        session = createSession();
-                        currentLevelIndex = 0;
-                        startLevel(currentLevelIndex, { resetScore: true });
-                        loop?.start();
-                    },
-                });
+                void stage.switch('game-over', { score: scoringState.score });
             }
 
             const collectBallBodies = (): Body[] => {
@@ -974,98 +871,154 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 }
             }
 
-            loop = createGameLoop({
-                world: physics,
-                stage,
-                hooks: {
-                    beforeStep: (deltaMs) => {
-                        const deltaSeconds = deltaMs / 1000;
+            const runGameplayUpdate = (deltaSeconds: number): void => {
+                // Update power-ups
+                powerUpManager.update(deltaSeconds);
 
-                        // Update power-ups
-                        powerUpManager.update(deltaSeconds);
+                const speedMultiplier = calculateBallSpeedScale(
+                    powerUpManager.getEffect('ball-speed'),
+                );
+                currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier;
+                currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier;
+                currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier;
 
-                        const speedMultiplier = calculateBallSpeedScale(
-                            powerUpManager.getEffect('ball-speed'),
-                        );
-                        currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier;
-                        currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier;
-                        currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier;
+                // Update paddle size based on power-ups
+                const paddleScale = calculatePaddleWidthScale(
+                    powerUpManager.getEffect('paddle-width'),
+                    { paddleWidthMultiplier: 1.5 }
+                );
+                const basePaddleWidth = 100;
+                paddle.width = basePaddleWidth * paddleScale;
 
-                        // Update paddle size based on power-ups
-                        const paddleScale = calculatePaddleWidthScale(
-                            powerUpManager.getEffect('paddle-width'),
-                            { paddleWidthMultiplier: 1.5 }
-                        );
-                        const basePaddleWidth = 100;
-                        paddle.width = basePaddleWidth * paddleScale;
+                // Update paddle visual to reflect new width or power-up state
+                paddleGraphics.clear();
+                paddleGraphics.rect(-paddle.width / 2, -paddle.height / 2, paddle.width, paddle.height);
+                const paddleColor = powerUpManager.isActive('paddle-width') ? 0xffff66 : 0x00ff00;
+                paddleGraphics.fill({ color: paddleColor });
 
-                        // Update paddle visual
-                        paddleGraphics.clear();
-                        paddleGraphics.rect(-paddle.width / 2, -paddle.height / 2, paddle.width, paddle.height);
-                        const paddleColor = powerUpManager.isActive('paddle-width') ? 0xffff66 : 0x00ff00;
-                        paddleGraphics.fill({ color: paddleColor });
+                // Decay combo timer
+                decayCombo(scoringState, deltaSeconds);
 
-                        // Decay combo timer
-                        decayCombo(scoringState, deltaSeconds);
+                // Process input
+                const paddleTarget = inputManager.getPaddleTarget();
+                if (paddleTarget) {
+                    const pf = toPlayfield(paddleTarget);
 
-                        // Process input
-                        const paddleTarget = inputManager.getPaddleTarget();
-                        if (paddleTarget) {
-                            const pf = toPlayfield(paddleTarget);
-
-                            const targetX = pf.x;
-                            const halfPaddleWidth = paddle.width / 2;
-                            const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, PLAYFIELD_WIDTH - halfPaddleWidth));
-                            MatterBody.setPosition(paddle.physicsBody, { x: clampedX, y: paddle.physicsBody.position.y });
-                            paddle.position.x = clampedX;
-                        }
-
-                        // Ensure paddle state stays synchronized with physics body
-                        paddle.position.y = paddle.physicsBody.position.y;
-
-                        const paddleCenter = paddleController.getPaddleCenter(paddle);
-
-                        // Update ball attachment to follow paddle
-                        ballController.updateAttachment(ball, paddleCenter);
-
-                        if (ball.isAttached) {
-                            inputManager.syncPaddlePosition(paddleCenter);
-                        }
-
-                        // Check for launch triggers (tap/click only)
-                        if (ball.isAttached && inputManager.shouldLaunch()) {
-                            physics.detachBallFromPaddle(ball.physicsBody);
-                            launchController.launch(ball, undefined, currentLaunchSpeed);
-                            inputManager.resetLaunchTrigger();
-                        }
-
-                        // Regulate ball speed before stepping physics to minimize collision spikes
-                        regulateSpeed(ball.physicsBody, {
-                            baseSpeed: currentBaseSpeed,
-                            maxSpeed: currentMaxSpeed,
-                        });
-                    },
-                    afterStep: () => {
-                        // Update visual positions to match physics bodies
-                        visualBodies.forEach((visual, body) => {
-                            visual.x = body.position.x;
-                            visual.y = body.position.y;
-                            visual.rotation = body.angle;
-                        });
-                    },
-                    beforeRender: () => {
-                        refreshHud();
-                    },
+                    const targetX = pf.x;
+                    const halfPaddleWidth = paddle.width / 2;
+                    const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, PLAYFIELD_WIDTH - halfPaddleWidth));
+                    MatterBody.setPosition(paddle.physicsBody, { x: clampedX, y: paddle.physicsBody.position.y });
+                    paddle.position.x = clampedX;
                 }
-            });
 
-            const resumeFromPause = () => {
+                // Ensure paddle state stays synchronized with physics body
+                paddle.position.y = paddle.physicsBody.position.y;
+
+                const paddleCenter = paddleController.getPaddleCenter(paddle);
+
+                // Update ball attachment to follow paddle
+                ballController.updateAttachment(ball, paddleCenter);
+
+                if (ball.isAttached) {
+                    inputManager.syncPaddlePosition(paddleCenter);
+                }
+
+                // Check for launch triggers (tap/click only)
+                if (ball.isAttached && inputManager.shouldLaunch()) {
+                    physics.detachBallFromPaddle(ball.physicsBody);
+                    launchController.launch(ball, undefined, currentLaunchSpeed);
+                    inputManager.resetLaunchTrigger();
+                }
+
+                // Regulate ball speed before stepping physics to minimize collision spikes
+                regulateSpeed(ball.physicsBody, {
+                    baseSpeed: currentBaseSpeed,
+                    maxSpeed: currentMaxSpeed,
+                });
+
+                physics.step(deltaSeconds * 1000);
+
+                // Update visual positions to match physics bodies
+                visualBodies.forEach((visual, body) => {
+                    visual.x = body.position.x;
+                    visual.y = body.position.y;
+                    visual.rotation = body.angle;
+                });
+            };
+
+            loop = createGameLoop(
+                (deltaSeconds) => {
+                    stage.update(deltaSeconds);
+                },
+                () => {
+                    refreshHud();
+                    stage.app.render();
+                },
+            );
+
+            const beginNewSession = async (): Promise<void> => {
+                if (loop?.isRunning()) {
+                    loop.stop();
+                }
+
+                session = createSession();
+                currentLevelIndex = 0;
+                startLevel(currentLevelIndex, { resetScore: true });
+                await stage.switch('gameplay');
+                loop?.start();
+            };
+
+            stage.register('main-menu', (context) => createMainMenuScene(context, {
+                helpText: [
+                    'Drag or use arrow keys to aim the paddle',
+                    'Tap, space, or click to launch the ball',
+                    'Stack power-ups for massive combos',
+                ],
+                onStart: () => beginNewSession(),
+            }));
+
+            stage.register('gameplay', (context) => createGameplayScene(context, {
+                onUpdate: runGameplayUpdate,
+            }));
+
+            const quitLabel = 'Tap here or press Q to quit to menu';
+
+            stage.register('pause', (context) => createPauseScene(context, {
+                resumeLabel: 'Tap to resume',
+                quitLabel,
+            }));
+
+            stage.register('level-complete', (context) => createLevelCompleteScene(context, {
+                prompt: 'Tap to continue',
+            }));
+
+            stage.register('game-over', (context) => createGameOverScene(context, {
+                prompt: 'Tap to restart',
+                onRestart: () => beginNewSession(),
+            }));
+
+            await stage.switch('main-menu');
+            gameContainer.visible = false;
+            hudContainer.visible = false;
+
+            const quitToMenu = async () => {
+                if (!loop) {
+                    return;
+                }
+
+                isPaused = false;
+                gameContainer.visible = false;
+                hudContainer.visible = false;
+                await stage.switch('main-menu');
+            };
+
+            const resumeFromPause = async () => {
                 if (!loop || !isPaused) {
                     return;
                 }
 
                 isPaused = false;
-                hideOverlay();
+                await stage.switch('gameplay');
                 loop.start();
             };
 
@@ -1076,15 +1029,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 isPaused = true;
                 loop.stop();
-                showOverlay({
-                    title: 'Paused',
-                    message: `Score: ${scoringState.score}\nPress P or Esc to resume`,
-                    actionLabel: 'Tap to resume',
+                void stage.switch('pause', {
+                    score: scoringState.score,
                     legendTitle: 'Power-Up Legend',
                     legendLines: pauseLegendLines,
-                    onAction: () => {
-                        resumeFromPause();
-                    },
+                    onResume: () => resumeFromPause(),
+                    onQuit: () => quitToMenu(),
                 });
             };
 
@@ -1092,18 +1042,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 if (event.code === 'KeyP' || event.code === 'Escape') {
                     if (isPaused) {
                         event.preventDefault();
-                        resumeFromPause();
+                        void resumeFromPause();
                     } else if (loop?.isRunning()) {
                         event.preventDefault();
                         pauseGame();
                     }
+                } else if (event.code === 'KeyQ' && isPaused) {
+                    event.preventDefault();
+                    void quitToMenu();
                 }
             };
 
             document.addEventListener('keydown', handleGlobalKeyDown);
-
-            // Start the game loop
-            loop?.start();
 
             // Add dispose on unload (optional):
             window.addEventListener('beforeunload', () => {
@@ -1113,7 +1063,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 volume.dispose();
                 panner.dispose();
                 document.removeEventListener('keydown', handleGlobalKeyDown);
-                clearOverlayPointerHandler();
             });
         }
     });

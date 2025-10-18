@@ -1,15 +1,19 @@
-import type { PhysicsWorldHandle } from 'physics/world';
-import type { StageHandle } from 'render/stage';
-
-let fallbackHandle = 1;
 const fallbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
+let fallbackHandle = 1;
+
+export const DEFAULT_FIXED_DELTA = 1 / 120;
+export const DEFAULT_STEP_MS = DEFAULT_FIXED_DELTA * 1000;
+const DEFAULT_MAX_STEPS_PER_FRAME = 5;
+const DEFAULT_MAX_FRAME_DELTA_MS = 100;
+
+const FALLBACK_FRAME_MS = DEFAULT_STEP_MS;
 
 const FALLBACK_REQUEST = (callback: FrameRequestCallback): number => {
     const handle = fallbackHandle++;
     const timer = setTimeout(() => {
         fallbackTimers.delete(handle);
-        callback(Date.now());
-    }, DEFAULT_STEP_MS);
+        callback(typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+    }, FALLBACK_FRAME_MS);
     fallbackTimers.set(handle, timer);
     return handle;
 };
@@ -22,6 +26,34 @@ const FALLBACK_CANCEL = (handle: number): void => {
     }
 };
 
+const resolveRaf = (
+    options: LoopOptions,
+): ((callback: FrameRequestCallback) => number) => {
+    if (options.raf) {
+        return options.raf;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        return (callback) => window.requestAnimationFrame(callback);
+    }
+
+    return FALLBACK_REQUEST;
+};
+
+const resolveCancelRaf = (
+    options: LoopOptions,
+): ((handle: number) => void) => {
+    if (options.cancelRaf) {
+        return options.cancelRaf;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        return (handle) => window.cancelAnimationFrame(handle);
+    }
+
+    return FALLBACK_CANCEL;
+};
+
 const resolveNow = (): (() => number) => {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
         return () => performance.now();
@@ -30,120 +62,136 @@ const resolveNow = (): (() => number) => {
     return () => Date.now();
 };
 
-export const DEFAULT_STEP_MS = 1000 / 120;
-const DEFAULT_MAX_STEPS = 5;
-
-export interface LoopHooks {
-    readonly beforeStep?: (deltaMs: number) => void;
-    readonly afterStep?: (deltaMs: number) => void;
-    readonly beforeRender?: (interpolation: number) => void;
-    readonly afterRender?: () => void;
-}
-
-type PhysicsStepper = Pick<PhysicsWorldHandle, 'step'>;
-type StageRenderer = Pick<StageHandle, 'app'>;
-
-export interface GameLoopOptions {
-    readonly world: PhysicsStepper;
-    readonly stage: StageRenderer;
-    readonly hooks?: LoopHooks;
-    readonly stepMs?: number;
+export interface LoopOptions {
+    readonly fixedDelta?: number;
     readonly maxStepsPerFrame?: number;
+    readonly maxFrameDeltaMs?: number;
     readonly now?: () => number;
-    readonly requestFrame?: (callback: FrameRequestCallback) => number;
-    readonly cancelFrame?: (handle: number) => void;
+    readonly raf?: (callback: FrameRequestCallback) => number;
+    readonly cancelRaf?: (handle: number) => void;
 }
 
-export interface GameLoopController {
-    readonly start: () => void;
-    readonly stop: () => void;
-    readonly isRunning: () => boolean;
+export interface GameLoop {
+    start(): void;
+    stop(): void;
+    isRunning(): boolean;
 }
 
-export const createGameLoop = (options: GameLoopOptions): GameLoopController => {
-    const stepMs = options.stepMs ?? DEFAULT_STEP_MS;
-    const maxStepsPerFrame = Math.max(1, options.maxStepsPerFrame ?? DEFAULT_MAX_STEPS);
-    const now = options.now ?? resolveNow();
-    const requestFrame = options.requestFrame ?? (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : FALLBACK_REQUEST);
-    const cancelFrame = options.cancelFrame ?? (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : FALLBACK_CANCEL);
+export type UpdateCallback = (deltaSeconds: number) => void;
+export type RenderCallback = (alpha: number) => void;
 
-    const hooks = options.hooks ?? {};
-    const physics = options.world;
-    const stage = options.stage;
+export class FixedStepLoop implements GameLoop {
+    private readonly fixedDelta: number;
 
-    let running = false;
-    let accumulator = 0;
-    let lastTime = 0;
-    let frameHandle: number | undefined;
+    private readonly stepMs: number;
 
-    const maxDeltaMs = stepMs * maxStepsPerFrame;
+    private readonly maxStepsPerFrame: number;
 
-    const scheduleNext = () => {
-        frameHandle = requestFrame(tick);
-    };
+    private readonly maxFrameDeltaMs: number;
 
-    const tick: FrameRequestCallback = () => {
-        if (!running) {
+    private readonly now: () => number;
+
+    private readonly raf: (callback: FrameRequestCallback) => number;
+
+    private readonly cancelRaf: (handle: number) => void;
+
+    private accumulatorMs = 0;
+
+    private lastTime = 0;
+
+    private frameHandle: number | undefined;
+
+    private running = false;
+
+    constructor(
+        private readonly update: UpdateCallback,
+        private readonly render: RenderCallback,
+        options: LoopOptions = {},
+    ) {
+        const configuredDelta = options.fixedDelta ?? DEFAULT_FIXED_DELTA;
+        this.fixedDelta = configuredDelta > 0 ? configuredDelta : DEFAULT_FIXED_DELTA;
+        this.stepMs = this.fixedDelta * 1000;
+        const maxSteps = options.maxStepsPerFrame ?? DEFAULT_MAX_STEPS_PER_FRAME;
+        this.maxStepsPerFrame = Math.max(1, Math.floor(maxSteps));
+        const frameClamp = options.maxFrameDeltaMs ?? DEFAULT_MAX_FRAME_DELTA_MS;
+        // Ensure frame clamp cannot fall below a single step.
+        this.maxFrameDeltaMs = Math.max(this.stepMs, frameClamp);
+        this.now = options.now ?? resolveNow();
+        this.raf = resolveRaf(options);
+        this.cancelRaf = resolveCancelRaf(options);
+    }
+
+    start(): void {
+        if (this.running) {
             return;
         }
 
-        const currentTime = now();
-        let deltaMs = currentTime - lastTime;
-        lastTime = currentTime;
-        if (deltaMs < 0) {
-            deltaMs = 0;
-        }
-        if (deltaMs > maxDeltaMs) {
-            deltaMs = maxDeltaMs;
+        this.running = true;
+        this.accumulatorMs = 0;
+        this.lastTime = this.now();
+        this.scheduleNext();
+    }
+
+    stop(): void {
+        if (!this.running) {
+            return;
         }
 
-        accumulator += deltaMs;
+        this.running = false;
+        if (this.frameHandle !== undefined) {
+            this.cancelRaf(this.frameHandle);
+            this.frameHandle = undefined;
+        }
+    }
+
+    isRunning(): boolean {
+        return this.running;
+    }
+
+    private scheduleNext(): void {
+        this.frameHandle = this.raf(this.tick);
+    }
+
+    private readonly tick: FrameRequestCallback = () => {
+        if (!this.running) {
+            return;
+        }
+
+        const currentTime = this.now();
+        let frameDeltaMs = currentTime - this.lastTime;
+        this.lastTime = currentTime;
+
+        if (frameDeltaMs < 0) {
+            frameDeltaMs = 0;
+        }
+
+        if (frameDeltaMs > this.maxFrameDeltaMs) {
+            frameDeltaMs = this.maxFrameDeltaMs;
+        }
+
+        this.accumulatorMs += frameDeltaMs;
 
         let steps = 0;
-        while (accumulator >= stepMs && steps < maxStepsPerFrame) {
-            hooks.beforeStep?.(stepMs);
-            physics.step(stepMs);
-            hooks.afterStep?.(stepMs);
-            accumulator -= stepMs;
+        while (this.accumulatorMs >= this.stepMs && steps < this.maxStepsPerFrame) {
+            this.update(this.fixedDelta);
+            this.accumulatorMs -= this.stepMs;
             steps += 1;
         }
 
-        const interpolation = accumulator / stepMs;
-        hooks.beforeRender?.(interpolation);
-        stage.app.render();
-        hooks.afterRender?.();
-
-        scheduleNext();
-    };
-
-    const start = () => {
-        if (running) {
-            return;
+        if (steps === this.maxStepsPerFrame && this.accumulatorMs > this.stepMs) {
+            // Prevent runaway accumulation when hitting the step cap.
+            this.accumulatorMs = this.stepMs;
         }
 
-        running = true;
-        accumulator = 0;
-        lastTime = now();
-        scheduleNext();
+        const interpolation = Math.min(1, this.accumulatorMs / this.stepMs);
+        this.render(interpolation);
+
+        this.scheduleNext();
     };
+}
 
-    const stop = () => {
-        if (!running) {
-            return;
-        }
-
-        running = false;
-        if (frameHandle !== undefined) {
-            cancelFrame(frameHandle);
-            frameHandle = undefined;
-        }
-    };
-
-    const isRunning = () => running;
-
-    return {
-        start,
-        stop,
-        isRunning,
-    };
-};
+export const createGameLoop = (
+    update: UpdateCallback,
+    render: RenderCallback,
+    options?: LoopOptions,
+): GameLoop => new FixedStepLoop(update, render, options);
