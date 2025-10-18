@@ -19,8 +19,9 @@ import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
 import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale, calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
 import { generateLevelLayout, getLevelSpec, getPresetLevelCount, getLevelDifficultyMultiplier, remixLevel } from 'util/levels';
+import { distance } from 'util/geometry';
 import type { BrickSpec } from 'util/levels';
-import { Text, Container, Graphics } from 'pixi.js';
+import { Text, Container, Graphics, Assets, TilingSprite, Texture } from 'pixi.js';
 import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
 import { createEventBus } from 'app/events';
 import { createToneScheduler, createReactiveAudioLayer, type ReactiveAudioGameState } from 'audio/scheduler';
@@ -39,16 +40,171 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const PLAYFIELD_HEIGHT = 720;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const PRESET_LEVEL_COUNT = getPresetLevelCount();
+    const BRICK_LIGHT_RADIUS = 180;
+    const BRICK_REST_ALPHA = 0.9;
+    const rowColors = [0x7fdbff, 0x39cccc, 0x85144b, 0x3498db] as const;
+    const STARFIELD_SCROLL_SPEED = { x: 8, y: 4 } as const;
+    const fontDescriptors = [
+        '400 32px "Overpass"',
+        '600 56px "Overpass"',
+        '700 64px "Overpass"',
+    ] as const;
+    const STARFIELD_TEXTURE_DEF = {
+        alias: 'starfield-background',
+        src: new URL('../../assets/Starfield_08-512x512.png', import.meta.url).href,
+    } as const;
+
+    let starfieldTexture: Texture | null = null;
+    let playfieldBackgroundLayer: { container: Container; tiling: TilingSprite } | null = null;
+
+    interface BallVisualPalette {
+        readonly baseColor: number;
+        readonly baseAlpha?: number;
+        readonly rimColor?: number;
+        readonly rimAlpha?: number;
+        readonly innerColor?: number;
+        readonly innerAlpha?: number;
+        readonly innerScale?: number;
+    }
+
+    const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+
+    const mixColors = (source: number, target: number, amount: number): number => {
+        const t = clampUnit(amount);
+        const sr = (source >> 16) & 0xff;
+        const sg = (source >> 8) & 0xff;
+        const sb = source & 0xff;
+        const tr = (target >> 16) & 0xff;
+        const tg = (target >> 8) & 0xff;
+        const tb = target & 0xff;
+
+        const r = Math.round(sr + (tr - sr) * t);
+        const g = Math.round(sg + (tg - sg) * t);
+        const b = Math.round(sb + (tb - sb) * t);
+
+        return (r << 16) | (g << 8) | b;
+    };
+
+    const computeBrickFillColor = (baseColor: number, remainingHp: number, maxHp: number): number => {
+        if (maxHp <= 1) {
+            return baseColor;
+        }
+        const healthRatio = clampUnit(remainingHp / maxHp);
+        const damageInfluence = 1 - healthRatio;
+        return mixColors(baseColor, 0xfff4d3, damageInfluence * 0.6);
+    };
+
+    const paintBrickVisual = (graphics: Graphics, width: number, height: number, color: number): void => {
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+        const highlightHeight = height * 0.35;
+
+        graphics.clear();
+        graphics.rect(-halfWidth, -halfHeight, width, height);
+        graphics.fill({ color, alpha: 0.95 });
+        graphics.stroke({ color: 0xffffff, width: 2, alpha: 0.18 });
+
+        graphics.rect(-halfWidth, -halfHeight, width, highlightHeight);
+        graphics.fill({ color: 0xffffff, alpha: 0.16 });
+
+        graphics.rect(-halfWidth, halfHeight - highlightHeight, width, highlightHeight);
+        graphics.fill({ color: 0x000000, alpha: 0.12 });
+
+        graphics.alpha = BRICK_REST_ALPHA;
+        graphics.tint = 0xffffff;
+    };
+
+    const drawBallVisual = (graphics: Graphics, radius: number, palette?: BallVisualPalette): void => {
+        const settings: Required<BallVisualPalette> = {
+            baseColor: palette?.baseColor ?? 0xff4136,
+            baseAlpha: palette?.baseAlpha ?? 0.72,
+            rimColor: palette?.rimColor ?? 0xff7256,
+            rimAlpha: palette?.rimAlpha ?? 0.32,
+            innerColor: palette?.innerColor ?? 0xffffff,
+            innerAlpha: palette?.innerAlpha ?? 0.25,
+            innerScale: palette?.innerScale ?? 0.5,
+        };
+
+        graphics.clear();
+        graphics.circle(0, 0, radius);
+        graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
+        graphics.stroke({ color: settings.rimColor, width: 3, alpha: settings.rimAlpha });
+
+        const innerRadius = Math.max(1, radius * settings.innerScale);
+        graphics.circle(0, -radius * 0.25, innerRadius);
+        graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
+
+        graphics.blendMode = 'normal';
+    };
+
+    const drawPaddleVisual = (graphics: Graphics, width: number, height: number, baseColor: number): void => {
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+        const shineHeight = height * 0.4;
+
+        graphics.clear();
+        graphics.rect(-halfWidth, -halfHeight, width, height);
+        graphics.fill({ color: baseColor, alpha: 0.9 });
+        graphics.stroke({ color: 0xffffff, width: 2, alpha: 0.3 });
+
+        graphics.rect(-halfWidth, -halfHeight, width, shineHeight);
+        graphics.fill({ color: 0xffffff, alpha: 0.15 });
+
+        graphics.rect(-halfWidth, halfHeight - shineHeight * 0.75, width, shineHeight * 0.75);
+        graphics.fill({ color: 0x003322, alpha: 0.12 });
+
+        graphics.blendMode = 'normal';
+    };
+
+    const drawBackgroundOverlay = (graphics: Graphics): void => {
+        graphics.clear();
+        graphics.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
+        graphics.fill({ color: 0x05060d, alpha: 0.55 });
+        graphics.stroke({ color: 0x2a2a2a, width: 4, alignment: 0, alpha: 0.35 });
+
+        graphics.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT * 0.45);
+        graphics.fill({ color: 0x0c1830, alpha: 0.25 });
+
+        const gridSpacing = 80;
+        for (let y = gridSpacing; y < PLAYFIELD_HEIGHT; y += gridSpacing) {
+            graphics.rect(0, y, PLAYFIELD_WIDTH, 1);
+            graphics.fill({ color: 0x10172a, alpha: 0.12 });
+        }
+
+        for (let x = gridSpacing; x < PLAYFIELD_WIDTH; x += gridSpacing) {
+            graphics.rect(x, 0, 1, PLAYFIELD_HEIGHT);
+            graphics.fill({ color: 0x10172a, alpha: 0.1 });
+        }
+    };
+
+    const createPlayfieldBackgroundLayer = (texture: Texture): { container: Container; tiling: TilingSprite } => {
+        const container = new Container();
+        container.eventMode = 'none';
+        container.zIndex = -100;
+
+        const tiling = new TilingSprite({
+            texture,
+            width: PLAYFIELD_WIDTH,
+            height: PLAYFIELD_HEIGHT,
+        });
+        tiling.eventMode = 'none';
+        tiling.alpha = 0.78;
+        tiling.tileScale.set(0.9, 0.9);
+        tiling.tint = 0x2b4a7a;
+
+        const overlay = new Graphics();
+        drawBackgroundOverlay(overlay);
+        overlay.eventMode = 'none';
+
+        container.addChild(tiling, overlay);
+
+        return { container, tiling };
+    };
 
     const preloadFonts = async (
         report: (progress: { loaded: number; total: number }) => void,
     ): Promise<void> => {
-        const descriptors = [
-            '400 32px "Overpass"',
-            '600 56px "Overpass"',
-            '700 64px "Overpass"',
-        ];
-        const total = descriptors.length;
+        const total = fontDescriptors.length;
 
         report({ loaded: 0, total });
 
@@ -59,7 +215,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
         }
 
         let loaded = 0;
-        for (const descriptor of descriptors) {
+        for (const descriptor of fontDescriptors) {
             await fontFaceSet.load(descriptor);
             loaded += 1;
             report({ loaded, total });
@@ -80,7 +236,21 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const preloader = createPreloader({
         container,
         loadAssets: async (report) => {
-            await preloadFonts(report);
+            const totalSteps = fontDescriptors.length + 1;
+            const forward = (value: number) => {
+                report({ loaded: Math.min(totalSteps, value), total: totalSteps });
+            };
+
+            await preloadFonts((progress) => {
+                const fontsLoaded = Math.min(fontDescriptors.length, progress.loaded);
+                forward(Math.min(totalSteps - 1, fontsLoaded));
+            });
+
+            forward(totalSteps - 1);
+
+            const loadedTexture = await Assets.load<Texture>(STARFIELD_TEXTURE_DEF);
+            starfieldTexture = loadedTexture;
+            forward(totalSteps);
         },
         onStart: async () => {
             // Initialize the game components
@@ -254,6 +424,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const visualBodies = new Map<Body, Container>();
             const brickHealth = new Map<Body, number>();
             const brickMetadata = new Map<Body, BrickSpec>();
+            const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
             const activePowerUps: FallingPowerUp[] = [];
             const extraBalls = new Map<number, { body: Body; visual: Graphics }>();
 
@@ -265,6 +436,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 stage.removeFromLayer(visual);
                 visualBodies.delete(body);
+                brickVisualState.delete(body);
             };
 
             // Game configuration
@@ -283,23 +455,32 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             let currentLaunchSpeed = BALL_LAUNCH_SPEED;
 
             const dynamicLight = createDynamicLight({
-                minRadius: 140,
-                maxRadius: 260,
-                minIntensity: 0.22,
-                maxIntensity: 0.88,
                 speedForMaxIntensity: BALL_MAX_SPEED * 1.1,
             });
             dynamicLight.container.zIndex = 5;
             stage.addToLayer('effects', dynamicLight.container);
 
-            const getBrickColor = (hp: number): number => {
-                if (hp >= 3) {
-                    return 0xff4444;
-                }
-                if (hp === 2) {
-                    return 0xff8844;
-                }
-                return 0xaaaaaa;
+            const updateBrickLighting = (ballPosition: { readonly x: number; readonly y: number }): void => {
+                brickVisualState.forEach((state, body) => {
+                    const visual = visualBodies.get(body);
+                    if (!(visual instanceof Graphics)) {
+                        return;
+                    }
+
+                    const dist = distance(ballPosition, body.position);
+                    if (dist < BRICK_LIGHT_RADIUS) {
+                        const proximity = 1 - dist / BRICK_LIGHT_RADIUS;
+                        const eased = Math.pow(proximity, 0.75);
+                        const tint = mixColors(0xffffff, state.baseColor, Math.min(1, 1 - eased * 0.85));
+                        visual.tint = tint;
+                        visual.alpha = Math.min(1.3, BRICK_REST_ALPHA + eased * 0.45);
+                        visual.blendMode = 'add';
+                    } else {
+                        visual.tint = 0xffffff;
+                        visual.alpha = BRICK_REST_ALPHA;
+                        visual.blendMode = 'normal';
+                    }
+                });
             };
 
             // Function to load a level
@@ -458,8 +639,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         removeBodyVisual(body);
                         brickHealth.delete(body);
                         brickMetadata.delete(body);
+                        brickVisualState.delete(body);
                     }
                 });
+                brickVisualState.clear();
 
                 clearActivePowerUps();
 
@@ -479,19 +662,20 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     });
                     physics.add(brick);
 
-                    // Add visual brick with color based on HP
-                    const color = getBrickColor(brickSpec.hp);
+                    const paletteColor = rowColors[brickSpec.row % rowColors.length];
+                    const maxHp = Math.max(1, brickSpec.hp);
+                    const initialColor = computeBrickFillColor(paletteColor, maxHp, maxHp);
                     const brickVisual = new Graphics();
-                    brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
-                    brickVisual.fill({ color });
+                    paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, initialColor);
                     brickVisual.position.set(brickSpec.x, brickSpec.y);
                     brickVisual.zIndex = 5;
                     brickVisual.eventMode = 'none';
                     visualBodies.set(brick, brickVisual);
                     stage.layers.playfield.addChild(brickVisual);
 
-                    brickHealth.set(brick, Math.max(1, brickSpec.hp));
+                    brickHealth.set(brick, maxHp);
                     brickMetadata.set(brick, brickSpec);
+                    brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp });
                 });
 
                 // Start the round
@@ -522,9 +706,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                             const brickVisual = visualBodies.get(brick);
                             if (brickVisual instanceof Graphics) {
-                                brickVisual.clear();
-                                brickVisual.rect(-BRICK_WIDTH / 2, -BRICK_HEIGHT / 2, BRICK_WIDTH, BRICK_HEIGHT);
-                                brickVisual.fill({ color: getBrickColor(nextHp) });
+                                const visualState = brickVisualState.get(brick);
+                                if (visualState) {
+                                    visualState.currentHp = nextHp;
+                                    const fillColor = computeBrickFillColor(visualState.baseColor, nextHp, visualState.maxHp);
+                                    paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, fillColor);
+                                }
                             }
 
                             bus.publish('BrickHit', {
@@ -579,6 +766,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                             brickHealth.delete(brick);
                             brickMetadata.delete(brick);
+                            brickVisualState.delete(brick);
 
                             if (session.snapshot().brickRemaining === 0) {
                                 session.completeRound();
@@ -716,7 +904,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 const statusText = new Text({
                     text: hudView.statusText,
-                    style: { fill: 0xffffff, fontSize: 16 }
+                    style: {
+                        fill: 0xffffff,
+                        fontSize: 18,
+                        letterSpacing: 1,
+                        dropShadow: {
+                            color: 0x000000,
+                            distance: 2,
+                            blur: 4,
+                            alpha: 0.6,
+                            angle: Math.PI / 2,
+                        },
+                    }
                 });
                 statusText.x = 20;
                 statusText.y = 20;
@@ -725,7 +924,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 if (hudView.summaryLine) {
                     const summaryText = new Text({
                         text: hudView.summaryLine,
-                        style: { fill: 0xcccccc, fontSize: 14 }
+                        style: {
+                            fill: 0x7fdbff,
+                            fontSize: 14,
+                            dropShadow: {
+                                color: 0x000000,
+                                distance: 1,
+                                blur: 3,
+                                alpha: 0.45,
+                                angle: Math.PI / 2,
+                            },
+                        }
                     });
                     summaryText.x = 20;
                     summaryText.y = 50;
@@ -735,7 +944,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 hudView.entries.forEach((entry, index) => {
                     const entryText = new Text({
                         text: `${entry.label}: ${entry.value}`,
-                        style: { fill: 0xffffff, fontSize: 12 }
+                        style: {
+                            fill: 0xffffff,
+                            fontSize: 13,
+                            dropShadow: {
+                                color: 0x000000,
+                                distance: 1,
+                                blur: 2,
+                                alpha: 0.5,
+                                angle: Math.PI / 2,
+                            },
+                        }
                     });
                     entryText.x = 20;
                     entryText.y = 80 + index * 20;
@@ -744,7 +963,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 const difficultyText = new Text({
                     text: `Difficulty: x${levelDifficultyMultiplier.toFixed(2)}`,
-                    style: { fill: 0x88ccff, fontSize: 12 }
+                    style: {
+                        fill: 0x88ccff,
+                        fontSize: 12,
+                        dropShadow: {
+                            color: 0x000000,
+                            distance: 1,
+                            blur: 2,
+                            alpha: 0.45,
+                            angle: Math.PI / 2,
+                        },
+                    }
                 });
                 difficultyText.x = 20;
                 difficultyText.y = 80 + hudView.entries.length * 20 + 5;
@@ -753,7 +982,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 if (scoringState.combo > 0) {
                     const comboText = new Text({
                         text: `Combo: ${scoringState.combo}x (${scoringState.comboTimer.toFixed(1)}s)`,
-                        style: { fill: 0xffff00, fontSize: 14, fontWeight: 'bold' }
+                        style: {
+                            fill: 0xffe066,
+                            fontSize: 16,
+                            fontWeight: 'bold',
+                            dropShadow: {
+                                color: 0x000000,
+                                distance: 2,
+                                blur: 4,
+                                alpha: 0.6,
+                                angle: Math.PI / 2,
+                            },
+                        }
                     });
                     comboText.x = 20;
                     comboText.y = difficultyText.y + 20;
@@ -765,7 +1005,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 activePowerUpsView.forEach((effect, index) => {
                     const powerUpText = new Text({
                         text: `${effect.type}: ${effect.remainingTime.toFixed(1)}s`,
-                        style: { fill: 0x00ffff, fontSize: 12 }
+                        style: {
+                            fill: 0x00ffff,
+                            fontSize: 12,
+                            dropShadow: {
+                                color: 0x000000,
+                                distance: 1,
+                                blur: 2,
+                                alpha: 0.5,
+                                angle: Math.PI / 2,
+                            },
+                        }
                     });
                     powerUpText.x = 20;
                     powerUpText.y = powerUpBaseY + index * 18;
@@ -799,7 +1049,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     if (remaining > 0 || activeReward.type === 'sticky-paddle') {
                         const rewardText = new Text({
                             text: `Reward: ${rewardLabel}${remaining > 0 ? ` (${remaining.toFixed(1)}s)` : ''}`,
-                            style: { fill: 0xffb347, fontSize: 12 },
+                            style: {
+                                fill: 0xffb347,
+                                fontSize: 13,
+                                dropShadow: {
+                                    color: 0x000000,
+                                    distance: 1,
+                                    blur: 3,
+                                    alpha: 0.5,
+                                    angle: Math.PI / 2,
+                                },
+                            },
                         });
                         rewardText.x = 20;
                         rewardText.y = rewardYOffset;
@@ -808,13 +1068,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 }
             };
 
-            const playfieldBackground = new Graphics();
-            playfieldBackground.rect(0, 0, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
-            playfieldBackground.fill({ color: 0x080808, alpha: 1 });
-            playfieldBackground.stroke({ color: 0x2a2a2a, width: 4, alignment: 0 });
-            playfieldBackground.eventMode = 'none';
-            playfieldBackground.zIndex = -100;
-            stage.layers.playfield.addChild(playfieldBackground);
+            const backgroundTexture = starfieldTexture ?? Texture.WHITE;
+            playfieldBackgroundLayer = createPlayfieldBackgroundLayer(backgroundTexture);
+            stage.addToLayer('playfield', playfieldBackgroundLayer.container);
 
             // Create game objects container
             const gameContainer = new Container();
@@ -864,15 +1120,15 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
             // Create visual ball
             const ballGraphics = new Graphics();
-            ballGraphics.circle(0, 0, ball.radius);
-            ballGraphics.fill({ color: 0xff0000 });
+            drawBallVisual(ballGraphics, ball.radius);
+            ballGraphics.eventMode = 'none';
             gameContainer.addChild(ballGraphics);
             visualBodies.set(ball.physicsBody, ballGraphics);
 
             // Create visual paddle
             const paddleGraphics = new Graphics();
-            paddleGraphics.rect(-paddle.width / 2, -paddle.height / 2, paddle.width, paddle.height);
-            paddleGraphics.fill({ color: 0x00ff00 });
+            drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, 0x2ecc40);
+            paddleGraphics.eventMode = 'none';
             gameContainer.addChild(paddleGraphics);
             visualBodies.set(paddle.physicsBody, paddleGraphics);
 
@@ -1018,8 +1274,16 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         physics.add(extraBody);
 
                         const extraVisual = new Graphics();
-                        extraVisual.circle(0, 0, ball.radius);
-                        extraVisual.fill({ color: 0xffcc00 });
+                        drawBallVisual(extraVisual, ball.radius, {
+                            baseColor: 0xffc94c,
+                            baseAlpha: 0.8,
+                            rimColor: 0xfff2a6,
+                            rimAlpha: 0.35,
+                            innerColor: 0xffffff,
+                            innerAlpha: 0.3,
+                            innerScale: 0.5,
+                        });
+                        extraVisual.eventMode = 'none';
                         gameContainer.addChild(extraVisual);
                         visualBodies.set(extraBody, extraVisual);
                         extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
@@ -1058,6 +1322,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             };
 
             function handlePowerUpActivation(type: PowerUpType): void {
+                dynamicLight.flash(0.5);
                 if (type === 'multi-ball') {
                     spawnExtraBalls();
                 }
@@ -1115,10 +1380,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 paddle.width = basePaddleWidth * paddleScale;
 
                 // Update paddle visual to reflect new width or power-up state
-                paddleGraphics.clear();
-                paddleGraphics.rect(-paddle.width / 2, -paddle.height / 2, paddle.width, paddle.height);
-                const paddleColor = powerUpManager.isActive('paddle-width') ? 0xffff66 : 0x00ff00;
-                paddleGraphics.fill({ color: paddleColor });
+                const paddleColor = powerUpManager.isActive('paddle-width') ? 0xffff66 : 0x2ecc40;
+                drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleColor);
 
                 // Decay combo timer
                 decayCombo(scoringState, deltaSeconds);
@@ -1168,6 +1431,16 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     visual.y = body.position.y;
                     visual.rotation = body.angle;
                 });
+
+                if (playfieldBackgroundLayer) {
+                    const tiling = playfieldBackgroundLayer.tiling;
+                    const parallaxX = (ball.physicsBody.position.x - HALF_PLAYFIELD_WIDTH) * 0.05 * deltaSeconds;
+                    const parallaxY = (ball.physicsBody.position.y - PLAYFIELD_HEIGHT * 0.5) * 0.03 * deltaSeconds;
+                    tiling.tilePosition.x += deltaSeconds * STARFIELD_SCROLL_SPEED.x + parallaxX;
+                    tiling.tilePosition.y += deltaSeconds * STARFIELD_SCROLL_SPEED.y + parallaxY;
+                }
+
+                updateBrickLighting(ball.physicsBody.position);
 
                 dynamicLight.update({
                     position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },

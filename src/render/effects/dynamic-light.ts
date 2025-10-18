@@ -36,17 +36,17 @@ export interface DynamicLight {
     destroy(): void;
 }
 
-const DEFAULT_COLOR = 0xfff0b3;
-const DEFAULT_MIN_RADIUS = 100;
-const DEFAULT_MAX_RADIUS = 220;
-const DEFAULT_MIN_INTENSITY = 0.25;
-const DEFAULT_MAX_INTENSITY = 0.85;
+const DEFAULT_COLOR = 0xa4e8ff;
+const DEFAULT_MIN_RADIUS = 45;
+const DEFAULT_MAX_RADIUS = 110;
+const DEFAULT_MIN_INTENSITY = 0.03;
+const DEFAULT_MAX_INTENSITY = 0.15;
 const DEFAULT_SPEED_FOR_MAX = 14;
 const DEFAULT_RADIUS_LERP = 8;
 const DEFAULT_INTENSITY_LERP = 6;
-const DEFAULT_FLASH_INTENSITY = 0.35;
+const DEFAULT_FLASH_INTENSITY = 0.12;
 const DEFAULT_FLASH_DURATION = 0.25;
-const DEFAULT_GRADIENT_STEPS = 4;
+const DEFAULT_GRADIENT_STEPS = 16;
 
 export const createDynamicLight = (options: DynamicLightOptions = {}): DynamicLight => {
     const color = options.color ?? DEFAULT_COLOR;
@@ -72,11 +72,12 @@ export const createDynamicLight = (options: DynamicLightOptions = {}): DynamicLi
     const light = new Graphics();
     light.eventMode = 'none';
     light.alpha = minIntensity;
+    light.blendMode = 'add';
 
     for (let step = gradientSteps; step >= 1; step -= 1) {
         const radiusFactor = step / gradientSteps;
         const radius = baseRadius * radiusFactor;
-        const alpha = clamp(radiusFactor ** 2, 0.05, 1);
+        const alpha = clamp(radiusFactor ** 3.6, 0.01, 0.45);
         light.circle(0, 0, radius);
         light.fill({ color, alpha });
     }
@@ -103,7 +104,8 @@ export const createDynamicLight = (options: DynamicLightOptions = {}): DynamicLi
         root.position.x = position.x;
         root.position.y = position.y;
 
-        const speedFactor = clamp(speed / speedForMaxIntensity, 0, 1);
+        const speedRatio = speed / speedForMaxIntensity;
+        const speedFactor = clamp(Math.pow(Math.max(0, speedRatio), 1.2), 0, 1);
         const targetRadius = lerp(minRadius, maxRadius, speedFactor);
         const radiusLerp = clamp(deltaSeconds * radiusLerpSpeed, 0, 1);
         currentRadius = lerp(currentRadius, targetRadius, radiusLerp);
