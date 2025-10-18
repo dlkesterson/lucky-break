@@ -24,12 +24,15 @@ export const createGameOverScene = (
     let scoreLabel: Text | null = null;
     let elapsed = 0;
 
-    const restart = async () => {
-        await Promise.resolve(options.onRestart());
+    const restart = () => {
+        const result = options.onRestart();
+        if (result) {
+            void Promise.resolve(result);
+        }
     };
 
     return {
-        async init(payload) {
+        init(payload) {
             container = new Container();
             container.eventMode = 'static';
             container.cursor = 'pointer';

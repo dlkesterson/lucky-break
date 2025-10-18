@@ -111,9 +111,9 @@ export function getLevelSpec(levelIndex: number): LevelSpec {
  */
 export function generateLevelLayout(
     spec: LevelSpec,
-    brickWidth: number = 100,
-    brickHeight: number = 40,
-    fieldWidth: number = 1280,
+    brickWidth = 100,
+    brickHeight = 40,
+    fieldWidth = 1280,
 ): LevelLayout {
     const gap = spec.gap ?? 20;
     const startY = spec.startY ?? 100;
@@ -177,6 +177,40 @@ export function isLoopedLevel(levelIndex: number): boolean {
 export function getLevelDifficultyMultiplier(levelIndex: number): number {
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
     return 1.0 + loopCount * 0.2; // +20% difficulty per loop
+}
+
+const clampHp = (value: number): number => Math.max(1, Math.round(value));
+
+const computeRowJitter = (row: number, loopCount: number): number => {
+    const sequence = (loopCount * 17 + row * 13) % 3;
+    return sequence - 1; // -1, 0, 1
+};
+
+export function remixLevel(spec: LevelSpec, loopCount: number): LevelSpec {
+    if (loopCount <= 0) {
+        return spec;
+    }
+
+    const difficultyMultiplier = getLevelDifficultyMultiplier(loopCount * LEVEL_PRESETS.length);
+    const hpPerRowValues = Array.from({ length: spec.rows }, (_unused, row) => {
+        const baseHp = spec.hpPerRow ? spec.hpPerRow(row) : 1;
+        const jitter = computeRowJitter(row, loopCount);
+        const scaledBase = baseHp * difficultyMultiplier;
+        const remixed = clampHp(scaledBase + jitter);
+        return remixed;
+    });
+
+    const powerUpMultiplierBase = spec.powerUpChanceMultiplier ?? 1;
+    const remixedPowerUpMultiplier = Number((powerUpMultiplierBase * (1 + loopCount * 0.1)).toFixed(2));
+
+    return {
+        ...spec,
+        powerUpChanceMultiplier: remixedPowerUpMultiplier,
+        hpPerRow: (row: number) => {
+            const index = Math.max(0, Math.min(hpPerRowValues.length - 1, row));
+            return hpPerRowValues[index];
+        },
+    };
 }
 
 /**

@@ -40,7 +40,7 @@ export const createPauseScene = (
     };
 
     return {
-        async init(payload) {
+        init(payload) {
             if (!payload) {
                 throw new Error('PauseScene requires a payload');
             }

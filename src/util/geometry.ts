@@ -11,7 +11,7 @@ import type { Vector2, Rectangle } from '../types';
 /**
  * Create a new Vector2
  */
-export function createVector2(x: number = 0, y: number = 0): Vector2 {
+export function createVector2(x = 0, y = 0): Vector2 {
     return { x, y };
 }
 
@@ -64,7 +64,7 @@ export function dotProduct(a: Vector2, b: Vector2): number {
 /**
  * Create a new Rectangle
  */
-export function createRectangle(x: number = 0, y: number = 0, width: number = 0, height: number = 0): Rectangle {
+export function createRectangle(x = 0, y = 0, width = 0, height = 0): Rectangle {
     return { x, y, width, height };
 }
 

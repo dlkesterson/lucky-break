@@ -1,10 +1,12 @@
 import { Container, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
+import type { Reward } from 'game/rewards';
 
 export interface LevelCompletePayload {
     readonly level: number;
     readonly score: number;
     readonly onContinue: () => void | Promise<void>;
+    readonly reward?: Reward;
 }
 
 export interface LevelCompleteSceneOptions {
@@ -14,6 +16,19 @@ export interface LevelCompleteSceneOptions {
 }
 
 const DEFAULT_PROMPT = 'Tap to continue';
+
+const describeReward = (reward: Reward): string => {
+    switch (reward.type) {
+        case 'double-points':
+            return `Double Points x${reward.multiplier}`;
+        case 'ghost-brick':
+            return `Ghost ${reward.ghostCount} Bricks`;
+        case 'sticky-paddle':
+            return 'Sticky Paddle Boost';
+        default:
+            return 'Mystery Reward';
+    }
+};
 
 export const createLevelCompleteScene = (
     context: SceneContext,
@@ -35,7 +50,7 @@ export const createLevelCompleteScene = (
     };
 
     return {
-        async init(payload) {
+        init(payload) {
             if (!payload) {
                 throw new Error('LevelCompleteScene requires payload');
             }
@@ -71,6 +86,21 @@ export const createLevelCompleteScene = (
             score.anchor.set(0.5);
             score.position.set(width / 2, height / 2 - 10);
 
+            if (payload.reward) {
+                const rewardText = new Text({
+                    text: `Reward: ${describeReward(payload.reward)}`,
+                    style: {
+                        fill: 0xffb347,
+                        fontFamily: 'Arial',
+                        fontSize: 26,
+                        align: 'center',
+                    },
+                });
+                rewardText.anchor.set(0.5);
+                rewardText.position.set(width / 2, height / 2 + 35);
+                container.addChild(rewardText);
+            }
+
             promptLabel = new Text({
                 text: options.prompt ?? DEFAULT_PROMPT,
                 style: {
@@ -83,8 +113,11 @@ export const createLevelCompleteScene = (
             promptLabel.anchor.set(0.5);
             promptLabel.position.set(width / 2, height / 2 + 60);
 
-            const continueHandler = async () => {
-                await Promise.resolve(payload.onContinue());
+            const continueHandler = () => {
+                const result = payload.onContinue();
+                if (result) {
+                    void Promise.resolve(result);
+                }
             };
 
             container.on('pointertap', continueHandler);

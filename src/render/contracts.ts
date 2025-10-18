@@ -6,6 +6,8 @@
  * Purpose: Defines the paddle control interface for movement and interaction
  */
 
+import type { Body } from 'matter-js';
+
 export interface PaddleController {
     /**
      * Create a new paddle with physics body
@@ -61,7 +63,7 @@ export interface PaddleController {
 
 export interface Paddle {
     id: string;
-    physicsBody: any; // Matter.js Body
+    physicsBody: Body;
     width: number;
     height: number;
     speed: number;

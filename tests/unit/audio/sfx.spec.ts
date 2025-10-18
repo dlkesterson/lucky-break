@@ -11,7 +11,10 @@ interface RecordedTrigger {
     readonly source: {
         readonly event: string;
         readonly row: number;
-        readonly velocity: number;
+        readonly impactVelocity: number;
+        readonly initialHp?: number;
+        readonly previousHp?: number;
+        readonly remainingHp?: number;
     };
 }
 
@@ -55,9 +58,10 @@ describe('createSfxRouter', () => {
             sessionId: 'session-001',
             row: 3,
             col: 4,
-            velocity: 9.4,
+            impactVelocity: 9.4,
             brickType: 'standard' as const,
             comboHeat: 7,
+            initialHp: 3,
         };
 
         const publishTime = tone.now();
@@ -85,10 +89,61 @@ describe('createSfxRouter', () => {
         expect(firstTrigger.source).toMatchObject({
             event: 'BrickBreak',
             row: payload.row,
-            velocity: payload.velocity,
+            impactVelocity: payload.impactVelocity,
+            initialHp: payload.initialHp,
         });
 
         router.dispose();
         scheduler.dispose();
+    });
+
+    it('maps impact velocity and brick HP to audio descriptor parameters', () => {
+        const bus = createEventBus();
+        const triggers: RecordedTrigger[] = [];
+
+        const scheduler = {
+            lookAheadMs: 0,
+            context: {} as AudioContext,
+            schedule: (callback: (time: number) => void) => {
+                callback(0.25);
+                return { id: 1, time: 0.25 };
+            },
+            cancel: () => {
+                /* no-op */
+            },
+            dispose: () => {
+                /* no-op */
+            },
+        } satisfies ReturnType<typeof createToneScheduler>;
+
+        const router = createSfxRouter({
+            bus,
+            scheduler,
+            brickSampleIds: ['low', 'mid', 'high'],
+            trigger: (descriptor: RecordedTrigger) => {
+                triggers.push(descriptor);
+            },
+        });
+
+        bus.publish('BrickHit', {
+            sessionId: 'session-002',
+            row: 2,
+            col: 1,
+            impactVelocity: 12,
+            brickType: 'standard',
+            comboHeat: 8,
+            previousHp: 3,
+            remainingHp: 2,
+        });
+
+        expect(triggers).toHaveLength(1);
+        const [hitTrigger] = triggers;
+        expect(hitTrigger.id).toBe('low');
+        expect(hitTrigger.gain).toBeGreaterThan(0.5);
+        expect(hitTrigger.detune).toBeGreaterThan(0);
+        expect(hitTrigger.source.previousHp).toBe(3);
+        expect(hitTrigger.source.remainingHp).toBe(2);
+
+        router.dispose();
     });
 });

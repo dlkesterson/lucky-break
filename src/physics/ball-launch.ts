@@ -101,7 +101,7 @@ export class PhysicsBallLaunchController implements BallLaunchController {
                 y: ball.physicsBody.velocity.y,
             },
             launchSpeed: this.defaultLaunchSpeed,
-            lastLaunchDirection: this.lastLaunchDirection || undefined,
+            lastLaunchDirection: this.lastLaunchDirection ?? undefined,
         };
     }
 }

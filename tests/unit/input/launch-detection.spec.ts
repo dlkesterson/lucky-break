@@ -8,7 +8,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GameInputManager } from 'input/input-manager';
-import type { Vector2 } from 'input/contracts';
 
 describe('Launch Trigger Detection', () => {
     let inputManager: GameInputManager;

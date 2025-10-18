@@ -8,6 +8,7 @@ export interface ToneMockContext {
         readonly cancel: ReturnType<typeof vi.fn>;
         readonly start: ReturnType<typeof vi.fn>;
         readonly stop: ReturnType<typeof vi.fn>;
+        readonly nextSubdivision: ReturnType<typeof vi.fn>;
         readonly seconds: number;
     };
     readonly advanceBy: (milliseconds: number) => void;
@@ -16,11 +17,11 @@ export interface ToneMockContext {
 }
 
 export const installToneMock = (): ToneMockContext => {
-    type ScheduledCallback = {
+    interface ScheduledCallback {
         id: number;
         at: number;
         callback: (scheduledTime: number) => void;
-    };
+    }
 
     let nowSeconds = 0;
     const scheduled: ScheduledCallback[] = [];
@@ -59,6 +60,13 @@ export const installToneMock = (): ToneMockContext => {
         transportState = 'stopped';
     });
 
+    const nextSubdivision = vi.fn((subdivision: string) => {
+        const subdivisions: Record<string, number> = {
+            '4n': nowSeconds + 0.5,
+        };
+        return subdivisions[subdivision] ?? nowSeconds + 0.5;
+    });
+
     const transportCore = {
         schedule: schedule as ReturnType<typeof vi.fn>,
         scheduleOnce: scheduleOnce as ReturnType<typeof vi.fn>,
@@ -66,6 +74,7 @@ export const installToneMock = (): ToneMockContext => {
         cancel: cancel as ReturnType<typeof vi.fn>,
         start: start as ReturnType<typeof vi.fn>,
         stop: stop as ReturnType<typeof vi.fn>,
+        nextSubdivision: nextSubdivision as ReturnType<typeof vi.fn>,
     } as Record<string, ReturnType<typeof vi.fn>>;
 
     Object.defineProperty(transportCore, 'seconds', {

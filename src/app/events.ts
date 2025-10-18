@@ -6,9 +6,10 @@ export interface BrickBreakPayload {
     readonly sessionId: string;
     readonly row: number;
     readonly col: number;
-    readonly velocity: number;
+    readonly impactVelocity: number;
     readonly brickType: BrickType;
     readonly comboHeat: number;
+    readonly initialHp: number;
 }
 
 export interface PaddleHitPayload {
@@ -28,9 +29,10 @@ export interface BrickHitPayload {
     readonly sessionId: string;
     readonly row: number;
     readonly col: number;
-    readonly velocity: number;
+    readonly impactVelocity: number;
     readonly brickType: BrickType;
     readonly comboHeat: number;
+    readonly previousHp: number;
     readonly remainingHp: number;
 }
 
@@ -47,14 +49,14 @@ export interface RoundCompletedPayload {
     readonly durationMs: number;
 }
 
-export type LuckyBreakEventMap = {
+export interface LuckyBreakEventMap {
     readonly BrickBreak: BrickBreakPayload;
     readonly BrickHit: BrickHitPayload;
     readonly PaddleHit: PaddleHitPayload;
     readonly WallHit: WallHitPayload;
     readonly LifeLost: LifeLostPayload;
     readonly RoundCompleted: RoundCompletedPayload;
-};
+}
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;
 
@@ -94,9 +96,10 @@ export interface BrickBreakEventInput {
     readonly sessionId: string;
     readonly row: number;
     readonly col: number;
-    readonly velocity: number;
+    readonly impactVelocity: number;
     readonly brickType: BrickType;
     readonly comboHeat: number;
+    readonly initialHp: number;
     readonly timestamp?: number;
 }
 
@@ -175,13 +178,11 @@ export const createEventBus = (): LuckyBreakEventBus => {
         type: EventName,
         listener: EventListener<EventName>,
     ): (() => void) => {
-        let unsubscribeRef: (() => void) | undefined;
-        const wrapped: EventListener<EventName> = (event) => {
-            unsubscribeRef?.();
+        const unsubscribe = subscribe(type, (event) => {
+            unsubscribe();
             listener(event);
-        };
-        unsubscribeRef = subscribe(type, wrapped);
-        return unsubscribeRef;
+        });
+        return unsubscribe;
     };
 
     const subscribeOnce = subscribeOnceInternal as LuckyBreakEventBus['subscribeOnce'];
@@ -217,9 +218,10 @@ export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEvent
                 sessionId: event.sessionId,
                 row: event.row,
                 col: event.col,
-                velocity: event.velocity,
+                impactVelocity: event.impactVelocity,
                 brickType: event.brickType,
                 comboHeat: event.comboHeat,
+                initialHp: event.initialHp,
             },
             event.timestamp,
         );

@@ -48,7 +48,7 @@ describe('createPreloader', () => {
 
         await preloader.prepare();
 
-        const prompt = container.querySelector('button[data-role="start-prompt"]') as HTMLButtonElement;
+        const prompt = container.querySelector<HTMLButtonElement>('button[data-role="start-prompt"]')!;
         prompt.click();
         await Promise.resolve();
 

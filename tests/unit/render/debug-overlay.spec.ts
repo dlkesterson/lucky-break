@@ -38,6 +38,9 @@ vi.mock('pixi.js', () => {
 
 import { Container, Graphics, Text } from 'pixi.js';
 import { InputDebugOverlay } from 'render/debug-overlay';
+import type { Paddle } from 'render/contracts';
+import type { Ball } from 'physics/contracts';
+import type { Body } from 'matter-js';
 
 describe('InputDebugOverlay', () => {
     const mockInputState = {
@@ -61,13 +64,30 @@ describe('InputDebugOverlay', () => {
         attachmentOffset: { x: 10, y: -15 },
     };
 
+    const paddleStub: Paddle = {
+        id: 'paddle-1',
+        physicsBody: { id: 1 } as unknown as Body,
+        width: 100,
+        height: 20,
+        speed: 0,
+        position: { x: 0, y: 0 },
+    };
+
+    const ballStub: Ball = {
+        id: 'ball-1',
+        physicsBody: { id: 2 } as unknown as Body,
+        isAttached: true,
+        attachmentOffset: { x: 0, y: 0 },
+        radius: 8,
+    };
+
     const createOverlay = () =>
         new InputDebugOverlay({
             inputManager: { getDebugState: () => mockInputState } as any,
             paddleController: { getDebugInfo: () => mockPaddleDebug } as any,
             ballController: { getDebugInfo: () => mockBallDebug } as any,
-            paddle: {},
-            ball: {},
+            paddle: paddleStub,
+            ball: ballStub,
         });
 
     beforeEach(() => {
@@ -76,15 +96,21 @@ describe('InputDebugOverlay', () => {
 
     it('initializes overlay content and updates drawing primitives', () => {
         const overlay = createOverlay();
-        const container = overlay.getContainer();
+        const container = overlay.getContainer() as Container & { destroy: ReturnType<typeof vi.fn> };
         expect(container).toBeInstanceOf(Container);
         expect(container.children.length).toBeGreaterThanOrEqual(5);
 
         overlay.update();
 
-        const overlayGraphics = container.children[0] as Graphics;
-        expect(overlayGraphics.rect).toHaveBeenCalledWith(100, 50, 200, 40);
-        expect(overlayGraphics.circle).toHaveBeenCalledWith(180.4, 65.2, 5);
+        const overlayGraphics = container.children[0] as Graphics & {
+            rect: ReturnType<typeof vi.fn>;
+            circle: ReturnType<typeof vi.fn>;
+            destroy: ReturnType<typeof vi.fn>;
+        };
+        const rectMock = overlayGraphics.rect;
+        const circleMock = overlayGraphics.circle;
+        expect(rectMock).toHaveBeenCalledWith(100, 50, 200, 40);
+        expect(circleMock).toHaveBeenCalledWith(180.4, 65.2, 5);
 
         const texts = container.children.filter((child): child is Text => child instanceof Text);
         expect(texts[0].text).toContain('Input: keyboard');
@@ -93,14 +119,22 @@ describe('InputDebugOverlay', () => {
 
     it('cleans up PIXI resources on destroy', () => {
         const overlay = createOverlay();
-        const container = overlay.getContainer();
-        const overlayGraphics = container.children[0] as Graphics;
-        const texts = container.children.filter((child): child is Text => child instanceof Text);
+        const container = overlay.getContainer() as Container & { destroy: ReturnType<typeof vi.fn> };
+        const overlayGraphics = container.children[0] as Graphics & {
+            destroy: ReturnType<typeof vi.fn>;
+        };
+        const texts = container.children.filter((child): child is Text => child instanceof Text) as (
+            Text & { destroy: ReturnType<typeof vi.fn> }
+        )[];
 
         overlay.destroy();
 
-        expect(overlayGraphics.destroy).toHaveBeenCalledTimes(1);
-        texts.forEach((text) => expect(text.destroy).toHaveBeenCalledTimes(1));
-        expect((container as any).destroy).toHaveBeenCalledTimes(1);
+        const destroyGraphics = overlayGraphics.destroy;
+        expect(destroyGraphics).toHaveBeenCalledTimes(1);
+        texts.forEach((text) => {
+            expect(text.destroy).toHaveBeenCalledTimes(1);
+        });
+        const destroyContainer = container.destroy;
+        expect(destroyContainer).toHaveBeenCalledTimes(1);
     });
 });

@@ -8,5 +8,6 @@ export interface AudioSubsystem {
 }
 
 export function bootstrapAudio(_options: AudioBootstrapOptions = {}): AudioSubsystem {
+    void _options;
     throw new Error('bootstrapAudio not implemented');
 }

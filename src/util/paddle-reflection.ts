@@ -18,7 +18,6 @@ export interface PaddleReflectionConfig {
 }
 
 const DEFAULT_MAX_ANGLE = Math.PI * 0.42; // ~75 degrees
-const EPSILON = 1e-6;
 
 /**
  * Calculate and apply reflection velocity when ball hits paddle

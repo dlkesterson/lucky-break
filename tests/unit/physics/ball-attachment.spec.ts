@@ -7,13 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Bodies, Engine, World } from 'matter-js';
-import type { BallController, Ball, BallOptions, Vector2 } from 'physics/contracts';
+import type { Ball, BallOptions, Vector2 } from 'physics/contracts';
 import { createPhysicsWorld } from 'physics/world';
 
 describe('Ball Attachment Mechanics', () => {
     let world: ReturnType<typeof createPhysicsWorld>;
-    let ballController: BallController;
     let mockBall: Ball;
 
     beforeEach(() => {
@@ -38,7 +36,7 @@ describe('Ball Attachment Mechanics', () => {
             // Create attached ball
             const ball = world.factory.ball({
                 position: { x: paddlePosition.x, y: paddlePosition.y - 10 },
-                radius: options.radius || 8,
+                radius: options.radius ?? 8,
                 label: 'test-ball',
             });
 

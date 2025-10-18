@@ -10,9 +10,12 @@ export const createGameplayScene = (
     context: SceneContext,
     options: GameplaySceneOptions,
 ): Scene => ({
-    async init() {
+    init() {
         if (options.onEnter) {
-            await Promise.resolve(options.onEnter(context));
+            const result = options.onEnter(context);
+            if (result) {
+                void Promise.resolve(result);
+            }
         }
     },
     update(deltaSeconds) {

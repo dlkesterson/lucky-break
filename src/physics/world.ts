@@ -1,4 +1,4 @@
-import { Bodies, Body, Composite, Constraint, Engine, World, type Vector } from 'matter-js';
+import { Bodies, Body, Composite, Engine, World, type Vector } from 'matter-js';
 import type { Vector2, BallAttachment } from '../types';
 
 const DEFAULT_TIMESTEP_MS = 1000 / 120;
@@ -51,8 +51,8 @@ export interface PhysicsWorldHandle {
     readonly engine: Engine;
     readonly world: World;
     readonly step: (deltaMs?: number) => void;
-    readonly add: (body: Body | readonly Body[]) => void;
-    readonly remove: (body: Body | readonly Body[]) => void;
+    readonly add: (body: Body | Body[]) => void;
+    readonly remove: (body: Body | Body[]) => void;
     readonly factory: PhysicsFactories;
     readonly dispose: () => void;
     // Ball attachment tracking
@@ -65,19 +65,18 @@ export interface PhysicsWorldHandle {
 
 const withDefaultVector = (vector: Vector | undefined, fallback: Vector): Vector => vector ?? fallback;
 
-const toBodyArray = (input: Body | readonly Body[]): Body[] => {
+const toBodyArray = (input: Body | Body[]): Body[] => {
     if (Array.isArray(input)) {
         return [...input];
     }
 
-    return [input as Body];
+    return [input];
 };
 
 const configureGravity = (engine: Engine, gravity?: number): void => {
     engine.world.gravity.x = 0;
     engine.world.gravity.y = gravity ?? 1;
     engine.world.gravity.scale = 0.001;
-    engine.world.damping = 0; // No velocity damping
 };
 
 const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): PhysicsFactories => {
@@ -93,8 +92,6 @@ const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): Phy
             frictionAir: 0,  // Remove air resistance for consistent ball speed
             label: options.label ?? 'ball',
         });
-
-        body.damping = 0;  // No velocity damping
 
         if (options.velocity) {
             Body.setVelocity(body, options.velocity);
@@ -207,7 +204,7 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
     const updateBallAttachment: PhysicsWorldHandle['updateBallAttachment'] = (ball, paddlePosition) => {
         const attachment = ballAttachments.get(ball.id);
-        if (attachment && attachment.isAttached) {
+        if (attachment?.isAttached) {
             attachment.paddlePosition = paddlePosition;
             Body.setPosition(ball, {
                 x: paddlePosition.x + attachment.attachmentOffset.x,

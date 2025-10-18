@@ -28,12 +28,13 @@ export interface PreloaderHandle {
 }
 
 const DEFAULT_PROMPT_TEXT = 'Tap to start';
-const DEFAULT_EVENTS: ReadonlyArray<'click' | 'keydown' | 'pointerdown'> = ['click', 'keydown'];
+const DEFAULT_EVENTS: readonly ('click' | 'keydown' | 'pointerdown')[] = ['click', 'keydown'];
 
 const clampProgress = (value: number): number => (Number.isFinite(value) && value >= 0 ? value : 0);
 
-const defaultLoader: AssetLoader = async (report) => {
+const defaultLoader: AssetLoader = (report) => {
     report({ loaded: 1, total: 1 });
+    return Promise.resolve();
 };
 
 export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
@@ -58,7 +59,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     let status: PreloaderStatus = 'idle';
     let progress: PreloaderProgress = { loaded: 0, total: 0 };
     let promptButton: HTMLButtonElement | null = null;
-    const promptListeners: Array<{ type: string; handler: EventListener }> = [];
+    const promptListeners: { type: string; handler: EventListener }[] = [];
     let preparePromise: Promise<void> | undefined;
     let disposed = false;
     let starting = false;

@@ -24,7 +24,7 @@ export class GameInputManager implements InputManager {
     initialize(container: HTMLElement): void {
         this.container = container;
         // Find the canvas element within the container
-        this.canvas = container.querySelector('canvas') || null;
+        this.canvas = container.querySelector('canvas') ?? null;
 
         // Clear any stale positions from before initialization
         this.mousePosition = null;
@@ -84,6 +84,7 @@ export class GameInputManager implements InputManager {
     }
 
     private handleMouseUp(event: MouseEvent): void {
+        void event;
         // Mouse up doesn't remove from active inputs as mouse is still available
     }
 
@@ -128,6 +129,7 @@ export class GameInputManager implements InputManager {
     }
 
     private handleTouchEnd(event: TouchEvent): void {
+        void event;
         // Touch end doesn't remove from active inputs as touch is still available
     }
 
@@ -156,8 +158,8 @@ export class GameInputManager implements InputManager {
         }
 
         // Keyboard control - simulate left/right movement from arrow keys
-        const leftPressed = this.keyboardState.get('ArrowLeft') || this.keyboardState.get('KeyA');
-        const rightPressed = this.keyboardState.get('ArrowRight') || this.keyboardState.get('KeyD');
+        const leftPressed = Boolean(this.keyboardState.get('ArrowLeft')) || Boolean(this.keyboardState.get('KeyA'));
+        const rightPressed = Boolean(this.keyboardState.get('ArrowRight')) || Boolean(this.keyboardState.get('KeyD'));
 
         if (leftPressed || rightPressed) {
             // For keyboard, we need the current paddle position to move relative to it
@@ -202,8 +204,8 @@ export class GameInputManager implements InputManager {
             activeInputs: Array.from(this.activeInputs),
             mousePosition: this.mousePosition,
             keyboardPressed: Array.from(this.keyboardState.entries())
-                .filter(([_, pressed]) => pressed)
-                .map(([key, _]) => key),
+                .filter(([, pressed]) => pressed)
+                .map(([key]) => key),
             paddleTarget: this.getPaddleTarget(),
             launchPending: this.shouldLaunch(),
         };

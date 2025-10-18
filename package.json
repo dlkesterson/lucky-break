@@ -14,7 +14,8 @@
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,html}\"",
-    "cli:simulate": "node ./dist/cli/index.js"
+    "cli:simulate": "node ./dist/cli/index.js",
+    "ci": "pnpm lint && pnpm test --coverage"
   },
   "dependencies": {
     "matter-js": "^0.20.0",
@@ -24,14 +25,15 @@
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
+    "@types/jsdom": "^21.1.7",
     "@types/matter-js": "^0.20.2",
     "@types/node": "^24.7.2",
-  "@types/jsdom": "^21.1.7",
     "@typescript-eslint/eslint-plugin": "^8.46.1",
     "@typescript-eslint/parser": "^8.46.1",
     "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "jsdom": "^27.0.0",
     "prettier": "^3.6.2",

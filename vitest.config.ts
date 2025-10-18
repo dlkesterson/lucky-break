@@ -19,6 +19,7 @@ export default defineConfig({
             'input': resolveFromRoot('src/input'),
             'types': resolveFromRoot('src/types'),
             'scenes': resolveFromRoot('src/scenes'),
+            'game': resolveFromRoot('src/game'),
         },
     },
     test: {
@@ -30,6 +31,12 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['text', 'html'],
             include: ['src/**/*.{ts,tsx}'],
+            thresholds: {
+                statements: 75,
+                branches: 70,
+                functions: 75,
+                lines: 75,
+            },
         },
     },
 });

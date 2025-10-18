@@ -128,7 +128,7 @@ export class PaddleLaunchManager implements LaunchManager {
     getDebugInfo(): LaunchDebugInfo {
         return {
             launchPending: this.launchPending,
-            lastTrigger: this.lastTrigger || undefined,
+            lastTrigger: this.lastTrigger ?? undefined,
             movementThreshold: this.movementThreshold,
         };
     }

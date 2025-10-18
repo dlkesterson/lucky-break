@@ -83,7 +83,7 @@ const finalizeMetrics = (metrics: SimulationMetrics, brickCount: number) => {
     };
 };
 
-export const runHeadlessSimulation = async (input: SimulationInput): Promise<SimulationResult> => {
+export const runHeadlessSimulation = (input: SimulationInput): Promise<SimulationResult> => {
     const seed = typeof input.seed === 'number' ? input.seed : DEFAULT_SEED;
     const round = typeof input.round === 'number' ? input.round : DEFAULT_ROUND;
     const durationSec = typeof input.durationSec === 'number' ? Math.max(1, input.durationSec) : DEFAULT_DURATION_SEC;
@@ -140,20 +140,18 @@ export const runHeadlessSimulation = async (input: SimulationInput): Promise<Sim
     const snapshot = manager.snapshot();
     const volleyStats = finalizeMetrics(metrics, breakableBricks);
 
-    return {
+    return Promise.resolve({
         ok: true,
         sessionId,
         score: snapshot.score,
         events: collector.events.length,
         volleyStats,
         durationMs,
-    };
+    });
 };
 
 const logToStderr = async (io: SimulateCommandIO, message: string) => {
-    if (io.writeStderr) {
-        await io.writeStderr(message);
-    }
+    await io.writeStderr?.(message);
 };
 
 export interface SimulateCommand {
@@ -174,12 +172,12 @@ export const createSimulateCommand = (io: SimulateCommandIO): SimulateCommand =>
         let parsed: SimulationInput;
         try {
             parsed = JSON.parse(raw) as SimulationInput;
-        } catch (error) {
+        } catch {
             await logToStderr(io, 'Failed to read simulation input: invalid JSON payload');
             return 1;
         }
 
-        if (!parsed || parsed.mode !== 'simulate') {
+        if (parsed?.mode !== 'simulate') {
             await logToStderr(io, 'Simulation command requires a payload with "mode": "simulate".');
             return 1;
         }

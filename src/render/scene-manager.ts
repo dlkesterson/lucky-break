@@ -6,40 +6,48 @@ const DEFAULT_BACKGROUND = 0x000000;
 
 export type SceneLayerName = 'playfield' | 'effects' | 'hud';
 
-type SpritePool<T> = {
-    acquire: () => T;
-    release: (value: T) => void;
-    clear: () => void;
+interface SpritePool<T> {
+    acquire: (this: void) => T;
+    release: (this: void, value: T) => void;
+    clear: (this: void) => void;
+}
+
+type ResizableRenderer = Application['renderer'] & {
+    resize: (...args: unknown[]) => void;
+};
+
+const hasResize = (renderer: Application['renderer']): renderer is ResizableRenderer => {
+    const candidate = renderer as { resize?: unknown };
+    return typeof candidate?.resize === 'function';
 };
 
 const createSpritePool = <T>(factory: () => T): SpritePool<T> => {
     const free: T[] = [];
 
-    return {
-        acquire: () => free.pop() ?? factory(),
-        release: (value) => {
-            free.push(value);
-        },
-        clear: () => {
-            free.length = 0;
-        },
+    const acquire = () => free.pop() ?? factory();
+    const release = (value: T) => {
+        free.push(value);
     };
+    const clear = () => {
+        free.length = 0;
+    };
+
+    return { acquire, release, clear };
 };
 
 const resizeRenderer = (app: Application, width: number, height: number): void => {
-    const renderer = app.renderer as unknown as { resize?: (...args: unknown[]) => void };
-    const resize = renderer.resize;
+    const renderer = app.renderer;
 
-    if (typeof resize !== 'function') {
+    if (!hasResize(renderer)) {
         return;
     }
 
-    if (resize.length <= 1) {
-        resize.call(renderer, { width, height });
+    if (renderer.resize.length <= 1) {
+        renderer.resize({ width, height });
         return;
     }
 
-    resize.call(renderer, width, height);
+    renderer.resize(width, height);
 };
 
 export interface StageConfig {
@@ -111,7 +119,7 @@ const resolveResolution = (config: StageConfig): number => {
     return 1;
 };
 
-export interface SceneManagerConfig extends StageConfig { }
+export type SceneManagerConfig = StageConfig;
 
 export const createSceneManager = async (config: SceneManagerConfig = {}): Promise<SceneManagerHandle> => {
     const width = config.width ?? DEFAULT_WIDTH;
@@ -134,7 +142,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         app.renderer.background.color = DEFAULT_BACKGROUND;
     }
 
-    const canvas = app.canvas as HTMLCanvasElement;
+    const canvas = app.canvas;
     let detachOnDestroy = false;
 
     if (config.parent) {

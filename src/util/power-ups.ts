@@ -130,12 +130,16 @@ export function getPowerUpIntensity(effect: PowerUpEffect): number {
  * @returns Scale multiplier (1.0 = normal, >1.0 = wider)
  */
 export function calculatePaddleWidthScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
-    if (!effect || effect.type !== 'paddle-width' || effect.remainingTime <= 0) {
+    const activeEffect = effect;
+    if (activeEffect?.type !== 'paddle-width') {
+        return 1.0;
+    }
+    if (activeEffect.remainingTime <= 0) {
         return 1.0;
     }
 
     const maxMultiplier = config.paddleWidthMultiplier ?? DEFAULT_PADDLE_WIDTH_MULTIPLIER;
-    const intensity = getPowerUpIntensity(effect);
+    const intensity = getPowerUpIntensity(activeEffect);
 
     // Lerp from 1.0 to maxMultiplier based on intensity
     return 1.0 + (maxMultiplier - 1.0) * intensity;
@@ -149,12 +153,16 @@ export function calculatePaddleWidthScale(effect: PowerUpEffect | null, config: 
  * @returns Scale multiplier (1.0 = normal, >1.0 = faster)
  */
 export function calculateBallSpeedScale(effect: PowerUpEffect | null, config: PowerUpConfig = {}): number {
-    if (!effect || effect.type !== 'ball-speed' || effect.remainingTime <= 0) {
+    const activeEffect = effect;
+    if (activeEffect?.type !== 'ball-speed') {
+        return 1.0;
+    }
+    if (activeEffect.remainingTime <= 0) {
         return 1.0;
     }
 
     const maxMultiplier = config.ballSpeedMultiplier ?? DEFAULT_BALL_SPEED_MULTIPLIER;
-    const intensity = getPowerUpIntensity(effect);
+    const intensity = getPowerUpIntensity(activeEffect);
 
     return 1.0 + (maxMultiplier - 1.0) * intensity;
 }
@@ -163,7 +171,7 @@ export function calculateBallSpeedScale(effect: PowerUpEffect | null, config: Po
  * Power-up manager to track multiple active effects
  */
 export class PowerUpManager {
-    private effects: Map<PowerUpType, PowerUpEffect> = new Map();
+    private effects: Map<PowerUpType, PowerUpEffect> = new Map<PowerUpType, PowerUpEffect>();
 
     /**
      * Activate a power-up (replaces existing effect of same type)
@@ -221,8 +229,7 @@ export class PowerUpManager {
      * @returns True if active
      */
     isActive(type: PowerUpType): boolean {
-        const effect = this.effects.get(type);
-        return effect !== undefined && effect.remainingTime > 0;
+        return (this.effects.get(type)?.remainingTime ?? 0) > 0;
     }
 
     /**

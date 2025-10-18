@@ -143,8 +143,9 @@ describe('createGameSessionManager', () => {
             event: {
                 row: 2,
                 col: 5,
-                velocity: 9.2,
+                impactVelocity: 9.2,
                 brickType: 'standard',
+                initialHp: 3,
             },
         });
 
@@ -156,9 +157,10 @@ describe('createGameSessionManager', () => {
                 sessionId: 'session-emit-1',
                 row: 2,
                 col: 5,
-                velocity: 9.2,
+                impactVelocity: 9.2,
                 brickType: 'standard',
                 comboHeat: expect.any(Number),
+                initialHp: 3,
             },
             timestamp: expect.any(Number),
         });

@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Bodies } from 'matter-js';
 import type { BallController, Ball, Vector2 } from 'physics/contracts';
 import { createPhysicsWorld } from 'physics/world';
 
@@ -31,7 +30,10 @@ describe('Ball Launch Mechanics', () => {
 
         // Mock ball controller - in real implementation this would be the actual class
         ballController = {
-            createAttachedBall: (paddlePosition: Vector2) => mockBall,
+            createAttachedBall: (paddlePosition: Vector2) => {
+                void paddlePosition;
+                return mockBall;
+            },
             updateAttachment: (ball: Ball, paddlePosition: Vector2) => {
                 if (ball.isAttached) {
                     world.updateBallAttachment(ball.physicsBody, paddlePosition);
@@ -152,8 +154,6 @@ describe('Ball Launch Mechanics', () => {
         });
 
         it('should maintain launch velocity over time', () => {
-            const initialVelocity = { ...mockBall.physicsBody.velocity };
-
             ballController.launchBall(mockBall, { x: 0.5, y: -0.866 }); // 60 degrees
 
             // Step physics multiple times with default time step

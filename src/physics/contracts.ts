@@ -6,6 +6,8 @@
  * Purpose: Defines the ball physics interface for attachment and launch mechanics
  */
 
+import type { Body } from 'matter-js';
+
 export interface BallController {
     /**
      * Create a new ball attached to the paddle
@@ -52,7 +54,7 @@ export interface BallController {
 
 export interface Ball {
     id: string;
-    physicsBody: any; // Matter.js Body
+    physicsBody: Body;
     isAttached: boolean;
     attachmentOffset: Vector2;
     radius: number;

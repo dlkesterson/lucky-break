@@ -68,8 +68,7 @@ export function normalizeTouchEvent(event: TouchEvent, canvas: HTMLCanvasElement
     const scaleY = canvas.height / rect.height;
 
     const touches: Vector2[] = [];
-    for (let i = 0; i < event.touches.length; i++) {
-        const touch = event.touches[i];
+    for (const touch of Array.from(event.touches)) {
         touches.push({
             x: (touch.clientX - rect.left) * scaleX,
             y: (touch.clientY - rect.top) * scaleY,

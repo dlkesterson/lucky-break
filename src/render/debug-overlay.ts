@@ -9,14 +9,16 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import type { GameInputManager } from 'input/input-manager';
 import type { PaddleBodyController } from './paddle-body';
+import type { Paddle } from './contracts';
 import type { BallAttachmentController } from 'physics/ball-attachment';
+import type { Ball } from 'physics/contracts';
 
 export interface DebugOverlayOptions {
     inputManager: GameInputManager;
     paddleController: PaddleBodyController;
     ballController: BallAttachmentController;
-    paddle: any; // Paddle instance
-    ball: any; // Ball instance
+    paddle: Paddle;
+    ball: Ball;
 }
 
 export class InputDebugOverlay {

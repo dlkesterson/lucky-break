@@ -41,7 +41,7 @@ export interface SfxRouter {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const defaultTrigger = (_descriptor: SfxTriggerDescriptor): void => {
+const defaultTrigger = (): void => {
     // Intentionally blank: production wiring occurs in audio bootstrap.
 };
 
@@ -50,14 +50,15 @@ const normalizeBrickPan = (column: number): number => {
     return clamp(Number(normalized.toFixed(2)), -1, 1);
 };
 
-const calculateGain = (velocity: number): number => {
-    const base = 0.55 + velocity / 20;
+const calculateGain = (impactVelocity: number): number => {
+    const base = 0.55 + impactVelocity / 20;
     return Number(clamp(base, 0.4, 1).toFixed(2));
 };
 
-const calculateDetune = (comboHeat: number, row: number): number => {
-    const detune = (comboHeat - 5) * 6 + (row - 3) * 4;
-    return Math.round(detune);
+const calculateDetune = (comboHeat: number, row: number, impactVelocity: number): number => {
+    const comboComponent = (comboHeat - 5) * 6 + (row - 3) * 4;
+    const velocityComponent = (impactVelocity - 8) * 5;
+    return Math.round(comboComponent + velocityComponent);
 };
 
 const toSampleList = (options: SfxRouterOptions): readonly string[] => {
@@ -88,15 +89,42 @@ const selectSampleId = (samples: readonly string[], payload: BrickSamplePayload)
     return samples[index];
 };
 
+const selectSampleByHp = (samples: readonly string[], hp: number): string => {
+    if (samples.length === 0) {
+        return 'brick-hit';
+    }
+
+    if (samples.length === 1) {
+        return samples[0];
+    }
+
+    const finiteHp = Number.isFinite(hp) ? Math.max(0, Math.floor(hp)) : 0;
+    const clamped = Math.min(samples.length, Math.max(1, finiteHp));
+    const index = samples.length - clamped;
+    return samples[index] ?? samples[samples.length - 1];
+};
+
+const resolveBrickSample = (samples: readonly string[], fallback: BrickSamplePayload, hp: number | undefined): string => {
+    if (hp === undefined) {
+        return selectSampleId(samples, fallback);
+    }
+
+    return selectSampleByHp(samples, hp);
+};
+
 const buildBrickBreakDescriptor = (
     samples: readonly string[],
     time: number,
     payload: BrickBreakPayload,
 ): SfxTriggerDescriptor => ({
-    id: selectSampleId(samples, payload),
+    id: resolveBrickSample(samples, {
+        row: payload.row,
+        col: payload.col,
+        velocity: payload.impactVelocity,
+    }, payload.initialHp),
     time,
-    gain: calculateGain(payload.velocity),
-    detune: calculateDetune(payload.comboHeat, payload.row),
+    gain: calculateGain(payload.impactVelocity),
+    detune: calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity),
     pan: normalizeBrickPan(payload.col),
     source: { event: 'BrickBreak', ...payload },
 });
@@ -107,10 +135,14 @@ const buildBrickHitDescriptor = (
     time: number,
     payload: BrickHitPayload,
 ): SfxTriggerDescriptor => ({
-    id: impactSampleId ?? selectSampleId(samples, payload),
+    id: impactSampleId ?? resolveBrickSample(samples, {
+        row: payload.row,
+        col: payload.col,
+        velocity: payload.impactVelocity,
+    }, payload.previousHp),
     time,
-    gain: clamp(calculateGain(payload.velocity) * 0.8, 0.3, 0.9),
-    detune: Math.round(calculateDetune(payload.comboHeat, payload.row) * 0.75),
+    gain: clamp(calculateGain(payload.impactVelocity) * 0.8, 0.3, 0.9),
+    detune: Math.round(calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity) * 0.75),
     pan: normalizeBrickPan(payload.col),
     source: { event: 'BrickHit', ...payload },
 });
@@ -199,7 +231,7 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
         pending.add(handle);
     };
 
-    const subscriptions: Array<() => void> = [
+    const subscriptions: (() => void)[] = [
         options.bus.subscribe('BrickBreak', (event: EventEnvelope<'BrickBreak'>) => {
             scheduleSource({ event: 'BrickBreak', ...event.payload });
         }),

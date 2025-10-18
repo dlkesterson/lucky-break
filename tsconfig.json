@@ -24,7 +24,8 @@
       "cli/*": ["src/cli/*"],
       "input/*": ["src/input/*"],
       "types/*": ["src/types/*"],
-      "scenes/*": ["src/scenes/*"]
+      "scenes/*": ["src/scenes/*"],
+      "game/*": ["src/game/*"]
     }
   },
   "include": [

@@ -20,12 +20,15 @@ export const createMainMenuScene = (
     let helpLabel: Text | null = null;
     let elapsed = 0;
 
-    const handleStart = async () => {
-        await Promise.resolve(options.onStart());
+    const handleStart = () => {
+        const result = options.onStart();
+        if (result) {
+            void Promise.resolve(result);
+        }
     };
 
     return {
-        async init() {
+        init() {
             container = new Container();
             container.eventMode = 'static';
             container.cursor = 'pointer';

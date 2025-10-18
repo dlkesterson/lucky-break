@@ -17,15 +17,16 @@ import { reflectOffPaddle, calculateReflectionData } from 'util/paddle-reflectio
 import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
 import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale, calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
-import { generateLevelLayout, getLevelSpec } from 'util/levels';
+import { generateLevelLayout, getLevelSpec, getPresetLevelCount, getLevelDifficultyMultiplier, remixLevel } from 'util/levels';
 import type { BrickSpec } from 'util/levels';
 import { Text, Container, Graphics } from 'pixi.js';
-import type { Body } from 'matter-js';
-import { Events, Body as MatterBody, Bodies, Vector as MatterVector } from 'matter-js';
+import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
 import { createEventBus } from 'app/events';
-import { createToneScheduler } from 'audio/scheduler';
+import { createToneScheduler, createReactiveAudioLayer, type ReactiveAudioGameState } from 'audio/scheduler';
 import { createSfxRouter } from 'audio/sfx';
 import { Players, Panner, Volume, Transport } from 'tone';
+import { spinWheel, type Reward } from 'game/rewards';
+import { createSubject } from 'util/observable';
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -36,7 +37,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const PLAYFIELD_WIDTH = 1280;
     const PLAYFIELD_HEIGHT = 720;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
-    const HALF_PLAYFIELD_HEIGHT = PLAYFIELD_HEIGHT / 2;
+    const PRESET_LEVEL_COUNT = getPresetLevelCount();
 
     const preloadFonts = async (
         report: (progress: { loaded: number; total: number }) => void,
@@ -100,13 +101,27 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const bus = createEventBus();  // Create event bus
 
             const scheduler = createToneScheduler({ lookAheadMs: 120 });
+            const audioState$ = createSubject<ReactiveAudioGameState>();
+            const reactiveAudioLayer = createReactiveAudioLayer(audioState$, Transport, {
+                lookAheadMs: scheduler.lookAheadMs,
+            });
+            const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
+                if (value === null) {
+                    return false;
+                }
+                const candidate = value as { then?: unknown };
+                return typeof candidate?.then === 'function';
+            };
             const ensureAudioIsRunning = async () => {
                 const ctx = scheduler.context;
                 if (ctx.state === 'suspended') {
                     await ctx.resume();
                 }
                 if (Transport.state !== 'started') {
-                    await Transport.start();
+                    const result = Transport.start();
+                    if (isPromiseLike(result)) {
+                        await result;
+                    }
                 }
             };
 
@@ -133,8 +148,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             volume.connect(panner);
             panner.toDestination();
 
-            const brickPlayers = new Players(brickSampleUrls).connect(volume);
-            await brickPlayers.loaded;
+            const brickPlayers = await new Promise<Players>((resolve) => {
+                const players = new Players(brickSampleUrls, () => resolve(players));
+                players.connect(volume);
+            });
 
             // Ensure the audio graph and Tone transport are primed before any collision events fire.
             await ensureAudioIsRunning();
@@ -211,6 +228,19 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             let currentLevelIndex = 0;
             let loop: ReturnType<typeof createGameLoop> | null = null;
             let isPaused = false;
+            let levelDifficultyMultiplier = 1;
+            let pendingReward: Reward | null = null;
+            let activeReward: Reward | null = null;
+            let doublePointsMultiplier = 1;
+            let doublePointsTimer = 0;
+
+            interface GhostBrickEffect {
+                readonly body: Body;
+                readonly restore: () => void;
+                remaining: number;
+            }
+
+            const ghostBrickEffects: GhostBrickEffect[] = [];
 
             // Visuals and brick state tracking
             interface FallingPowerUp {
@@ -295,6 +325,87 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 extraBalls.clear();
             };
 
+            const clearGhostEffect = (body: Body) => {
+                const index = ghostBrickEffects.findIndex((effect) => effect.body === body);
+                if (index >= 0) {
+                    ghostBrickEffects[index].restore();
+                    ghostBrickEffects.splice(index, 1);
+                }
+            };
+
+            const resetGhostBricks = () => {
+                while (ghostBrickEffects.length > 0) {
+                    ghostBrickEffects.pop()?.restore();
+                }
+            };
+
+            const applyGhostBrickReward = (duration: number, count: number) => {
+                resetGhostBricks();
+
+                if (count <= 0) {
+                    return;
+                }
+
+                const bricks = Array.from(brickHealth.keys()).filter((body) => body.label === 'brick');
+                if (bricks.length === 0) {
+                    return;
+                }
+
+                const selected = [...bricks]
+                    .sort((lhs, rhs) => lhs.id - rhs.id)
+                    .slice(0, Math.min(count, bricks.length));
+
+                selected.forEach((body) => {
+                    const originalSensor = body.isSensor;
+                    body.isSensor = true;
+
+                    const visual = visualBodies.get(body);
+                    const originalAlpha = visual instanceof Graphics ? visual.alpha : undefined;
+                    if (visual instanceof Graphics) {
+                        visual.alpha = 0.35;
+                    }
+
+                    ghostBrickEffects.push({
+                        body,
+                        remaining: duration,
+                        restore: () => {
+                            body.isSensor = originalSensor;
+                            if (visual instanceof Graphics && originalAlpha !== undefined) {
+                                visual.alpha = originalAlpha;
+                            }
+                        },
+                    });
+                });
+            };
+
+            const activateReward = (reward: Reward | null) => {
+                activeReward = reward;
+
+                if (!reward) {
+                    doublePointsMultiplier = 1;
+                    doublePointsTimer = 0;
+                    resetGhostBricks();
+                    return;
+                }
+
+                doublePointsMultiplier = 1;
+                doublePointsTimer = 0;
+                resetGhostBricks();
+
+                switch (reward.type) {
+                    case 'sticky-paddle':
+                        powerUpManager.activate('sticky-paddle', { defaultDuration: reward.duration });
+                        break;
+                    case 'double-points':
+                        doublePointsMultiplier = reward.multiplier;
+                        doublePointsTimer = reward.duration;
+                        break;
+                    case 'ghost-brick':
+                        applyGhostBrickReward(reward.duration, reward.ghostCount);
+                        break;
+                }
+            };
+
             const spawnPowerUp = (type: PowerUpType, position: { readonly x: number; readonly y: number }) => {
                 const body = Bodies.circle(position.x, position.y, POWER_UP_RADIUS, {
                     label: 'powerup',
@@ -327,6 +438,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             };
 
             const loadLevel = (levelIndex: number) => {
+                resetGhostBricks();
                 // Clear existing bricks
                 visualBodies.forEach((_visual, body) => {
                     if (body.label === 'brick') {
@@ -340,9 +452,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 clearActivePowerUps();
 
                 // Generate new level layout
-                const levelSpec = getLevelSpec(levelIndex);
-                const layout = generateLevelLayout(levelSpec, BRICK_WIDTH, BRICK_HEIGHT, PLAYFIELD_WIDTH);
-                powerUpChanceMultiplier = levelSpec.powerUpChanceMultiplier ?? 1;
+                const baseSpec = getLevelSpec(levelIndex);
+                const loopCount = Math.floor(levelIndex / PRESET_LEVEL_COUNT);
+                const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
+                const layout = generateLevelLayout(effectiveSpec, BRICK_WIDTH, BRICK_HEIGHT, PLAYFIELD_WIDTH);
+                powerUpChanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;
+                levelDifficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
 
                 // Create bricks from layout
                 layout.bricks.forEach((brickSpec) => {
@@ -372,7 +487,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             };
 
             // Add collision event handling
-            Events.on(physics.engine, 'collisionStart', (event) => {
+            Events.on(physics.engine, 'collisionStart', (event: IEventCollision<Engine>) => {
                 event.pairs.forEach((pair) => {
                     const { bodyA, bodyB } = pair;
                     const sessionId = session.snapshot().sessionId;
@@ -387,7 +502,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                         const metadata = brickMetadata.get(brick);
                         const row = metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT);
                         const col = metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH);
-                        const velocity = ballBody.speed;
+                        const impactVelocity = MatterVector.magnitude(ballBody.velocity);
+                        const initialHp = metadata?.hp ?? currentHp;
 
                         if (nextHp > 0) {
                             brickHealth.set(brick, nextHp);
@@ -403,9 +519,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                 sessionId,
                                 row,
                                 col,
-                                velocity,
+                                impactVelocity,
                                 brickType: 'standard',
                                 comboHeat: scoringState.combo,
+                                previousHp: currentHp,
                                 remainingHp: nextHp,
                             });
                         } else {
@@ -413,22 +530,28 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                 sessionId,
                                 row,
                                 col,
-                                velocity,
+                                impactVelocity,
                                 comboHeat: scoringState.combo,
                                 brickType: 'standard', // TODO: Should be dynamic once types exist
+                                initialHp,
                             });
 
-                            const points = awardBrickPoints(scoringState);
+                            const basePoints = awardBrickPoints(scoringState);
+                            let points = basePoints;
+                            if (doublePointsMultiplier > 1) {
+                                const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
+                                points += bonus;
+                                scoringState.score += bonus;
+                            }
                             session.recordBrickBreak({
                                 points,
-                                event: metadata
-                                    ? {
-                                        row: metadata.row,
-                                        col: metadata.col,
-                                        velocity,
-                                        brickType: 'standard',
-                                    }
-                                    : undefined,
+                                event: {
+                                    row,
+                                    col,
+                                    impactVelocity,
+                                    brickType: 'standard',
+                                    initialHp,
+                                },
                             });
 
                             const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
@@ -436,6 +559,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                 const powerUpType = selectRandomPowerUpType();
                                 spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
                             }
+
+                            clearGhostEffect(brick);
 
                             physics.remove(brick);
                             removeBodyVisual(brick);
@@ -603,26 +728,70 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     hudContainer.addChild(entryText);
                 });
 
+                const difficultyText = new Text({
+                    text: `Difficulty: x${levelDifficultyMultiplier.toFixed(2)}`,
+                    style: { fill: 0x88ccff, fontSize: 12 }
+                });
+                difficultyText.x = 20;
+                difficultyText.y = 80 + hudView.entries.length * 20 + 5;
+                hudContainer.addChild(difficultyText);
+
                 if (scoringState.combo > 0) {
                     const comboText = new Text({
                         text: `Combo: ${scoringState.combo}x (${scoringState.comboTimer.toFixed(1)}s)`,
                         style: { fill: 0xffff00, fontSize: 14, fontWeight: 'bold' }
                     });
                     comboText.x = 20;
-                    comboText.y = 80 + hudView.entries.length * 20 + 10;
+                    comboText.y = difficultyText.y + 20;
                     hudContainer.addChild(comboText);
                 }
 
                 const activePowerUpsView = powerUpManager.getActiveEffects();
+                const powerUpBaseY = difficultyText.y + 40;
                 activePowerUpsView.forEach((effect, index) => {
                     const powerUpText = new Text({
                         text: `${effect.type}: ${effect.remainingTime.toFixed(1)}s`,
                         style: { fill: 0x00ffff, fontSize: 12 }
                     });
                     powerUpText.x = 20;
-                    powerUpText.y = 80 + hudView.entries.length * 20 + 35 + index * 18;
+                    powerUpText.y = powerUpBaseY + index * 18;
                     hudContainer.addChild(powerUpText);
                 });
+
+                const rewardYOffset = powerUpBaseY + activePowerUpsView.length * 18 + 10;
+                if (activeReward) {
+                    const rewardLabel = (() => {
+                        switch (activeReward.type) {
+                            case 'double-points':
+                                return 'Double Points';
+                            case 'ghost-brick':
+                                return 'Ghost Bricks';
+                            case 'sticky-paddle':
+                                return 'Sticky Paddle';
+                            default:
+                                return 'Lucky Reward';
+                        }
+                    })();
+
+                    let remaining = 0;
+                    if (activeReward.type === 'double-points') {
+                        remaining = doublePointsTimer;
+                    } else if (activeReward.type === 'ghost-brick') {
+                        remaining = ghostBrickEffects.reduce((max, effect) => Math.max(max, effect.remaining), 0);
+                    } else if (activeReward.type === 'sticky-paddle') {
+                        remaining = powerUpManager.getEffect('sticky-paddle')?.remainingTime ?? 0;
+                    }
+
+                    if (remaining > 0 || activeReward.type === 'sticky-paddle') {
+                        const rewardText = new Text({
+                            text: `Reward: ${rewardLabel}${remaining > 0 ? ` (${remaining.toFixed(1)}s)` : ''}`,
+                            style: { fill: 0xffb347, fontSize: 12 },
+                        });
+                        rewardText.x = 20;
+                        rewardText.y = rewardYOffset;
+                        hudContainer.addChild(rewardText);
+                    }
+                }
             };
 
             const playfieldBackground = new Graphics();
@@ -634,8 +803,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             stage.layers.playfield.addChild(playfieldBackground);
 
             // Create game objects container
-            let gameContainer: Container;
-            gameContainer = new Container();
+            const gameContainer = new Container();
             gameContainer.zIndex = 10;
             stage.addToLayer('playfield', gameContainer);
             gameContainer.visible = false;
@@ -733,6 +901,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 powerUpManager.clearAll();
                 clearExtraBalls();
                 loadLevel(levelIndex);
+                if (pendingReward) {
+                    activateReward(pendingReward);
+                    pendingReward = null;
+                } else {
+                    activateReward(null);
+                }
                 reattachBallToPaddle();
                 refreshHud();
             }
@@ -741,6 +915,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 clearExtraBalls();
                 isPaused = false;
                 loop?.stop();
+                pendingReward = spinWheel();
 
                 const completedLevel = currentLevelIndex + 1;
                 let handled = false;
@@ -758,6 +933,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 void stage.switch('level-complete', {
                     level: completedLevel,
                     score: scoringState.score,
+                    reward: pendingReward ?? undefined,
                     onContinue: continueToNextLevel,
                 });
             }
@@ -766,6 +942,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 clearExtraBalls();
                 isPaused = false;
                 loop?.stop();
+                pendingReward = null;
+                activateReward(null);
                 void stage.switch('game-over', { score: scoringState.score });
             }
 
@@ -878,9 +1056,41 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 const speedMultiplier = calculateBallSpeedScale(
                     powerUpManager.getEffect('ball-speed'),
                 );
-                currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier;
-                currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier;
-                currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier;
+                const difficultyScale = levelDifficultyMultiplier;
+                currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale;
+                currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier * difficultyScale;
+                currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier * difficultyScale;
+
+                audioState$.next({
+                    combo: scoringState.combo,
+                    activePowerUps: powerUpManager.getActiveEffects().map((effect) => ({ type: effect.type })),
+                    lookAheadMs: scheduler.lookAheadMs,
+                });
+
+                if (doublePointsTimer > 0) {
+                    doublePointsTimer = Math.max(0, doublePointsTimer - deltaSeconds);
+                    if (doublePointsTimer === 0 && activeReward?.type === 'double-points') {
+                        doublePointsMultiplier = 1;
+                        activeReward = null;
+                    }
+                }
+
+                for (let index = ghostBrickEffects.length - 1; index >= 0; index -= 1) {
+                    const effect = ghostBrickEffects[index];
+                    effect.remaining -= deltaSeconds;
+                    if (effect.remaining <= 0) {
+                        effect.restore();
+                        ghostBrickEffects.splice(index, 1);
+                    }
+                }
+
+                if (ghostBrickEffects.length === 0 && activeReward?.type === 'ghost-brick') {
+                    activeReward = null;
+                }
+
+                if (activeReward?.type === 'sticky-paddle' && !powerUpManager.isActive('sticky-paddle')) {
+                    activeReward = null;
+                }
 
                 // Update paddle size based on power-ups
                 const paddleScale = calculatePaddleWidthScale(
@@ -963,6 +1173,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 session = createSession();
                 currentLevelIndex = 0;
+                pendingReward = null;
+                activateReward(null);
+                levelDifficultyMultiplier = 1;
                 startLevel(currentLevelIndex, { resetScore: true });
                 await stage.switch('gameplay');
                 loop?.start();
@@ -1059,6 +1272,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             window.addEventListener('beforeunload', () => {
                 router.dispose();
                 scheduler.dispose();
+                reactiveAudioLayer.dispose();
+                audioState$.complete();
                 brickPlayers.dispose();
                 volume.dispose();
                 panner.dispose();

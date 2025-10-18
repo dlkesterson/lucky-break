@@ -94,8 +94,9 @@ interface BrickBreakDetails {
     readonly event?: {
         readonly row: number;
         readonly col: number;
-        readonly velocity: number;
+        readonly impactVelocity: number;
         readonly brickType: BrickType;
+        readonly initialHp: number;
     };
 }
 
@@ -190,7 +191,6 @@ const clonePreferences = (preferences: PlayerPreferences): PlayerPreferences => 
 
 const toHudSnapshot = (
     state: Omit<GameSessionSnapshot, 'hud' | 'elapsedTimeMs' | 'updatedAt'>,
-    elapsedTimeMs: number,
 ): HudSnapshot => ({
     score: state.score,
     lives: state.livesRemaining,
@@ -280,7 +280,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             preferences: clonePreferences(preferences),
         };
 
-        const hud = toHudSnapshot(base, currentElapsed);
+        const hud = toHudSnapshot(base);
 
         return {
             ...base,
@@ -329,9 +329,10 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
                 sessionId,
                 row: event.row,
                 col: event.col,
-                velocity: event.velocity,
+                impactVelocity: event.impactVelocity,
                 brickType: event.brickType,
                 comboHeat: momentum.comboHeat,
+                initialHp: event.initialHp,
                 timestamp,
             });
         }
