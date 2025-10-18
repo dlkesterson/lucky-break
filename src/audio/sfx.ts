@@ -203,8 +203,12 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
     const pending = new Set<ScheduledEventHandle>();
 
     const scheduleSource = (source: SfxSource) => {
-        const handle = options.scheduler.schedule((scheduledTime) => {
-            pending.delete(handle);
+        let handle: ScheduledEventHandle | null = null;
+
+        const scheduledHandle = options.scheduler.schedule((scheduledTime) => {
+            if (handle) {
+                pending.delete(handle);
+            }
             let descriptor: SfxTriggerDescriptor | null = null;
 
             switch (source.event) {
@@ -228,6 +232,7 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
                 trigger(descriptor);
             }
         });
+        handle = scheduledHandle;
         pending.add(handle);
     };
 

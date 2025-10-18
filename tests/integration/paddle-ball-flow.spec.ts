@@ -12,6 +12,10 @@ import { PaddleBodyController } from 'render/paddle-body';
 import { BallAttachmentController } from 'physics/ball-attachment';
 import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { createPhysicsWorld } from 'physics/world';
+import { Bodies, Body, Vector } from 'matter-js';
+import { reflectOffPaddle } from 'util/paddle-reflection';
+import { PowerUpManager } from 'util/power-ups';
+import { spinWheel } from 'game/rewards';
 
 describe('Paddle Ball Flow Integration', () => {
     let inputManager: GameInputManager;
@@ -325,6 +329,78 @@ describe('Paddle Ball Flow Integration', () => {
 
             expect(newPosition.x).not.toBe(postLaunchPosition.x);
             expect(newPosition.y).not.toBe(postLaunchPosition.y);
+        });
+    });
+
+    describe('Reflection Dynamics', () => {
+        it('keeps horizontal velocity near zero for center paddle hits', () => {
+            const paddleBody = Bodies.rectangle(400, 560, 100, 20, { isStatic: true, label: 'paddle' });
+            const ballBody = Bodies.circle(400, 540, 10, { label: 'ball' });
+
+            Body.setVelocity(ballBody, { x: 2, y: 9 });
+
+            reflectOffPaddle(ballBody, paddleBody, {
+                paddleWidth: 100,
+                minSpeed: 8,
+            });
+
+            expect(Math.abs(ballBody.velocity.x)).toBeLessThan(0.5);
+            expect(ballBody.velocity.y).toBeLessThan(0);
+            expect(Vector.magnitude(ballBody.velocity)).toBeGreaterThanOrEqual(8);
+        });
+
+        it('produces steep deflection angles for edge hits and enforces minimum speed', () => {
+            const paddleBody = Bodies.rectangle(400, 560, 100, 20, { isStatic: true, label: 'paddle' });
+            const ballBody = Bodies.circle(455, 540, 10, { label: 'ball' });
+
+            Body.setVelocity(ballBody, { x: -1, y: 9 });
+
+            reflectOffPaddle(ballBody, paddleBody, {
+                paddleWidth: 100,
+                minSpeed: 9,
+            });
+
+            const speed = Vector.magnitude(ballBody.velocity);
+            expect(speed).toBeGreaterThanOrEqual(9);
+            expect(Math.abs(ballBody.velocity.x)).toBeGreaterThan(Math.abs(ballBody.velocity.y) * 0.5);
+            expect(ballBody.velocity.y).toBeLessThan(0);
+        });
+    });
+
+    describe('Sticky Reward Interplay', () => {
+        it('reattaches the primary ball when the sticky reward is active', () => {
+            const reward = spinWheel(() => 0);
+            expect(reward.type).toBe('sticky-paddle');
+            if (reward.type !== 'sticky-paddle') {
+                throw new Error('Expected sticky-paddle reward');
+            }
+
+            const powerUps = new PowerUpManager();
+            powerUps.activate('sticky-paddle', { defaultDuration: reward.duration });
+
+            launchController.launch(ball);
+            expect(ballController.isAttached(ball)).toBe(false);
+            expect(powerUps.isActive('sticky-paddle')).toBe(true);
+
+            const attachmentOffset = {
+                x: ball.physicsBody.position.x - paddle.physicsBody.position.x,
+                y: -ball.radius - paddle.height / 2,
+            };
+
+            physicsWorld.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
+            ball.isAttached = true;
+            ball.attachmentOffset = attachmentOffset;
+
+            expect(physicsWorld.isBallAttached(ball.physicsBody)).toBe(true);
+
+            powerUps.update(reward.duration);
+            expect(powerUps.isActive('sticky-paddle')).toBe(false);
+
+            physicsWorld.detachBallFromPaddle(ball.physicsBody);
+            ball.isAttached = false;
+            Body.setVelocity(ball.physicsBody, { x: 0, y: -5 });
+
+            expect(physicsWorld.isBallAttached(ball.physicsBody)).toBe(false);
         });
     });
 });

@@ -94,6 +94,8 @@ export const installToneMock = (): ToneMockContext => {
         }),
     };
 
+    (globalThis as { __luckyBreakToneTransport?: unknown }).__luckyBreakToneTransport = transport;
+
     vi.doMock('tone', () => ({
         Transport: transport,
         now: () => nowSeconds,
@@ -121,6 +123,7 @@ export const installToneMock = (): ToneMockContext => {
     };
 
     const restore = () => {
+        delete (globalThis as { __luckyBreakToneTransport?: unknown }).__luckyBreakToneTransport;
         vi.resetModules();
         vi.doUnmock('tone');
     };

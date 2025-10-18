@@ -27,12 +27,127 @@ export interface ToneScheduler {
 
 const toSeconds = (milliseconds: number): number => milliseconds / 1000;
 
+const resolveTransport = (): {
+    scheduleOnce?: (callback: (time: number) => void, at: number | string) => number;
+    schedule?: (callback: (time: number) => void, at: number | string) => number;
+    clear?: (id: number) => void;
+    cancel?: (time?: number) => void;
+} => {
+    const globalTransport = (globalThis as {
+        __luckyBreakToneTransport?: unknown;
+    }).__luckyBreakToneTransport;
+
+    if (globalTransport && typeof globalTransport === 'object') {
+        return globalTransport as {
+            scheduleOnce?: (callback: (time: number) => void, at: number | string) => number;
+            schedule?: (callback: (time: number) => void, at: number | string) => number;
+            clear?: (id: number) => void;
+            cancel?: (time?: number) => void;
+        };
+    }
+
+    return Transport as unknown as {
+        scheduleOnce?: (callback: (time: number) => void, at: number | string) => number;
+        schedule?: (callback: (time: number) => void, at: number | string) => number;
+        clear?: (id: number) => void;
+        cancel?: (time?: number) => void;
+    };
+};
+
 export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneScheduler => {
     const lookAheadMs = Math.max(0, options.lookAheadMs ?? DEFAULT_LOOK_AHEAD_MS);
     const now = options.now ?? toneNow;
-    const scheduleFn = options.schedule ?? ((callback, at) => Transport.scheduleOnce(callback, at));
-    const clearFn = options.clear ?? ((id) => Transport.clear(id));
-    const cancelFn = options.cancel ?? ((time = 0) => Transport.cancel(time));
+    const transportLike = resolveTransport();
+
+    const fallbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    let fallbackHandle = 1;
+
+    const resolveTargetSeconds = (at: number | string): number => {
+        if (typeof at === 'number') {
+            return at;
+        }
+
+        const parsed = parseFloat(at);
+        if (!Number.isFinite(parsed)) {
+            return now();
+        }
+
+        if (String(at).trim().startsWith('+')) {
+            return now() + parsed;
+        }
+
+        return parsed;
+    };
+
+    const scheduleFallback = (callback: (time: number) => void, at: number | string) => {
+        const handle = fallbackHandle++;
+        const targetSeconds = resolveTargetSeconds(at);
+        const delayMs = Math.max(0, (targetSeconds - now()) * 1000);
+        const timer = setTimeout(() => {
+            fallbackTimers.delete(handle);
+            callback(targetSeconds);
+        }, delayMs);
+        fallbackTimers.set(handle, timer);
+        return -handle;
+    };
+
+    const clearFallback = (id: number) => {
+        const timer = fallbackTimers.get(id);
+        if (timer) {
+            clearTimeout(timer);
+            fallbackTimers.delete(id);
+        }
+    };
+
+    const cancelFallback = () => {
+        for (const timer of fallbackTimers.values()) {
+            clearTimeout(timer);
+        }
+        fallbackTimers.clear();
+    };
+
+    const hasTransportScheduling = typeof transportLike.scheduleOnce === 'function' || typeof transportLike.schedule === 'function';
+
+    const scheduleWithTransport = (callback: (time: number) => void, at: number | string): number => {
+        if (typeof transportLike.scheduleOnce === 'function') {
+            return transportLike.scheduleOnce(callback, at);
+        }
+        if (typeof transportLike.schedule === 'function') {
+            return transportLike.schedule(callback, at);
+        }
+        throw new TypeError('Tone.Transport does not support scheduling');
+    };
+
+    const scheduleFn = options.schedule ?? ((callback, at) => {
+        if (!hasTransportScheduling) {
+            return scheduleFallback(callback, at);
+        }
+
+        try {
+            return scheduleWithTransport(callback, at);
+        } catch (_error) {
+            return scheduleFallback(callback, at);
+        }
+    });
+
+    const clearFn = options.clear ?? ((id) => {
+        if (id < 0) {
+            clearFallback(-id);
+            return;
+        }
+
+        if (typeof transportLike.clear === 'function') {
+            transportLike.clear(id);
+            return;
+        }
+
+        transportLike.cancel?.();
+    });
+
+    const cancelFn = options.cancel ?? ((time = 0) => {
+        transportLike.cancel?.(time);
+        cancelFallback();
+    });
     const usingTransport = options.schedule === undefined;
     const audioContext = getContext().rawContext as AudioContext;
 

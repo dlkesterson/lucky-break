@@ -4,6 +4,7 @@ import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
 import { buildHudScoreboard } from 'render/hud';
+import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
@@ -86,6 +87,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             const stage = await createSceneManager({ parent: container });
 
             stage.layers.playfield.sortableChildren = true;
+            stage.layers.effects.sortableChildren = true;
 
             // Set canvas to fill viewport
             stage.canvas.style.width = '100vw';
@@ -279,6 +281,16 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             let currentBaseSpeed = BALL_BASE_SPEED;
             let currentMaxSpeed = BALL_MAX_SPEED;
             let currentLaunchSpeed = BALL_LAUNCH_SPEED;
+
+            const dynamicLight = createDynamicLight({
+                minRadius: 140,
+                maxRadius: 260,
+                minIntensity: 0.22,
+                maxIntensity: 0.88,
+                speedForMaxIntensity: BALL_MAX_SPEED * 1.1,
+            });
+            dynamicLight.container.zIndex = 5;
+            stage.addToLayer('effects', dynamicLight.container);
 
             const getBrickColor = (hp: number): number => {
                 if (hp >= 3) {
@@ -605,6 +617,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                 minSpeed: currentBaseSpeed,
                             });
                         }
+
+                        dynamicLight.flash();
 
                         bus.publish('PaddleHit', {
                             sessionId,
@@ -1154,6 +1168,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     visual.y = body.position.y;
                     visual.rotation = body.angle;
                 });
+
+                dynamicLight.update({
+                    position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
+                    speed: MatterVector.magnitude(ball.physicsBody.velocity),
+                    deltaSeconds,
+                });
             };
 
             loop = createGameLoop(
@@ -1277,6 +1297,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 brickPlayers.dispose();
                 volume.dispose();
                 panner.dispose();
+                dynamicLight.destroy();
                 document.removeEventListener('keydown', handleGlobalKeyDown);
             });
         }

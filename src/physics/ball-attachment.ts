@@ -114,6 +114,10 @@ export class BallAttachmentController implements BallController {
      * Get ball debug information
      */
     getDebugInfo(ball: Ball): BallDebugInfo {
+        if (typeof this.physicsWorld.getBallAttachment === 'function') {
+            this.physicsWorld.getBallAttachment(ball.physicsBody);
+        }
+
         return {
             position: ball.physicsBody.position,
             velocity: ball.physicsBody.velocity,
