@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "matter-js": "^0.20.0",
-    "pixi.js": "^8.14.0",
+  "pixi.js": "^8.14.0",
+  "@pixi/filter-glow": "^5.2.1",
     "tone": "^15.1.22"
   },
   "devDependencies": {
