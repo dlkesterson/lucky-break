@@ -52,6 +52,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
         return primary.replace(/['"]/g, '');
     };
     const themeFontFamily = parsePrimaryFontFamily(GameTheme.font);
+    const themeMonoFontFamily = parsePrimaryFontFamily(GameTheme.monoFont ?? GameTheme.font);
     const rowColors = GameTheme.brickColors.map(toColorNumber);
     const themeBallColors = {
         core: toColorNumber(GameTheme.ball.core),
@@ -68,11 +69,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     const HUD_SCALE = 0.9;
     const HUD_MARGIN = 32;
     const MIN_HUD_SCALE = 0.55;
-    const fontDescriptors = [
+    const fontDescriptors: string[] = [
         `400 32px "${themeFontFamily}"`,
         `600 56px "${themeFontFamily}"`,
         `700 64px "${themeFontFamily}"`,
-    ] as const;
+    ];
+    if (themeMonoFontFamily && themeMonoFontFamily !== themeFontFamily) {
+        fontDescriptors.push(
+            `400 28px "${themeMonoFontFamily}"`,
+            `600 32px "${themeMonoFontFamily}"`,
+        );
+    }
     const STARFIELD_TEXTURE_DEF = {
         alias: 'starfield-background',
         src: new URL('../../assets/Starfield_08-512x512.png', import.meta.url).href,
@@ -80,6 +87,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
     let starfieldTexture: Texture | null = null;
     let playfieldBackgroundLayer: { container: Container; tiling: TilingSprite } | null = null;
+    let ballLight: ReactiveLight | null = null;
+    let paddleLight: ReactiveLight | null = null;
 
     interface BallVisualPalette {
         readonly baseColor: number;
@@ -95,6 +104,13 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
         readonly gradient?: readonly number[];
         readonly accentColor?: number;
         readonly pulseStrength?: number;
+    }
+
+    interface ReactiveLight {
+        readonly container: Container;
+        update(payload: { readonly position: { readonly x: number; readonly y: number }; readonly speed: number; readonly deltaSeconds: number }): void;
+        flash(intensityBoost?: number): void;
+        destroy(): void;
     }
 
     const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
@@ -365,8 +381,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     if (event.type === 'combo') {
                         comboRingPulse = Math.min(1, comboRingPulse + 0.45);
                         ballGlowPulse = Math.min(1, ballGlowPulse + 0.5);
+                        ballLight?.flash(0.35);
                     } else if (event.type === 'power-up') {
                         paddleGlowPulse = Math.min(1, paddleGlowPulse + 0.6);
+                        paddleLight?.flash(0.5);
                     }
                 },
             });
@@ -546,12 +564,28 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             let currentBaseSpeed = BALL_BASE_SPEED;
             let currentMaxSpeed = BALL_MAX_SPEED;
             let currentLaunchSpeed = BALL_LAUNCH_SPEED;
+            let previousPaddlePosition = { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 };
 
-            const dynamicLight = createDynamicLight({
+            ballLight = createDynamicLight({
                 speedForMaxIntensity: BALL_MAX_SPEED * 1.1,
             });
-            dynamicLight.container.zIndex = 5;
-            stage.addToLayer('effects', dynamicLight.container);
+            ballLight.container.zIndex = 5;
+            stage.addToLayer('effects', ballLight.container);
+
+            paddleLight = createDynamicLight({
+                color: themeAccents.powerUp,
+                minRadius: 55,
+                maxRadius: 180,
+                baseRadius: 200,
+                minIntensity: 0.02,
+                maxIntensity: 0.12,
+                speedForMaxIntensity: BALL_MAX_SPEED * 0.55,
+                radiusLerpSpeed: 6,
+                intensityLerpSpeed: 5,
+            });
+            paddleLight.container.zIndex = 4;
+            paddleLight.container.alpha = 0.9;
+            stage.addToLayer('effects', paddleLight.container);
 
             const updateBrickLighting = (ballPosition: { readonly x: number; readonly y: number }): void => {
                 brickVisualState.forEach((state, body) => {
@@ -918,7 +952,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             });
                         }
 
-                        dynamicLight.flash();
+                        ballLight?.flash();
+                        paddleLight?.flash(0.3);
 
                         bus.publish('PaddleHit', {
                             sessionId,
@@ -1277,6 +1312,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 { width: 100, height: 20, speed: 300 }
             );
             physics.add(paddle.physicsBody);
+            previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
 
             // Create ball attached to paddle
             const ball = ballController.createAttachedBall(
@@ -1335,7 +1371,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
                 MatterBody.setAngularVelocity(ball.physicsBody, 0);
                 inputManager.resetLaunchTrigger();
-                inputManager.syncPaddlePosition(paddleController.getPaddleCenter(paddle));
+                const center = paddleController.getPaddleCenter(paddle);
+                previousPaddlePosition = { x: center.x, y: center.y };
+                inputManager.syncPaddlePosition(center);
             }
 
             function startLevel(levelIndex: number, options: { resetScore?: boolean } = {}): void {
@@ -1378,11 +1416,11 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     handled = true;
                     currentLevelIndex += 1;
                     startLevel(currentLevelIndex);
-                    await stage.switch('gameplay');
+                    await stage.transitionTo('gameplay');
                     loop?.start();
                 };
 
-                void stage.switch('level-complete', {
+                void stage.transitionTo('level-complete', {
                     level: completedLevel,
                     score: scoringState.score,
                     reward: pendingReward ?? undefined,
@@ -1396,7 +1434,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 loop?.stop();
                 pendingReward = null;
                 activateReward(null);
-                void stage.switch('game-over', { score: scoringState.score });
+                void stage.transitionTo('game-over', { score: scoringState.score });
             }
 
             const collectBallBodies = (): Body[] => {
@@ -1504,7 +1542,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             };
 
             function handlePowerUpActivation(type: PowerUpType): void {
-                dynamicLight.flash(0.5);
+                ballLight?.flash(0.5);
+                paddleLight?.flash(0.45);
                 if (type === 'multi-ball') {
                     spawnExtraBalls();
                 }
@@ -1593,6 +1632,20 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 paddle.position.y = paddle.physicsBody.position.y;
 
                 const paddleCenter = paddleController.getPaddleCenter(paddle);
+                const safeDelta = deltaSeconds > 0 ? deltaSeconds : 1 / 240;
+                const paddleDelta = Math.hypot(
+                    paddleCenter.x - previousPaddlePosition.x,
+                    paddleCenter.y - previousPaddlePosition.y,
+                );
+                const paddleSpeed = paddleDelta / safeDelta;
+                if (paddleLight) {
+                    paddleLight.update({
+                        position: { x: paddleCenter.x, y: paddleCenter.y },
+                        speed: paddleSpeed,
+                        deltaSeconds,
+                    });
+                }
+                previousPaddlePosition = { x: paddleCenter.x, y: paddleCenter.y };
 
                 // Update ball attachment to follow paddle
                 ballController.updateAttachment(ball, paddleCenter);
@@ -1636,11 +1689,13 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 updateBrickLighting(ball.physicsBody.position);
 
-                dynamicLight.update({
-                    position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
-                    speed: MatterVector.magnitude(ball.physicsBody.velocity),
-                    deltaSeconds,
-                });
+                if (ballLight) {
+                    ballLight.update({
+                        position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
+                        speed: MatterVector.magnitude(ball.physicsBody.velocity),
+                        deltaSeconds,
+                    });
+                }
 
                 // Animate reactive glow and combo ring visuals
                 const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
@@ -1726,7 +1781,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 activateReward(null);
                 levelDifficultyMultiplier = 1;
                 startLevel(currentLevelIndex, { resetScore: true });
-                await stage.switch('gameplay');
+                await stage.transitionTo('gameplay');
                 loop?.start();
             };
 
@@ -1759,7 +1814,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 onRestart: () => beginNewSession(),
             }));
 
-            await stage.switch('main-menu');
+            await stage.transitionTo('main-menu', undefined, { skipFadeOut: true });
             gameContainer.visible = false;
             hudContainer.visible = false;
 
@@ -1771,7 +1826,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 isPaused = false;
                 gameContainer.visible = false;
                 hudContainer.visible = false;
-                await stage.switch('main-menu');
+                await stage.transitionTo('main-menu');
             };
 
             const resumeFromPause = async () => {
@@ -1780,7 +1835,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 }
 
                 isPaused = false;
-                await stage.switch('gameplay');
+                await stage.transitionTo('gameplay');
                 loop.start();
             };
 
@@ -1791,7 +1846,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 isPaused = true;
                 loop.stop();
-                void stage.switch('pause', {
+                void stage.transitionTo('pause', {
                     score: scoringState.score,
                     legendTitle: 'Power-Up Legend',
                     legendLines: pauseLegendLines,
@@ -1826,7 +1881,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 brickPlayers.dispose();
                 volume.dispose();
                 panner.dispose();
-                dynamicLight.destroy();
+                ballLight?.destroy();
+                paddleLight?.destroy();
+                ballLight = null;
+                paddleLight = null;
                 document.removeEventListener('keydown', handleGlobalKeyDown);
             });
         }

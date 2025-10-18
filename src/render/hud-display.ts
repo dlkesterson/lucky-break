@@ -40,15 +40,24 @@ const PROMPT_ROW_HEIGHT = 18;
 
 const parseColor = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
+interface TextStyleOptions {
+    readonly fill: number;
+    readonly fontSize: number;
+    readonly fontWeight?: 'normal' | 'bold';
+    readonly fontFamily?: string;
+    readonly letterSpacing?: number;
+}
+
 const createText = (
     text: string,
-    style: { readonly fill: number; readonly fontSize: number; readonly fontWeight?: 'normal' | 'bold' },
+    style: TextStyleOptions,
 ): Text => {
     return new Text(text, {
         fill: style.fill,
         fontSize: style.fontSize,
         fontWeight: style.fontWeight ?? 'normal',
-        letterSpacing: 0.5,
+        fontFamily: style.fontFamily,
+        letterSpacing: style.letterSpacing ?? 0.5,
     });
 };
 
@@ -59,6 +68,8 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     let colorCombo = parseColor(activeTheme.accents.combo);
     let colorReward = parseColor(activeTheme.hud.accent);
     let colorWarning = parseColor(activeTheme.hud.danger);
+    let fontFamilyPrimary = activeTheme.font;
+    let fontFamilyMono = activeTheme.monoFont ?? activeTheme.font;
 
     const container = new Container();
     container.eventMode = 'none';
@@ -81,11 +92,11 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     };
     redrawPanel(PANEL_MIN_HEIGHT);
 
-    const statusText = createText('', { fill: colorPrimary, fontSize: 20, fontWeight: 'bold' });
+    const statusText = createText('', { fill: colorPrimary, fontSize: 20, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
     statusText.x = PANEL_PADDING;
     container.addChild(statusText);
 
-    const summaryText = createText('', { fill: colorSecondary, fontSize: 14 });
+    const summaryText = createText('', { fill: colorSecondary, fontSize: 14, fontFamily: fontFamilyPrimary });
     summaryText.x = PANEL_PADDING;
     summaryText.alpha = 0.8;
     container.addChild(summaryText);
@@ -94,49 +105,49 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     const entryTexts = new Map<HudScoreboardEntry['id'], Text>();
 
     entryOrder.forEach((id, index) => {
-        const text = createText('', { fill: colorPrimary, fontSize: 14 });
+        const text = createText('', { fill: colorPrimary, fontSize: 14, fontFamily: fontFamilyMono });
         text.x = PANEL_PADDING;
         text.y = PANEL_PADDING + 70 + index * ENTRY_ROW_HEIGHT;
         container.addChild(text);
         entryTexts.set(id, text);
     });
 
-    const difficultyText = createText('', { fill: colorSecondary, fontSize: 13 });
+    const difficultyText = createText('', { fill: colorSecondary, fontSize: 13, fontFamily: fontFamilyMono });
     difficultyText.x = PANEL_PADDING;
     container.addChild(difficultyText);
 
-    const comboLabel = createText('', { fill: colorCombo, fontSize: 18, fontWeight: 'bold' });
+    const comboLabel = createText('', { fill: colorCombo, fontSize: 18, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
     comboLabel.x = PANEL_PADDING;
     comboLabel.visible = false;
     container.addChild(comboLabel);
 
-    const comboTimerText = createText('', { fill: colorSecondary, fontSize: 12 });
+    const comboTimerText = createText('', { fill: colorSecondary, fontSize: 12, fontFamily: fontFamilyMono });
     comboTimerText.x = PANEL_PADDING + 6;
     comboTimerText.visible = false;
     container.addChild(comboTimerText);
 
-    const powerUpHeader = createText('Power-Ups', { fill: colorSecondary, fontSize: 12 });
+    const powerUpHeader = createText('Power-Ups', { fill: colorSecondary, fontSize: 12, fontFamily: fontFamilyPrimary });
     powerUpHeader.x = PANEL_PADDING;
     powerUpHeader.visible = false;
     powerUpHeader.alpha = 0.9;
     container.addChild(powerUpHeader);
 
     const powerUpTexts: Text[] = Array.from({ length: 4 }, () => {
-        const text = createText('', { fill: colorPrimary, fontSize: 13 });
+        const text = createText('', { fill: colorPrimary, fontSize: 13, fontFamily: fontFamilyMono });
         text.x = PANEL_PADDING + 10;
         text.visible = false;
         container.addChild(text);
         return text;
     });
 
-    const rewardText = createText('', { fill: colorReward, fontSize: 13, fontWeight: 'bold' });
+    const rewardText = createText('', { fill: colorReward, fontSize: 13, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
     rewardText.x = PANEL_PADDING;
     rewardText.visible = false;
     container.addChild(rewardText);
 
     const promptTexts: Text[] = Array.from({ length: 2 }, (_, index) => {
         const baseColor = index === 0 ? colorWarning : colorReward;
-        const text = createText('', { fill: baseColor, fontSize: 12 });
+        const text = createText('', { fill: baseColor, fontSize: 12, fontFamily: fontFamilyPrimary });
         text.x = PANEL_PADDING;
         text.visible = false;
         container.addChild(text);
@@ -269,22 +280,34 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         colorCombo = parseColor(activeTheme.accents.combo);
         colorReward = parseColor(activeTheme.hud.accent);
         colorWarning = parseColor(activeTheme.hud.danger);
+        fontFamilyPrimary = activeTheme.font;
+        fontFamilyMono = activeTheme.monoFont ?? activeTheme.font;
 
         statusText.style.fill = colorPrimary;
+        statusText.style.fontFamily = fontFamilyPrimary;
         summaryText.style.fill = colorSecondary;
+        summaryText.style.fontFamily = fontFamilyPrimary;
         entryTexts.forEach((text) => {
             text.style.fill = colorPrimary;
+            text.style.fontFamily = fontFamilyMono;
         });
         difficultyText.style.fill = colorSecondary;
+        difficultyText.style.fontFamily = fontFamilyMono;
         comboLabel.style.fill = colorCombo;
+        comboLabel.style.fontFamily = fontFamilyPrimary;
         comboTimerText.style.fill = colorSecondary;
+        comboTimerText.style.fontFamily = fontFamilyMono;
         powerUpHeader.style.fill = colorSecondary;
+        powerUpHeader.style.fontFamily = fontFamilyPrimary;
         powerUpTexts.forEach((text) => {
             text.style.fill = colorPrimary;
+            text.style.fontFamily = fontFamilyMono;
         });
         rewardText.style.fill = colorReward;
+        rewardText.style.fontFamily = fontFamilyPrimary;
         promptTexts.forEach((text, index) => {
             text.style.fill = index === 0 ? colorWarning : colorReward;
+            text.style.fontFamily = fontFamilyPrimary;
         });
 
         redrawPanel(currentPanelHeight);

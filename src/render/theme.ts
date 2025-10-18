@@ -15,6 +15,7 @@ export interface GameThemeDefinition {
         readonly highlight: string;
     };
     readonly font: string;
+    readonly monoFont: string;
     readonly hud: {
         readonly panelFill: string;
         readonly panelLine: string;
@@ -35,6 +36,7 @@ export const GameTheme: GameThemeDefinition = {
     paddle: { gradient: ['#00FFA8', '#00C9FF'], glow: 0.4 },
     ball: { core: '#FF4F81', aura: '#FFE6EB', highlight: '#FF99BD' },
     font: 'Overpass, sans-serif',
+    monoFont: 'Overpass Mono, monospace',
     hud: {
         panelFill: '#081226',
         panelLine: '#1D9FFF',
