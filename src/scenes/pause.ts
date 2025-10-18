@@ -60,7 +60,7 @@ export const createPauseScene = (
                 text: options.title ?? DEFAULT_TITLE,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Overpass, Arial, sans-serif',
+                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
                     fontSize: 60,
                     fontWeight: 'bold',
                     align: 'center',
@@ -73,7 +73,7 @@ export const createPauseScene = (
                 text: `Score: ${payload.score}`,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 28,
                     align: 'center',
                 },
@@ -85,7 +85,7 @@ export const createPauseScene = (
                 text: options.resumeLabel ?? DEFAULT_RESUME_LABEL,
                 style: {
                     fill: 0xffe066,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 26,
                     align: 'center',
                 },
@@ -100,7 +100,7 @@ export const createPauseScene = (
                 text: legendTitle ?? '',
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Overpass, Arial, sans-serif',
+                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
                     fontSize: 24,
                     fontWeight: 'bold',
                     align: 'center',
@@ -114,7 +114,7 @@ export const createPauseScene = (
                 text: legendLines.join('\n'),
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 18,
                     align: 'center',
                     lineHeight: 26,
@@ -129,7 +129,7 @@ export const createPauseScene = (
                 text: payload.onQuit ? quitLabel : '',
                 style: {
                     fill: 0xb0b0b0,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 18,
                     align: 'center',
                 },

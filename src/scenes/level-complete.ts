@@ -65,7 +65,7 @@ export const createLevelCompleteScene = (
                 text: options.title ? options.title(payload) : `Level ${payload.level} Complete`,
                 style: {
                     fill: 0x66ff99,
-                    fontFamily: 'Overpass, Arial, sans-serif',
+                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
                     fontSize: 56,
                     fontWeight: 'bold',
                     align: 'center',
@@ -78,7 +78,7 @@ export const createLevelCompleteScene = (
                 text: options.scoreLabel ? options.scoreLabel(payload) : `Score: ${payload.score}`,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 32,
                     align: 'center',
                 },
@@ -91,7 +91,7 @@ export const createLevelCompleteScene = (
                     text: `Reward: ${describeReward(payload.reward)}`,
                     style: {
                         fill: 0xffb347,
-                        fontFamily: 'Arial',
+                        fontFamily: 'Overpass Mono',
                         fontSize: 26,
                         align: 'center',
                     },
@@ -105,7 +105,7 @@ export const createLevelCompleteScene = (
                 text: options.prompt ?? DEFAULT_PROMPT,
                 style: {
                     fill: 0xffe066,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 28,
                     align: 'center',
                 },

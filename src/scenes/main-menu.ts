@@ -40,7 +40,7 @@ export const createMainMenuScene = (
                 text: options.title ?? DEFAULT_TITLE,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Overpass, Arial, sans-serif',
+                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
                     fontSize: 64,
                     fontWeight: 'bold',
                     align: 'center',
@@ -53,7 +53,7 @@ export const createMainMenuScene = (
                 text: options.prompt ?? DEFAULT_PROMPT,
                 style: {
                     fill: 0xffe066,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 32,
                     align: 'center',
                 },
@@ -71,7 +71,7 @@ export const createMainMenuScene = (
                 text: helpLines.join('\n'),
                 style: {
                     fill: 0xa0a0a0,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 20,
                     align: 'center',
                 },

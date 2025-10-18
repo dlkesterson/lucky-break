@@ -45,7 +45,7 @@ export const createGameOverScene = (
                 text: options.title ? options.title(effectivePayload) : DEFAULT_TITLE,
                 style: {
                     fill: 0xff6666,
-                    fontFamily: 'Overpass, Arial, sans-serif',
+                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
                     fontSize: 56,
                     fontWeight: 'bold',
                     align: 'center',
@@ -60,7 +60,7 @@ export const createGameOverScene = (
                     : `Final Score: ${effectivePayload.score}`,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 32,
                     align: 'center',
                 },
@@ -72,7 +72,7 @@ export const createGameOverScene = (
                 text: options.prompt ?? DEFAULT_PROMPT,
                 style: {
                     fill: 0xffffff,
-                    fontFamily: 'Arial',
+                    fontFamily: 'Overpass Mono',
                     fontSize: 28,
                     align: 'center',
                 },
