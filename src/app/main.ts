@@ -30,9 +30,54 @@ import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEvent
 import { createEventBus } from 'app/events';
 import { createToneScheduler, createReactiveAudioLayer, type ReactiveAudioGameState } from 'audio/scheduler';
 import { createSfxRouter } from 'audio/sfx';
-import { Players, Panner, Volume, Transport } from 'tone';
+import { Players, Panner, Volume, Transport, getContext } from 'tone';
 import { spinWheel, type Reward } from 'game/rewards';
 import { createSubject } from 'util/observable';
+
+const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
+    if (value === null || value === undefined) {
+        return false;
+    }
+    const candidate = value as { then?: unknown };
+    return typeof candidate.then === 'function';
+};
+
+const isAutoplayBlockedError = (error: unknown): boolean => {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    if (error.name === 'NotAllowedError') {
+        return true;
+    }
+
+    const message = error.message ?? '';
+    return message.includes('was not allowed to start');
+};
+
+const createInteractionRequiredError = (cause: unknown): Error => {
+    const error = new Error('User interaction is required before audio can start.');
+    error.name = 'BootstrapInteractionRequiredError';
+    (error as { cause?: unknown; code?: string }).cause = cause;
+    (error as { cause?: unknown; code?: string }).code = 'bootstrap.interaction-required';
+    return error;
+};
+
+const getToneAudioContext = (): AudioContext => getContext().rawContext as AudioContext;
+
+const ensureToneAudio = async (): Promise<void> => {
+    const context = getToneAudioContext();
+    if (context.state === 'suspended') {
+        await context.resume();
+    }
+
+    if (Transport.state !== 'started') {
+        const result = Transport.start();
+        if (isPromiseLike(result)) {
+            await result;
+        }
+    }
+};
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -330,6 +375,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
     const preloader = createPreloader({
         container,
+        autoStart: true,
         loadAssets: async (report) => {
             const totalSteps = fontDescriptors.length + 1;
             const forward = (value: number) => {
@@ -348,6 +394,15 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             forward(totalSteps);
         },
         onStart: async () => {
+            try {
+                await ensureToneAudio();
+            } catch (error) {
+                if (isAutoplayBlockedError(error)) {
+                    throw createInteractionRequiredError(error);
+                }
+                throw error;
+            }
+
             // Initialize the game components
             const stage = await createStage({ parent: container, theme: GameTheme });
 
@@ -388,25 +443,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                     }
                 },
             });
-            const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
-                if (value === null) {
-                    return false;
-                }
-                const candidate = value as { then?: unknown };
-                return typeof candidate?.then === 'function';
-            };
-            const ensureAudioIsRunning = async () => {
-                const ctx = scheduler.context;
-                if (ctx.state === 'suspended') {
-                    await ctx.resume();
-                }
-                if (Transport.state !== 'started') {
-                    const result = Transport.start();
-                    if (isPromiseLike(result)) {
-                        await result;
-                    }
-                }
-            };
+            const toneAudioContext = getToneAudioContext();
+            const isToneAudioReady = () => toneAudioContext.state === 'running' && Transport.state === 'started';
 
             const toDecibels = (gain: number): number => {
                 if (gain <= 0) {
@@ -436,8 +474,59 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 players.connect(volume);
             });
 
-            // Ensure the audio graph and Tone transport are primed before any collision events fire.
-            await ensureAudioIsRunning();
+            let audioUnlockDocument: Document | null = null;
+            let audioUnlockHandler: ((event: Event) => void) | null = null;
+
+            const cleanupAudioUnlock = () => {
+                if (!audioUnlockHandler || !audioUnlockDocument) {
+                    return;
+                }
+
+                audioUnlockDocument.removeEventListener('pointerdown', audioUnlockHandler);
+                audioUnlockDocument.removeEventListener('keydown', audioUnlockHandler);
+                audioUnlockHandler = null;
+                audioUnlockDocument = null;
+            };
+
+            const scheduleAudioUnlock = () => {
+                if (audioUnlockHandler) {
+                    return;
+                }
+
+                if (isToneAudioReady()) {
+                    return;
+                }
+
+                const docRef = container.ownerDocument ?? document;
+                audioUnlockDocument = docRef;
+
+                audioUnlockHandler = () => {
+                    if (isToneAudioReady()) {
+                        cleanupAudioUnlock();
+                        return;
+                    }
+
+                    void ensureToneAudio()
+                        .catch((unlockError) => {
+                            console.warn('Audio unlock attempt deferred until interaction', unlockError);
+                        })
+                        .finally(() => {
+                            if (isToneAudioReady()) {
+                                cleanupAudioUnlock();
+                            }
+                        });
+                };
+
+                docRef.addEventListener('pointerdown', audioUnlockHandler);
+                docRef.addEventListener('keydown', audioUnlockHandler);
+            };
+
+            if (!isToneAudioReady()) {
+                void ensureToneAudio().catch((audioInitError) => {
+                    console.warn('Audio context suspended; will retry after the first user interaction.', audioInitError);
+                });
+            }
+            scheduleAudioUnlock();
 
             const lastPlayerStart = new Map<string, number>();
 
@@ -446,7 +535,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 scheduler,
                 brickSampleIds: Object.keys(brickSampleUrls),
                 trigger: (descriptor) => {
-                    void ensureAudioIsRunning().catch(console.warn);
+                    void ensureToneAudio().catch(console.warn);
                     const player = brickPlayers.player(descriptor.id);
                     if (!player) {
                         return;
@@ -1350,18 +1439,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             gameContainer.addChild(paddleGraphics);
             visualBodies.set(paddle.physicsBody, paddleGraphics);
 
-            // Initialize input manager AFTER preloader completes to avoid capturing the "Tap to Start" click
+            // Initialize input manager once preload finishes so event handlers bind to the active canvas
             inputManager.initialize(container);
-
-            // Helper to convert canvas coordinates to playfield (PLAYFIELD_WIDTH × PLAYFIELD_HEIGHT) coordinates
-            const toPlayfield = (canvasPt: { x: number; y: number }) => {
-                const root = stage.layers.root;
-                const s = root.scale.x; // uniform scale
-                return {
-                    x: (canvasPt.x - root.position.x) / s,
-                    y: (canvasPt.y - root.position.y) / s,
-                };
-            };
 
             function reattachBallToPaddle(): void {
                 const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
@@ -1619,7 +1698,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 // Process input
                 const paddleTarget = inputManager.getPaddleTarget();
                 if (paddleTarget) {
-                    const pf = toPlayfield(paddleTarget);
+                    const pf = stage.toPlayfield(paddleTarget);
 
                     const targetX = pf.x;
                     const halfPaddleWidth = paddle.width / 2;
@@ -1878,6 +1957,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 scheduler.dispose();
                 reactiveAudioLayer.dispose();
                 audioState$.complete();
+                cleanupAudioUnlock();
                 brickPlayers.dispose();
                 volume.dispose();
                 panner.dispose();

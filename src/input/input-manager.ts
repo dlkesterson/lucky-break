@@ -20,8 +20,32 @@ export class GameInputManager implements InputManager {
     private launchManager = new PaddleLaunchManager();
     private previousPaddlePosition: Vector2 | null = null;
     private hasReceivedInput = false; // Track if user has moved mouse/touch since initialization
+    private mouseEventTarget: HTMLElement | null = null;
+    private readonly mouseDownListener: (event: MouseEvent) => void;
+    private readonly mouseMoveListener: (event: MouseEvent) => void;
+    private readonly mouseUpListener: (event: MouseEvent) => void;
+    private readonly touchStartListener: (event: TouchEvent) => void;
+    private readonly touchMoveListener: (event: TouchEvent) => void;
+    private readonly touchEndListener: (event: TouchEvent) => void;
+    private readonly keyDownListener: (event: KeyboardEvent) => void;
+    private readonly keyUpListener: (event: KeyboardEvent) => void;
+    private readonly contextMenuListener: (event: Event) => void;
+
+    constructor() {
+        this.mouseDownListener = this.handleMouseDown.bind(this);
+        this.mouseMoveListener = this.handleMouseMove.bind(this);
+        this.mouseUpListener = this.handleMouseUp.bind(this);
+        this.touchStartListener = this.handleTouchStart.bind(this);
+        this.touchMoveListener = this.handleTouchMove.bind(this);
+        this.touchEndListener = this.handleTouchEnd.bind(this);
+        this.keyDownListener = this.handleKeyDown.bind(this);
+        this.keyUpListener = this.handleKeyUp.bind(this);
+        this.contextMenuListener = (event) => event.preventDefault();
+    }
 
     initialize(container: HTMLElement): void {
+        this.teardownEventListeners();
+
         this.container = container;
         // Find the canvas element within the container
         this.canvas = container.querySelector('canvas') ?? null;
@@ -35,24 +59,49 @@ export class GameInputManager implements InputManager {
     }
 
     private setupEventListeners(): void {
-        if (!this.container) return;
+        if (!this.container) {
+            return;
+        }
 
-        // Mouse events
-        this.container.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.container.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        this.container.addEventListener('mouseup', this.handleMouseUp.bind(this));
+        const mouseTarget = this.canvas ?? this.container;
+        this.mouseEventTarget = mouseTarget;
+
+        if (mouseTarget) {
+            mouseTarget.addEventListener('mousedown', this.mouseDownListener);
+            mouseTarget.addEventListener('mousemove', this.mouseMoveListener);
+            mouseTarget.addEventListener('mouseup', this.mouseUpListener);
+            mouseTarget.addEventListener('contextmenu', this.contextMenuListener);
+        }
 
         // Touch events
-        this.container.addEventListener('touchstart', this.handleTouchStart.bind(this));
-        this.container.addEventListener('touchmove', this.handleTouchMove.bind(this));
-        this.container.addEventListener('touchend', this.handleTouchEnd.bind(this));
+        this.container.addEventListener('touchstart', this.touchStartListener);
+        this.container.addEventListener('touchmove', this.touchMoveListener);
+        this.container.addEventListener('touchend', this.touchEndListener);
 
         // Keyboard events
-        document.addEventListener('keydown', this.handleKeyDown.bind(this));
-        document.addEventListener('keyup', this.handleKeyUp.bind(this));
+        document.addEventListener('keydown', this.keyDownListener);
+        document.addEventListener('keyup', this.keyUpListener);
+    }
 
-        // Prevent context menu on right click
-        this.container.addEventListener('contextmenu', (e) => e.preventDefault());
+    private teardownEventListeners(): void {
+        if (this.mouseEventTarget) {
+            this.mouseEventTarget.removeEventListener('mousedown', this.mouseDownListener);
+            this.mouseEventTarget.removeEventListener('mousemove', this.mouseMoveListener);
+            this.mouseEventTarget.removeEventListener('mouseup', this.mouseUpListener);
+            this.mouseEventTarget.removeEventListener('contextmenu', this.contextMenuListener);
+        }
+
+        if (this.container) {
+            this.container.removeEventListener('touchstart', this.touchStartListener);
+            this.container.removeEventListener('touchmove', this.touchMoveListener);
+            this.container.removeEventListener('touchend', this.touchEndListener);
+            this.container.removeEventListener('contextmenu', this.contextMenuListener);
+        }
+
+        document.removeEventListener('keydown', this.keyDownListener);
+        document.removeEventListener('keyup', this.keyUpListener);
+
+        this.mouseEventTarget = null;
     }
 
     private handleMouseDown(event: MouseEvent): void {
@@ -212,23 +261,15 @@ export class GameInputManager implements InputManager {
     }
 
     destroy(): void {
-        if (!this.container) return;
-
-        // Remove all event listeners
-        this.container.removeEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.container.removeEventListener('mousemove', this.handleMouseMove.bind(this));
-        this.container.removeEventListener('mouseup', this.handleMouseUp.bind(this));
-        this.container.removeEventListener('touchstart', this.handleTouchStart.bind(this));
-        this.container.removeEventListener('touchmove', this.handleTouchMove.bind(this));
-        this.container.removeEventListener('touchend', this.handleTouchEnd.bind(this));
-        this.container.removeEventListener('contextmenu', (e) => e.preventDefault());
-
-        document.removeEventListener('keydown', this.handleKeyDown.bind(this));
-        document.removeEventListener('keyup', this.handleKeyUp.bind(this));
+        this.teardownEventListeners();
 
         this.launchManager.reset();
         this.activeInputs.clear();
         this.keyboardState.clear();
         this.container = null;
+        this.canvas = null;
+        this.mousePosition = null;
+        this.touchPosition = null;
+        this.hasReceivedInput = false;
     }
 }

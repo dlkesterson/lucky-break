@@ -17,6 +17,8 @@ import { reflectOffPaddle } from 'util/paddle-reflection';
 import { PowerUpManager } from 'util/power-ups';
 import { spinWheel } from 'game/rewards';
 
+const PLAYFIELD_WIDTH = 1280;
+
 describe('Paddle Ball Flow Integration', () => {
     let inputManager: GameInputManager;
     let paddleController: PaddleBodyController;
@@ -98,7 +100,7 @@ describe('Paddle Ball Flow Integration', () => {
                     mouseX: paddleTarget.x,
                     touchX: undefined,
                     launchRequested: false,
-                });
+                }, PLAYFIELD_WIDTH);
             }
 
             // Ball should follow paddle
@@ -125,7 +127,7 @@ describe('Paddle Ball Flow Integration', () => {
                     mouseX: paddleTarget.x,
                     touchX: undefined,
                     launchRequested: false,
-                });
+                }, PLAYFIELD_WIDTH);
             }
 
             const paddleCenter = paddleController.getPaddleCenter(paddle);
@@ -297,7 +299,7 @@ describe('Paddle Ball Flow Integration', () => {
                     mouseX: paddleTarget.x,
                     touchX: undefined,
                     launchRequested: false,
-                });
+                }, PLAYFIELD_WIDTH);
             }
 
             ballController.updateAttachment(ball, paddleController.getPaddleCenter(paddle));

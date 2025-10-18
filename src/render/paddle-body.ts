@@ -47,7 +47,12 @@ export class PaddleBodyController implements PaddleController {
     /**
      * Update paddle position based on input
      */
-    updatePaddle(paddle: Paddle, deltaTime: number, inputState: InputState): void {
+    updatePaddle(
+        paddle: Paddle,
+        deltaTime: number,
+        inputState: InputState,
+        playfieldWidth: number,
+    ): void {
         let targetX = paddle.position.x;
 
         // Handle keyboard input
@@ -67,28 +72,28 @@ export class PaddleBodyController implements PaddleController {
 
         // Constrain to screen bounds (1280px width to match physics world)
         const halfWidth = paddle.width / 2;
-        targetX = Math.max(halfWidth, Math.min(1280 - halfWidth, targetX));
+        targetX = Math.max(halfWidth, Math.min(playfieldWidth - halfWidth, targetX));
 
-        // Update physics body position
-        paddle.physicsBody.position.x = targetX;
-        paddle.physicsBody.position.y = paddle.position.y;
-
-        // Update paddle state
-        paddle.position.x = targetX;
+        // Update physics body position; y stays constant so only adjust x
+        PaddleBodyController.applyPosition(paddle, targetX, paddle.position.y);
     }
 
     /**
      * Set paddle position directly (for initialization or reset)
      */
-    setPaddlePosition(paddle: Paddle, position: Vector2): void {
-        // Constrain to screen bounds (1280px width to match physics world)
+    setPaddlePosition(paddle: Paddle, position: Vector2, playfieldWidth: number): void {
+        // Constrain to screen bounds using playfield width for consistency with input conversion
         const halfWidth = paddle.width / 2;
-        const constrainedX = Math.max(halfWidth, Math.min(1280 - halfWidth, position.x));
+        const constrainedX = Math.max(halfWidth, Math.min(playfieldWidth - halfWidth, position.x));
 
-        paddle.physicsBody.position.x = constrainedX;
-        paddle.physicsBody.position.y = position.y;
-        paddle.position.x = constrainedX;
-        paddle.position.y = position.y;
+        PaddleBodyController.applyPosition(paddle, constrainedX, position.y);
+    }
+
+    private static applyPosition(paddle: Paddle, x: number, y: number): void {
+        paddle.physicsBody.position.x = x;
+        paddle.physicsBody.position.y = y;
+        paddle.position.x = x;
+        paddle.position.y = y;
     }
 
     /**

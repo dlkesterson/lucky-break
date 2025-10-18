@@ -10,6 +10,7 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import type { GameInputManager } from 'input/input-manager';
 import type { PaddleBodyController } from './paddle-body';
 import type { Paddle } from './contracts';
+import type { StageHandle } from './stage';
 import type { BallAttachmentController } from 'physics/ball-attachment';
 import type { Ball } from 'physics/contracts';
 
@@ -19,6 +20,7 @@ export interface DebugOverlayOptions {
     ballController: BallAttachmentController;
     paddle: Paddle;
     ball: Ball;
+    stage?: StageHandle;
 }
 
 export class InputDebugOverlay {
@@ -26,9 +28,11 @@ export class InputDebugOverlay {
     private textElements: Text[] = [];
     private graphics: Graphics;
     private options: DebugOverlayOptions;
+    private stage?: StageHandle;
 
     constructor(options: DebugOverlayOptions) {
         this.options = options;
+        this.stage = options.stage;
         this.container = new Container();
         this.graphics = new Graphics();
         this.container.addChild(this.graphics);
@@ -106,8 +110,11 @@ export class InputDebugOverlay {
 
         // Draw input cursor position
         if (inputState.mousePosition) {
+            const playfieldPoint = this.stage
+                ? this.stage.toPlayfield(inputState.mousePosition)
+                : inputState.mousePosition;
             this.graphics.setFillStyle({ color: 0x0000ff, alpha: 0.6 });
-            this.graphics.circle(inputState.mousePosition.x, inputState.mousePosition.y, 4);
+            this.graphics.circle(playfieldPoint.x, playfieldPoint.y, 4);
             this.graphics.fill();
         }
     }

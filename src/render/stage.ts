@@ -94,6 +94,8 @@ export interface StageHandle extends SceneManagerHandle {
     applyTheme(theme: GameThemeDefinition): void;
     transitionTo<TPayload = unknown>(name: string, payload?: TPayload, options?: StageTransitionOptions): Promise<void>;
     isTransitionActive(): boolean;
+    toPlayfield(point: { readonly x: number; readonly y: number }): { x: number; y: number };
+    toCanvas(point: { readonly x: number; readonly y: number }): { x: number; y: number };
 }
 
 type TransitionPhase = 'fade-out' | 'waiting-switch' | 'fade-in';
@@ -380,10 +382,41 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
     const baseResize = baseHandle.resize.bind(baseHandle);
     const baseDestroy = baseHandle.destroy.bind(baseHandle);
 
+    const getResolution = () => {
+        const renderer = baseHandle.app.renderer as { resolution?: number };
+        return renderer.resolution ?? 1;
+    };
+
+    const toPlayfield = (point: { readonly x: number; readonly y: number }) => {
+        const rootContainer = baseHandle.layers.root;
+        const scaleX = rootContainer.scale.x !== 0 ? rootContainer.scale.x : 1;
+        const scaleY = rootContainer.scale.y !== 0 ? rootContainer.scale.y : 1;
+        const resolution = getResolution();
+
+        return {
+            x: (point.x / resolution - rootContainer.position.x) / scaleX,
+            y: (point.y / resolution - rootContainer.position.y) / scaleY,
+        };
+    };
+
+    const toCanvas = (point: { readonly x: number; readonly y: number }) => {
+        const rootContainer = baseHandle.layers.root;
+        const scaleX = rootContainer.scale.x !== 0 ? rootContainer.scale.x : 1;
+        const scaleY = rootContainer.scale.y !== 0 ? rootContainer.scale.y : 1;
+        const resolution = getResolution();
+
+        return {
+            x: (point.x * scaleX + rootContainer.position.x) * resolution,
+            y: (point.y * scaleY + rootContainer.position.y) * resolution,
+        };
+    };
+
     const themedHandle: StageHandle = {
         ...baseHandle,
         backgroundLayer,
         backgroundGraphic,
+        toPlayfield,
+        toCanvas,
         applyTheme,
         transitionTo,
         isTransitionActive: () => activeTransition !== null,

@@ -9,6 +9,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PaddleBodyController } from 'render/paddle-body';
 import { PaddleBoundaryConstraints } from 'render/paddle-constraints';
+
+const PLAYFIELD_WIDTH = 1280;
 import type { Vector2, Rectangle } from 'render/contracts';
 
 describe('Paddle Boundary Constraints', () => {
@@ -95,7 +97,7 @@ describe('Paddle Boundary Constraints', () => {
     describe('Position Constraints', () => {
         it('should constrain paddle within left boundary', () => {
             const outOfBoundsPosition: Vector2 = { x: 20, y: 350 }; // Too far left
-            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
+            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(50); // Constrained to half width
             expect(mockPaddle.position.y).toBe(350);
@@ -103,7 +105,7 @@ describe('Paddle Boundary Constraints', () => {
 
         it('should constrain paddle within right boundary', () => {
             const outOfBoundsPosition: Vector2 = { x: 1300, y: 350 }; // Too far right
-            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition);
+            paddleController.setPaddlePosition(mockPaddle, outOfBoundsPosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50 (half width)
             expect(mockPaddle.position.y).toBe(350);
@@ -111,7 +113,7 @@ describe('Paddle Boundary Constraints', () => {
 
         it('should allow valid positions', () => {
             const validPosition: Vector2 = { x: 400, y: 350 };
-            paddleController.setPaddlePosition(mockPaddle, validPosition);
+            paddleController.setPaddlePosition(mockPaddle, validPosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(400);
             expect(mockPaddle.position.y).toBe(350);
@@ -127,7 +129,7 @@ describe('Paddle Boundary Constraints', () => {
                 launchRequested: false,
             };
 
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(50); // Constrained
         });
@@ -143,7 +145,7 @@ describe('Paddle Boundary Constraints', () => {
                 launchRequested: false,
             };
 
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(500);
         });
@@ -157,7 +159,7 @@ describe('Paddle Boundary Constraints', () => {
                 launchRequested: false,
             };
 
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(300);
         });
@@ -179,7 +181,7 @@ describe('Paddle Boundary Constraints', () => {
                 launchRequested: false,
             };
 
-            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState);
+            paddleController.updatePaddle(mockPaddle, 1 / 60, inputState, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.y).toBe(initialY);
         });
@@ -188,7 +190,7 @@ describe('Paddle Boundary Constraints', () => {
     describe('Physics Body Synchronization', () => {
         it('should sync physics body with paddle position', () => {
             const newPosition: Vector2 = { x: 450, y: 355 };
-            paddleController.setPaddlePosition(mockPaddle, newPosition);
+            paddleController.setPaddlePosition(mockPaddle, newPosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.physicsBody.position.x).toBe(450);
             expect(mockPaddle.physicsBody.position.y).toBe(355);
@@ -212,7 +214,7 @@ describe('Paddle Boundary Constraints', () => {
 
         it('should handle negative positions', () => {
             const negativePosition: Vector2 = { x: -100, y: -50 };
-            paddleController.setPaddlePosition(mockPaddle, negativePosition);
+            paddleController.setPaddlePosition(mockPaddle, negativePosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(50); // Constrained
             expect(mockPaddle.position.y).toBe(-50); // Y not constrained in this implementation
@@ -220,7 +222,7 @@ describe('Paddle Boundary Constraints', () => {
 
         it('should handle very large screen widths', () => {
             const largeScreenPosition: Vector2 = { x: 2000, y: 350 };
-            paddleController.setPaddlePosition(mockPaddle, largeScreenPosition);
+            paddleController.setPaddlePosition(mockPaddle, largeScreenPosition, PLAYFIELD_WIDTH);
 
             expect(mockPaddle.position.x).toBe(1230); // Constrained to 1280 - 50
         });

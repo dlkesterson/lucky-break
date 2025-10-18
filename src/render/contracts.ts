@@ -23,14 +23,19 @@ export interface PaddleController {
      * @param deltaTime - Time elapsed since last update
      * @param inputState - Current input state
      */
-    updatePaddle(paddle: Paddle, deltaTime: number, inputState: InputState): void;
+    updatePaddle(
+        paddle: Paddle,
+        deltaTime: number,
+        inputState: InputState,
+        playfieldWidth: number,
+    ): void;
 
     /**
      * Set paddle position directly (for initialization or reset)
      * @param paddle - Paddle to position
      * @param position - New position
      */
-    setPaddlePosition(paddle: Paddle, position: Vector2): void;
+    setPaddlePosition(paddle: Paddle, position: Vector2, playfieldWidth: number): void;
 
     /**
      * Get paddle bounds for collision detection

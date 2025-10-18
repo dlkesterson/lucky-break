@@ -18,6 +18,7 @@ export interface PreloaderOptions {
     readonly onError?: ErrorCallback;
     readonly document?: Document;
     readonly startEvents?: readonly ('click' | 'keydown' | 'pointerdown')[];
+    readonly autoStart?: boolean;
 }
 
 export interface PreloaderHandle {
@@ -37,12 +38,32 @@ const defaultLoader: AssetLoader = (report) => {
     return Promise.resolve();
 };
 
+const isInteractionRequiredError = (error: unknown): boolean => {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    if (error.name === 'BootstrapInteractionRequiredError') {
+        return true;
+    }
+
+    const code = (error as { code?: string }).code;
+    if (code && code.toLowerCase() === 'bootstrap.interaction-required') {
+        return true;
+    }
+
+    const message = error.message ?? '';
+    return message.toLowerCase().includes('interaction required');
+};
+
 export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     const container = options.container;
     const documentRef = options.document ?? container.ownerDocument ?? document;
     const loadAssets = options.loadAssets ?? defaultLoader;
     const promptText = options.promptText ?? DEFAULT_PROMPT_TEXT;
     const startEvents = options.startEvents ?? DEFAULT_EVENTS;
+    const autoStart = options.autoStart ?? false;
+    let autoStartEnabled = autoStart;
 
     const root = documentRef.createElement('div');
     root.className = 'lb-preloader';
@@ -60,6 +81,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     let progress: PreloaderProgress = { loaded: 0, total: 0 };
     let promptButton: HTMLButtonElement | null = null;
     const promptListeners: { type: string; handler: EventListener }[] = [];
+    const fallbackInteractions: Array<{ target: EventTarget; type: string; handler: EventListener }> = [];
     let preparePromise: Promise<void> | undefined;
     let disposed = false;
     let starting = false;
@@ -81,6 +103,11 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     };
 
     const removePrompt = () => {
+        fallbackInteractions.forEach(({ target, type, handler }) => {
+            target.removeEventListener(type, handler);
+        });
+        fallbackInteractions.length = 0;
+
         if (!promptButton) {
             return;
         }
@@ -100,7 +127,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
         throw error instanceof Error ? error : new Error(String(error));
     };
 
-    const triggerStart = async (): Promise<void> => {
+    const triggerStart = async (initiatedByAutoStart = false): Promise<void> => {
         if (status !== 'awaiting-interaction' || starting) {
             return;
         }
@@ -114,6 +141,12 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
                 root.remove();
             }
         } catch (error) {
+            if (isInteractionRequiredError(error)) {
+                autoStartEnabled = false;
+                options.onError?.(error);
+                ensurePrompt();
+                return;
+            }
             fail(error);
         } finally {
             starting = false;
@@ -138,9 +171,61 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
         });
     };
 
+    const ensureFallbackInteractions = () => {
+        if (fallbackInteractions.length > 0) {
+            return;
+        }
+
+        const pointerHandler: EventListener = (event) => {
+            if (status !== 'awaiting-interaction' || starting) {
+                return;
+            }
+            event.preventDefault();
+            void triggerStart().catch(() => {
+                /* error already reported via onError */
+            });
+        };
+
+        const keyHandler: EventListener = (event) => {
+            if (status !== 'awaiting-interaction' || starting) {
+                return;
+            }
+            const key = (event as KeyboardEvent).key;
+            if (key !== 'Enter' && key !== ' ') {
+                return;
+            }
+            event.preventDefault();
+            void triggerStart().catch(() => {
+                /* error already reported via onError */
+            });
+        };
+
+        root.addEventListener('pointerdown', pointerHandler);
+        fallbackInteractions.push({ target: root, type: 'pointerdown', handler: pointerHandler });
+
+        container.addEventListener('pointerdown', pointerHandler);
+        fallbackInteractions.push({ target: container, type: 'pointerdown', handler: pointerHandler });
+
+        documentRef.addEventListener('keydown', keyHandler);
+        fallbackInteractions.push({ target: documentRef, type: 'keydown', handler: keyHandler });
+    };
+
     const ensurePrompt = () => {
-        if (disposed || promptButton) {
+        if (disposed) {
+            return;
+        }
+
+        if (autoStartEnabled) {
             updateState('awaiting-interaction');
+            void triggerStart(true).catch(() => {
+                /* errors surfaced via fail */
+            });
+            return;
+        }
+
+        if (promptButton) {
+            updateState('awaiting-interaction');
+            ensureFallbackInteractions();
             return;
         }
 
@@ -158,6 +243,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
 
         root.appendChild(promptButton);
         updateState('awaiting-interaction');
+        ensureFallbackInteractions();
     };
 
     const prepare = () => {
