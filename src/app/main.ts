@@ -42,6 +42,28 @@ const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     return typeof candidate.then === 'function';
 };
 
+const waitForPromise = async (
+    promiseLike: PromiseLike<unknown>,
+    timeoutMs: number,
+): Promise<void> => {
+    let settled = false;
+    const guarded = Promise.resolve(promiseLike).finally(() => {
+        settled = true;
+    });
+
+    try {
+        await Promise.race([guarded, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
+    } catch (error) {
+        throw error;
+    } finally {
+        if (!settled) {
+            void guarded.catch(() => undefined);
+        }
+    }
+};
+
+const AUDIO_RESUME_TIMEOUT_MS = 250;
+
 const isAutoplayBlockedError = (error: unknown): boolean => {
     if (!(error instanceof Error)) {
         return false;
@@ -60,13 +82,16 @@ const getToneAudioContext = (): AudioContext => getContext().rawContext as Audio
 const ensureToneAudio = async (): Promise<void> => {
     const context = getToneAudioContext();
     if (context.state === 'suspended') {
-        await context.resume();
+        const result = context.resume();
+        if (isPromiseLike(result)) {
+            await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+        }
     }
 
     if (Transport.state !== 'started') {
         const result = Transport.start();
         if (isPromiseLike(result)) {
-            await result;
+            await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
         }
     }
 };
