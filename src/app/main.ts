@@ -438,6 +438,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             });
             const toneAudioContext = getToneAudioContext();
             const isToneAudioReady = () => toneAudioContext.state === 'running' && Transport.state === 'started';
+            const renderStageOnce = () => {
+                stage.update(0);
+                stage.app.render();
+            };
+            const renderStageSoon = () => {
+                renderStageOnce();
+                if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                    window.requestAnimationFrame(() => {
+                        renderStageOnce();
+                    });
+                }
+            };
 
             const toDecibels = (gain: number): number => {
                 if (gain <= 0) {
@@ -1928,9 +1940,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 onRestart: () => beginNewSession(),
             }));
 
-            await stage.transitionTo('main-menu', undefined, { skipFadeOut: true });
-            stage.update(0);
-            stage.app.render();
+            await stage.transitionTo('main-menu', undefined, { immediate: true });
+            renderStageSoon();
             gameContainer.visible = false;
             hudContainer.visible = false;
 
@@ -1942,9 +1953,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 isPaused = false;
                 gameContainer.visible = false;
                 hudContainer.visible = false;
-                await stage.transitionTo('main-menu');
-                stage.update(0);
-                stage.app.render();
+                await stage.transitionTo('main-menu', undefined, { immediate: true });
+                renderStageSoon();
             };
 
             const resumeFromPause = async () => {
