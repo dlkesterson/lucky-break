@@ -51,6 +51,10 @@ jobs:
       - name: Build production bundle
         run: pnpm build
 
+      - name: Configure Pages
+        if: github.event_name == 'push'
+        uses: actions/configure-pages@v5
+
       - name: Upload Pages artifact
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3

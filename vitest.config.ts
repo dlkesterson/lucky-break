@@ -29,7 +29,7 @@ export default defineConfig({
         clearMocks: true,
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'html'],
+            reporter: ['text', 'html', 'json-summary'],
             include: ['src/**/*.{ts,tsx}'],
             exclude: [
                 'src/app/main.ts',
