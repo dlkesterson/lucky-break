@@ -11,10 +11,7 @@ export default defineConfig({
     base: isProduction ? "/lucky-break/" : "/",
     build: {
         outDir: "dist",
-        sourcemap: true,
-        rollupOptions: {
-            input: resolveFromRoot("./src/app/main.ts")
-        }
+        sourcemap: true
     },
     resolve: {
         alias: {
