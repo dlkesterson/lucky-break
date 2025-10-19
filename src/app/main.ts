@@ -469,23 +469,22 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 if (brickPlayers) {
                     return brickPlayers;
                 }
-                if (!brickPlayersPromise) {
-                    brickPlayersPromise = new Promise<Players>((resolve, reject) => {
-                        try {
-                            const players = new Players(brickSampleUrls, () => resolve(players));
-                            players.connect(volume);
-                        } catch (error) {
-                            reject(error);
-                        }
+                brickPlayersPromise ??= new Promise<Players>((resolve, reject) => {
+                    try {
+                        const players = new Players(brickSampleUrls, () => resolve(players));
+                        players.connect(volume);
+                    } catch (error) {
+                        const reason = error instanceof Error ? error : new Error(String(error));
+                        reject(reason);
+                    }
+                })
+                    .then((players) => {
+                        brickPlayers = players;
+                        return players;
                     })
-                        .then((players) => {
-                            brickPlayers = players;
-                            return players;
-                        })
-                        .finally(() => {
-                            brickPlayersPromise = null;
-                        });
-                }
+                    .finally(() => {
+                        brickPlayersPromise = null;
+                    });
                 return brickPlayersPromise;
             };
 
