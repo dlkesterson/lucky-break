@@ -29,7 +29,9 @@ export default defineConfig({
         clearMocks: true,
         coverage: {
             provider: 'v8',
-            reporter: ['text', 'html', 'json-summary'],
+            all: true,
+            reportsDirectory: './coverage',
+            reporter: ['text', 'json', 'html'],
             include: ['src/**/*.{ts,tsx}'],
             exclude: [
                 'src/app/main.ts',
@@ -38,10 +40,10 @@ export default defineConfig({
                 'src/types/**/*',
             ],
             thresholds: {
-                statements: 75,
-                branches: 70,
+                statements: 80,
+                branches: 75,
                 functions: 75,
-                lines: 75,
+                lines: 80,
             },
         },
     },

@@ -177,6 +177,59 @@ describe('createSceneManager', () => {
         ]);
     });
 
+    it('throws when switching to an unregistered scene', async () => {
+        await expect(manager.switch('missing')).rejects.toThrow('Scene "missing" is not registered');
+    });
+
+    it('stops updates when no scene is active', () => {
+        expect(() => manager.update(0.016)).not.toThrow();
+    });
+
+    it('supports switching while a previous init is pending', async () => {
+        const slowDestroy = vi.fn();
+        let resolveSlow: (() => void) | undefined;
+
+        manager.register('slow', () => ({
+            init: () => new Promise<void>((resolve) => {
+                resolveSlow = resolve;
+            }),
+            update: vi.fn(),
+            destroy: slowDestroy,
+        }));
+
+        const fastInit = vi.fn();
+        manager.register('fast', () => ({
+            init: fastInit,
+            update: vi.fn(),
+            destroy: vi.fn(),
+        }));
+
+        const firstSwitch = manager.switch('slow');
+        const secondSwitch = manager.switch('fast');
+
+        resolveSlow?.();
+        await firstSwitch;
+        await secondSwitch;
+
+        expect(slowDestroy).toHaveBeenCalledTimes(1);
+        expect(fastInit).toHaveBeenCalledTimes(1);
+        expect(manager.getCurrentScene()).toBe('fast');
+    });
+
+    it('prevents switching once destroyed', async () => {
+        const noopScene: Scene = {
+            init: vi.fn(),
+            update: vi.fn(),
+            destroy: vi.fn(),
+        };
+
+        manager.register('noop', () => noopScene);
+        await manager.switch('noop');
+        manager.destroy();
+
+        await expect(manager.switch('noop')).rejects.toThrow('Scene manager has been destroyed');
+    });
+
     it('resizes the renderer on demand and cleans up', () => {
         manager.resize({ width: 640, height: 360 });
 
@@ -185,5 +238,9 @@ describe('createSceneManager', () => {
 
         manager.destroy();
         expect((manager.app as { destroyed?: boolean }).destroyed).toBe(true);
+
+        manager.destroy();
+        expect((manager.app as { destroyed?: boolean }).destroyed).toBe(true);
+        expect(manager.layers.root.children).toHaveLength(0);
     });
 });

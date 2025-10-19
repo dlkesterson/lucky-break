@@ -148,4 +148,87 @@ describe('createPreloader', () => {
         preloader.destroy();
         container.remove();
     });
+
+    it('clamps invalid progress values and reports via error callback', async () => {
+        const container = createContainer();
+        const onError = vi.fn();
+        const loadAssets = vi.fn(async (report: ProgressReporter) => {
+            report({ loaded: -1, total: 0 });
+            report({ loaded: 2, total: -4 });
+            report({ loaded: 5, total: 10 });
+        });
+
+        const preloader = createPreloader({
+            container,
+            loadAssets,
+            onError,
+        });
+
+        await preloader.prepare();
+
+        expect(preloader.progress()).toEqual({ loaded: 5, total: 10 });
+        const progressEl = container.querySelector<HTMLElement>('[data-role="progress"]');
+        expect(progressEl?.dataset.progress).toBe('0.50');
+        expect(progressEl?.textContent).toBe('50%');
+
+        preloader.destroy();
+        container.remove();
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('attaches fallback listeners when prompt is shown', async () => {
+        const container = createContainer();
+        const addEventListenerSpy = vi.spyOn(container, 'addEventListener');
+
+        const preloader = createPreloader({
+            container,
+            autoStart: false,
+            loadAssets: async (report: ProgressReporter) => {
+                report({ loaded: 1, total: 2 });
+                report({ loaded: 2, total: 2 });
+            },
+        });
+
+        await preloader.prepare();
+
+        const prompt = container.querySelector<HTMLButtonElement>('button[data-role="start-prompt"]');
+        expect(prompt).not.toBeNull();
+        expect(addEventListenerSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+
+        preloader.destroy();
+        container.remove();
+        addEventListenerSpy.mockRestore();
+    });
+
+    it('reports errors from onStart and resets state appropriately', async () => {
+        const container = createContainer();
+        const onError = vi.fn();
+        const failure = new Error('start failure');
+
+        const preloader = createPreloader({
+            container,
+            loadAssets: async (report: ProgressReporter) => {
+                report({ loaded: 2, total: 2 });
+            },
+            onStart: async () => {
+                throw failure;
+            },
+            onError,
+        });
+
+        await preloader.prepare();
+
+        const prompt = container.querySelector<HTMLButtonElement>('button[data-role="start-prompt"]');
+        expect(prompt).not.toBeNull();
+
+        prompt?.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(onError).toHaveBeenCalledWith(failure);
+        expect(preloader.status()).toBe('failed');
+        expect(container.querySelector('button[data-role="start-prompt"]')).toBeNull();
+
+        preloader.destroy();
+        container.remove();
+    });
 });
