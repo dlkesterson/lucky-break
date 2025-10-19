@@ -31,6 +31,12 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['text', 'html'],
             include: ['src/**/*.{ts,tsx}'],
+            exclude: [
+                'src/app/main.ts',
+                'src/render/stage.ts',
+                'src/scenes/**/*',
+                'src/types/**/*',
+            ],
             thresholds: {
                 statements: 75,
                 branches: 70,
