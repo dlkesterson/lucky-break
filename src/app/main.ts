@@ -55,14 +55,6 @@ const isAutoplayBlockedError = (error: unknown): boolean => {
     return message.includes('was not allowed to start');
 };
 
-const createInteractionRequiredError = (cause: unknown): Error => {
-    const error = new Error('User interaction is required before audio can start.');
-    error.name = 'BootstrapInteractionRequiredError';
-    (error as { cause?: unknown; code?: string }).cause = cause;
-    (error as { cause?: unknown; code?: string }).code = 'bootstrap.interaction-required';
-    return error;
-};
-
 const getToneAudioContext = (): AudioContext => getContext().rawContext as AudioContext;
 
 const ensureToneAudio = async (): Promise<void> => {
@@ -398,9 +390,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 await ensureToneAudio();
             } catch (error) {
                 if (isAutoplayBlockedError(error)) {
-                    throw createInteractionRequiredError(error);
+                    console.warn('Audio context blocked by autoplay policy; will resume after user interaction.', error);
+                } else {
+                    throw error;
                 }
-                throw error;
             }
 
             // Initialize the game components
@@ -469,10 +462,45 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             volume.connect(panner);
             panner.toDestination();
 
-            const brickPlayers = await new Promise<Players>((resolve) => {
-                const players = new Players(brickSampleUrls, () => resolve(players));
-                players.connect(volume);
-            });
+            let brickPlayers: Players | null = null;
+            let brickPlayersPromise: Promise<Players> | null = null;
+
+            const loadBrickPlayers = async (): Promise<Players> => {
+                if (brickPlayers) {
+                    return brickPlayers;
+                }
+                if (!brickPlayersPromise) {
+                    brickPlayersPromise = new Promise<Players>((resolve, reject) => {
+                        try {
+                            const players = new Players(brickSampleUrls, () => resolve(players));
+                            players.connect(volume);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    })
+                        .then((players) => {
+                            brickPlayers = players;
+                            return players;
+                        })
+                        .finally(() => {
+                            brickPlayersPromise = null;
+                        });
+                }
+                return brickPlayersPromise;
+            };
+
+            const handleAudioBootstrapError = (error: unknown) => {
+                if (isAutoplayBlockedError(error)) {
+                    console.warn('Audio buffers pending user interaction; will retry once audio context resumes.', error);
+                    scheduleAudioUnlock();
+                    return;
+                }
+                console.error('Failed to initialize brick hit audio buffers.', error);
+            };
+
+            const primeBrickPlayers = () => {
+                void loadBrickPlayers().catch(handleAudioBootstrapError);
+            };
 
             let audioUnlockDocument: Document | null = null;
             let audioUnlockHandler: ((event: Event) => void) | null = null;
@@ -515,6 +543,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                                 cleanupAudioUnlock();
                             }
                         });
+                    primeBrickPlayers();
                 };
 
                 docRef.addEventListener('pointerdown', audioUnlockHandler);
@@ -527,6 +556,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 });
             }
             scheduleAudioUnlock();
+            primeBrickPlayers();
 
             const lastPlayerStart = new Map<string, number>();
 
@@ -536,7 +566,13 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 brickSampleIds: Object.keys(brickSampleUrls),
                 trigger: (descriptor) => {
                     void ensureToneAudio().catch(console.warn);
-                    const player = brickPlayers.player(descriptor.id);
+                    const players = brickPlayers;
+                    if (!players) {
+                        primeBrickPlayers();
+                        return;
+                    }
+
+                    const player = players.player(descriptor.id);
                     if (!player) {
                         return;
                     }
@@ -1894,6 +1930,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             }));
 
             await stage.transitionTo('main-menu', undefined, { skipFadeOut: true });
+            stage.update(0);
+            stage.app.render();
             gameContainer.visible = false;
             hudContainer.visible = false;
 
@@ -1906,6 +1944,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 gameContainer.visible = false;
                 hudContainer.visible = false;
                 await stage.transitionTo('main-menu');
+                stage.update(0);
+                stage.app.render();
             };
 
             const resumeFromPause = async () => {
@@ -1958,7 +1998,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 reactiveAudioLayer.dispose();
                 audioState$.complete();
                 cleanupAudioUnlock();
-                brickPlayers.dispose();
+                brickPlayers?.dispose();
+                brickPlayers = null;
+                brickPlayersPromise = null;
                 volume.dispose();
                 panner.dispose();
                 ballLight?.destroy();
