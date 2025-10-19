@@ -52,7 +52,7 @@ vi.mock('pixi.js', () => {
     class Graphics extends Container {
         public alpha = 1;
 
-        public commands: Array<{ readonly type: string; readonly args: unknown[] }> = [];
+    public commands: { readonly type: string; readonly args: unknown[] }[] = [];
 
         public circle(x: number, y: number, radius: number): this {
             this.commands.push({ type: 'circle', args: [x, y, radius] });
@@ -94,7 +94,7 @@ const getSprite = (light: ReturnType<typeof createDynamicLight>) => {
     return container.children[0] as {
         alpha: number;
         scale: { x: number; y: number; set: (x: number, y?: number) => void };
-        commands: Array<{ readonly type: string; readonly args: unknown[] }>;
+    commands: { readonly type: string; readonly args: unknown[] }[];
     };
 };
 

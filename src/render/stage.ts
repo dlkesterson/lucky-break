@@ -31,11 +31,11 @@ const DEFAULT_TARGET_ALPHA = 1;
 const MAX_TRANSITION_DELTA = 0.25;
 
 const resolveRequestFrame = (): ((callback: (time: number) => void) => number) => {
-    const globalRef = globalThis as typeof globalThis & {
+    const globalRef: typeof globalThis & {
         requestAnimationFrame?: (callback: (time: number) => void) => number;
         setTimeout?: (handler: () => void, timeout?: number) => number;
         performance?: { now?: () => number };
-    };
+    } = globalThis;
 
     if (typeof globalRef.requestAnimationFrame === 'function') {
         return (callback) => globalRef.requestAnimationFrame(callback);
@@ -44,7 +44,7 @@ const resolveRequestFrame = (): ((callback: (time: number) => void) => number) =
     if (typeof globalRef.setTimeout === 'function') {
         return (callback) => {
             const now = typeof globalRef.performance?.now === 'function'
-                ? () => globalRef.performance!.now()
+                ? () => globalRef.performance?.now?.() ?? Date.now()
                 : () => Date.now();
             return Number(globalRef.setTimeout(() => callback(now()), 16));
         };
@@ -54,10 +54,10 @@ const resolveRequestFrame = (): ((callback: (time: number) => void) => number) =
 };
 
 const resolveCancelFrame = (): ((handle: number) => void) => {
-    const globalRef = globalThis as typeof globalThis & {
+    const globalRef: typeof globalThis & {
         cancelAnimationFrame?: (handle: number) => void;
         clearTimeout?: (handle: number) => void;
-    };
+    } = globalThis;
 
     if (typeof globalRef.cancelAnimationFrame === 'function') {
         return (handle) => globalRef.cancelAnimationFrame(handle);
@@ -67,7 +67,7 @@ const resolveCancelFrame = (): ((handle: number) => void) => {
         return (handle) => globalRef.clearTimeout(handle);
     }
 
-    return () => { };
+    return () => undefined;
 };
 
 const requestFrame = resolveRequestFrame();
@@ -346,7 +346,7 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
                 easingIn,
                 resolve,
                 reject,
-                targetScene: { name, payload: payload as unknown },
+                targetScene: { name, payload },
                 switchPromise: null,
             };
 

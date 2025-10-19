@@ -81,7 +81,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     let progress: PreloaderProgress = { loaded: 0, total: 0 };
     let promptButton: HTMLButtonElement | null = null;
     const promptListeners: { type: string; handler: EventListener }[] = [];
-    const fallbackInteractions: Array<{ target: EventTarget; type: string; handler: EventListener }> = [];
+    const fallbackInteractions: { target: EventTarget; type: string; handler: EventListener }[] = [];
     let preparePromise: Promise<void> | undefined;
     let disposed = false;
     let starting = false;
@@ -127,7 +127,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
         throw error instanceof Error ? error : new Error(String(error));
     };
 
-    const triggerStart = async (initiatedByAutoStart = false): Promise<void> => {
+    const triggerStart = async (): Promise<void> => {
         if (status !== 'awaiting-interaction' || starting) {
             return;
         }
@@ -217,7 +217,7 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
 
         if (autoStartEnabled) {
             updateState('awaiting-interaction');
-            void triggerStart(true).catch(() => {
+            void triggerStart().catch(() => {
                 /* errors surfaced via fail */
             });
             return;

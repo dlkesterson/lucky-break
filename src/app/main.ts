@@ -24,7 +24,7 @@ import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculateP
 import { generateLevelLayout, getLevelSpec, getPresetLevelCount, getLevelDifficultyMultiplier, remixLevel } from 'util/levels';
 import { distance } from 'util/geometry';
 import type { BrickSpec } from 'util/levels';
-import { Text, Container, Graphics, Assets, TilingSprite, Texture, ColorMatrixFilter, FillGradient, type Filter } from 'pixi.js';
+import { Container, Graphics, Assets, TilingSprite, Texture, ColorMatrixFilter, FillGradient, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
 import { createEventBus } from 'app/events';
@@ -1151,7 +1151,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 const fullHeightLimit = (PLAYFIELD_HEIGHT - margin * 2) / hudHeight;
                 const globalScaleLimit = Math.max(MIN_HUD_SCALE, Math.min(HUD_SCALE, fullWidthLimit, fullHeightLimit));
 
-                const placements: Array<{ priority: number; scale: number; x: number; y: number }> = [];
+                const placements: { priority: number; scale: number; x: number; y: number }[] = [];
 
                 const { minX, maxX, minY, maxY } = brickLayoutBounds;
 

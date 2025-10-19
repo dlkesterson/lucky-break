@@ -125,7 +125,7 @@ export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneSch
 
         try {
             return scheduleWithTransport(callback, at);
-        } catch (_error) {
+        } catch {
             return scheduleFallback(callback, at);
         }
     });
