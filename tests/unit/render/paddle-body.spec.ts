@@ -6,7 +6,7 @@ vi.mock('physics/world', () => ({
 
 import { createPhysicsWorld } from 'physics/world';
 import { PaddleBodyController } from 'render/paddle-body';
-import type { InputState, Paddle, Vector2 } from 'render/contracts';
+import type { InputState, Vector2 } from 'render/contracts';
 
 type StubWorld = ReturnType<typeof createStubWorld>;
 
