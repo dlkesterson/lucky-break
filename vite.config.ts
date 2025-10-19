@@ -4,8 +4,11 @@ import { URL, fileURLToPath } from "node:url";
 const resolveFromRoot = (relativePath: string) =>
     fileURLToPath(new URL(relativePath, import.meta.url));
 
+const isProduction = process.env.NODE_ENV === "production";
+
 export default defineConfig({
     appType: "spa",
+    base: isProduction ? "/lucky-break/" : "/",
     build: {
         outDir: "dist",
         sourcemap: true,
