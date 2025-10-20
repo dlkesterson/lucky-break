@@ -16,6 +16,8 @@ export {
     type SceneFactory,
     type SceneLayerName,
     type StageLayers,
+    type SceneTransitionOptions,
+    type SceneTransitionEffect,
 } from './scene-manager';
 export { createStage, type StageConfig, type StageHandle } from './stage';
 export * from './hud';

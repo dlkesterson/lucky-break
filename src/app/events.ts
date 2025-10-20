@@ -60,6 +60,14 @@ export interface RoundCompletedPayload {
     readonly durationMs: number;
 }
 
+export interface ComboMilestonePayload {
+    readonly sessionId: string;
+    readonly combo: number;
+    readonly multiplier: number;
+    readonly pointsAwarded: number;
+    readonly totalScore: number;
+}
+
 export interface LuckyBreakEventMap {
     readonly BrickBreak: BrickBreakPayload;
     readonly BrickHit: BrickHitPayload;
@@ -68,6 +76,7 @@ export interface LuckyBreakEventMap {
     readonly LifeLost: LifeLostPayload;
     readonly BallLaunched: BallLaunchedPayload;
     readonly RoundCompleted: RoundCompletedPayload;
+    readonly ComboMilestoneReached: ComboMilestonePayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;

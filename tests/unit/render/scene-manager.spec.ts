@@ -30,6 +30,18 @@ vi.mock('pixi.js', async () => {
     class Sprite extends Container {
         public visible = true;
         public alpha = 1;
+        public texture: unknown;
+        public destroyed = false;
+
+        public constructor(texture?: unknown) {
+            super();
+            this.texture = texture;
+        }
+
+        public destroy(): void {
+            this.destroyed = true;
+            this.children = [];
+        }
     }
 
     class Renderer {
@@ -46,6 +58,10 @@ vi.mock('pixi.js', async () => {
         public resize(size: { width: number; height: number }): void {
             this.width = size.width;
             this.height = size.height;
+        }
+
+        public generateTexture(): Record<string, unknown> {
+            return {};
         }
     }
 
@@ -175,6 +191,99 @@ describe('createSceneManager', () => {
             'init:child',
             'update:child',
         ]);
+    });
+
+    it('exposes transition helpers to scenes', async () => {
+        const history: string[] = [];
+
+        manager.register('first', (context) => ({
+            init: async () => {
+                history.push('init:first');
+                await context.transitionScene('second', undefined, { durationMs: 0 });
+                history.push('after-transition');
+            },
+            update: () => {
+                history.push('update:first');
+            },
+            destroy: () => {
+                history.push('destroy:first');
+            },
+        }));
+
+        manager.register('second', () => ({
+            init: () => {
+                history.push('init:second');
+            },
+            update: () => {
+                history.push('update:second');
+            },
+            destroy: () => {
+                history.push('destroy:second');
+            },
+        }));
+
+        await manager.switch('first');
+        manager.update(0.016);
+
+        expect(history).toEqual([
+            'init:first',
+            'destroy:first',
+            'init:second',
+            'after-transition',
+            'update:second',
+        ]);
+    });
+
+    it('performs a fade transition and resolves after animation completes', async () => {
+        const firstDestroy = vi.fn();
+        const secondInit = vi.fn();
+
+        manager.register('first', () => ({
+            init: vi.fn(),
+            update: vi.fn(),
+            destroy: firstDestroy,
+        }));
+
+        manager.register('second', () => ({
+            init: secondInit,
+            update: vi.fn(),
+            destroy: vi.fn(),
+        }));
+
+        await manager.switch('first');
+
+        let resolved = false;
+        const transitionPromise = manager.transition('second', undefined, { durationMs: 500 });
+        void transitionPromise.then(() => {
+            resolved = true;
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(manager.getCurrentScene()).toBe('second');
+        expect(firstDestroy).toHaveBeenCalledTimes(1);
+        expect(secondInit).toHaveBeenCalledTimes(1);
+        expect(resolved).toBe(false);
+
+        const findOverlay = () =>
+            manager.layers.root.children.find(
+                (child) => (child as { label?: string }).label === 'scene-transition-overlay',
+            ) as { alpha: number } | undefined;
+
+        const overlay = findOverlay();
+        expect(overlay).toBeDefined();
+        expect(overlay?.alpha).toBeCloseTo(1);
+
+        manager.update(0.1);
+        expect(resolved).toBe(false);
+        expect(findOverlay()?.alpha).toBeLessThan(1);
+
+        manager.update(1);
+        await transitionPromise;
+
+        expect(resolved).toBe(true);
+        expect(findOverlay()).toBeUndefined();
     });
 
     it('throws when switching to an unregistered scene', async () => {

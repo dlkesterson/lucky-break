@@ -18,6 +18,7 @@ import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { reflectOffPaddle, calculateReflectionData } from 'util/paddle-reflection';
 import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
+import { publishComboMilestoneIfNeeded } from './combo-milestones';
 import {
     PowerUpManager,
     shouldSpawnPowerUp,
@@ -909,6 +910,7 @@ export const createGameRuntime = async ({
                         initialHp,
                     });
 
+                    const previousCombo = scoringState.combo;
                     const basePoints = awardBrickPoints(scoringState);
                     let points = basePoints;
                     if (doublePointsMultiplier > 1) {
@@ -916,6 +918,15 @@ export const createGameRuntime = async ({
                         points += bonus;
                         scoringState.score += bonus;
                     }
+
+                    publishComboMilestoneIfNeeded({
+                        bus,
+                        sessionId,
+                        previousCombo,
+                        currentCombo: scoringState.combo,
+                        pointsAwarded: points,
+                        totalScore: scoringState.score,
+                    });
                     session.recordBrickBreak({
                         points,
                         event: {

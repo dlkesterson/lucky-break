@@ -81,6 +81,7 @@ export interface SceneContext {
     readonly switchScene: <TPayload = unknown>(name: string, payload?: TPayload) => Promise<void>;
     readonly pushScene: <TPayload = unknown>(name: string, payload?: TPayload) => Promise<void>;
     readonly popScene: () => void;
+    readonly transitionScene: <TPayload = unknown>(name: string, payload?: TPayload, options?: SceneTransitionOptions) => Promise<void>;
     readonly designSize: SceneDimensions;
 }
 
@@ -106,12 +107,33 @@ export interface SceneManagerHandle {
     readonly designSize: SceneDimensions;
     register<TPayload = unknown>(name: string, factory: SceneFactory<TPayload>): void;
     switch<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
+    transition<TPayload = unknown>(name: string, payload?: TPayload, options?: SceneTransitionOptions): Promise<void>;
     push<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
     pop(): void;
     update(deltaSeconds: number): void;
     getCurrentScene(): string | null;
     destroy(): void;
 }
+
+export type SceneTransitionEffect = 'fade';
+
+export interface SceneTransitionOptions {
+    readonly effect?: SceneTransitionEffect;
+    readonly durationMs?: number;
+    readonly easing?: (progress: number) => number;
+}
+
+const DEFAULT_TRANSITION_DURATION_MS = 250;
+const DEFAULT_TRANSITION_EFFECT: SceneTransitionEffect = 'fade';
+
+const defaultEase = (progress: number) => progress;
+
+const isTextureRenderer = (
+    renderer: Application['renderer'],
+): renderer is Application['renderer'] & { generateTexture: (displayObject: Container) => unknown } => {
+    const candidate = renderer as { generateTexture?: unknown };
+    return typeof candidate?.generateTexture === 'function';
+};
 
 const resolveResolution = (config: StageConfig): number => {
     if (config.resolution) {
@@ -223,6 +245,16 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
     const sceneFactories = new Map<string, SceneFactory<unknown>>();
     const sceneStack: { readonly name: string; readonly scene: Scene<unknown> }[] = [];
     let destroyed = false;
+    let activeTransition:
+        | {
+            readonly sprite: Sprite;
+            readonly durationSeconds: number;
+            elapsedSeconds: number;
+            readonly resolve: () => void;
+            readonly reject: (error: unknown) => void;
+            readonly easing: (progress: number) => number;
+        }
+        | null = null;
 
     const getTopEntry = () => sceneStack.at(-1) ?? null;
 
@@ -276,6 +308,90 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         await pushInternal(name, payload, false);
     };
 
+    const transitionScene = async (name: string, payload?: unknown, options?: SceneTransitionOptions) => {
+        if (destroyed) {
+            throw new Error('Scene manager has been destroyed');
+        }
+
+        if (activeTransition) {
+            throw new Error('A scene transition is already in progress');
+        }
+
+        const effect = options?.effect ?? DEFAULT_TRANSITION_EFFECT;
+        const durationMs = Math.max(options?.durationMs ?? DEFAULT_TRANSITION_DURATION_MS, 0);
+        const easing = options?.easing ?? defaultEase;
+
+        if (effect !== 'fade') {
+            await switchScene(name, payload);
+            return;
+        }
+
+        if (!isTextureRenderer(app.renderer)) {
+            await switchScene(name, payload);
+            return;
+        }
+
+        const previousSnapshot = app.renderer.generateTexture(root);
+        const overlay = new Sprite(previousSnapshot);
+        overlay.alpha = 1;
+        overlay.zIndex = Number.MAX_SAFE_INTEGER;
+        overlay.label = 'scene-transition-overlay';
+
+        root.addChild(overlay);
+
+        if (durationMs === 0) {
+            try {
+                await switchScene(name, payload);
+            } finally {
+                root.removeChild(overlay);
+                overlay.destroy({ texture: true });
+            }
+            return;
+        }
+
+        const durationSeconds = durationMs / 1000;
+        let resolveTransition: (() => void) | undefined;
+        let rejectTransition: ((error: unknown) => void) | undefined;
+
+        activeTransition = {
+            sprite: overlay,
+            durationSeconds,
+            elapsedSeconds: 0,
+            resolve: () => {
+                resolveTransition?.();
+            },
+            reject: (error: unknown) => {
+                rejectTransition?.(error);
+            },
+            easing,
+        };
+
+        const transitionPromise = new Promise<void>((resolve, reject) => {
+            resolveTransition = () => {
+                resolve();
+            };
+            rejectTransition = (error: unknown) => {
+                if (error instanceof Error) {
+                    reject(error);
+                    return;
+                }
+                reject(new Error(String(error)));
+            };
+        });
+
+        try {
+            await switchScene(name, payload);
+        } catch (error) {
+            root.removeChild(overlay);
+            overlay.destroy({ texture: true });
+            activeTransition = null;
+            rejectTransition?.(error);
+            throw error;
+        }
+
+        await transitionPromise;
+    };
+
     const pushScene = async (name: string, payload?: unknown) => pushInternal(name, payload, true);
 
     const popScene = () => {
@@ -304,6 +420,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         switchScene,
         pushScene,
         popScene,
+        transitionScene,
         designSize,
     };
 
@@ -315,6 +432,21 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
     };
 
     const update = (deltaSeconds: number) => {
+        if (activeTransition) {
+            const state = activeTransition;
+            state.elapsedSeconds += deltaSeconds;
+            const progress = Math.min(state.elapsedSeconds / state.durationSeconds, 1);
+            const eased = state.easing(progress);
+            state.sprite.alpha = 1 - Math.min(Math.max(eased, 0), 1);
+
+            if (progress >= 1) {
+                root.removeChild(state.sprite);
+                state.sprite.destroy({ texture: true });
+                activeTransition = null;
+                state.resolve();
+            }
+        }
+
         const current = getTopEntry();
         current?.scene.update(deltaSeconds);
     };
@@ -324,6 +456,12 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
             return;
         }
         destroyed = true;
+        if (activeTransition) {
+            root.removeChild(activeTransition.sprite);
+            activeTransition.sprite.destroy({ texture: true });
+            activeTransition.reject(new Error('Scene manager has been destroyed'));
+            activeTransition = null;
+        }
         destroyAllScenes();
         spritePool.clear();
         if (typeof root.removeChildren === 'function') {
@@ -347,6 +485,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         designSize,
         register,
         switch: switchScene,
+        transition: transitionScene,
         push: pushScene,
         pop: popScene,
         update,
