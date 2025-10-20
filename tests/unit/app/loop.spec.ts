@@ -132,6 +132,32 @@ describe('createGameLoop', () => {
         expect(fakeRaf.pending()).toBe(0);
     });
 
+    it('consumes the full clamped frame delta with the default step budget', () => {
+        const updates: number[] = [];
+
+        const loop = createGameLoop(
+            (dt) => {
+                updates.push(dt);
+            },
+            () => {
+                /* no-op render */
+            },
+            {
+                now: () => currentTime,
+                raf: fakeRaf.request,
+                cancelRaf: fakeRaf.cancel,
+            },
+        );
+
+        loop.start();
+        fakeRaf.flush(250);
+        loop.stop();
+
+        const expectedSteps = Math.ceil(100 / DEFAULT_STEP_MS);
+        expect(updates.length).toBe(expectedSteps);
+        updates.forEach((dt) => expect(dt).toBeCloseTo(DEFAULT_FIXED_DELTA, 6));
+    });
+
     it('falls back to setTimeout when requestAnimationFrame is unavailable', () => {
         vi.useFakeTimers();
         const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
@@ -175,7 +201,7 @@ describe('createGameLoop', () => {
     });
 
     it('exposes default timing constants', () => {
-        expect(DEFAULT_FIXED_DELTA).toBeCloseTo(1 / 120, 6);
-        expect(DEFAULT_STEP_MS).toBeCloseTo(1000 / 120, 5);
+        expect(DEFAULT_FIXED_DELTA).toBeCloseTo(1 / 60, 6);
+        expect(DEFAULT_STEP_MS).toBeCloseTo(1000 / 60, 5);
     });
 });

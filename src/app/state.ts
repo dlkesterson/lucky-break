@@ -4,6 +4,7 @@ import {
     type LuckyBreakEventBus,
     createScoringEventEmitter,
 } from './events';
+import type { RandomSource } from 'util/random';
 
 export type GameStatus = 'pending' | 'active' | 'paused' | 'completed' | 'failed';
 
@@ -114,6 +115,7 @@ export interface GameSessionOptions {
     readonly now?: () => number;
     readonly preferences?: Partial<PlayerPreferences>;
     readonly eventBus?: LuckyBreakEventBus;
+    readonly random?: RandomSource;
 }
 
 const DEFAULT_LIVES = 3;
@@ -219,7 +221,12 @@ const toHudSnapshot = (
 
 export const createGameSessionManager = (options: GameSessionOptions = {}): GameSessionManager => {
     const now = options.now ?? Date.now;
-    const sessionId = options.sessionId ?? `session-${Math.random().toString(16).slice(2)}`;
+    const randomSource = options.random ?? Math.random;
+    const sessionId = options.sessionId ?? (() => {
+        const value = Math.floor(randomSource() * 0xffffffff);
+        const suffix = value.toString(16).padStart(8, '0');
+        return `session-${suffix}`;
+    })();
     const preferences: PlayerPreferences = { ...INITIAL_PREFERENCES, ...options.preferences };
     const scoringEvents = options.eventBus ? createScoringEventEmitter(options.eventBus) : undefined;
 

@@ -1,10 +1,11 @@
 const fallbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
 let fallbackHandle = 1;
 
-export const DEFAULT_FIXED_DELTA = 1 / 120;
+export const DEFAULT_FIXED_DELTA = 1 / 60;
 export const DEFAULT_STEP_MS = DEFAULT_FIXED_DELTA * 1000;
-const DEFAULT_MAX_STEPS_PER_FRAME = 5;
 const DEFAULT_MAX_FRAME_DELTA_MS = 100;
+
+const ACCUMULATOR_EPSILON = 1e-6;
 
 const FALLBACK_FRAME_MS = DEFAULT_STEP_MS;
 
@@ -111,11 +112,12 @@ export class FixedStepLoop implements GameLoop {
         const configuredDelta = options.fixedDelta ?? DEFAULT_FIXED_DELTA;
         this.fixedDelta = configuredDelta > 0 ? configuredDelta : DEFAULT_FIXED_DELTA;
         this.stepMs = this.fixedDelta * 1000;
-        const maxSteps = options.maxStepsPerFrame ?? DEFAULT_MAX_STEPS_PER_FRAME;
-        this.maxStepsPerFrame = Math.max(1, Math.floor(maxSteps));
         const frameClamp = options.maxFrameDeltaMs ?? DEFAULT_MAX_FRAME_DELTA_MS;
         // Ensure frame clamp cannot fall below a single step.
         this.maxFrameDeltaMs = Math.max(this.stepMs, frameClamp);
+        const derivedMaxSteps = Math.max(1, Math.ceil(this.maxFrameDeltaMs / this.stepMs));
+        const maxSteps = options.maxStepsPerFrame ?? derivedMaxSteps;
+        this.maxStepsPerFrame = Math.max(1, Math.floor(maxSteps));
         this.now = options.now ?? resolveNow();
         this.raf = resolveRaf(options);
         this.cancelRaf = resolveCancelRaf(options);
@@ -172,10 +174,14 @@ export class FixedStepLoop implements GameLoop {
         this.accumulatorMs += frameDeltaMs;
 
         let steps = 0;
-        while (this.accumulatorMs >= this.stepMs && steps < this.maxStepsPerFrame) {
+        while (this.accumulatorMs + ACCUMULATOR_EPSILON >= this.stepMs && steps < this.maxStepsPerFrame) {
             this.update(this.fixedDelta);
             this.accumulatorMs -= this.stepMs;
             steps += 1;
+        }
+
+        if (this.accumulatorMs < ACCUMULATOR_EPSILON) {
+            this.accumulatorMs = 0;
         }
 
         if (steps === this.maxStepsPerFrame && this.accumulatorMs > this.stepMs) {

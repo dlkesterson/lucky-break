@@ -1,3 +1,5 @@
+import type { RandomSource } from 'util/random';
+
 export type RewardType = 'sticky-paddle' | 'double-points' | 'ghost-brick';
 
 interface BaseReward {
@@ -20,8 +22,6 @@ export interface GhostBrickReward extends BaseReward {
 }
 
 export type Reward = StickyPaddleReward | DoublePointsReward | GhostBrickReward;
-
-export type RandomSource = () => number;
 
 interface WheelSegment {
     readonly weight: number;

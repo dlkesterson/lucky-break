@@ -17,18 +17,13 @@ describe('power-up helpers', () => {
     });
 
     it('spawns according to chance', () => {
-        vi.spyOn(Math, 'random').mockReturnValue(0.1);
-        expect(shouldSpawnPowerUp({ spawnChance: 0.2 })).toBe(true);
-
-        vi.spyOn(Math, 'random').mockReturnValue(0.3);
-        expect(shouldSpawnPowerUp({ spawnChance: 0.2 })).toBe(false);
+        expect(shouldSpawnPowerUp({ spawnChance: 0.2 }, () => 0.1)).toBe(true);
+        expect(shouldSpawnPowerUp({ spawnChance: 0.2 }, () => 0.3)).toBe(false);
     });
 
     it('selects random type from deterministic index', () => {
-        vi.spyOn(Math, 'random').mockReturnValue(0.99);
-        expect(selectRandomPowerUpType()).toBe('sticky-paddle');
-        vi.spyOn(Math, 'random').mockReturnValue(0.36);
-        expect(selectRandomPowerUpType()).toBe('ball-speed');
+        expect(selectRandomPowerUpType(() => 0.99)).toBe('sticky-paddle');
+        expect(selectRandomPowerUpType(() => 0.36)).toBe('ball-speed');
     });
 
     it('creates effects using supplied clock and duration', () => {

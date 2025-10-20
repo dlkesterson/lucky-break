@@ -1,4 +1,5 @@
 import { createPreloader } from './preloader';
+import { createReplayBuffer, type ReplayRecording } from './replay-buffer';
 import { createStage } from 'render/stage';
 import { GameTheme } from 'render/theme';
 import type { SceneContext } from 'render/scene-manager';
@@ -30,9 +31,11 @@ import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEvent
 import { createEventBus } from 'app/events';
 import { createToneScheduler, createReactiveAudioLayer, type ReactiveAudioGameState } from 'audio/scheduler';
 import { createSfxRouter } from 'audio/sfx';
+import type { Vector2 } from 'input/contracts';
 import { Players, Panner, Volume, Transport, getContext } from 'tone';
 import { spinWheel, type Reward } from 'game/rewards';
 import { createSubject } from 'util/observable';
+import { createRandomManager } from 'util/random';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -98,10 +101,23 @@ const ensureToneAudio = async (): Promise<void> => {
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
+    readonly seed?: number;
 }
 
-export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
+export interface LuckyBreakHandle {
+    readonly getReplay: () => ReplayRecording;
+    readonly withSeed: (seed: number) => void;
+    readonly getSeed: () => number;
+}
+
+export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreakHandle {
     const container = options.container ?? document.body;
+    const initialSeed = typeof options.seed === 'number' ? options.seed : null;
+    const random = createRandomManager(initialSeed);
+    const replayBuffer = createReplayBuffer();
+    replayBuffer.begin(random.seed());
+    let sessionElapsedSeconds = 0;
+    let lastRecordedInputTarget: Vector2 | null = null;
     const PLAYFIELD_WIDTH = 1280;
     const PLAYFIELD_HEIGHT = 720;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
@@ -176,6 +192,19 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     }
 
     const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+
+    const areTargetsEqual = (a: Vector2 | null, b: Vector2 | null): boolean => {
+        if (a === b) {
+            return true;
+        }
+
+        if (!a || !b) {
+            return false;
+        }
+
+        const epsilon = 0.5;
+        return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon;
+    };
 
     const mixColors = (source: number, target: number, amount: number): number => {
         const t = clampUnit(amount);
@@ -663,6 +692,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 sessionId: 'game-session',
                 initialLives: 3,
                 eventBus: bus,
+                random: random.random,
             });
             let session = createSession();
 
@@ -1061,8 +1091,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                             });
 
                             const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
-                            if (shouldSpawnPowerUp({ spawnChance })) {
-                                const powerUpType = selectRandomPowerUpType();
+                            if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
+                                const powerUpType = selectRandomPowerUpType(random.random);
                                 spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
                             }
 
@@ -1556,7 +1586,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 clearExtraBalls();
                 isPaused = false;
                 loop?.stop();
-                pendingReward = spinWheel();
+                pendingReward = spinWheel(random.random);
 
                 const completedLevel = currentLevelIndex + 1;
                 let handled = false;
@@ -1701,6 +1731,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
             }
 
             const runGameplayUpdate = (deltaSeconds: number): void => {
+                sessionElapsedSeconds += deltaSeconds;
+                replayBuffer.markTime(sessionElapsedSeconds);
+
                 // Update power-ups
                 powerUpManager.update(deltaSeconds);
 
@@ -1769,6 +1802,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
 
                 // Process input
                 const paddleTarget = inputManager.getPaddleTarget();
+                const targetSnapshot = paddleTarget ? { x: paddleTarget.x, y: paddleTarget.y } : null;
+                if (!areTargetsEqual(lastRecordedInputTarget, targetSnapshot)) {
+                    replayBuffer.recordPaddleTarget(sessionElapsedSeconds, targetSnapshot);
+                    lastRecordedInputTarget = targetSnapshot ? { ...targetSnapshot } : null;
+                }
+
                 if (paddleTarget) {
                     const pf = stage.toPlayfield(paddleTarget);
 
@@ -1809,7 +1848,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 }
 
                 // Check for launch triggers (tap/click only)
-                if (ball.isAttached && inputManager.shouldLaunch()) {
+                const launchRequested = ball.isAttached && inputManager.shouldLaunch();
+                if (launchRequested) {
+                    replayBuffer.recordLaunch(sessionElapsedSeconds);
                     physics.detachBallFromPaddle(ball.physicsBody);
                     launchController.launch(ball, undefined, currentLaunchSpeed);
                     inputManager.resetLaunchTrigger();
@@ -1925,6 +1966,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
                 if (loop?.isRunning()) {
                     loop.stop();
                 }
+
+                random.reset();
+                const activeSeed = random.seed();
+                sessionElapsedSeconds = 0;
+                lastRecordedInputTarget = null;
+                replayBuffer.begin(activeSeed);
 
                 session = createSession();
                 currentLevelIndex = 0;
@@ -2047,6 +2094,24 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): void {
     });
 
     preloader.prepare().catch(console.error);
+
+    const getReplay = (): ReplayRecording => {
+        replayBuffer.markTime(sessionElapsedSeconds);
+        return replayBuffer.snapshot();
+    };
+
+    const withSeed = (seed: number): void => {
+        const normalized = random.setSeed(seed);
+        replayBuffer.recordSeed(normalized, sessionElapsedSeconds);
+    };
+
+    const getSeed = (): number => random.seed();
+
+    return {
+        getReplay,
+        withSeed,
+        getSeed,
+    };
 }
 
 const container = document.getElementById('app');

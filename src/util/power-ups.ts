@@ -1,3 +1,5 @@
+import type { RandomSource } from './random';
+
 /**
  * Power-Up System
  *
@@ -40,9 +42,9 @@ const DEFAULT_BALL_SPEED_MULTIPLIER = 1.3;
  * @param config - Power-up configuration
  * @returns True if power-up should spawn
  */
-export function shouldSpawnPowerUp(config: PowerUpConfig = {}): boolean {
+export function shouldSpawnPowerUp(config: PowerUpConfig = {}, rng: RandomSource = Math.random): boolean {
     const chance = config.spawnChance ?? DEFAULT_SPAWN_CHANCE;
-    return Math.random() < chance;
+    return rng() < chance;
 }
 
 /**
@@ -50,9 +52,9 @@ export function shouldSpawnPowerUp(config: PowerUpConfig = {}): boolean {
  *
  * @returns Random power-up type
  */
-export function selectRandomPowerUpType(): PowerUpType {
+export function selectRandomPowerUpType(rng: RandomSource = Math.random): PowerUpType {
     const types: PowerUpType[] = ['paddle-width', 'ball-speed', 'multi-ball', 'sticky-paddle'];
-    return types[Math.floor(Math.random() * types.length)];
+    return types[Math.floor(rng() * types.length)];
 }
 
 /**
