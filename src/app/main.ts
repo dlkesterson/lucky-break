@@ -21,12 +21,10 @@ import { reflectOffPaddle, calculateReflectionData } from 'util/paddle-reflectio
 import { regulateSpeed } from 'util/speed-regulation';
 import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
 import { PowerUpManager, shouldSpawnPowerUp, selectRandomPowerUpType, calculatePaddleWidthScale, calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
-import { generateLevelLayout, getLevelSpec, getPresetLevelCount, getLevelDifficultyMultiplier, remixLevel } from 'util/levels';
-import { distance } from 'util/geometry';
 import type { BrickSpec } from 'util/levels';
 import { Container, Graphics, Assets, TilingSprite, Texture, ColorMatrixFilter, FillGradient, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
-import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
+import { Events, Body as MatterBody, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
 import type { Vector2 } from 'input/contracts';
 import { Transport, getContext } from 'tone';
 import { spinWheel, type Reward } from 'game/rewards';
@@ -34,6 +32,7 @@ import { createRandomManager } from 'util/random';
 import { createGameInitializer } from './game-initializer';
 import { createMultiBallController } from './multi-ball-controller';
 import type { MultiBallController } from './multi-ball-controller';
+import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -119,7 +118,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
     const PLAYFIELD_WIDTH = 1280;
     const PLAYFIELD_HEIGHT = 720;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
-    const PRESET_LEVEL_COUNT = getPresetLevelCount();
     const BRICK_LIGHT_RADIUS = 180;
     const BRICK_REST_ALPHA = 0.9;
     const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
@@ -486,27 +484,10 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             let activeReward: Reward | null = null;
             let doublePointsMultiplier = 1;
             let doublePointsTimer = 0;
-
-            interface GhostBrickEffect {
-                readonly body: Body;
-                readonly restore: () => void;
-                remaining: number;
-            }
-
-            const ghostBrickEffects: GhostBrickEffect[] = [];
-
-            // Visuals and brick state tracking
-            interface FallingPowerUp {
-                readonly type: PowerUpType;
-                readonly body: Body;
-                readonly visual: Graphics;
-            }
-
             const visualBodies = new Map<Body, Container>();
-            const brickHealth = new Map<Body, number>();
-            const brickMetadata = new Map<Body, BrickSpec>();
-            const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
-            const activePowerUps: FallingPowerUp[] = [];
+            let brickHealth = new Map<Body, number>();
+            let brickMetadata = new Map<Body, BrickSpec>();
+            let brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
             let multiBallController: MultiBallController | null = null;
 
             const removeBodyVisual = (body: Body): void => {
@@ -536,6 +517,50 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             let currentLaunchSpeed = BALL_LAUNCH_SPEED;
             let previousPaddlePosition = { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 };
 
+            const levelRuntime = createLevelRuntime({
+                physics,
+                stage,
+                visualBodies,
+                removeBodyVisual,
+                playfieldWidth: PLAYFIELD_WIDTH,
+                brickSize: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
+                brickLighting: { radius: BRICK_LIGHT_RADIUS, restAlpha: BRICK_REST_ALPHA },
+                rowColors,
+                powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
+            });
+
+            brickHealth = levelRuntime.brickHealth;
+            brickMetadata = levelRuntime.brickMetadata;
+            brickVisualState = levelRuntime.brickVisualState;
+
+            const updateBrickLighting = (...args: Parameters<typeof levelRuntime.updateBrickLighting>) =>
+                levelRuntime.updateBrickLighting(...args);
+            const spawnPowerUp = (...args: Parameters<typeof levelRuntime.spawnPowerUp>) =>
+                levelRuntime.spawnPowerUp(...args);
+            const findPowerUp = (...args: Parameters<typeof levelRuntime.findPowerUp>) =>
+                levelRuntime.findPowerUp(...args);
+            const removePowerUp = (...args: Parameters<typeof levelRuntime.removePowerUp>) =>
+                levelRuntime.removePowerUp(...args);
+            const clearGhostEffect = (...args: Parameters<typeof levelRuntime.clearGhostEffect>) =>
+                levelRuntime.clearGhostEffect(...args);
+            const resetGhostBricks = (...args: Parameters<typeof levelRuntime.resetGhostBricks>) =>
+                levelRuntime.resetGhostBricks(...args);
+            const applyGhostBrickReward = (...args: Parameters<typeof levelRuntime.applyGhostBrickReward>) =>
+                levelRuntime.applyGhostBrickReward(...args);
+            const updateGhostBricks = (...args: Parameters<typeof levelRuntime.updateGhostBricks>) =>
+                levelRuntime.updateGhostBricks(...args);
+            const getGhostBrickRemainingDuration = (
+                ...args: Parameters<typeof levelRuntime.getGhostBrickRemainingDuration>
+            ) => levelRuntime.getGhostBrickRemainingDuration(...args);
+
+            const loadLevel = (levelIndex: number) => {
+                const result = levelRuntime.loadLevel(levelIndex);
+                powerUpChanceMultiplier = result.powerUpChanceMultiplier;
+                levelDifficultyMultiplier = result.difficultyMultiplier;
+                brickLayoutBounds = result.layoutBounds;
+                session.startRound({ breakableBricks: result.breakableBricks });
+            };
+
             ballLight = createDynamicLight({
                 speedForMaxIntensity: BALL_MAX_SPEED * 1.1,
             });
@@ -557,45 +582,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             paddleLight.container.alpha = 0.9;
             stage.addToLayer('effects', paddleLight.container);
 
-            const updateBrickLighting = (ballPosition: { readonly x: number; readonly y: number }): void => {
-                brickVisualState.forEach((state, body) => {
-                    const visual = visualBodies.get(body);
-                    if (!(visual instanceof Graphics)) {
-                        return;
-                    }
-
-                    const dist = distance(ballPosition, body.position);
-                    if (dist < BRICK_LIGHT_RADIUS) {
-                        const proximity = 1 - dist / BRICK_LIGHT_RADIUS;
-                        const eased = Math.pow(proximity, 0.75);
-                        const tint = mixColors(0xffffff, state.baseColor, Math.min(1, 1 - eased * 0.85));
-                        visual.tint = tint;
-                        visual.alpha = Math.min(1.3, BRICK_REST_ALPHA + eased * 0.45);
-                        visual.blendMode = 'add';
-                    } else {
-                        visual.tint = 0xffffff;
-                        visual.alpha = BRICK_REST_ALPHA;
-                        visual.blendMode = 'normal';
-                    }
-                });
-            };
-
-            // Function to load a level
-            const removePowerUp = (powerUp: FallingPowerUp) => {
-                physics.remove(powerUp.body);
-                removeBodyVisual(powerUp.body);
-                const index = activePowerUps.indexOf(powerUp);
-                if (index >= 0) {
-                    activePowerUps.splice(index, 1);
-                }
-            };
-
-            const clearActivePowerUps = () => {
-                while (activePowerUps.length > 0) {
-                    removePowerUp(activePowerUps[activePowerUps.length - 1]);
-                }
-            };
-
             const removeExtraBallByBody = (body: Body) => {
                 if (!multiBallController) {
                     return;
@@ -608,59 +594,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                     return;
                 }
                 multiBallController.clear();
-            };
-
-            const clearGhostEffect = (body: Body) => {
-                const index = ghostBrickEffects.findIndex((effect) => effect.body === body);
-                if (index >= 0) {
-                    ghostBrickEffects[index].restore();
-                    ghostBrickEffects.splice(index, 1);
-                }
-            };
-
-            const resetGhostBricks = () => {
-                while (ghostBrickEffects.length > 0) {
-                    ghostBrickEffects.pop()?.restore();
-                }
-            };
-
-            const applyGhostBrickReward = (duration: number, count: number) => {
-                resetGhostBricks();
-
-                if (count <= 0) {
-                    return;
-                }
-
-                const bricks = Array.from(brickHealth.keys()).filter((body) => body.label === 'brick');
-                if (bricks.length === 0) {
-                    return;
-                }
-
-                const selected = [...bricks]
-                    .sort((lhs, rhs) => lhs.id - rhs.id)
-                    .slice(0, Math.min(count, bricks.length));
-
-                selected.forEach((body) => {
-                    const originalSensor = body.isSensor;
-                    body.isSensor = true;
-
-                    const visual = visualBodies.get(body);
-                    const originalAlpha = visual instanceof Graphics ? visual.alpha : undefined;
-                    if (visual instanceof Graphics) {
-                        visual.alpha = 0.35;
-                    }
-
-                    ghostBrickEffects.push({
-                        body,
-                        remaining: duration,
-                        restore: () => {
-                            body.isSensor = originalSensor;
-                            if (visual instanceof Graphics && originalAlpha !== undefined) {
-                                visual.alpha = originalAlpha;
-                            }
-                        },
-                    });
-                });
             };
 
             const activateReward = (reward: Reward | null) => {
@@ -689,107 +622,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                         applyGhostBrickReward(reward.duration, reward.ghostCount);
                         break;
                 }
-            };
-
-            const spawnPowerUp = (type: PowerUpType, position: { readonly x: number; readonly y: number }) => {
-                const body = Bodies.circle(position.x, position.y, POWER_UP_RADIUS, {
-                    label: 'powerup',
-                    isSensor: true,
-                    frictionAir: 0,
-                });
-
-                MatterBody.setVelocity(body, { x: 0, y: POWER_UP_FALL_SPEED });
-                physics.add(body);
-
-                const colorMap: Record<PowerUpType, number> = {
-                    'paddle-width': 0x00ffff,
-                    'ball-speed': 0xffaa33,
-                    'multi-ball': 0xff66cc,
-                    'sticky-paddle': 0x66ff99,
-                };
-
-                const visual = new Graphics();
-                visual.circle(0, 0, POWER_UP_RADIUS);
-                visual.fill({ color: colorMap[type], alpha: 0.9 });
-                visual.position.set(position.x, position.y);
-                stage.addToLayer('effects', visual);
-
-                visualBodies.set(body, visual);
-                activePowerUps.push({ type, body, visual });
-            };
-
-            const findPowerUp = (body: Body): FallingPowerUp | null => {
-                return activePowerUps.find((entry) => entry.body === body) ?? null;
-            };
-
-            const loadLevel = (levelIndex: number) => {
-                resetGhostBricks();
-                // Clear existing bricks
-                visualBodies.forEach((_visual, body) => {
-                    if (body.label === 'brick') {
-                        physics.remove(body);
-                        removeBodyVisual(body);
-                        brickHealth.delete(body);
-                        brickMetadata.delete(body);
-                        brickVisualState.delete(body);
-                    }
-                });
-                brickVisualState.clear();
-
-                clearActivePowerUps();
-                brickLayoutBounds = null;
-
-                // Generate new level layout
-                const baseSpec = getLevelSpec(levelIndex);
-                const loopCount = Math.floor(levelIndex / PRESET_LEVEL_COUNT);
-                const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
-                const layout = generateLevelLayout(effectiveSpec, BRICK_WIDTH, BRICK_HEIGHT, PLAYFIELD_WIDTH);
-                powerUpChanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;
-                levelDifficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
-
-                // Create bricks from layout
-                const layoutBounds = {
-                    minX: Number.POSITIVE_INFINITY,
-                    maxX: Number.NEGATIVE_INFINITY,
-                    minY: Number.POSITIVE_INFINITY,
-                    maxY: Number.NEGATIVE_INFINITY,
-                };
-
-                layout.bricks.forEach((brickSpec) => {
-                    const brick = physics.factory.brick({
-                        size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
-                        position: { x: brickSpec.x, y: brickSpec.y },
-                    });
-                    physics.add(brick);
-
-                    const paletteColor = rowColors[brickSpec.row % rowColors.length];
-                    const maxHp = Math.max(1, brickSpec.hp);
-                    const initialColor = computeBrickFillColor(paletteColor, maxHp, maxHp);
-                    const brickVisual = new Graphics();
-                    paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, initialColor, 0);
-                    brickVisual.position.set(brickSpec.x, brickSpec.y);
-                    brickVisual.zIndex = 5;
-                    brickVisual.eventMode = 'none';
-                    visualBodies.set(brick, brickVisual);
-                    stage.layers.playfield.addChild(brickVisual);
-
-                    brickHealth.set(brick, maxHp);
-                    brickMetadata.set(brick, brickSpec);
-                    brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp });
-
-                    layoutBounds.minX = Math.min(layoutBounds.minX, brickSpec.x - BRICK_WIDTH / 2);
-                    layoutBounds.maxX = Math.max(layoutBounds.maxX, brickSpec.x + BRICK_WIDTH / 2);
-                    layoutBounds.minY = Math.min(layoutBounds.minY, brickSpec.y - BRICK_HEIGHT / 2);
-                    layoutBounds.maxY = Math.max(layoutBounds.maxY, brickSpec.y + BRICK_HEIGHT / 2);
-                });
-
-                if (layout.bricks.length > 0) {
-                    brickLayoutBounds = layoutBounds;
-                    positionHud();
-                }
-
-                // Start the round
-                session.startRound({ breakableBricks: layout.breakableCount });
             };
 
             // Add collision event handling
@@ -1005,7 +837,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             const hudDisplay = createHudDisplay(GameTheme);
             hudContainer.addChild(hudDisplay.container);
 
-            let brickLayoutBounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
+            let brickLayoutBounds: BrickLayoutBounds | null = null;
 
             const positionHud = () => {
                 const margin = HUD_MARGIN;
@@ -1189,7 +1021,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                         remaining = Math.max(0, doublePointsTimer);
                         break;
                     case 'ghost-brick':
-                        remaining = ghostBrickEffects.reduce((max, effect) => Math.max(max, effect.remaining), 0);
+                        remaining = getGhostBrickRemainingDuration();
                         break;
                     case 'sticky-paddle': {
                         const sticky = powerUpManager.getEffect('sticky-paddle');
@@ -1455,16 +1287,9 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                     }
                 }
 
-                for (let index = ghostBrickEffects.length - 1; index >= 0; index -= 1) {
-                    const effect = ghostBrickEffects[index];
-                    effect.remaining -= deltaSeconds;
-                    if (effect.remaining <= 0) {
-                        effect.restore();
-                        ghostBrickEffects.splice(index, 1);
-                    }
-                }
+                const activeGhostCount = updateGhostBricks(deltaSeconds);
 
-                if (ghostBrickEffects.length === 0 && activeReward?.type === 'ghost-brick') {
+                if (activeGhostCount === 0 && activeReward?.type === 'ghost-brick') {
                     activeReward = null;
                 }
 
