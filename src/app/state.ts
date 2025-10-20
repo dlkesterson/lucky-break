@@ -361,6 +361,13 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         momentum.speedPressure = clamp01(momentum.speedPressure * 0.5);
         momentum.updatedAt = timestamp;
 
+        scoringEvents?.lifeLost({
+            sessionId,
+            livesRemaining,
+            cause,
+            timestamp,
+        });
+
         if (livesRemaining <= 0) {
             status = 'failed';
             elapsedMs = startedAt !== undefined ? timestamp - startedAt : 0;

@@ -200,6 +200,38 @@ describe('createGameSessionManager', () => {
         });
     });
 
+    it('emits life lost events with remaining lives', () => {
+        const bus = createEventBus();
+        const lifeLostEvents: unknown[] = [];
+        bus.subscribe('LifeLost', (event) => {
+            lifeLostEvents.push(event);
+        });
+
+        const clock = createFakeClock();
+        const manager = createGameSessionManager({
+            sessionId: 'session-life-loss',
+            now: clock.now,
+            initialLives: 2,
+            eventBus: bus,
+        });
+
+        manager.startRound({ breakableBricks: 10 });
+        clock.tick(250);
+        manager.recordLifeLost('ball-drop');
+
+        expect(lifeLostEvents).toHaveLength(1);
+        const [event] = lifeLostEvents;
+        expect(event).toMatchObject({
+            type: 'LifeLost',
+            payload: {
+                sessionId: 'session-life-loss',
+                livesRemaining: 1,
+                cause: 'ball-drop',
+            },
+            timestamp: expect.any(Number),
+        });
+    });
+
     it('transitions to failed when all lives are lost', () => {
         const clock = createFakeClock();
         const manager = createGameSessionManager({ sessionId: 'session-003', now: clock.now, initialLives: 2 });

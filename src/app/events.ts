@@ -1,6 +1,10 @@
 export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up';
 export type WallHitSide = 'top' | 'left' | 'right' | 'bottom';
 export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
+export interface VectorLike {
+    readonly x: number;
+    readonly y: number;
+}
 
 export interface BrickBreakPayload {
     readonly sessionId: string;
@@ -42,6 +46,13 @@ export interface LifeLostPayload {
     readonly cause: LifeLostCause;
 }
 
+export interface BallLaunchedPayload {
+    readonly sessionId: string;
+    readonly position: VectorLike;
+    readonly direction: VectorLike;
+    readonly speed: number;
+}
+
 export interface RoundCompletedPayload {
     readonly sessionId: string;
     readonly round: number;
@@ -55,6 +66,7 @@ export interface LuckyBreakEventMap {
     readonly PaddleHit: PaddleHitPayload;
     readonly WallHit: WallHitPayload;
     readonly LifeLost: LifeLostPayload;
+    readonly BallLaunched: BallLaunchedPayload;
     readonly RoundCompleted: RoundCompletedPayload;
 }
 
@@ -114,6 +126,7 @@ export interface RoundCompletedEventInput {
 export interface ScoringEventEmitter {
     readonly brickBreak: (event: BrickBreakEventInput) => void;
     readonly roundCompleted: (event: RoundCompletedEventInput) => void;
+    readonly lifeLost: (event: LifeLostPayload & { readonly timestamp?: number }) => void;
 }
 
 type InternalListener = EventListener<LuckyBreakEventName>;
@@ -240,8 +253,21 @@ export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEvent
         );
     };
 
+    const publishLifeLost: ScoringEventEmitter['lifeLost'] = (event) => {
+        bus.publish(
+            'LifeLost',
+            {
+                sessionId: event.sessionId,
+                livesRemaining: event.livesRemaining,
+                cause: event.cause,
+            },
+            event.timestamp,
+        );
+    };
+
     return {
         brickBreak: publishBrickBreak,
         roundCompleted: publishRoundCompleted,
+        lifeLost: publishLifeLost,
     };
 };

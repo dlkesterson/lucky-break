@@ -1,6 +1,5 @@
 import { createPreloader } from './preloader';
 import { createReplayBuffer, type ReplayRecording } from './replay-buffer';
-import { createStage } from 'render/stage';
 import { GameTheme } from 'render/theme';
 import type { SceneContext } from 'render/scene-manager';
 import { createPhysicsWorld } from 'physics/world';
@@ -28,14 +27,11 @@ import type { BrickSpec } from 'util/levels';
 import { Container, Graphics, Assets, TilingSprite, Texture, ColorMatrixFilter, FillGradient, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import { Events, Body as MatterBody, Bodies, Vector as MatterVector, type IEventCollision, type Engine, type Body } from 'matter-js';
-import { createEventBus } from 'app/events';
-import { createToneScheduler, createReactiveAudioLayer, type ReactiveAudioGameState } from 'audio/scheduler';
-import { createSfxRouter } from 'audio/sfx';
 import type { Vector2 } from 'input/contracts';
-import { Players, Panner, Volume, Transport, getContext } from 'tone';
+import { Transport, getContext } from 'tone';
 import { spinWheel, type Reward } from 'game/rewards';
-import { createSubject } from 'util/observable';
 import { createRandomManager } from 'util/random';
+import { createGameInitializer } from './game-initializer';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -450,237 +446,39 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 }
             }
 
-            // Initialize the game components
-            const stage = await createStage({ parent: container, theme: GameTheme });
-
             let ballHueShift = 0;
             let ballGlowPulse = 0;
             let paddleGlowPulse = 0;
             let comboRingPulse = 0;
             let comboRingPhase = 0;
 
-            stage.layers.playfield.sortableChildren = true;
-            stage.layers.effects.sortableChildren = true;
-
-            // Set canvas to fill viewport
-            stage.canvas.style.width = '100vw';
-            stage.canvas.style.height = '100vh';
-            stage.canvas.style.position = 'absolute';
-            stage.canvas.style.top = '0';
-            stage.canvas.style.left = '0';
-            stage.canvas.style.display = 'block';
-            stage.canvas.style.backgroundColor = '#000000';
-            stage.canvas.style.touchAction = 'none';
-            stage.canvas.style.userSelect = 'none';
-
-            const bus = createEventBus();  // Create event bus
-
-            const scheduler = createToneScheduler({ lookAheadMs: 120 });
-            const audioState$ = createSubject<ReactiveAudioGameState>();
-            const reactiveAudioLayer = createReactiveAudioLayer(audioState$, Transport, {
-                lookAheadMs: scheduler.lookAheadMs,
-                onFill: (event) => {
-                    if (event.type === 'combo') {
-                        comboRingPulse = Math.min(1, comboRingPulse + 0.45);
-                        ballGlowPulse = Math.min(1, ballGlowPulse + 0.5);
-                        ballLight?.flash(0.35);
-                    } else if (event.type === 'power-up') {
-                        paddleGlowPulse = Math.min(1, paddleGlowPulse + 0.6);
-                        paddleLight?.flash(0.5);
-                    }
-                },
-            });
-            const toneAudioContext = getToneAudioContext();
-            const isToneAudioReady = () => toneAudioContext.state === 'running' && Transport.state === 'started';
-            const renderStageOnce = () => {
-                stage.update(0);
-                stage.app.render();
-            };
-            const renderStageSoon = () => {
-                renderStageOnce();
-                if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-                    window.requestAnimationFrame(() => {
-                        renderStageOnce();
-                    });
-                }
-            };
-
-            const toDecibels = (gain: number): number => {
-                if (gain <= 0) {
-                    return -60;
-                }
-                return Math.max(-30, Math.min(0, 20 * Math.log10(gain)));
-            };
-
-            const toPlaybackRate = (detuneCents: number): number => {
-                const rate = 2 ** (detuneCents / 1200);
-                return Math.max(0.5, Math.min(2, rate));
-            };
-
-            const brickSampleUrls = {
-                'brick-hit-low': new URL('../../assets/bass-poweron.wav', import.meta.url).href,
-                'brick-hit-mid': new URL('../../assets/double-acoustic-bassnote.wav', import.meta.url).href,
-                'brick-hit-high': new URL('../../assets/eurobas.wav', import.meta.url).href,
-            } as const;
-
-            const volume = new Volume(-6);
-            const panner = new Panner(0);
-            volume.connect(panner);
-            panner.toDestination();
-
-            let brickPlayers: Players | null = null;
-            let brickPlayersPromise: Promise<Players> | null = null;
-
-            const loadBrickPlayers = async (): Promise<Players> => {
-                if (brickPlayers) {
-                    return brickPlayers;
-                }
-                brickPlayersPromise ??= new Promise<Players>((resolve, reject) => {
-                    try {
-                        const players = new Players(brickSampleUrls, () => resolve(players));
-                        players.connect(volume);
-                    } catch (error) {
-                        const reason = error instanceof Error ? error : new Error(String(error));
-                        reject(reason);
-                    }
-                })
-                    .then((players) => {
-                        brickPlayers = players;
-                        return players;
-                    })
-                    .finally(() => {
-                        brickPlayersPromise = null;
-                    });
-                return brickPlayersPromise;
-            };
-
-            const handleAudioBootstrapError = (error: unknown) => {
-                if (isAutoplayBlockedError(error)) {
-                    console.warn('Audio buffers pending user interaction; will retry once audio context resumes.', error);
-                    scheduleAudioUnlock();
-                    return;
-                }
-                console.error('Failed to initialize brick hit audio buffers.', error);
-            };
-
-            const primeBrickPlayers = () => {
-                void loadBrickPlayers().catch(handleAudioBootstrapError);
-            };
-
-            let audioUnlockDocument: Document | null = null;
-            let audioUnlockHandler: ((event: Event) => void) | null = null;
-
-            const cleanupAudioUnlock = () => {
-                if (!audioUnlockHandler || !audioUnlockDocument) {
-                    return;
-                }
-
-                audioUnlockDocument.removeEventListener('pointerdown', audioUnlockHandler);
-                audioUnlockDocument.removeEventListener('keydown', audioUnlockHandler);
-                audioUnlockHandler = null;
-                audioUnlockDocument = null;
-            };
-
-            const scheduleAudioUnlock = () => {
-                if (audioUnlockHandler) {
-                    return;
-                }
-
-                if (isToneAudioReady()) {
-                    return;
-                }
-
-                const docRef = container.ownerDocument ?? document;
-                audioUnlockDocument = docRef;
-
-                audioUnlockHandler = () => {
-                    if (isToneAudioReady()) {
-                        cleanupAudioUnlock();
-                        return;
-                    }
-
-                    void ensureToneAudio()
-                        .catch((unlockError) => {
-                            console.warn('Audio unlock attempt deferred until interaction', unlockError);
-                        })
-                        .finally(() => {
-                            if (isToneAudioReady()) {
-                                cleanupAudioUnlock();
-                            }
-                        });
-                    primeBrickPlayers();
-                };
-
-                docRef.addEventListener('pointerdown', audioUnlockHandler);
-                docRef.addEventListener('keydown', audioUnlockHandler);
-            };
-
-            if (!isToneAudioReady()) {
-                void ensureToneAudio().catch((audioInitError) => {
-                    console.warn('Audio context suspended; will retry after the first user interaction.', audioInitError);
-                });
-            }
-            scheduleAudioUnlock();
-            primeBrickPlayers();
-
-            const lastPlayerStart = new Map<string, number>();
-
-            const router = createSfxRouter({
+            const {
+                stage,
                 bus,
                 scheduler,
-                brickSampleIds: Object.keys(brickSampleUrls),
-                trigger: (descriptor) => {
-                    void ensureToneAudio().catch(console.warn);
-                    const players = brickPlayers;
-                    if (!players) {
-                        primeBrickPlayers();
-                        return;
+                audioState$,
+                renderStageSoon,
+                dispose: disposeInitializer,
+            } = await createGameInitializer({
+                container,
+                playfieldSize: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
+                pulseControls: {
+                    boostCombo: ({ ring, ball }: { ring: number; ball: number }) => {
+                        comboRingPulse = Math.min(1, comboRingPulse + ring);
+                        ballGlowPulse = Math.min(1, ballGlowPulse + ball);
+                        ballLight?.flash(0.35);
+                    },
+                    boostPowerUp: ({ paddle }: { paddle: number }) => {
+                        paddleGlowPulse = Math.min(1, paddleGlowPulse + paddle);
+                        paddleLight?.flash(0.5);
+                    },
+                },
+                onAudioBlocked: (error: unknown) => {
+                    if (isAutoplayBlockedError(error)) {
+                        console.warn('Audio context suspended; will retry after the first user interaction.', error);
                     }
-
-                    const player = players.player(descriptor.id);
-                    if (!player) {
-                        return;
-                    }
-
-                    const nowTime = scheduler.context.currentTime;
-                    const lastStart = lastPlayerStart.get(descriptor.id) ?? -Infinity;
-                    const minTime = Math.max(nowTime + 0.01, lastStart + 0.01);
-                    const targetTime = Math.max(descriptor.time, minTime);
-
-                    player.playbackRate = toPlaybackRate(descriptor.detune);
-                    player.volume.value = toDecibels(descriptor.gain);
-                    panner.pan.setValueAtTime(descriptor.pan, targetTime);
-                    player.start(targetTime);
-                    lastPlayerStart.set(descriptor.id, targetTime);
                 },
             });
-
-            // Add resize listener
-            const handleResize = () => {
-                const w = window.innerWidth;
-                const h = window.innerHeight;
-                stage.resize({ width: w, height: h });
-
-                const targetRatio = PLAYFIELD_WIDTH / PLAYFIELD_HEIGHT;
-                const windowRatio = w / h;
-
-                let scale = 1;
-                let offsetX = 0;
-                let offsetY = 0;
-
-                if (windowRatio > targetRatio) {
-                    scale = h / PLAYFIELD_HEIGHT;
-                    offsetX = (w - PLAYFIELD_WIDTH * scale) / 2;
-                } else {
-                    scale = w / PLAYFIELD_WIDTH;
-                    offsetY = (h - PLAYFIELD_HEIGHT * scale) / 2;
-                }
-
-                stage.layers.root.scale.set(scale, scale);
-                stage.layers.root.position.set(Math.round(offsetX), Math.round(offsetY));
-            };
-            window.addEventListener('resize', handleResize);
-            handleResize();  // Initial resize
             // Create physics world
             const physics = createPhysicsWorld({
                 dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
@@ -2074,16 +1872,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
 
             // Add dispose on unload (optional):
             window.addEventListener('beforeunload', () => {
-                router.dispose();
-                scheduler.dispose();
-                reactiveAudioLayer.dispose();
-                audioState$.complete();
-                cleanupAudioUnlock();
-                brickPlayers?.dispose();
-                brickPlayers = null;
-                brickPlayersPromise = null;
-                volume.dispose();
-                panner.dispose();
+                disposeInitializer();
                 ballLight?.destroy();
                 paddleLight?.destroy();
                 ballLight = null;
