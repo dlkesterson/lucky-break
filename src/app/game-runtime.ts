@@ -26,44 +26,37 @@ import {
     calculateBallSpeedScale,
     type PowerUpType,
 } from 'util/power-ups';
+import type { Vector2 } from 'input/contracts';
 import {
-    generateLevelLayout,
-    getLevelSpec,
-    getPresetLevelCount,
-    getLevelDifficultyMultiplier,
-    remixLevel,
-    type BrickSpec,
-} from 'util/levels';
-import { distance } from 'util/geometry';
-import { Container, Graphics, TilingSprite, Texture, ColorMatrixFilter, type Filter } from 'pixi.js';
+    toColorNumber,
+    clampUnit,
+    mixColors,
+    drawBallVisual,
+    drawPaddleVisual,
+    createPlayfieldBackgroundLayer,
+    computeBrickFillColor,
+    paintBrickVisual,
+    type BallVisualDefaults,
+    type BallVisualPalette,
+    type PaddleVisualDefaults,
+} from 'render/playfield-visuals';
+import { Container, Graphics, Texture, ColorMatrixFilter, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import {
     Events,
     Body as MatterBody,
-    Bodies,
     Vector as MatterVector,
     type IEventCollision,
     type Engine,
     type Body,
 } from 'matter-js';
-import type { Vector2 } from 'input/contracts';
-import { spinWheel, type Reward } from 'game/rewards';
-import {
-    toColorNumber,
-    clampUnit,
-    mixColors,
-    computeBrickFillColor,
-    drawBallVisual,
-    drawPaddleVisual,
-    createPlayfieldBackgroundLayer,
-    paintBrickVisual,
-    type BallVisualDefaults,
-    type PaddleVisualDefaults,
-} from 'render/playfield-visuals';
+import { Transport, getContext } from 'tone';
 import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
-import { Transport, getContext } from 'tone';
+import { createMultiBallController } from './multi-ball-controller';
+import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
+import { spinWheel, type Reward } from 'game/rewards';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
 
@@ -127,12 +120,31 @@ const ensureToneAudio = async (): Promise<void> => {
     }
 };
 
+const PLAYFIELD_DEFAULT = { width: 1280, height: 720 } as const;
+const BRICK_LIGHT_RADIUS = 180;
+const BRICK_REST_ALPHA = 0.9;
+const COMBO_DECAY_WINDOW = 1.6;
+const HUD_SCALE = 0.9;
+const HUD_MARGIN = 32;
+const MIN_HUD_SCALE = 0.55;
+const BALL_BASE_SPEED = 8;
+const BALL_MAX_SPEED = 14;
+const BALL_LAUNCH_SPEED = 9;
+const MULTI_BALL_MULTIPLIER = 3;
+const BRICK_WIDTH = 100;
+const BRICK_HEIGHT = 40;
+const POWER_UP_RADIUS = 16;
+const POWER_UP_FALL_SPEED = 6;
+const POWER_UP_DURATION = 6;
+const STARFIELD_SCROLL_SPEED = { x: 8, y: 4 } as const;
+
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
-    readonly playfieldDimensions: { readonly width: number; readonly height: number };
+    readonly playfieldDimensions?: { readonly width: number; readonly height: number };
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
-    readonly initialStarfieldTexture: Texture | null;
+    readonly starfieldTexture: Texture | null;
+    readonly onAudioBlocked?: (error: unknown) => void;
 }
 
 export interface GameRuntimeHandle {
@@ -140,23 +152,40 @@ export interface GameRuntimeHandle {
     readonly dispose: () => void;
 }
 
+interface PaddleState {
+    width: number;
+    height: number;
+    readonly physicsBody: Body;
+    readonly position: { x: number; y: number };
+}
+
+interface BallState {
+    radius: number;
+    physicsBody: Body;
+    isAttached: boolean;
+    attachmentOffset: { x: number; y: number };
+}
+
 export const createGameRuntime = async ({
     container,
-    playfieldDimensions,
+    playfieldDimensions = PLAYFIELD_DEFAULT,
     random,
     replayBuffer,
-    initialStarfieldTexture,
+    starfieldTexture,
+    onAudioBlocked,
 }: GameRuntimeOptions): Promise<GameRuntimeHandle> => {
+    await ensureToneAudio().catch((error) => {
+        if (isAutoplayBlockedError(error)) {
+            onAudioBlocked?.(error);
+            return;
+        }
+        throw error;
+    });
+
     const PLAYFIELD_WIDTH = playfieldDimensions.width;
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
-    const PRESET_LEVEL_COUNT = getPresetLevelCount();
-    const starfieldTexture: Texture | null = initialStarfieldTexture;
-    let sessionElapsedSeconds = 0;
-    let lastRecordedInputTarget: Vector2 | null = null;
 
-    const BRICK_LIGHT_RADIUS = 180;
-    const BRICK_REST_ALPHA = 0.9;
     const rowColors = GameTheme.brickColors.map(toColorNumber);
     const themeBallColors = {
         core: toColorNumber(GameTheme.ball.core),
@@ -168,6 +197,7 @@ export const createGameRuntime = async ({
         combo: toColorNumber(GameTheme.accents.combo),
         powerUp: toColorNumber(GameTheme.accents.powerUp),
     } as const;
+
     const ballVisualDefaults: BallVisualDefaults = {
         baseColor: themeBallColors.core,
         auraColor: themeBallColors.aura,
@@ -177,39 +207,11 @@ export const createGameRuntime = async ({
         innerAlpha: 0.32,
         innerScale: 0.5,
     };
+
     const paddleVisualDefaults: PaddleVisualDefaults = {
         gradient: themePaddleGradient,
         accentColor: themeBallColors.aura,
     };
-    const STARFIELD_SCROLL_SPEED = { x: 8, y: 4 } as const;
-    const COMBO_DECAY_WINDOW = 1.6;
-    const HUD_SCALE = 0.9;
-    const HUD_MARGIN = 32;
-    const MIN_HUD_SCALE = 0.55;
-
-    interface ReactiveLight {
-        readonly container: Container;
-        update(payload: { readonly position: { readonly x: number; readonly y: number }; readonly speed: number; readonly deltaSeconds: number }): void;
-        flash(intensityBoost?: number): void;
-        destroy(): void;
-    }
-
-    const areTargetsEqual = (a: Vector2 | null, b: Vector2 | null): boolean => {
-        if (a === b) {
-            return true;
-        }
-
-        if (!a || !b) {
-            return false;
-        }
-
-        const epsilon = 0.5;
-        return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon;
-    };
-
-    let playfieldBackgroundLayer: { container: Container; tiling: TilingSprite } | null = null;
-    let ballLight: ReactiveLight | null = null;
-    let paddleLight: ReactiveLight | null = null;
 
     let ballHueShift = 0;
     let ballGlowPulse = 0;
@@ -217,15 +219,8 @@ export const createGameRuntime = async ({
     let comboRingPulse = 0;
     let comboRingPhase = 0;
 
-    try {
-        await ensureToneAudio();
-    } catch (error) {
-        if (isAutoplayBlockedError(error)) {
-            console.warn('Audio context blocked by autoplay policy; will resume after user interaction.', error);
-        } else {
-            throw error;
-        }
-    }
+    let ballLight: ReturnType<typeof createDynamicLight> | null = null;
+    let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
 
     const {
         stage,
@@ -236,40 +231,35 @@ export const createGameRuntime = async ({
         dispose: disposeInitializer,
     } = await createGameInitializer({
         container,
-        playfieldSize: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
+        playfieldSize: playfieldDimensions,
         pulseControls: {
-            boostCombo: ({ ring, ball }: { ring: number; ball: number }) => {
+            boostCombo: ({ ring, ball }) => {
                 comboRingPulse = Math.min(1, comboRingPulse + ring);
                 ballGlowPulse = Math.min(1, ballGlowPulse + ball);
                 ballLight?.flash(0.35);
             },
-            boostPowerUp: ({ paddle }: { paddle: number }) => {
+            boostPowerUp: ({ paddle }) => {
                 paddleGlowPulse = Math.min(1, paddleGlowPulse + paddle);
                 paddleLight?.flash(0.5);
             },
         },
-        onAudioBlocked: (error: unknown) => {
-            if (isAutoplayBlockedError(error)) {
-                console.warn('Audio context suspended; will retry after the first user interaction.', error);
-            }
-        },
+        onAudioBlocked,
     });
-    // Create physics world
+
     const physics = createPhysicsWorld({
         dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
-        gravity: 0
+        gravity: 0,
     });
 
-    // Create game session manager
-    const createSession = () => createGameSessionManager({
-        sessionId: 'game-session',
-        initialLives: 3,
-        eventBus: bus,
-        random: random.random,
-    });
+    const createSession = () =>
+        createGameSessionManager({
+            sessionId: 'game-session',
+            initialLives: 3,
+            eventBus: bus,
+            random: random.random,
+        });
+
     let session = createSession();
-
-    // Create scoring and power-up systems
     let scoringState = createScoring();
     const powerUpManager = new PowerUpManager();
     let currentLevelIndex = 0;
@@ -281,27 +271,8 @@ export const createGameRuntime = async ({
     let doublePointsMultiplier = 1;
     let doublePointsTimer = 0;
 
-    interface GhostBrickEffect {
-        readonly body: Body;
-        readonly restore: () => void;
-        remaining: number;
-    }
-
-    const ghostBrickEffects: GhostBrickEffect[] = [];
-
-    // Visuals and brick state tracking
-    interface FallingPowerUp {
-        readonly type: PowerUpType;
-        readonly body: Body;
-        readonly visual: Graphics;
-    }
-
     const visualBodies = new Map<Body, Container>();
-    const brickHealth = new Map<Body, number>();
-    const brickMetadata = new Map<Body, BrickSpec>();
-    const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
-    const activePowerUps: FallingPowerUp[] = [];
-    const extraBalls = new Map<number, { body: Body; visual: Graphics }>();
+    let brickLayoutBounds: BrickLayoutBounds | null = null;
 
     const removeBodyVisual = (body: Body): void => {
         const visual = visualBodies.get(body);
@@ -309,34 +280,85 @@ export const createGameRuntime = async ({
             return;
         }
 
-        stage.removeFromLayer(visual);
+        if (visual.parent) {
+            visual.parent.removeChild(visual);
+        }
+        visual.destroy();
         visualBodies.delete(body);
         brickVisualState.delete(body);
     };
 
-    // Game configuration
-    const BALL_BASE_SPEED = 8;
-    const BALL_MAX_SPEED = 14;
-    const BALL_LAUNCH_SPEED = 9;
-    const MULTI_BALL_MULTIPLIER = 3;
-    const BRICK_WIDTH = 100;
-    const BRICK_HEIGHT = 40;
-    const POWER_UP_RADIUS = 16;
-    const POWER_UP_FALL_SPEED = 6;
-    const POWER_UP_DURATION = 6;
-    let powerUpChanceMultiplier = 1;
-    let currentBaseSpeed = BALL_BASE_SPEED;
-    let currentMaxSpeed = BALL_MAX_SPEED;
-    let currentLaunchSpeed = BALL_LAUNCH_SPEED;
-    let previousPaddlePosition = { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 };
+    const levelRuntime = createLevelRuntime({
+        physics,
+        stage,
+        visualBodies,
+        removeBodyVisual,
+        playfieldWidth: PLAYFIELD_WIDTH,
+        brickSize: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
+        brickLighting: { radius: BRICK_LIGHT_RADIUS, restAlpha: BRICK_REST_ALPHA },
+        rowColors,
+        powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
+    });
 
-    ballLight = createDynamicLight({
+    const brickHealth = levelRuntime.brickHealth;
+    const brickMetadata = levelRuntime.brickMetadata;
+    const brickVisualState = levelRuntime.brickVisualState;
+
+    const updateBrickLighting = (
+        ...args: Parameters<typeof levelRuntime.updateBrickLighting>
+    ) => levelRuntime.updateBrickLighting(...args);
+
+    const findPowerUp = (
+        ...args: Parameters<typeof levelRuntime.findPowerUp>
+    ) => levelRuntime.findPowerUp(...args);
+    const removePowerUp = (
+        ...args: Parameters<typeof levelRuntime.removePowerUp>
+    ) => levelRuntime.removePowerUp(...args);
+    const clearGhostEffect = (
+        ...args: Parameters<typeof levelRuntime.clearGhostEffect>
+    ) => levelRuntime.clearGhostEffect(...args);
+    const resetGhostBricks = (
+        ...args: Parameters<typeof levelRuntime.resetGhostBricks>
+    ) => levelRuntime.resetGhostBricks(...args);
+    const applyGhostBrickReward = (
+        ...args: Parameters<typeof levelRuntime.applyGhostBrickReward>
+    ) => levelRuntime.applyGhostBrickReward(...args);
+    const updateGhostBricks = (
+        ...args: Parameters<typeof levelRuntime.updateGhostBricks>
+    ) => levelRuntime.updateGhostBricks(...args);
+    const getGhostBrickRemainingDuration = (
+        ...args: Parameters<typeof levelRuntime.getGhostBrickRemainingDuration>
+    ) => levelRuntime.getGhostBrickRemainingDuration(...args);
+
+    const loadLevel = (levelIndex: number) => {
+        const result = levelRuntime.loadLevel(levelIndex);
+        powerUpChanceMultiplier = result.powerUpChanceMultiplier;
+        levelDifficultyMultiplier = result.difficultyMultiplier;
+        brickLayoutBounds = result.layoutBounds;
+        session.startRound({ breakableBricks: result.breakableBricks });
+    };
+
+    const STARFIELD_TEXTURE = starfieldTexture ?? Texture.WHITE;
+    const playfieldBackgroundLayer = createPlayfieldBackgroundLayer(playfieldDimensions, STARFIELD_TEXTURE);
+    stage.addToLayer('playfield', playfieldBackgroundLayer.container);
+
+    const gameContainer = new Container();
+    gameContainer.zIndex = 10;
+    gameContainer.visible = false;
+    gameContainer.sortableChildren = true;
+    stage.addToLayer('playfield', gameContainer);
+
+    const bounds = physics.factory.bounds();
+    physics.add(bounds);
+
+    const ballLightHandle = createDynamicLight({
         speedForMaxIntensity: BALL_MAX_SPEED * 1.1,
     });
-    ballLight.container.zIndex = 5;
-    stage.addToLayer('effects', ballLight.container);
+    ballLightHandle.container.zIndex = 5;
+    stage.addToLayer('effects', ballLightHandle.container);
+    ballLight = ballLightHandle;
 
-    paddleLight = createDynamicLight({
+    const paddleLightHandle = createDynamicLight({
         color: themeAccents.powerUp,
         minRadius: 55,
         maxRadius: 180,
@@ -347,464 +369,140 @@ export const createGameRuntime = async ({
         radiusLerpSpeed: 6,
         intensityLerpSpeed: 5,
     });
-    paddleLight.container.zIndex = 4;
-    paddleLight.container.alpha = 0.9;
-    stage.addToLayer('effects', paddleLight.container);
+    paddleLightHandle.container.zIndex = 4;
+    paddleLightHandle.container.alpha = 0.9;
+    stage.addToLayer('effects', paddleLightHandle.container);
+    paddleLight = paddleLightHandle;
 
-    const updateBrickLighting = (ballPosition: { readonly x: number; readonly y: number }): void => {
-        brickVisualState.forEach((state, body) => {
-            const visual = visualBodies.get(body);
-            if (!(visual instanceof Graphics)) {
-                return;
-            }
+    const ballController = new BallAttachmentController();
+    const paddleController = new PaddleBodyController();
+    const inputManager = new GameInputManager();
+    const launchController = new PhysicsBallLaunchController();
 
-            const dist = distance(ballPosition, body.position);
-            if (dist < BRICK_LIGHT_RADIUS) {
-                const proximity = 1 - dist / BRICK_LIGHT_RADIUS;
-                const eased = Math.pow(proximity, 0.75);
-                const tint = mixColors(0xffffff, state.baseColor, Math.min(1, 1 - eased * 0.85));
-                visual.tint = tint;
-                visual.alpha = Math.min(1.3, BRICK_REST_ALPHA + eased * 0.45);
-                visual.blendMode = 'add';
-            } else {
-                visual.tint = 0xffffff;
-                visual.alpha = BRICK_REST_ALPHA;
-                visual.blendMode = 'normal';
-            }
-        });
+    const paddle = paddleController.createPaddle(
+        { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
+        { width: 100, height: 20, speed: 300 },
+    ) as PaddleState;
+    physics.add(paddle.physicsBody);
+
+    const ball = ballController.createAttachedBall(
+        paddleController.getPaddleCenter(paddle),
+        { radius: 10, restitution: 0.98 },
+    ) as BallState;
+    physics.add(ball.physicsBody);
+
+    const comboRing = new Graphics();
+    comboRing.eventMode = 'none';
+    comboRing.visible = false;
+    comboRing.alpha = 0;
+    comboRing.blendMode = 'add';
+    comboRing.zIndex = 40;
+    gameContainer.addChild(comboRing);
+
+    const drawBallSprite = (graphics: Graphics, radius: number, palette?: BallVisualPalette) => {
+        drawBallVisual(graphics, radius, ballVisualDefaults, palette);
     };
 
-    // Function to load a level
-    const removePowerUp = (powerUp: FallingPowerUp) => {
-        physics.remove(powerUp.body);
-        removeBodyVisual(powerUp.body);
-        const index = activePowerUps.indexOf(powerUp);
-        if (index >= 0) {
-            activePowerUps.splice(index, 1);
-        }
+    const ballGraphics = new Graphics();
+    drawBallSprite(ballGraphics, ball.radius);
+    ballGraphics.eventMode = 'none';
+    ballGraphics.zIndex = 50;
+    const ballGlowFilter = new GlowFilter({
+        distance: 18,
+        outerStrength: 1.4,
+        innerStrength: 0,
+        color: themeBallColors.highlight,
+        quality: 0.3,
+    });
+    const ballHueFilter = new ColorMatrixFilter();
+    ballGraphics.filters = [ballGlowFilter as unknown as Filter, ballHueFilter];
+    gameContainer.addChild(ballGraphics);
+    visualBodies.set(ball.physicsBody, ballGraphics);
+
+    const multiBallController = createMultiBallController({
+        physics,
+        ball,
+        paddle,
+        ballGraphics,
+        gameContainer,
+        visualBodies,
+        drawBallVisual: drawBallSprite,
+        colors: themeBallColors,
+        multiplier: MULTI_BALL_MULTIPLIER,
+    });
+
+    const paddleGraphics = new Graphics();
+    drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
+    paddleGraphics.eventMode = 'none';
+    paddleGraphics.zIndex = 60;
+    const paddleGlowFilter = new GlowFilter({
+        distance: 14,
+        outerStrength: 1.2,
+        innerStrength: 0,
+        color: themePaddleGradient[1] ?? themeBallColors.aura,
+        quality: 0.3,
+    });
+    paddleGraphics.filters = [paddleGlowFilter as unknown as Filter];
+    gameContainer.addChild(paddleGraphics);
+    visualBodies.set(paddle.physicsBody, paddleGraphics);
+
+    inputManager.initialize(container);
+
+    let previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
+    let sessionElapsedSeconds = 0;
+    let lastRecordedInputTarget: Vector2 | null = null;
+    let currentBaseSpeed = BALL_BASE_SPEED;
+    let currentMaxSpeed = BALL_MAX_SPEED;
+    let currentLaunchSpeed = BALL_LAUNCH_SPEED;
+    let powerUpChanceMultiplier = 1;
+
+    const reattachBallToPaddle = (): void => {
+        const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
+        physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
+        ball.isAttached = true;
+        ball.attachmentOffset = attachmentOffset;
+        MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
+        MatterBody.setAngularVelocity(ball.physicsBody, 0);
+        inputManager.resetLaunchTrigger();
+        const center = paddleController.getPaddleCenter(paddle);
+        previousPaddlePosition = { x: center.x, y: center.y };
+        inputManager.syncPaddlePosition(center);
     };
 
-    const clearActivePowerUps = () => {
-        while (activePowerUps.length > 0) {
-            removePowerUp(activePowerUps[activePowerUps.length - 1]);
+    const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
+        if (multiBallController.promoteExtraBallToPrimary(expiredBody)) {
+            return true;
         }
+        return false;
     };
 
     const removeExtraBallByBody = (body: Body) => {
-        const entry = extraBalls.get(body.id);
-        if (!entry) {
-            return;
-        }
-
-        physics.remove(entry.body);
-        removeBodyVisual(entry.body);
-        extraBalls.delete(entry.body.id);
+        multiBallController.removeExtraBallByBody(body);
     };
 
     const clearExtraBalls = () => {
-        for (const entry of extraBalls.values()) {
-            physics.remove(entry.body);
-            removeBodyVisual(entry.body);
-        }
-        extraBalls.clear();
+        multiBallController.clear();
     };
 
-    const clearGhostEffect = (body: Body) => {
-        const index = ghostBrickEffects.findIndex((effect) => effect.body === body);
-        if (index >= 0) {
-            ghostBrickEffects[index].restore();
-            ghostBrickEffects.splice(index, 1);
-        }
+    const spawnExtraBalls = () => {
+        multiBallController.spawnExtraBalls({ currentLaunchSpeed });
     };
 
-    const resetGhostBricks = () => {
-        while (ghostBrickEffects.length > 0) {
-            ghostBrickEffects.pop()?.restore();
+    const handlePowerUpActivation = (type: PowerUpType): void => {
+        ballLight?.flash(0.5);
+        paddleLight?.flash(0.45);
+        if (type === 'multi-ball') {
+            spawnExtraBalls();
         }
     };
 
-    const applyGhostBrickReward = (duration: number, count: number) => {
-        resetGhostBricks();
-
-        if (count <= 0) {
-            return;
-        }
-
-        const bricks = Array.from(brickHealth.keys()).filter((body) => body.label === 'brick');
-        if (bricks.length === 0) {
-            return;
-        }
-
-        const selected = [...bricks]
-            .sort((lhs, rhs) => lhs.id - rhs.id)
-            .slice(0, Math.min(count, bricks.length));
-
-        selected.forEach((body) => {
-            const originalSensor = body.isSensor;
-            body.isSensor = true;
-
-            const visual = visualBodies.get(body);
-            const originalAlpha = visual instanceof Graphics ? visual.alpha : undefined;
-            if (visual instanceof Graphics) {
-                visual.alpha = 0.35;
-            }
-
-            ghostBrickEffects.push({
-                body,
-                remaining: duration,
-                restore: () => {
-                    body.isSensor = originalSensor;
-                    if (visual instanceof Graphics && originalAlpha !== undefined) {
-                        visual.alpha = originalAlpha;
-                    }
-                },
-            });
-        });
-    };
-
-    const activateReward = (reward: Reward | null) => {
-        activeReward = reward;
-
-        if (!reward) {
-            doublePointsMultiplier = 1;
-            doublePointsTimer = 0;
-            resetGhostBricks();
-            return;
-        }
-
-        doublePointsMultiplier = 1;
-        doublePointsTimer = 0;
-        resetGhostBricks();
-
-        switch (reward.type) {
-            case 'sticky-paddle':
-                powerUpManager.activate('sticky-paddle', { defaultDuration: reward.duration });
-                break;
-            case 'double-points':
-                doublePointsMultiplier = reward.multiplier;
-                doublePointsTimer = reward.duration;
-                break;
-            case 'ghost-brick':
-                applyGhostBrickReward(reward.duration, reward.ghostCount);
-                break;
-        }
-    };
-
-    const spawnPowerUp = (type: PowerUpType, position: { readonly x: number; readonly y: number }) => {
-        const body = Bodies.circle(position.x, position.y, POWER_UP_RADIUS, {
-            label: 'powerup',
-            isSensor: true,
-            frictionAir: 0,
-        });
-
-        MatterBody.setVelocity(body, { x: 0, y: POWER_UP_FALL_SPEED });
-        physics.add(body);
-
-        const colorMap: Record<PowerUpType, number> = {
-            'paddle-width': 0x00ffff,
-            'ball-speed': 0xffaa33,
-            'multi-ball': 0xff66cc,
-            'sticky-paddle': 0x66ff99,
-        };
-
-        const visual = new Graphics();
-        visual.circle(0, 0, POWER_UP_RADIUS);
-        visual.fill({ color: colorMap[type], alpha: 0.9 });
-        visual.position.set(position.x, position.y);
-        stage.addToLayer('effects', visual);
-
-        visualBodies.set(body, visual);
-        activePowerUps.push({ type, body, visual });
-    };
-
-    const findPowerUp = (body: Body): FallingPowerUp | null => {
-        return activePowerUps.find((entry) => entry.body === body) ?? null;
-    };
-
-    const loadLevel = (levelIndex: number) => {
-        resetGhostBricks();
-        // Clear existing bricks
-        visualBodies.forEach((_visual, body) => {
-            if (body.label === 'brick') {
-                physics.remove(body);
-                removeBodyVisual(body);
-                brickHealth.delete(body);
-                brickMetadata.delete(body);
-                brickVisualState.delete(body);
-            }
-        });
-        brickVisualState.clear();
-
-        clearActivePowerUps();
-        brickLayoutBounds = null;
-
-        // Generate new level layout
-        const baseSpec = getLevelSpec(levelIndex);
-        const loopCount = Math.floor(levelIndex / PRESET_LEVEL_COUNT);
-        const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
-        const layout = generateLevelLayout(effectiveSpec, BRICK_WIDTH, BRICK_HEIGHT, PLAYFIELD_WIDTH);
-        powerUpChanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;
-        levelDifficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
-
-        // Create bricks from layout
-        const layoutBounds = {
-            minX: Number.POSITIVE_INFINITY,
-            maxX: Number.NEGATIVE_INFINITY,
-            minY: Number.POSITIVE_INFINITY,
-            maxY: Number.NEGATIVE_INFINITY,
-        };
-
-        layout.bricks.forEach((brickSpec) => {
-            const brick = physics.factory.brick({
-                size: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
-                position: { x: brickSpec.x, y: brickSpec.y },
-            });
-            physics.add(brick);
-
-            const paletteColor = rowColors[brickSpec.row % rowColors.length];
-            const maxHp = Math.max(1, brickSpec.hp);
-            const initialColor = computeBrickFillColor(paletteColor, maxHp, maxHp);
-            const brickVisual = new Graphics();
-            paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, initialColor, 0, BRICK_REST_ALPHA);
-            brickVisual.position.set(brickSpec.x, brickSpec.y);
-            brickVisual.zIndex = 5;
-            brickVisual.eventMode = 'none';
-            visualBodies.set(brick, brickVisual);
-            stage.layers.playfield.addChild(brickVisual);
-
-            brickHealth.set(brick, maxHp);
-            brickMetadata.set(brick, brickSpec);
-            brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp });
-
-            layoutBounds.minX = Math.min(layoutBounds.minX, brickSpec.x - BRICK_WIDTH / 2);
-            layoutBounds.maxX = Math.max(layoutBounds.maxX, brickSpec.x + BRICK_WIDTH / 2);
-            layoutBounds.minY = Math.min(layoutBounds.minY, brickSpec.y - BRICK_HEIGHT / 2);
-            layoutBounds.maxY = Math.max(layoutBounds.maxY, brickSpec.y + BRICK_HEIGHT / 2);
-        });
-
-        if (layout.bricks.length > 0) {
-            brickLayoutBounds = layoutBounds;
-            positionHud();
-        }
-
-        // Start the round
-        session.startRound({ breakableBricks: layout.breakableCount });
-    };
-
-    // Add collision event handling
-    Events.on(physics.engine, 'collisionStart', (event: IEventCollision<Engine>) => {
-        event.pairs.forEach((pair) => {
-            const { bodyA, bodyB } = pair;
-            const sessionId = session.snapshot().sessionId;
-
-            // Brick contact
-            if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
-                const brick = bodyA.label === 'brick' ? bodyA : bodyB;
-                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
-
-                const currentHp = brickHealth.get(brick) ?? 1;
-                const nextHp = currentHp - 1;
-                const metadata = brickMetadata.get(brick);
-                const row = metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT);
-                const col = metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH);
-                const impactVelocity = MatterVector.magnitude(ballBody.velocity);
-                const initialHp = metadata?.hp ?? currentHp;
-
-                if (nextHp > 0) {
-                    brickHealth.set(brick, nextHp);
-
-                    const brickVisual = visualBodies.get(brick);
-                    if (brickVisual instanceof Graphics) {
-                        const visualState = brickVisualState.get(brick);
-                        if (visualState) {
-                            visualState.currentHp = nextHp;
-                            const fillColor = computeBrickFillColor(visualState.baseColor, nextHp, visualState.maxHp);
-                            const damageLevel = visualState.maxHp > 0 ? 1 - (nextHp / visualState.maxHp) : 0;
-                            paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, fillColor, damageLevel, BRICK_REST_ALPHA);
-                        }
-                    }
-
-                    bus.publish('BrickHit', {
-                        sessionId,
-                        row,
-                        col,
-                        impactVelocity,
-                        brickType: 'standard',
-                        comboHeat: scoringState.combo,
-                        previousHp: currentHp,
-                        remainingHp: nextHp,
-                    });
-                } else {
-                    bus.publish('BrickBreak', {
-                        sessionId,
-                        row,
-                        col,
-                        impactVelocity,
-                        comboHeat: scoringState.combo,
-                        brickType: 'standard', // TODO: Should be dynamic once types exist
-                        initialHp,
-                    });
-
-                    const basePoints = awardBrickPoints(scoringState);
-                    let points = basePoints;
-                    if (doublePointsMultiplier > 1) {
-                        const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
-                        points += bonus;
-                        scoringState.score += bonus;
-                    }
-                    session.recordBrickBreak({
-                        points,
-                        event: {
-                            row,
-                            col,
-                            impactVelocity,
-                            brickType: 'standard',
-                            initialHp,
-                        },
-                    });
-
-                    const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
-                    if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
-                        const powerUpType = selectRandomPowerUpType(random.random);
-                        spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
-                    }
-
-                    clearGhostEffect(brick);
-
-                    physics.remove(brick);
-                    removeBodyVisual(brick);
-
-                    brickHealth.delete(brick);
-                    brickMetadata.delete(brick);
-                    brickVisualState.delete(brick);
-
-                    if (session.snapshot().brickRemaining === 0) {
-                        session.completeRound();
-                        handleLevelComplete();
-                    }
-                }
-            }
-
-            // Paddle-ball collision with advanced reflection
-            if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
-                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
-                const paddleBody = bodyA.label === 'paddle' ? bodyA : bodyB;
-                const reflectionData = calculateReflectionData(
-                    ballBody.position.x,
-                    paddleBody.position.x,
-                    {
-                        paddleWidth: paddle.width,
-                        minSpeed: currentBaseSpeed,
-                    },
-                );
-                const impactSpeed = MatterVector.magnitude(ballBody.velocity);
-
-                if (powerUpManager.isActive('sticky-paddle') && ballBody === ball.physicsBody) {
-                    const offsetX = ball.physicsBody.position.x - paddle.physicsBody.position.x;
-                    const offsetY = -ball.radius - paddle.height / 2;
-                    const attachmentOffset = { x: offsetX, y: offsetY };
-                    physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
-                    ball.isAttached = true;
-                    ball.attachmentOffset = attachmentOffset;
-                    MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
-                    inputManager.resetLaunchTrigger();
-                } else {
-                    // Apply paddle reflection
-                    reflectOffPaddle(ballBody, paddleBody, {
-                        paddleWidth: paddle.width,
-                        minSpeed: currentBaseSpeed,
-                    });
-                }
-
-                ballLight?.flash();
-                paddleLight?.flash(0.3);
-
-                bus.publish('PaddleHit', {
-                    sessionId,
-                    angle: reflectionData.angle,
-                    speed: impactSpeed,
-                    impactOffset: reflectionData.impactOffset,
-                });
-            }
-
-            // Ball colliding with arena walls
-            if ((bodyA.label === 'ball' && bodyB.label.startsWith('wall-')) || (bodyB.label === 'ball' && bodyA.label.startsWith('wall-'))) {
-                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
-                const wallBody = bodyA.label === 'ball' ? bodyB : bodyA;
-                const wallToSide: Record<string, 'left' | 'right' | 'top' | 'bottom'> = {
-                    'wall-left': 'left',
-                    'wall-right': 'right',
-                    'wall-top': 'top',
-                    'wall-bottom': 'bottom',
-                };
-                const side = wallToSide[wallBody.label];
-                if (side) {
-                    bus.publish('WallHit', {
-                        sessionId,
-                        side,
-                        speed: MatterVector.magnitude(ballBody.velocity),
-                    });
-                }
-            }
-
-            // Ball hitting bottom (lose life)
-            if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
-                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
-
-                if (extraBalls.has(ballBody.id)) {
-                    removeExtraBallByBody(ballBody);
-                    return;
-                }
-
-                if (promoteExtraBallToPrimary(ballBody)) {
-                    return;
-                }
-
-                // Lose a life and reset combo
-                session.recordLifeLost('ball-drop');
-                resetCombo(scoringState);
-
-                if (session.snapshot().livesRemaining > 0) {
-                    // Reset ball to paddle
-                    clearExtraBalls();
-                    reattachBallToPaddle();
-                } else {
-                    handleGameOver();
-                }
-            }
-
-            // Power-up collected by paddle
-            if ((bodyA.label === 'powerup' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'powerup')) {
-                const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
-                const entry = findPowerUp(powerUpBody);
-                if (entry) {
-                    powerUpManager.activate(entry.type, { defaultDuration: POWER_UP_DURATION });
-                    removePowerUp(entry);
-                    handlePowerUpActivation(entry.type);
-                }
-            }
-
-            // Power-up missed
-            if ((bodyA.label === 'powerup' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'powerup')) {
-                const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
-                const entry = findPowerUp(powerUpBody);
-                if (entry) {
-                    removePowerUp(entry);
-                }
-            }
-        });
-    });
-
-    // Create HUD container
     const hudContainer = new Container();
     hudContainer.eventMode = 'none';
-    stage.layers.hud.addChild(hudContainer);
     hudContainer.visible = false;
+    stage.layers.hud.addChild(hudContainer);
 
     const hudDisplay = createHudDisplay(GameTheme);
     hudContainer.addChild(hudDisplay.container);
-
-    let brickLayoutBounds: { minX: number; maxX: number; minY: number; maxY: number } | null = null;
 
     const positionHud = () => {
         const margin = HUD_MARGIN;
@@ -827,7 +525,6 @@ export const createGameRuntime = async ({
         const globalScaleLimit = Math.max(MIN_HUD_SCALE, Math.min(HUD_SCALE, fullWidthLimit, fullHeightLimit));
 
         const placements: { priority: number; scale: number; x: number; y: number }[] = [];
-
         const { minX, maxX, minY, maxY } = brickLayoutBounds;
 
         const tryTop = () => {
@@ -988,7 +685,7 @@ export const createGameRuntime = async ({
                 remaining = Math.max(0, doublePointsTimer);
                 break;
             case 'ghost-brick':
-                remaining = ghostBrickEffects.reduce((max, effect) => Math.max(max, effect.remaining), 0);
+                remaining = getGhostBrickRemainingDuration();
                 break;
             case 'sticky-paddle': {
                 const sticky = powerUpManager.getEffect('sticky-paddle');
@@ -1033,104 +730,56 @@ export const createGameRuntime = async ({
         positionHud();
     };
 
-    const backgroundTexture = starfieldTexture ?? Texture.WHITE;
-    playfieldBackgroundLayer = createPlayfieldBackgroundLayer(playfieldDimensions, backgroundTexture);
-    stage.addToLayer('playfield', playfieldBackgroundLayer.container);
+    const activateReward = (reward: Reward | null) => {
+        activeReward = reward;
 
-    // Create game objects container
-    const gameContainer = new Container();
-    gameContainer.zIndex = 10;
-    stage.addToLayer('playfield', gameContainer);
-    gameContainer.visible = false;
-    gameContainer.sortableChildren = true;
+        if (!reward) {
+            doublePointsMultiplier = 1;
+            doublePointsTimer = 0;
+            resetGhostBricks();
+            return;
+        }
 
-    // Add some initial game objects for testing
-    const bounds = physics.factory.bounds();
-    physics.add(bounds);
+        doublePointsMultiplier = 1;
+        doublePointsTimer = 0;
+        resetGhostBricks();
 
-    const SHOW_BOUNDARY_OVERLAY = false;
+        switch (reward.type) {
+            case 'sticky-paddle':
+                powerUpManager.activate('sticky-paddle', { defaultDuration: reward.duration });
+                break;
+            case 'double-points':
+                doublePointsMultiplier = reward.multiplier;
+                doublePointsTimer = reward.duration;
+                break;
+            case 'ghost-brick':
+                applyGhostBrickReward(reward.duration, reward.ghostCount);
+                break;
+        }
+    };
 
-    if (SHOW_BOUNDARY_OVERLAY) {
-        bounds.forEach(bound => {
-            const graphics = new Graphics();
-            graphics.rect(bound.position.x - bound.bounds.max.x + bound.bounds.min.x,
-                bound.position.y - bound.bounds.max.y + bound.bounds.min.y,
-                bound.bounds.max.x - bound.bounds.min.x,
-                bound.bounds.max.y - bound.bounds.min.y);
-            graphics.fill({ color: 0x111111, alpha: 0.45 });
-            graphics.eventMode = 'none';
-            gameContainer.addChild(graphics);
-            visualBodies.set(bound, graphics);
-        });
-    }
+    const beginNewSession = async (): Promise<void> => {
+        if (loop?.isRunning()) {
+            loop.stop();
+        }
 
-    // Create controllers
-    const ballController = new BallAttachmentController();
-    const paddleController = new PaddleBodyController();
-    const inputManager = new GameInputManager();
-    const launchController = new PhysicsBallLaunchController();
+        random.reset();
+        const activeSeed = random.seed();
+        sessionElapsedSeconds = 0;
+        lastRecordedInputTarget = null;
+        replayBuffer.begin(activeSeed);
 
-    // Create paddle first at center bottom
-    const paddle = paddleController.createPaddle(
-        { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
-        { width: 100, height: 20, speed: 300 }
-    );
-    physics.add(paddle.physicsBody);
-    previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
+        session = createSession();
+        currentLevelIndex = 0;
+        pendingReward = null;
+        activateReward(null);
+        levelDifficultyMultiplier = 1;
+        startLevel(currentLevelIndex, { resetScore: true });
+        await stage.transitionTo('gameplay');
+        loop?.start();
+    };
 
-    // Create ball attached to paddle
-    const ball = ballController.createAttachedBall(
-        paddleController.getPaddleCenter(paddle),
-        { radius: 10, restitution: 0.98 }
-    );
-    physics.add(ball.physicsBody);
-
-    // Create visual ball
-    const comboRing = new Graphics();
-    comboRing.eventMode = 'none';
-    comboRing.visible = false;
-    comboRing.alpha = 0;
-    comboRing.blendMode = 'add';
-    comboRing.zIndex = 40;
-    gameContainer.addChild(comboRing);
-
-    const ballGraphics = new Graphics();
-    drawBallVisual(ballGraphics, ball.radius, ballVisualDefaults);
-    ballGraphics.eventMode = 'none';
-    ballGraphics.zIndex = 50;
-    const ballGlowFilter = new GlowFilter({ distance: 18, outerStrength: 1.4, innerStrength: 0, color: themeBallColors.highlight, quality: 0.3 });
-    const ballHueFilter = new ColorMatrixFilter();
-    ballGraphics.filters = [ballGlowFilter as unknown as Filter, ballHueFilter];
-    gameContainer.addChild(ballGraphics);
-    visualBodies.set(ball.physicsBody, ballGraphics);
-
-    // Create visual paddle
-    const paddleGraphics = new Graphics();
-    drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
-    paddleGraphics.eventMode = 'none';
-    paddleGraphics.zIndex = 60;
-    const paddleGlowFilter = new GlowFilter({ distance: 14, outerStrength: 1.2, innerStrength: 0, color: themePaddleGradient[1] ?? themeBallColors.aura, quality: 0.3 });
-    paddleGraphics.filters = [paddleGlowFilter as unknown as Filter];
-    gameContainer.addChild(paddleGraphics);
-    visualBodies.set(paddle.physicsBody, paddleGraphics);
-
-    // Initialize input manager once preload finishes so event handlers bind to the active canvas
-    inputManager.initialize(container);
-
-    function reattachBallToPaddle(): void {
-        const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
-        physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
-        ball.isAttached = true;
-        ball.attachmentOffset = attachmentOffset;
-        MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
-        MatterBody.setAngularVelocity(ball.physicsBody, 0);
-        inputManager.resetLaunchTrigger();
-        const center = paddleController.getPaddleCenter(paddle);
-        previousPaddlePosition = { x: center.x, y: center.y };
-        inputManager.syncPaddlePosition(center);
-    }
-
-    function startLevel(levelIndex: number, options: { resetScore?: boolean } = {}): void {
+    const startLevel = (levelIndex: number, options: { resetScore?: boolean } = {}): void => {
         isPaused = false;
 
         gameContainer.visible = true;
@@ -1153,9 +802,9 @@ export const createGameRuntime = async ({
         }
         reattachBallToPaddle();
         refreshHud();
-    }
+    };
 
-    function handleLevelComplete(): void {
+    const handleLevelComplete = (): void => {
         clearExtraBalls();
         isPaused = false;
         loop?.stop();
@@ -1180,139 +829,214 @@ export const createGameRuntime = async ({
             reward: pendingReward ?? undefined,
             onContinue: continueToNextLevel,
         });
-    }
+    };
 
-    function handleGameOver(): void {
+    const handleGameOver = (): void => {
         clearExtraBalls();
         isPaused = false;
         loop?.stop();
         pendingReward = null;
         activateReward(null);
         void stage.transitionTo('game-over', { score: scoringState.score });
-    }
-
-    const collectBallBodies = (): Body[] => {
-        return [
-            ball.physicsBody,
-            ...Array.from(extraBalls.values()).map((entry) => entry.body),
-        ];
     };
 
-    const createAngularOffsets = (count: number): number[] => {
-        if (count <= 0) {
-            return [];
-        }
-        if (count === 1) {
-            return [0.25];
-        }
+    Events.on(physics.engine, 'collisionStart', (event: IEventCollision<Engine>) => {
+        event.pairs.forEach((pair) => {
+            const { bodyA, bodyB } = pair;
+            const sessionId = session.snapshot().sessionId;
 
-        const spread = 0.35;
-        const midpoint = (count - 1) / 2;
-        return Array.from({ length: count }, (_, index) => (index - midpoint) * spread);
-    };
+            if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
+                const brick = bodyA.label === 'brick' ? bodyA : bodyB;
+                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
 
-    const spawnExtraBalls = () => {
-        const sourceBodies = collectBallBodies();
-        const clonesPerBall = MULTI_BALL_MULTIPLIER - 1;
+                const currentHp = brickHealth.get(brick) ?? 1;
+                const nextHp = currentHp - 1;
+                const metadata = brickMetadata.get(brick);
+                const row = metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT);
+                const col = metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH);
+                const impactVelocity = MatterVector.magnitude(ballBody.velocity);
+                const initialHp = metadata?.hp ?? currentHp;
 
-        if (clonesPerBall <= 0 || sourceBodies.length === 0) {
-            return;
-        }
+                if (nextHp > 0) {
+                    brickHealth.set(brick, nextHp);
 
-        sourceBodies.forEach((sourceBody) => {
-            const baseVelocity = sourceBody.velocity;
-            const baseSpeed = MatterVector.magnitude(baseVelocity);
-            const hasMotion = baseSpeed > 0.01;
-            const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
-            const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
-            const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
-            const offsets = createAngularOffsets(clonesPerBall);
+                    const brickVisual = visualBodies.get(brick);
+                    if (brickVisual instanceof Graphics) {
+                        const visualState = brickVisualState.get(brick);
+                        if (visualState) {
+                            visualState.currentHp = nextHp;
+                            const fillColor = computeBrickFillColor(visualState.baseColor, nextHp, visualState.maxHp);
+                            const damageLevel = visualState.maxHp > 0 ? 1 - nextHp / visualState.maxHp : 0;
+                            paintBrickVisual(brickVisual, BRICK_WIDTH, BRICK_HEIGHT, fillColor, damageLevel, BRICK_REST_ALPHA);
+                        }
+                    }
 
-            offsets.forEach((offset, index) => {
-                const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
-                const velocity = MatterVector.mult(rotated, effectiveSpeed);
-                const lateralNormal = { x: -rotated.y, y: rotated.x };
-                const separation = (index - (offsets.length - 1) / 2) * 12;
-                const spawnPosition = {
-                    x: sourceBody.position.x + lateralNormal.x * separation,
-                    y: sourceBody.position.y + lateralNormal.y * separation,
+                    bus.publish('BrickHit', {
+                        sessionId,
+                        row,
+                        col,
+                        impactVelocity,
+                        brickType: 'standard',
+                        comboHeat: scoringState.combo,
+                        previousHp: currentHp,
+                        remainingHp: nextHp,
+                    });
+                } else {
+                    bus.publish('BrickBreak', {
+                        sessionId,
+                        row,
+                        col,
+                        impactVelocity,
+                        comboHeat: scoringState.combo,
+                        brickType: 'standard',
+                        initialHp,
+                    });
+
+                    const basePoints = awardBrickPoints(scoringState);
+                    let points = basePoints;
+                    if (doublePointsMultiplier > 1) {
+                        const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
+                        points += bonus;
+                        scoringState.score += bonus;
+                    }
+                    session.recordBrickBreak({
+                        points,
+                        event: {
+                            row,
+                            col,
+                            impactVelocity,
+                            brickType: 'standard',
+                            initialHp,
+                        },
+                    });
+
+                    const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
+                    if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
+                        const powerUpType = selectRandomPowerUpType(random.random);
+                        levelRuntime.spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
+                    }
+
+                    clearGhostEffect(brick);
+
+                    physics.remove(brick);
+                    removeBodyVisual(brick);
+
+                    brickHealth.delete(brick);
+                    brickMetadata.delete(brick);
+                    brickVisualState.delete(brick);
+
+                    if (session.snapshot().brickRemaining === 0) {
+                        session.completeRound();
+                        handleLevelComplete();
+                    }
+                }
+            }
+
+            if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
+                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+                const paddleBody = bodyA.label === 'paddle' ? bodyA : bodyB;
+                const reflectionData = calculateReflectionData(ballBody.position.x, paddleBody.position.x, {
+                    paddleWidth: paddle.width,
+                    minSpeed: currentBaseSpeed,
+                });
+                const impactSpeed = MatterVector.magnitude(ballBody.velocity);
+
+                if (powerUpManager.isActive('sticky-paddle') && ballBody === ball.physicsBody) {
+                    const offsetX = ball.physicsBody.position.x - paddle.physicsBody.position.x;
+                    const offsetY = -ball.radius - paddle.height / 2;
+                    const attachmentOffset = { x: offsetX, y: offsetY };
+                    physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
+                    ball.isAttached = true;
+                    ball.attachmentOffset = attachmentOffset;
+                    MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
+                    inputManager.resetLaunchTrigger();
+                } else {
+                    reflectOffPaddle(ballBody, paddleBody, {
+                        paddleWidth: paddle.width,
+                        minSpeed: currentBaseSpeed,
+                    });
+                }
+
+                ballLight?.flash();
+                paddleLight?.flash(0.3);
+
+                bus.publish('PaddleHit', {
+                    sessionId,
+                    angle: reflectionData.angle,
+                    speed: impactSpeed,
+                    impactOffset: reflectionData.impactOffset,
+                });
+            }
+
+            if ((bodyA.label === 'ball' && bodyB.label.startsWith('wall-')) || (bodyB.label === 'ball' && bodyA.label.startsWith('wall-'))) {
+                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+                const wallBody = bodyA.label === 'ball' ? bodyB : bodyA;
+                const wallToSide: Record<string, 'left' | 'right' | 'top' | 'bottom'> = {
+                    'wall-left': 'left',
+                    'wall-right': 'right',
+                    'wall-top': 'top',
+                    'wall-bottom': 'bottom',
                 };
+                const side = wallToSide[wallBody.label];
+                if (side) {
+                    bus.publish('WallHit', {
+                        sessionId,
+                        side,
+                        speed: MatterVector.magnitude(ballBody.velocity),
+                    });
+                }
+            }
 
-                const extraBody = physics.factory.ball({
-                    radius: ball.radius,
-                    position: spawnPosition,
-                    restitution: 0.98,
-                });
+            if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
+                const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
 
-                MatterBody.setVelocity(extraBody, velocity);
-                physics.add(extraBody);
+                if (multiBallController.isExtraBallBody(ballBody)) {
+                    removeExtraBallByBody(ballBody);
+                    return;
+                }
 
-                const extraVisual = new Graphics();
-                drawBallVisual(extraVisual, ball.radius, ballVisualDefaults, {
-                    baseColor: mixColors(themeBallColors.core, 0xffc94c, 0.5),
-                    baseAlpha: 0.8,
-                    rimColor: themeBallColors.highlight,
-                    rimAlpha: 0.5,
-                    innerColor: themeBallColors.aura,
-                    innerAlpha: 0.4,
-                    innerScale: 0.5,
-                });
-                extraVisual.eventMode = 'none';
-                gameContainer.addChild(extraVisual);
-                visualBodies.set(extraBody, extraVisual);
-                extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
-            });
+                if (promoteExtraBallToPrimary(ballBody)) {
+                    return;
+                }
+
+                session.recordLifeLost('ball-drop');
+                resetCombo(scoringState);
+
+                if (session.snapshot().livesRemaining > 0) {
+                    clearExtraBalls();
+                    reattachBallToPaddle();
+                } else {
+                    handleGameOver();
+                }
+            }
+
+            if ((bodyA.label === 'powerup' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'powerup')) {
+                const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
+                const entry = findPowerUp(powerUpBody);
+                if (entry) {
+                    powerUpManager.activate(entry.type, { defaultDuration: POWER_UP_DURATION });
+                    removePowerUp(entry);
+                    handlePowerUpActivation(entry.type);
+                }
+            }
+
+            if ((bodyA.label === 'powerup' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'powerup')) {
+                const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
+                const entry = findPowerUp(powerUpBody);
+                if (entry) {
+                    removePowerUp(entry);
+                }
+            }
         });
-    };
-
-    // Promote a surviving extra ball when the primary ball exits the playfield
-    const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
-        const iterator = extraBalls.entries().next();
-        if (iterator.done) {
-            return false;
-        }
-
-        const [extraId, extra] = iterator.value;
-        extraBalls.delete(extraId);
-
-        visualBodies.delete(expiredBody);
-        physics.remove(expiredBody);
-
-        if (extra.visual.parent) {
-            extra.visual.parent.removeChild(extra.visual);
-        }
-        extra.visual.destroy();
-
-        ball.physicsBody = extra.body;
-        ball.isAttached = false;
-        ball.attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
-
-        visualBodies.set(extra.body, ballGraphics);
-        ballGraphics.x = extra.body.position.x;
-        ballGraphics.y = extra.body.position.y;
-        ballGraphics.rotation = extra.body.angle;
-
-        return true;
-    };
-
-    function handlePowerUpActivation(type: PowerUpType): void {
-        ballLight?.flash(0.5);
-        paddleLight?.flash(0.45);
-        if (type === 'multi-ball') {
-            spawnExtraBalls();
-        }
-    }
+    });
 
     const runGameplayUpdate = (deltaSeconds: number): void => {
         sessionElapsedSeconds += deltaSeconds;
         replayBuffer.markTime(sessionElapsedSeconds);
 
-        // Update power-ups
         powerUpManager.update(deltaSeconds);
 
-        const speedMultiplier = calculateBallSpeedScale(
-            powerUpManager.getEffect('ball-speed'),
-        );
+        const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
         const difficultyScale = levelDifficultyMultiplier;
         currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale;
         currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier * difficultyScale;
@@ -1332,16 +1056,9 @@ export const createGameRuntime = async ({
             }
         }
 
-        for (let index = ghostBrickEffects.length - 1; index >= 0; index -= 1) {
-            const effect = ghostBrickEffects[index];
-            effect.remaining -= deltaSeconds;
-            if (effect.remaining <= 0) {
-                effect.restore();
-                ghostBrickEffects.splice(index, 1);
-            }
-        }
+        updateGhostBricks(deltaSeconds);
 
-        if (ghostBrickEffects.length === 0 && activeReward?.type === 'ghost-brick') {
+        if (activeReward?.type === 'ghost-brick' && getGhostBrickRemainingDuration() <= 0) {
             activeReward = null;
         }
 
@@ -1349,41 +1066,38 @@ export const createGameRuntime = async ({
             activeReward = null;
         }
 
-        // Update paddle size based on power-ups
-        const paddleScale = calculatePaddleWidthScale(
-            powerUpManager.getEffect('paddle-width'),
-            { paddleWidthMultiplier: 1.5 }
-        );
+        const paddleScale = calculatePaddleWidthScale(powerUpManager.getEffect('paddle-width'), { paddleWidthMultiplier: 1.5 });
         const basePaddleWidth = 100;
         paddle.width = basePaddleWidth * paddleScale;
 
-        // Update paddle visual to reflect new width or power-up state
         const paddleWidthActive = powerUpManager.isActive('paddle-width');
         const paddlePulseInfluence = Math.min(1, paddleGlowPulse);
         const paddlePulseLevel = Math.max(paddleWidthActive ? 0.65 : 0, paddlePulseInfluence * 0.85);
         const paddleAccentColor = paddleWidthActive
             ? themeAccents.powerUp
-            : (paddlePulseInfluence > 0 ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence) : undefined);
+            : paddlePulseInfluence > 0
+                ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence)
+                : undefined;
 
         drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults, {
             accentColor: paddleAccentColor ?? paddleVisualDefaults.accentColor,
             pulseStrength: paddlePulseLevel,
         });
 
-        // Decay combo timer
         decayCombo(scoringState, deltaSeconds);
 
-        // Process input
         const paddleTarget = inputManager.getPaddleTarget();
         const targetSnapshot = paddleTarget ? { x: paddleTarget.x, y: paddleTarget.y } : null;
-        if (!areTargetsEqual(lastRecordedInputTarget, targetSnapshot)) {
+        if (
+            (lastRecordedInputTarget?.x ?? null) !== (targetSnapshot?.x ?? null) ||
+            (lastRecordedInputTarget?.y ?? null) !== (targetSnapshot?.y ?? null)
+        ) {
             replayBuffer.recordPaddleTarget(sessionElapsedSeconds, targetSnapshot);
             lastRecordedInputTarget = targetSnapshot ? { ...targetSnapshot } : null;
         }
 
         if (paddleTarget) {
             const pf = stage.toPlayfield(paddleTarget);
-
             const targetX = pf.x;
             const halfPaddleWidth = paddle.width / 2;
             const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, PLAYFIELD_WIDTH - halfPaddleWidth));
@@ -1391,26 +1105,19 @@ export const createGameRuntime = async ({
             paddle.position.x = clampedX;
         }
 
-        // Ensure paddle state stays synchronized with physics body
         paddle.position.y = paddle.physicsBody.position.y;
 
         const paddleCenter = paddleController.getPaddleCenter(paddle);
         const safeDelta = deltaSeconds > 0 ? deltaSeconds : 1 / 240;
-        const paddleDelta = Math.hypot(
-            paddleCenter.x - previousPaddlePosition.x,
-            paddleCenter.y - previousPaddlePosition.y,
-        );
+        const paddleDelta = Math.hypot(paddleCenter.x - previousPaddlePosition.x, paddleCenter.y - previousPaddlePosition.y);
         const paddleSpeed = paddleDelta / safeDelta;
-        if (paddleLight) {
-            paddleLight.update({
-                position: { x: paddleCenter.x, y: paddleCenter.y },
-                speed: paddleSpeed,
-                deltaSeconds,
-            });
-        }
+        paddleLight?.update({
+            position: { x: paddleCenter.x, y: paddleCenter.y },
+            speed: paddleSpeed,
+            deltaSeconds,
+        });
         previousPaddlePosition = { x: paddleCenter.x, y: paddleCenter.y };
 
-        // Update ball attachment to follow paddle
         ballController.updateAttachment(ball, paddleCenter);
         if (ball.isAttached) {
             physics.updateBallAttachment(ball.physicsBody, paddleCenter);
@@ -1420,7 +1127,6 @@ export const createGameRuntime = async ({
             inputManager.syncPaddlePosition(paddleCenter);
         }
 
-        // Check for launch triggers (tap/click only)
         const launchRequested = ball.isAttached && inputManager.shouldLaunch();
         if (launchRequested) {
             replayBuffer.recordLaunch(sessionElapsedSeconds);
@@ -1429,7 +1135,6 @@ export const createGameRuntime = async ({
             inputManager.resetLaunchTrigger();
         }
 
-        // Regulate ball speed before stepping physics to minimize collision spikes
         regulateSpeed(ball.physicsBody, {
             baseSpeed: currentBaseSpeed,
             maxSpeed: currentMaxSpeed,
@@ -1437,32 +1142,23 @@ export const createGameRuntime = async ({
 
         physics.step(deltaSeconds * 1000);
 
-        // Update visual positions to match physics bodies
         visualBodies.forEach((visual, body) => {
             visual.x = body.position.x;
             visual.y = body.position.y;
             visual.rotation = body.angle;
         });
 
-        if (playfieldBackgroundLayer) {
-            const tiling = playfieldBackgroundLayer.tiling;
-            const parallaxX = (ball.physicsBody.position.x - HALF_PLAYFIELD_WIDTH) * 0.05 * deltaSeconds;
-            const parallaxY = (ball.physicsBody.position.y - PLAYFIELD_HEIGHT * 0.5) * 0.03 * deltaSeconds;
-            tiling.tilePosition.x += deltaSeconds * STARFIELD_SCROLL_SPEED.x + parallaxX;
-            tiling.tilePosition.y += deltaSeconds * STARFIELD_SCROLL_SPEED.y + parallaxY;
-        }
+        playfieldBackgroundLayer.tiling.tilePosition.x += deltaSeconds * STARFIELD_SCROLL_SPEED.x;
+        playfieldBackgroundLayer.tiling.tilePosition.y += deltaSeconds * STARFIELD_SCROLL_SPEED.y;
 
         updateBrickLighting(ball.physicsBody.position);
 
-        if (ballLight) {
-            ballLight.update({
-                position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
-                speed: MatterVector.magnitude(ball.physicsBody.velocity),
-                deltaSeconds,
-            });
-        }
+        ballLight?.update({
+            position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
+            speed: MatterVector.magnitude(ball.physicsBody.velocity),
+            deltaSeconds,
+        });
 
-        // Animate reactive glow and combo ring visuals
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
         const comboTimerFactor = comboActive ? clampUnit(scoringState.comboTimer / COMBO_DECAY_WINDOW) : 0;
@@ -1535,55 +1231,48 @@ export const createGameRuntime = async ({
         },
     );
 
-    const beginNewSession = async (): Promise<void> => {
-        if (loop?.isRunning()) {
-            loop.stop();
-        }
+    stage.register('main-menu', (context: SceneContext) =>
+        createMainMenuScene(context, {
+            helpText: [
+                'Drag or use arrow keys to aim the paddle',
+                'Tap, space, or click to launch the ball',
+                'Stack power-ups for massive combos',
+            ],
+            onStart: () => {
+                void beginNewSession();
+            },
+        }),
+    );
 
-        random.reset();
-        const activeSeed = random.seed();
-        sessionElapsedSeconds = 0;
-        lastRecordedInputTarget = null;
-        replayBuffer.begin(activeSeed);
-
-        session = createSession();
-        currentLevelIndex = 0;
-        pendingReward = null;
-        activateReward(null);
-        levelDifficultyMultiplier = 1;
-        startLevel(currentLevelIndex, { resetScore: true });
-        await stage.transitionTo('gameplay');
-        loop?.start();
-    };
-
-    stage.register('main-menu', (context: SceneContext) => createMainMenuScene(context, {
-        helpText: [
-            'Drag or use arrow keys to aim the paddle',
-            'Tap, space, or click to launch the ball',
-            'Stack power-ups for massive combos',
-        ],
-        onStart: () => beginNewSession(),
-    }));
-
-    stage.register('gameplay', (context: SceneContext) => createGameplayScene(context, {
-        onUpdate: runGameplayUpdate,
-    }));
+    stage.register('gameplay', (context: SceneContext) =>
+        createGameplayScene(context, {
+            onUpdate: runGameplayUpdate,
+        }),
+    );
 
     const quitLabel = 'Tap here or press Q to quit to menu';
 
-    stage.register('pause', (context: SceneContext) => createPauseScene(context, {
-        resumeLabel: 'Tap to resume',
-        quitLabel,
-    }));
+    stage.register('pause', (context: SceneContext) =>
+        createPauseScene(context, {
+            resumeLabel: 'Tap to resume',
+            quitLabel,
+        }),
+    );
 
-    stage.register('level-complete', (context: SceneContext) => createLevelCompleteScene(context, {
-        prompt: 'Tap to continue',
-    }));
+    stage.register('level-complete', (context: SceneContext) =>
+        createLevelCompleteScene(context, {
+            prompt: 'Tap to continue',
+        }),
+    );
 
-    stage.register('game-over', (context: SceneContext) => createGameOverScene(context, {
-        prompt: 'Tap to restart',
-        onRestart: () => beginNewSession(),
-    }));
+    stage.register('game-over', (context: SceneContext) =>
+        createGameOverScene(context, {
+            prompt: 'Tap to restart',
+            onRestart: () => {
+                void beginNewSession();
+            },
+        }),
+    );
 
     await stage.transitionTo('main-menu', undefined, { immediate: true });
     renderStageSoon();
@@ -1623,8 +1312,12 @@ export const createGameRuntime = async ({
             score: scoringState.score,
             legendTitle: 'Power-Up Legend',
             legendLines: pauseLegendLines,
-            onResume: () => resumeFromPause(),
-            onQuit: () => quitToMenu(),
+            onResume: () => {
+                void resumeFromPause();
+            },
+            onQuit: () => {
+                void quitToMenu();
+            },
         });
     };
 
@@ -1669,5 +1362,5 @@ export const createGameRuntime = async ({
     return {
         getSessionElapsedSeconds: () => sessionElapsedSeconds,
         dispose,
-    };
+    } satisfies GameRuntimeHandle;
 };
