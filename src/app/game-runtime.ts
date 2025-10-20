@@ -27,6 +27,8 @@ import {
     type PowerUpType,
 } from 'util/power-ups';
 import type { Vector2 } from 'input/contracts';
+import type { Ball } from 'physics/contracts';
+import type { Paddle } from 'render/contracts';
 import {
     toColorNumber,
     clampUnit,
@@ -152,19 +154,8 @@ export interface GameRuntimeHandle {
     readonly dispose: () => void;
 }
 
-interface PaddleState {
-    width: number;
-    height: number;
-    readonly physicsBody: Body;
-    readonly position: { x: number; y: number };
-}
-
-interface BallState {
-    radius: number;
-    physicsBody: Body;
-    isAttached: boolean;
-    attachmentOffset: { x: number; y: number };
-}
+type PaddleState = Paddle;
+type BallState = Ball;
 
 export const createGameRuntime = async ({
     container,
@@ -379,16 +370,16 @@ export const createGameRuntime = async ({
     const inputManager = new GameInputManager();
     const launchController = new PhysicsBallLaunchController();
 
-    const paddle = paddleController.createPaddle(
+    const paddle: PaddleState = paddleController.createPaddle(
         { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
         { width: 100, height: 20, speed: 300 },
-    ) as PaddleState;
+    );
     physics.add(paddle.physicsBody);
 
-    const ball = ballController.createAttachedBall(
+    const ball: BallState = ballController.createAttachedBall(
         paddleController.getPaddleCenter(paddle),
         { radius: 10, restitution: 0.98 },
-    ) as BallState;
+    );
     physics.add(ball.physicsBody);
 
     const comboRing = new Graphics();
@@ -1127,11 +1118,13 @@ export const createGameRuntime = async ({
             inputManager.syncPaddlePosition(paddleCenter);
         }
 
-        const launchRequested = ball.isAttached && inputManager.shouldLaunch();
-        if (launchRequested) {
+        const launchIntent = inputManager.shouldLaunch() ? inputManager.consumeLaunchIntent() : null;
+        if (ball.isAttached && launchIntent) {
             replayBuffer.recordLaunch(sessionElapsedSeconds);
             physics.detachBallFromPaddle(ball.physicsBody);
-            launchController.launch(ball, undefined, currentLaunchSpeed);
+            launchController.launch(ball, launchIntent.direction, currentLaunchSpeed);
+            inputManager.resetLaunchTrigger();
+        } else if (launchIntent) {
             inputManager.resetLaunchTrigger();
         }
 

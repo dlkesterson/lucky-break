@@ -2,6 +2,34 @@
  * Input System Contract
  *
  * Feature: Paddle Control and Ball Launch
+ * Date: 2025-10-15 (updated 2025-10-20)
+ * Purpose: Defines the public interface for input handling and paddle control
+ */
+
+export type LaunchTriggerType = 'movement' | 'tap' | 'long-press' | 'swipe';
+
+export interface Vector2 {
+    x: number;
+    y: number;
+}
+
+export interface LaunchTriggerDetail {
+    readonly type: LaunchTriggerType;
+    readonly position: Vector2;
+    readonly timestamp: number;
+    readonly aimDirection?: Vector2;
+    readonly durationMs?: number;
+    readonly swipeDistance?: number;
+}
+
+export interface LaunchIntent {
+    readonly trigger: LaunchTriggerDetail;
+    readonly direction: Vector2;
+}
+/**
+ * Input System Contract
+ *
+ * Feature: Paddle Control and Ball Launch
  * Date: 2025-10-15
  * Purpose: Defines the public interface for input handling and paddle control
  */
@@ -24,6 +52,18 @@ export interface InputManager {
      * @returns True if launch conditions are met
      */
     shouldLaunch(): boolean;
+
+    /**
+     * Get the current aiming direction if the player is preparing a launch
+     * @returns Normalized launch vector or null when no aim is active
+     */
+    getAimDirection(): Vector2 | null;
+
+    /**
+     * Consume and return the pending launch intent if available
+     * @returns Launch intent data or null when no launch is pending
+     */
+    consumeLaunchIntent(): LaunchIntent | null;
 
     /**
      * Reset launch trigger state after processing
@@ -56,8 +96,3 @@ export interface InputDebugState {
 }
 
 export type InputType = 'mouse' | 'keyboard' | 'touch';
-
-export interface Vector2 {
-    x: number;
-    y: number;
-}

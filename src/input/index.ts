@@ -6,7 +6,15 @@
  */
 
 // Export types and interfaces
-export type { InputManager, InputDebugState, InputType, Vector2 } from './contracts';
+export type {
+    InputManager,
+    InputDebugState,
+    InputType,
+    Vector2,
+    LaunchIntent,
+    LaunchTriggerDetail,
+    LaunchTriggerType,
+} from './contracts';
 
 // Export implementations
 export { GameInputManager } from './input-manager';

@@ -2,16 +2,16 @@
  * Launch Manager
  *
  * Feature: Paddle Control and Ball Launch
- * Date: 2025-10-15
- * Purpose: Detects launch triggers from paddle movement or screen taps
+ * Date: 2025-10-15 (updated 2025-10-20)
+ * Purpose: Detects launch triggers from paddle movement or screen taps and gestures
  */
 
-import type { Vector2 } from '../types';
+import type { LaunchTriggerDetail, LaunchTriggerType, Vector2 } from './contracts';
 
-export interface LaunchTrigger {
-    type: 'movement' | 'tap';
-    position: Vector2;
-    timestamp: number;
+interface LaunchTriggerExtras {
+    aimDirection?: Vector2;
+    durationMs?: number;
+    swipeDistance?: number;
 }
 
 export interface LaunchManager {
@@ -32,7 +32,21 @@ export interface LaunchManager {
      * Record a tap/click launch trigger
      * @param position - Position of the tap/click
      */
-    triggerTapLaunch(position: Vector2): void;
+    triggerTapLaunch(position: Vector2, extras?: LaunchTriggerExtras): void;
+
+    /**
+     * Record a long-press launch trigger
+     * @param position - Position where the long press occurred
+     * @param extras - Additional gesture metadata
+     */
+    triggerLongPressLaunch(position: Vector2, extras: LaunchTriggerExtras): void;
+
+    /**
+     * Record a swipe-based launch trigger
+     * @param position - Position where the swipe ended
+     * @param extras - Additional gesture metadata
+     */
+    triggerSwipeLaunch(position: Vector2, extras: LaunchTriggerExtras): void;
 
     /**
      * Check if launch is pending
@@ -43,7 +57,7 @@ export interface LaunchManager {
     /**
      * Consume the launch trigger (reset to not pending)
      */
-    consumeLaunchTrigger(): LaunchTrigger | null;
+    consumeLaunchTrigger(): LaunchTriggerDetail | null;
 
     /**
      * Reset launch state
@@ -58,13 +72,13 @@ export interface LaunchManager {
 
 export interface LaunchDebugInfo {
     launchPending: boolean;
-    lastTrigger?: LaunchTrigger;
+    lastTrigger?: LaunchTriggerDetail;
     movementThreshold: number;
 }
 
 export class PaddleLaunchManager implements LaunchManager {
     private launchPending = false;
-    private lastTrigger: LaunchTrigger | null = null;
+    private lastTrigger: LaunchTriggerDetail | null = null;
     private readonly movementThreshold: number;
 
     constructor(movementThreshold = 5) {
@@ -85,34 +99,34 @@ export class PaddleLaunchManager implements LaunchManager {
         const movement = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
         if (movement > movementThreshold) {
-            this.launchPending = true;
-            this.lastTrigger = {
-                type: 'movement',
-                position: { ...currentPosition },
-                timestamp: Date.now(),
-            };
+            this.recordTrigger('movement', currentPosition, {
+                swipeDistance: movement,
+            });
             return true;
         }
 
         return false;
     }
 
-    triggerTapLaunch(position: Vector2): void {
-        this.launchPending = true;
-        this.lastTrigger = {
-            type: 'tap',
-            position: { ...position },
-            timestamp: Date.now(),
-        };
+    triggerTapLaunch(position: Vector2, extras: LaunchTriggerExtras = {}): void {
+        this.recordTrigger('tap', position, extras);
+    }
+
+    triggerLongPressLaunch(position: Vector2, extras: LaunchTriggerExtras): void {
+        this.recordTrigger('long-press', position, extras);
+    }
+
+    triggerSwipeLaunch(position: Vector2, extras: LaunchTriggerExtras): void {
+        this.recordTrigger('swipe', position, extras);
     }
 
     isLaunchPending(): boolean {
         return this.launchPending;
     }
 
-    consumeLaunchTrigger(): LaunchTrigger | null {
+    consumeLaunchTrigger(): LaunchTriggerDetail | null {
         if (this.launchPending && this.lastTrigger) {
-            const trigger = this.lastTrigger;
+            const trigger = this.cloneTrigger(this.lastTrigger);
             this.launchPending = false;
             this.lastTrigger = null;
             return trigger;
@@ -126,10 +140,36 @@ export class PaddleLaunchManager implements LaunchManager {
     }
 
     getDebugInfo(): LaunchDebugInfo {
+        const lastTrigger = this.lastTrigger ? this.cloneTrigger(this.lastTrigger) : undefined;
         return {
             launchPending: this.launchPending,
-            lastTrigger: this.lastTrigger ?? undefined,
+            lastTrigger,
             movementThreshold: this.movementThreshold,
+        };
+    }
+
+    private recordTrigger(type: LaunchTriggerType, position: Vector2, extras: LaunchTriggerExtras): void {
+        const trigger: LaunchTriggerDetail = {
+            type,
+            position: { ...position },
+            timestamp: Date.now(),
+            ...(extras.aimDirection ? { aimDirection: { ...extras.aimDirection } } : undefined),
+            ...(typeof extras.durationMs === 'number' ? { durationMs: extras.durationMs } : undefined),
+            ...(typeof extras.swipeDistance === 'number' ? { swipeDistance: extras.swipeDistance } : undefined),
+        };
+
+        this.launchPending = true;
+        this.lastTrigger = trigger;
+    }
+
+    private cloneTrigger(trigger: LaunchTriggerDetail): LaunchTriggerDetail {
+        return {
+            type: trigger.type,
+            position: { ...trigger.position },
+            timestamp: trigger.timestamp,
+            ...(trigger.aimDirection ? { aimDirection: { ...trigger.aimDirection } } : undefined),
+            ...(typeof trigger.durationMs === 'number' ? { durationMs: trigger.durationMs } : undefined),
+            ...(typeof trigger.swipeDistance === 'number' ? { swipeDistance: trigger.swipeDistance } : undefined),
         };
     }
 }

@@ -7,7 +7,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { InputManager, InputDebugState, InputType, Vector2 } from 'input/contracts';
+import type {
+    InputManager,
+    InputDebugState,
+    InputType,
+    LaunchIntent,
+    LaunchTriggerDetail,
+    Vector2,
+} from 'input/contracts';
 
 describe('Input Contracts', () => {
     describe('InputManager Interface', () => {
@@ -17,6 +24,9 @@ describe('Input Contracts', () => {
                 initialize: () => { },
                 getPaddleTarget: () => null,
                 shouldLaunch: () => false,
+                getAimDirection: () => null,
+                consumeLaunchIntent: () => null,
+                syncPaddlePosition: () => { },
                 resetLaunchTrigger: () => { },
                 getDebugState: () => ({} as InputDebugState),
                 destroy: () => { },
@@ -79,6 +89,24 @@ describe('Input Contracts', () => {
             const vector: Vector2 = { x: 10, y: 20 };
             expect(vector.x).toBe(10);
             expect(vector.y).toBe(20);
+        });
+    });
+
+    describe('LaunchIntent Interface', () => {
+        it('should describe launch trigger metadata', () => {
+            const trigger: LaunchTriggerDetail = {
+                type: 'tap',
+                position: { x: 0, y: 0 },
+                timestamp: 0,
+            };
+
+            const intent: LaunchIntent = {
+                trigger,
+                direction: { x: 0, y: -1 },
+            };
+
+            expect(intent.trigger.type).toBe('tap');
+            expect(intent.direction.y).toBe(-1);
         });
     });
 });

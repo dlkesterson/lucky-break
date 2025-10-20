@@ -6,15 +6,27 @@
  * Purpose: Cross-platform input handling for paddle control and launch triggers
  */
 
-import type { InputManager, InputDebugState, InputType, Vector2 } from './contracts';
+import type { InputManager, InputDebugState, InputType, LaunchIntent, Vector2 } from './contracts';
 import { PaddleLaunchManager } from './launch-manager';
 import { normalizeMouseEvent } from 'util/input-helpers';
+
+const DEFAULT_DIRECTION: Vector2 = { x: 0, y: -1 };
+const LONG_PRESS_THRESHOLD_MS = 350;
+const LONG_PRESS_MOVE_TOLERANCE = 20;
+const TAP_MAX_DURATION_MS = 250;
+const SWIPE_MIN_DISTANCE = 36;
+const MIN_AIM_DISTANCE = 8;
+const MIN_UPWARD_COMPONENT = 0.25;
+
+const cloneVector = (value: Vector2): Vector2 => ({ x: value.x, y: value.y });
 
 export class GameInputManager implements InputManager {
     private container: HTMLElement | null = null;
     private canvas: HTMLCanvasElement | null = null;
     private mousePosition: Vector2 | null = null;
     private touchPosition: Vector2 | null = null;
+    private touchStartPosition: Vector2 | null = null;
+    private touchStartTimestampMs: number | null = null;
     private activeTouchId: number | null = null;
     private suppressMouseInput = false;
     private keyboardState = new Map<string, boolean>();
@@ -23,6 +35,10 @@ export class GameInputManager implements InputManager {
     private previousPaddlePosition: Vector2 | null = null;
     private hasReceivedInput = false; // Track if user has moved mouse/touch since initialization
     private mouseEventTarget: HTMLElement | null = null;
+    private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    private longPressEligible = false;
+    private longPressReady = false;
+    private currentAimDirection: Vector2 | null = null;
     private readonly nonPassiveTouchOptions: AddEventListenerOptions = { passive: false };
     private readonly mouseDownListener: (event: MouseEvent) => void;
     private readonly mouseMoveListener: (event: MouseEvent) => void;
@@ -58,6 +74,7 @@ export class GameInputManager implements InputManager {
         // Clear any stale positions from before initialization
         this.mousePosition = null;
         this.touchPosition = null;
+        this.resetTouchGestureState();
         this.activeTouchId = null;
         this.suppressMouseInput = false;
         this.hasReceivedInput = false;
@@ -161,14 +178,20 @@ export class GameInputManager implements InputManager {
         this.suppressMouseInput = true;
         this.mousePosition = null;
 
-        if (event.touches.length > 0) {
-            const primaryTouch = event.changedTouches[0] ?? event.touches[0];
-            if (primaryTouch) {
-                this.activeTouchId = primaryTouch.identifier;
-                this.touchPosition = this.getTouchPosition(primaryTouch);
-                this.launchManager.triggerTapLaunch(this.touchPosition);
-            }
+        const primaryTouch = this.getPrimaryTouch(event);
+        if (!primaryTouch) {
+            return;
         }
+
+        this.activeTouchId = primaryTouch.identifier;
+        const position = this.getTouchPosition(primaryTouch);
+        this.touchPosition = position;
+        this.touchStartPosition = cloneVector(position);
+        this.touchStartTimestampMs = this.getTimestamp();
+        this.longPressEligible = true;
+        this.longPressReady = false;
+        this.currentAimDirection = null;
+        this.scheduleLongPressCheck();
     }
 
     private handleTouchMove(event: TouchEvent): void {
@@ -181,25 +204,61 @@ export class GameInputManager implements InputManager {
         const activeTouch = this.getActiveTouch(event.touches);
         if (activeTouch) {
             this.activeTouchId = activeTouch.identifier;
-            this.touchPosition = this.getTouchPosition(activeTouch);
+            const position = this.getTouchPosition(activeTouch);
+            this.touchPosition = position;
+
+            if (this.touchStartPosition) {
+                const movement = this.distanceBetween(this.touchStartPosition, position);
+                if (this.longPressEligible && movement > LONG_PRESS_MOVE_TOLERANCE) {
+                    this.longPressEligible = false;
+                    this.longPressReady = false;
+                    this.clearLongPressTimer();
+                }
+
+                const aimDirection = this.computeAimDirection(this.touchStartPosition, position);
+                this.currentAimDirection = aimDirection;
+            }
         }
     }
 
     private handleTouchEnd(event: TouchEvent): void {
+        if (event.cancelable) {
+            event.preventDefault();
+        }
+
+        const endedTouch = this.getTouchById(event.changedTouches, this.activeTouchId);
+        if (endedTouch) {
+            const endPosition = this.getTouchPosition(endedTouch);
+            this.touchPosition = endPosition;
+            this.processTouchRelease(endPosition);
+            this.resetTouchGestureState();
+        } else {
+            this.clearLongPressTimer();
+        }
+
         if (event.touches.length === 0) {
             this.activeTouchId = null;
             this.suppressMouseInput = false;
+            this.touchPosition = null;
         } else {
             const remaining = this.getActiveTouch(event.touches);
             if (remaining) {
                 this.activeTouchId = remaining.identifier;
-                this.touchPosition = this.getTouchPosition(remaining);
+                const nextPosition = this.getTouchPosition(remaining);
+                this.touchPosition = nextPosition;
+                this.touchStartPosition = cloneVector(nextPosition);
+                this.touchStartTimestampMs = this.getTimestamp();
+                this.longPressEligible = true;
+                this.longPressReady = false;
+                this.currentAimDirection = null;
+                this.scheduleLongPressCheck();
             }
         }
     }
 
     private handleTouchCancel(event: TouchEvent): void {
         void event;
+        this.resetTouchGestureState();
         this.activeTouchId = null;
         this.suppressMouseInput = false;
         this.touchPosition = null;
@@ -247,8 +306,32 @@ export class GameInputManager implements InputManager {
         return this.launchManager.isLaunchPending();
     }
 
+    getAimDirection(): Vector2 | null {
+        if (this.currentAimDirection) {
+            return cloneVector(this.currentAimDirection);
+        }
+
+        return this.longPressReady ? cloneVector(DEFAULT_DIRECTION) : null;
+    }
+
+    consumeLaunchIntent(): LaunchIntent | null {
+        const trigger = this.launchManager.consumeLaunchTrigger();
+        if (!trigger) {
+            return null;
+        }
+
+        const directionSource = trigger.aimDirection ?? this.currentAimDirection ?? this.getDefaultLaunchDirection();
+        const direction = this.normalizeDirection(directionSource);
+
+        return {
+            trigger,
+            direction,
+        };
+    }
+
     resetLaunchTrigger(): void {
         this.launchManager.reset();
+        this.currentAimDirection = null;
     }
 
     syncPaddlePosition(position: Vector2 | null): void {
@@ -289,6 +372,7 @@ export class GameInputManager implements InputManager {
         this.launchManager.reset();
         this.activeInputs.clear();
         this.keyboardState.clear();
+        this.resetTouchGestureState();
         this.container = null;
         this.canvas = null;
         this.mousePosition = null;
@@ -296,6 +380,145 @@ export class GameInputManager implements InputManager {
         this.activeTouchId = null;
         this.suppressMouseInput = false;
         this.hasReceivedInput = false;
+    }
+
+    private scheduleLongPressCheck(): void {
+        if (!this.touchStartPosition) {
+            return;
+        }
+
+        this.clearLongPressTimer();
+        this.longPressTimer = setTimeout(() => {
+            if (this.longPressEligible && this.touchStartPosition) {
+                this.longPressReady = true;
+            }
+        }, LONG_PRESS_THRESHOLD_MS);
+    }
+
+    private clearLongPressTimer(): void {
+        if (this.longPressTimer !== null) {
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+        }
+    }
+
+    private resetTouchGestureState(): void {
+        this.clearLongPressTimer();
+        this.touchStartPosition = null;
+        this.touchStartTimestampMs = null;
+        this.longPressEligible = false;
+        this.longPressReady = false;
+        this.currentAimDirection = null;
+    }
+
+    private processTouchRelease(endPosition: Vector2): void {
+        const start = this.touchStartPosition ?? endPosition;
+        const durationMs = this.getGestureDurationMs();
+        const distance = this.distanceBetween(start, endPosition);
+        const aimDirection = this.currentAimDirection ?? this.computeAimDirection(start, endPosition);
+
+        if (this.longPressReady) {
+            this.launchManager.triggerLongPressLaunch(endPosition, {
+                durationMs,
+                ...(aimDirection ? { aimDirection: cloneVector(aimDirection) } : {}),
+            });
+            return;
+        }
+
+        if (distance >= SWIPE_MIN_DISTANCE) {
+            this.launchManager.triggerSwipeLaunch(endPosition, {
+                durationMs,
+                swipeDistance: distance,
+                ...(aimDirection ? { aimDirection: cloneVector(aimDirection) } : {}),
+            });
+            return;
+        }
+
+        if (durationMs <= TAP_MAX_DURATION_MS) {
+            this.launchManager.triggerTapLaunch(endPosition, { durationMs });
+            return;
+        }
+
+        this.launchManager.triggerTapLaunch(endPosition);
+    }
+
+    private getGestureDurationMs(): number {
+        if (this.touchStartTimestampMs === null) {
+            return 0;
+        }
+        const elapsed = this.getTimestamp() - this.touchStartTimestampMs;
+        return elapsed > 0 ? elapsed : 0;
+    }
+
+    private getTimestamp(): number {
+        if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+            return performance.now();
+        }
+        return Date.now();
+    }
+
+    private getDefaultLaunchDirection(): Vector2 {
+        return cloneVector(DEFAULT_DIRECTION);
+    }
+
+    private normalizeDirection(direction: Vector2): Vector2 {
+        const length = Math.hypot(direction.x, direction.y);
+        if (!Number.isFinite(length) || length === 0) {
+            return this.getDefaultLaunchDirection();
+        }
+        return {
+            x: direction.x / length,
+            y: direction.y / length,
+        };
+    }
+
+    private distanceBetween(a: Vector2, b: Vector2): number {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        return Math.hypot(dx, dy);
+    }
+
+    private computeAimDirection(start: Vector2, end: Vector2): Vector2 | null {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const distance = Math.hypot(dx, dy);
+        if (!Number.isFinite(distance) || distance < MIN_AIM_DISTANCE) {
+            return null;
+        }
+
+        const aimX = dx;
+        let aimY = dy;
+
+        if (aimY >= 0) {
+            const upwardMagnitude = Math.max(Math.abs(dy), MIN_UPWARD_COMPONENT * distance);
+            aimY = -upwardMagnitude;
+        }
+
+        return this.normalizeDirection({ x: aimX, y: aimY });
+    }
+
+    private getPrimaryTouch(event: TouchEvent): Touch | null {
+        if (event.changedTouches.length > 0) {
+            return event.changedTouches[0] ?? null;
+        }
+        if (event.touches.length > 0) {
+            return event.touches[0] ?? null;
+        }
+        return null;
+    }
+
+    private getTouchById(list: TouchList, id: number | null): Touch | null {
+        if (id === null) {
+            return null;
+        }
+
+        for (const touch of Array.from(list)) {
+            if (touch.identifier === id) {
+                return touch;
+            }
+        }
+
+        return null;
     }
 
     private getTouchPosition(touch: Touch): Vector2 {
@@ -319,10 +542,9 @@ export class GameInputManager implements InputManager {
         }
 
         if (this.activeTouchId !== null) {
-            for (const touch of Array.from(touches)) {
-                if (touch.identifier === this.activeTouchId) {
-                    return touch;
-                }
+            const active = this.getTouchById(touches, this.activeTouchId);
+            if (active) {
+                return active;
             }
         }
 
