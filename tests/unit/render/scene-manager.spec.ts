@@ -243,4 +243,56 @@ describe('createSceneManager', () => {
         expect((manager.app as { destroyed?: boolean }).destroyed).toBe(true);
         expect(manager.layers.root.children).toHaveLength(0);
     });
+
+    it('supports pushing overlay scenes and resuming the previous scene on pop', async () => {
+        const baseUpdate = vi.fn();
+        const baseDestroy = vi.fn();
+        const baseSuspend = vi.fn();
+        const baseResume = vi.fn();
+
+        manager.register('base', () => ({
+            init: vi.fn(),
+            update: baseUpdate,
+            destroy: baseDestroy,
+            suspend: baseSuspend,
+            resume: baseResume,
+        }));
+
+        const overlayInit = vi.fn();
+        const overlayUpdate = vi.fn();
+        const overlayDestroy = vi.fn();
+
+        manager.register('overlay', () => ({
+            init: overlayInit,
+            update: overlayUpdate,
+            destroy: overlayDestroy,
+        }));
+
+        await manager.switch('base');
+        expect(manager.getCurrentScene()).toBe('base');
+
+        manager.update(0.016);
+        expect(baseUpdate).toHaveBeenCalledTimes(1);
+
+        await manager.push('overlay');
+        expect(manager.getCurrentScene()).toBe('overlay');
+        expect(baseSuspend).toHaveBeenCalledTimes(1);
+        expect(overlayInit).toHaveBeenCalledTimes(1);
+
+        baseUpdate.mockClear();
+        overlayUpdate.mockClear();
+
+        manager.update(0.016);
+        expect(overlayUpdate).toHaveBeenCalledTimes(1);
+        expect(baseUpdate).not.toHaveBeenCalled();
+
+        manager.pop();
+        expect(manager.getCurrentScene()).toBe('base');
+        expect(overlayDestroy).toHaveBeenCalledTimes(1);
+        expect(baseResume).toHaveBeenCalledTimes(1);
+        expect(baseDestroy).not.toHaveBeenCalled();
+
+        manager.update(0.016);
+        expect(baseUpdate).toHaveBeenCalledTimes(1);
+    });
 });

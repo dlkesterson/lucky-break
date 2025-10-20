@@ -4,6 +4,8 @@ export interface GameplaySceneOptions {
     readonly onEnter?: (context: SceneContext) => void | Promise<void>;
     readonly onUpdate: (deltaSeconds: number) => void;
     readonly onExit?: () => void | Promise<void>;
+    readonly onSuspend?: () => void | Promise<void>;
+    readonly onResume?: () => void | Promise<void>;
 }
 
 export const createGameplayScene = (
@@ -24,6 +26,16 @@ export const createGameplayScene = (
     destroy() {
         if (options.onExit) {
             void Promise.resolve(options.onExit());
+        }
+    },
+    suspend() {
+        if (options.onSuspend) {
+            void Promise.resolve(options.onSuspend());
+        }
+    },
+    resume() {
+        if (options.onResume) {
+            void Promise.resolve(options.onResume());
         }
     },
 });

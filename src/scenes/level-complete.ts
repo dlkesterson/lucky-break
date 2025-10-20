@@ -38,9 +38,20 @@ export const createLevelCompleteScene = (
     let promptLabel: Text | null = null;
     let elapsed = 0;
 
+    const setInteraction = (enabled: boolean) => {
+        if (!container) {
+            return;
+        }
+
+        container.eventMode = enabled ? 'static' : 'none';
+        container.interactiveChildren = enabled;
+        container.cursor = enabled ? 'pointer' : 'default';
+    };
+
     const teardown = () => {
         if (container) {
             container.removeAllListeners();
+            setInteraction(false);
             context.removeFromLayer(container);
             container.destroy({ children: true });
         }
@@ -56,8 +67,7 @@ export const createLevelCompleteScene = (
             }
 
             container = new Container();
-            container.eventMode = 'static';
-            container.cursor = 'pointer';
+            setInteraction(true);
 
             const { width, height } = context.designSize;
 
@@ -134,6 +144,12 @@ export const createLevelCompleteScene = (
         },
         destroy() {
             teardown();
+        },
+        suspend() {
+            setInteraction(false);
+        },
+        resume() {
+            setInteraction(true);
         },
     };
 };

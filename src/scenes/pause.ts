@@ -26,11 +26,22 @@ export const createPauseScene = (
     let resumeText: Text | null = null;
     let elapsed = 0;
 
+    const setInteraction = (enabled: boolean) => {
+        if (!container) {
+            return;
+        }
+
+        container.eventMode = enabled ? 'static' : 'none';
+        container.interactiveChildren = enabled;
+        container.cursor = enabled ? 'pointer' : 'default';
+    };
+
     const dispose = () => {
         if (!container) {
             return;
         }
 
+        setInteraction(false);
         container.removeAllListeners();
         container.destroy({ children: true });
         context.removeFromLayer(container);
@@ -46,8 +57,7 @@ export const createPauseScene = (
             }
 
             container = new Container();
-            container.eventMode = 'static';
-            container.cursor = 'pointer';
+            setInteraction(true);
 
             const { width, height } = context.designSize;
 
@@ -173,6 +183,12 @@ export const createPauseScene = (
         },
         destroy() {
             dispose();
+        },
+        suspend() {
+            setInteraction(false);
+        },
+        resume() {
+            setInteraction(true);
         },
     };
 };

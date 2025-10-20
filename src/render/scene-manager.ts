@@ -79,6 +79,8 @@ export interface SceneContext {
     readonly acquireSprite: () => Sprite;
     readonly releaseSprite: (sprite: Sprite) => void;
     readonly switchScene: <TPayload = unknown>(name: string, payload?: TPayload) => Promise<void>;
+    readonly pushScene: <TPayload = unknown>(name: string, payload?: TPayload) => Promise<void>;
+    readonly popScene: () => void;
     readonly designSize: SceneDimensions;
 }
 
@@ -86,6 +88,8 @@ export interface Scene<TPayload = unknown> {
     init(payload?: TPayload): void | Promise<void>;
     update(deltaSeconds: number): void;
     destroy(): void;
+    suspend?(): void;
+    resume?(): void;
 }
 
 export type SceneFactory<TPayload = unknown> = (context: SceneContext) => Scene<TPayload>;
@@ -102,6 +106,8 @@ export interface SceneManagerHandle {
     readonly designSize: SceneDimensions;
     register<TPayload = unknown>(name: string, factory: SceneFactory<TPayload>): void;
     switch<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
+    push<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
+    pop(): void;
     update(deltaSeconds: number): void;
     getCurrentScene(): string | null;
     destroy(): void;
@@ -215,30 +221,77 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
     };
 
     const sceneFactories = new Map<string, SceneFactory<unknown>>();
-    let currentSceneName: string | null = null;
-    let currentScene: Scene<unknown> | null = null;
+    const sceneStack: { readonly name: string; readonly scene: Scene<unknown> }[] = [];
     let destroyed = false;
+
+    const getTopEntry = () => sceneStack.at(-1) ?? null;
+
+    const destroyAllScenes = () => {
+        while (sceneStack.length > 0) {
+            const entry = sceneStack.pop();
+            entry?.scene.destroy();
+        }
+    };
+
+    const instantiateScene = (name: string): Scene<unknown> => {
+        const factory = sceneFactories.get(name);
+        if (!factory) {
+            throw new Error(`Scene "${name}" is not registered`);
+        }
+        return factory(sceneContext);
+    };
+
+    const pushInternal = async (name: string, payload: unknown, suspendPrevious: boolean) => {
+        if (destroyed) {
+            throw new Error('Scene manager has been destroyed');
+        }
+
+        const previous = getTopEntry();
+        if (suspendPrevious && previous) {
+            previous.scene.suspend?.();
+        }
+
+        const scene = instantiateScene(name);
+        const entry = { name, scene } as const;
+        sceneStack.push(entry);
+
+        try {
+            await Promise.resolve(scene.init(payload));
+        } catch (error) {
+            sceneStack.pop();
+            scene.destroy();
+            if (suspendPrevious && previous) {
+                previous.scene.resume?.();
+            }
+            throw error;
+        }
+    };
 
     const switchScene = async (name: string, payload?: unknown) => {
         if (destroyed) {
             throw new Error('Scene manager has been destroyed');
         }
 
-        const factory = sceneFactories.get(name);
-        if (!factory) {
-            throw new Error(`Scene "${name}" is not registered`);
+        destroyAllScenes();
+        await pushInternal(name, payload, false);
+    };
+
+    const pushScene = async (name: string, payload?: unknown) => pushInternal(name, payload, true);
+
+    const popScene = () => {
+        if (destroyed) {
+            throw new Error('Scene manager has been destroyed');
         }
 
-        if (currentScene) {
-            currentScene.destroy();
-            currentScene = null;
-            currentSceneName = null;
+        const popped = sceneStack.pop();
+        if (!popped) {
+            return;
         }
 
-        const nextScene = factory(sceneContext);
-        currentScene = nextScene;
-        currentSceneName = name;
-        await Promise.resolve(nextScene.init(payload));
+        popped.scene.destroy();
+
+        const next = getTopEntry();
+        next?.scene.resume?.();
     };
 
     const sceneContext: SceneContext = {
@@ -249,6 +302,8 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         acquireSprite,
         releaseSprite,
         switchScene,
+        pushScene,
+        popScene,
         designSize,
     };
 
@@ -260,7 +315,8 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
     };
 
     const update = (deltaSeconds: number) => {
-        currentScene?.update(deltaSeconds);
+        const current = getTopEntry();
+        current?.scene.update(deltaSeconds);
     };
 
     const destroy = () => {
@@ -268,11 +324,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
             return;
         }
         destroyed = true;
-        if (currentScene) {
-            currentScene.destroy();
-            currentScene = null;
-            currentSceneName = null;
-        }
+        destroyAllScenes();
         spritePool.clear();
         if (typeof root.removeChildren === 'function') {
             root.removeChildren();
@@ -295,8 +347,10 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         designSize,
         register,
         switch: switchScene,
+        push: pushScene,
+        pop: popScene,
         update,
-        getCurrentScene: () => currentSceneName,
+        getCurrentScene: () => getTopEntry()?.name ?? null,
         destroy,
     };
 

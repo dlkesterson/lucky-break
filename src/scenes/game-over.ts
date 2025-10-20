@@ -31,11 +31,20 @@ export const createGameOverScene = (
         }
     };
 
+    const setInteraction = (enabled: boolean) => {
+        if (!container) {
+            return;
+        }
+
+        container.eventMode = enabled ? 'static' : 'none';
+        container.interactiveChildren = enabled;
+        container.cursor = enabled ? 'pointer' : 'default';
+    };
+
     return {
         init(payload) {
             container = new Container();
-            container.eventMode = 'static';
-            container.cursor = 'pointer';
+            setInteraction(true);
             container.on('pointertap', restart);
 
             const { width, height } = context.designSize;
@@ -95,12 +104,19 @@ export const createGameOverScene = (
         destroy() {
             if (container) {
                 container.off('pointertap', restart);
+                setInteraction(false);
                 context.removeFromLayer(container);
                 container.destroy({ children: true });
             }
             container = null;
             promptLabel = null;
             scoreLabel = null;
+        },
+        suspend() {
+            setInteraction(false);
+        },
+        resume() {
+            setInteraction(true);
         },
     };
 };

@@ -27,11 +27,20 @@ export const createMainMenuScene = (
         }
     };
 
+    const setInteraction = (enabled: boolean) => {
+        if (!container) {
+            return;
+        }
+
+        container.eventMode = enabled ? 'static' : 'none';
+        container.interactiveChildren = enabled;
+        container.cursor = enabled ? 'pointer' : 'default';
+    };
+
     return {
         init() {
             container = new Container();
-            container.eventMode = 'static';
-            container.cursor = 'pointer';
+            setInteraction(true);
             container.on('pointertap', handleStart);
 
             const { width, height } = context.designSize;
@@ -94,12 +103,19 @@ export const createMainMenuScene = (
         destroy() {
             if (container) {
                 container.off('pointertap', handleStart);
+                setInteraction(false);
                 context.removeFromLayer(container);
                 container.destroy({ children: true });
             }
             container = null;
             promptLabel = null;
             helpLabel = null;
+        },
+        suspend() {
+            setInteraction(false);
+        },
+        resume() {
+            setInteraction(true);
         },
     };
 };

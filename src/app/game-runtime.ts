@@ -60,8 +60,10 @@ import { createMultiBallController } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
+import { rootLogger } from 'util/log';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
+const runtimeLogger = rootLogger.child('game-runtime');
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -806,23 +808,33 @@ export const createGameRuntime = async ({
 
         const completedLevel = currentLevelIndex + 1;
         let handled = false;
-        const continueToNextLevel = async () => {
+        const continueToNextLevel = () => {
             if (handled) {
                 return;
             }
             handled = true;
+            if (stage.getCurrentScene() === 'level-complete') {
+                stage.pop();
+            }
             currentLevelIndex += 1;
             startLevel(currentLevelIndex);
-            await stage.transitionTo('gameplay');
             loop?.start();
+            renderStageSoon();
         };
 
-        void stage.transitionTo('level-complete', {
+        void stage.push('level-complete', {
             level: completedLevel,
             score: scoringState.score,
             reward: pendingReward ?? undefined,
             onContinue: continueToNextLevel,
-        });
+        })
+            .then(() => {
+                renderStageSoon();
+            })
+            .catch((error) => {
+                runtimeLogger.error('Failed to push level-complete overlay', { error });
+                continueToNextLevel();
+            });
     };
 
     const handleGameOver = (): void => {
@@ -831,7 +843,18 @@ export const createGameRuntime = async ({
         loop?.stop();
         pendingReward = null;
         activateReward(null);
-        void stage.transitionTo('game-over', { score: scoringState.score });
+
+        void stage.push('game-over', { score: scoringState.score })
+            .then(() => {
+                renderStageSoon();
+            })
+            .catch((error) => {
+                runtimeLogger.error('Failed to push game-over overlay', { error });
+                if (stage.getCurrentScene() === 'game-over') {
+                    stage.pop();
+                    renderStageSoon();
+                }
+            });
     };
 
     Events.on(physics.engine, 'collisionStart', (event: IEventCollision<Engine>) => {
@@ -1250,6 +1273,12 @@ export const createGameRuntime = async ({
     stage.register('gameplay', (context: SceneContext) =>
         createGameplayScene(context, {
             onUpdate: runGameplayUpdate,
+            onSuspend: () => {
+                inputManager.resetLaunchTrigger();
+            },
+            onResume: () => {
+                inputManager.resetLaunchTrigger();
+            },
         }),
     );
 
@@ -1272,6 +1301,10 @@ export const createGameRuntime = async ({
         createGameOverScene(context, {
             prompt: 'Tap to restart',
             onRestart: () => {
+                if (stage.getCurrentScene() === 'game-over') {
+                    stage.pop();
+                }
+                renderStageSoon();
                 void beginNewSession();
             },
         }),
@@ -1287,21 +1320,40 @@ export const createGameRuntime = async ({
             return;
         }
 
+        while (true) {
+            const top = stage.getCurrentScene();
+            if (!top || top === 'gameplay' || top === 'main-menu') {
+                break;
+            }
+            stage.pop();
+        }
+
         isPaused = false;
+        loop.stop();
         gameContainer.visible = false;
         hudContainer.visible = false;
-        await stage.transitionTo('main-menu', undefined, { immediate: true });
+
+        try {
+            await stage.transitionTo('main-menu', undefined, { immediate: true });
+        } catch (error) {
+            runtimeLogger.error('Failed to transition to main menu', { error });
+        }
+
         renderStageSoon();
     };
 
-    const resumeFromPause = async () => {
+    const resumeFromPause = () => {
         if (!loop || !isPaused) {
             return;
         }
 
+        if (stage.getCurrentScene() === 'pause') {
+            stage.pop();
+        }
+
         isPaused = false;
-        await stage.transitionTo('gameplay');
         loop.start();
+        renderStageSoon();
     };
 
     const pauseGame = () => {
@@ -1311,17 +1363,28 @@ export const createGameRuntime = async ({
 
         isPaused = true;
         loop.stop();
-        void stage.transitionTo('pause', {
+
+        const payload = {
             score: scoringState.score,
             legendTitle: 'Power-Up Legend',
             legendLines: pauseLegendLines,
             onResume: () => {
-                void resumeFromPause();
+                resumeFromPause();
             },
             onQuit: () => {
                 void quitToMenu();
             },
-        });
+        } as const;
+
+        void stage.push('pause', payload)
+            .then(() => {
+                renderStageSoon();
+            })
+            .catch((error) => {
+                isPaused = false;
+                loop.start();
+                runtimeLogger.error('Failed to push pause overlay', { error });
+            });
     };
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
