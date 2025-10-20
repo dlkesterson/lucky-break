@@ -32,6 +32,8 @@ import { Transport, getContext } from 'tone';
 import { spinWheel, type Reward } from 'game/rewards';
 import { createRandomManager } from 'util/random';
 import { createGameInitializer } from './game-initializer';
+import { createMultiBallController } from './multi-ball-controller';
+import type { MultiBallController } from './multi-ball-controller';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -383,29 +385,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
         return { container, tiling };
     };
 
-    const preloadFonts = async (
-        report: (progress: { loaded: number; total: number }) => void,
-    ): Promise<void> => {
-        const total = fontDescriptors.length;
-
-        report({ loaded: 0, total });
-
-        const fontFaceSet = document.fonts;
-        if (!fontFaceSet) {
-            report({ loaded: total, total });
-            return;
-        }
-
-        let loaded = 0;
-        for (const descriptor of fontDescriptors) {
-            await fontFaceSet.load(descriptor);
-            loaded += 1;
-            report({ loaded, total });
-        }
-
-        await fontFaceSet.ready;
-        report({ loaded: total, total });
-    };
+    // preload-fonts module will be dynamically imported where used to keep main bundle small
 
     container.style.position = 'relative';
     container.style.margin = '0';
@@ -424,7 +404,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 report({ loaded: Math.min(totalSteps, value), total: totalSteps });
             };
 
-            await preloadFonts((progress) => {
+            const { preloadFonts } = await import('./preload-fonts');
+            await preloadFonts(fontDescriptors, (progress) => {
                 const fontsLoaded = Math.min(fontDescriptors.length, progress.loaded);
                 forward(Math.min(totalSteps - 1, fontsLoaded));
             });
@@ -526,7 +507,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             const brickMetadata = new Map<Body, BrickSpec>();
             const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
             const activePowerUps: FallingPowerUp[] = [];
-            const extraBalls = new Map<number, { body: Body; visual: Graphics }>();
+            let multiBallController: MultiBallController | null = null;
 
             const removeBodyVisual = (body: Body): void => {
                 const visual = visualBodies.get(body);
@@ -616,22 +597,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             };
 
             const removeExtraBallByBody = (body: Body) => {
-                const entry = extraBalls.get(body.id);
-                if (!entry) {
+                if (!multiBallController) {
                     return;
                 }
-
-                physics.remove(entry.body);
-                removeBodyVisual(entry.body);
-                extraBalls.delete(entry.body.id);
+                multiBallController.removeExtraBallByBody(body);
             };
 
             const clearExtraBalls = () => {
-                for (const entry of extraBalls.values()) {
-                    physics.remove(entry.body);
-                    removeBodyVisual(entry.body);
+                if (!multiBallController) {
+                    return;
                 }
-                extraBalls.clear();
+                multiBallController.clear();
             };
 
             const clearGhostEffect = (body: Body) => {
@@ -976,7 +952,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                     if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
                         const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
 
-                        if (extraBalls.has(ballBody.id)) {
+                        if (multiBallController?.isExtraBallBody(ballBody)) {
                             removeExtraBallByBody(ballBody);
                             return;
                         }
@@ -1329,6 +1305,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             gameContainer.addChild(ballGraphics);
             visualBodies.set(ball.physicsBody, ballGraphics);
 
+            multiBallController = createMultiBallController({
+                physics,
+                ball,
+                paddle,
+                ballGraphics,
+                gameContainer,
+                visualBodies,
+                drawBallVisual,
+                colors: themeBallColors,
+                multiplier: MULTI_BALL_MULTIPLIER,
+            });
+
             // Create visual paddle
             const paddleGraphics = new Graphics();
             drawPaddleVisual(paddleGraphics, paddle.width, paddle.height);
@@ -1416,108 +1404,18 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 void stage.transitionTo('game-over', { score: scoringState.score });
             }
 
-            const collectBallBodies = (): Body[] => {
-                return [
-                    ball.physicsBody,
-                    ...Array.from(extraBalls.values()).map((entry) => entry.body),
-                ];
-            };
-
-            const createAngularOffsets = (count: number): number[] => {
-                if (count <= 0) {
-                    return [];
-                }
-                if (count === 1) {
-                    return [0.25];
-                }
-
-                const spread = 0.35;
-                const midpoint = (count - 1) / 2;
-                return Array.from({ length: count }, (_, index) => (index - midpoint) * spread);
-            };
-
             const spawnExtraBalls = () => {
-                const sourceBodies = collectBallBodies();
-                const clonesPerBall = MULTI_BALL_MULTIPLIER - 1;
-
-                if (clonesPerBall <= 0 || sourceBodies.length === 0) {
+                if (!multiBallController) {
                     return;
                 }
-
-                sourceBodies.forEach((sourceBody) => {
-                    const baseVelocity = sourceBody.velocity;
-                    const baseSpeed = MatterVector.magnitude(baseVelocity);
-                    const hasMotion = baseSpeed > 0.01;
-                    const direction = hasMotion ? MatterVector.normalise(baseVelocity) : MatterVector.create(0, -1);
-                    const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
-                    const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
-                    const offsets = createAngularOffsets(clonesPerBall);
-
-                    offsets.forEach((offset, index) => {
-                        const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
-                        const velocity = MatterVector.mult(rotated, effectiveSpeed);
-                        const lateralNormal = { x: -rotated.y, y: rotated.x };
-                        const separation = (index - (offsets.length - 1) / 2) * 12;
-                        const spawnPosition = {
-                            x: sourceBody.position.x + lateralNormal.x * separation,
-                            y: sourceBody.position.y + lateralNormal.y * separation,
-                        };
-
-                        const extraBody = physics.factory.ball({
-                            radius: ball.radius,
-                            position: spawnPosition,
-                            restitution: 0.98,
-                        });
-
-                        MatterBody.setVelocity(extraBody, velocity);
-                        physics.add(extraBody);
-
-                        const extraVisual = new Graphics();
-                        drawBallVisual(extraVisual, ball.radius, {
-                            baseColor: mixColors(themeBallColors.core, 0xffc94c, 0.5),
-                            baseAlpha: 0.8,
-                            rimColor: themeBallColors.highlight,
-                            rimAlpha: 0.5,
-                            innerColor: themeBallColors.aura,
-                            innerAlpha: 0.4,
-                            innerScale: 0.5,
-                        });
-                        extraVisual.eventMode = 'none';
-                        gameContainer.addChild(extraVisual);
-                        visualBodies.set(extraBody, extraVisual);
-                        extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
-                    });
-                });
+                multiBallController.spawnExtraBalls({ currentLaunchSpeed });
             };
 
-            // Promote a surviving extra ball when the primary ball exits the playfield
             const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
-                const iterator = extraBalls.entries().next();
-                if (iterator.done) {
+                if (!multiBallController) {
                     return false;
                 }
-
-                const [extraId, extra] = iterator.value;
-                extraBalls.delete(extraId);
-
-                visualBodies.delete(expiredBody);
-                physics.remove(expiredBody);
-
-                if (extra.visual.parent) {
-                    extra.visual.parent.removeChild(extra.visual);
-                }
-                extra.visual.destroy();
-
-                ball.physicsBody = extra.body;
-                ball.isAttached = false;
-                ball.attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
-
-                visualBodies.set(extra.body, ballGraphics);
-                ballGraphics.x = extra.body.position.x;
-                ballGraphics.y = extra.body.position.y;
-                ballGraphics.rotation = extra.body.angle;
-
-                return true;
+                return multiBallController.promoteExtraBallToPrimary(expiredBody);
             };
 
             function handlePowerUpActivation(type: PowerUpType): void {
