@@ -8,25 +8,29 @@
 
 import type { InputManager, InputDebugState, InputType, Vector2 } from './contracts';
 import { PaddleLaunchManager } from './launch-manager';
-import { normalizeMouseEvent, normalizeTouchEvent } from 'util/input-helpers';
+import { normalizeMouseEvent } from 'util/input-helpers';
 
 export class GameInputManager implements InputManager {
     private container: HTMLElement | null = null;
     private canvas: HTMLCanvasElement | null = null;
     private mousePosition: Vector2 | null = null;
     private touchPosition: Vector2 | null = null;
+    private activeTouchId: number | null = null;
+    private suppressMouseInput = false;
     private keyboardState = new Map<string, boolean>();
     private activeInputs = new Set<InputType>();
     private launchManager = new PaddleLaunchManager();
     private previousPaddlePosition: Vector2 | null = null;
     private hasReceivedInput = false; // Track if user has moved mouse/touch since initialization
     private mouseEventTarget: HTMLElement | null = null;
+    private readonly nonPassiveTouchOptions: AddEventListenerOptions = { passive: false };
     private readonly mouseDownListener: (event: MouseEvent) => void;
     private readonly mouseMoveListener: (event: MouseEvent) => void;
     private readonly mouseUpListener: (event: MouseEvent) => void;
     private readonly touchStartListener: (event: TouchEvent) => void;
     private readonly touchMoveListener: (event: TouchEvent) => void;
     private readonly touchEndListener: (event: TouchEvent) => void;
+    private readonly touchCancelListener: (event: TouchEvent) => void;
     private readonly keyDownListener: (event: KeyboardEvent) => void;
     private readonly keyUpListener: (event: KeyboardEvent) => void;
     private readonly contextMenuListener: (event: Event) => void;
@@ -38,6 +42,7 @@ export class GameInputManager implements InputManager {
         this.touchStartListener = this.handleTouchStart.bind(this);
         this.touchMoveListener = this.handleTouchMove.bind(this);
         this.touchEndListener = this.handleTouchEnd.bind(this);
+        this.touchCancelListener = this.handleTouchCancel.bind(this);
         this.keyDownListener = this.handleKeyDown.bind(this);
         this.keyUpListener = this.handleKeyUp.bind(this);
         this.contextMenuListener = (event) => event.preventDefault();
@@ -53,6 +58,8 @@ export class GameInputManager implements InputManager {
         // Clear any stale positions from before initialization
         this.mousePosition = null;
         this.touchPosition = null;
+        this.activeTouchId = null;
+        this.suppressMouseInput = false;
         this.hasReceivedInput = false;
 
         this.setupEventListeners();
@@ -74,9 +81,10 @@ export class GameInputManager implements InputManager {
         }
 
         // Touch events
-        this.container.addEventListener('touchstart', this.touchStartListener);
-        this.container.addEventListener('touchmove', this.touchMoveListener);
+        this.container.addEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
+        this.container.addEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
         this.container.addEventListener('touchend', this.touchEndListener);
+        this.container.addEventListener('touchcancel', this.touchCancelListener);
 
         // Keyboard events
         document.addEventListener('keydown', this.keyDownListener);
@@ -92,9 +100,10 @@ export class GameInputManager implements InputManager {
         }
 
         if (this.container) {
-            this.container.removeEventListener('touchstart', this.touchStartListener);
-            this.container.removeEventListener('touchmove', this.touchMoveListener);
+            this.container.removeEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
+            this.container.removeEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
             this.container.removeEventListener('touchend', this.touchEndListener);
+            this.container.removeEventListener('touchcancel', this.touchCancelListener);
             this.container.removeEventListener('contextmenu', this.contextMenuListener);
         }
 
@@ -105,6 +114,9 @@ export class GameInputManager implements InputManager {
     }
 
     private handleMouseDown(event: MouseEvent): void {
+        if (this.suppressMouseInput) {
+            return;
+        }
         this.activeInputs.add('mouse');
         this.hasReceivedInput = true; // User has interacted
 
@@ -120,6 +132,9 @@ export class GameInputManager implements InputManager {
     }
 
     private handleMouseMove(event: MouseEvent): void {
+        if (this.suppressMouseInput) {
+            return;
+        }
         this.activeInputs.add('mouse');
         this.hasReceivedInput = true; // User has moved mouse
 
@@ -138,48 +153,56 @@ export class GameInputManager implements InputManager {
     }
 
     private handleTouchStart(event: TouchEvent): void {
+        if (event.cancelable) {
+            event.preventDefault();
+        }
         this.activeInputs.add('touch');
         this.hasReceivedInput = true; // User has touched
+        this.suppressMouseInput = true;
+        this.mousePosition = null;
 
         if (event.touches.length > 0) {
-            const touch = event.touches[0];
-
-            if (this.canvas) {
-                const normalized = normalizeTouchEvent(event, this.canvas);
-                if (normalized.touches.length > 0) {
-                    this.touchPosition = { x: normalized.touches[0].x, y: normalized.touches[0].y };
-                    this.launchManager.triggerTapLaunch(this.touchPosition);
-                }
-            } else {
-                // Fallback: use raw client coordinates
-                this.touchPosition = { x: touch.clientX, y: touch.clientY };
+            const primaryTouch = event.changedTouches[0] ?? event.touches[0];
+            if (primaryTouch) {
+                this.activeTouchId = primaryTouch.identifier;
+                this.touchPosition = this.getTouchPosition(primaryTouch);
                 this.launchManager.triggerTapLaunch(this.touchPosition);
             }
         }
     }
 
     private handleTouchMove(event: TouchEvent): void {
+        if (event.cancelable) {
+            event.preventDefault();
+        }
         this.activeInputs.add('touch');
         this.hasReceivedInput = true; // User has moved touch
 
-        if (event.touches.length > 0) {
-            const touch = event.touches[0];
-
-            if (this.canvas) {
-                const normalized = normalizeTouchEvent(event, this.canvas);
-                if (normalized.touches.length > 0) {
-                    this.touchPosition = { x: normalized.touches[0].x, y: normalized.touches[0].y };
-                }
-            } else {
-                // Fallback: use raw client coordinates
-                this.touchPosition = { x: touch.clientX, y: touch.clientY };
-            }
+        const activeTouch = this.getActiveTouch(event.touches);
+        if (activeTouch) {
+            this.activeTouchId = activeTouch.identifier;
+            this.touchPosition = this.getTouchPosition(activeTouch);
         }
     }
 
     private handleTouchEnd(event: TouchEvent): void {
+        if (event.touches.length === 0) {
+            this.activeTouchId = null;
+            this.suppressMouseInput = false;
+        } else {
+            const remaining = this.getActiveTouch(event.touches);
+            if (remaining) {
+                this.activeTouchId = remaining.identifier;
+                this.touchPosition = this.getTouchPosition(remaining);
+            }
+        }
+    }
+
+    private handleTouchCancel(event: TouchEvent): void {
         void event;
-        // Touch end doesn't remove from active inputs as touch is still available
+        this.activeTouchId = null;
+        this.suppressMouseInput = false;
+        this.touchPosition = null;
     }
 
     private handleKeyDown(event: KeyboardEvent): void {
@@ -270,6 +293,39 @@ export class GameInputManager implements InputManager {
         this.canvas = null;
         this.mousePosition = null;
         this.touchPosition = null;
+        this.activeTouchId = null;
+        this.suppressMouseInput = false;
         this.hasReceivedInput = false;
+    }
+
+    private getTouchPosition(touch: Touch): Vector2 {
+        if (this.canvas) {
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = rect.width !== 0 ? this.canvas.width / rect.width : 1;
+            const scaleY = rect.height !== 0 ? this.canvas.height / rect.height : 1;
+
+            return {
+                x: (touch.clientX - rect.left) * scaleX,
+                y: (touch.clientY - rect.top) * scaleY,
+            };
+        }
+
+        return { x: touch.clientX, y: touch.clientY };
+    }
+
+    private getActiveTouch(touches: TouchList): Touch | null {
+        if (touches.length === 0) {
+            return null;
+        }
+
+        if (this.activeTouchId !== null) {
+            for (const touch of Array.from(touches)) {
+                if (touch.identifier === this.activeTouchId) {
+                    return touch;
+                }
+            }
+        }
+
+        return touches[0] ?? null;
     }
 }

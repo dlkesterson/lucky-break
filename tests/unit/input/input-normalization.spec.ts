@@ -135,6 +135,67 @@ describe('Input Normalization', () => {
             const debugState = inputManager.getDebugState();
             expect(debugState.activeInputs).toContain('touch');
         });
+
+        it('should keep paddle target in sync while dragging on touch devices', () => {
+            const initialTouch = new Touch({
+                identifier: 5,
+                target: mockContainer,
+                clientX: 120,
+                clientY: 140,
+            });
+
+            mockContainer.dispatchEvent(new TouchEvent('touchstart', {
+                touches: [initialTouch],
+                changedTouches: [initialTouch],
+                targetTouches: [initialTouch],
+                bubbles: true,
+                cancelable: true,
+            }));
+
+            expect(inputManager.getPaddleTarget()).toEqual({ x: 120, y: 140 });
+
+            // Synthetic mouse events emitted by touch interactions should be ignored while touch is active
+            mockContainer.dispatchEvent(new MouseEvent('mousemove', {
+                clientX: 360,
+                clientY: 180,
+                bubbles: true,
+            }));
+
+            expect(inputManager.getPaddleTarget()).toEqual({ x: 120, y: 140 });
+
+            const moveTouch = new Touch({
+                identifier: 5,
+                target: mockContainer,
+                clientX: 260,
+                clientY: 180,
+            });
+
+            mockContainer.dispatchEvent(new TouchEvent('touchmove', {
+                touches: [moveTouch],
+                changedTouches: [moveTouch],
+                targetTouches: [moveTouch],
+                bubbles: true,
+                cancelable: true,
+            }));
+
+            expect(inputManager.getPaddleTarget()).toEqual({ x: 260, y: 180 });
+
+            mockContainer.dispatchEvent(new TouchEvent('touchend', {
+                touches: [],
+                changedTouches: [moveTouch],
+                targetTouches: [],
+                bubbles: true,
+                cancelable: true,
+            }));
+
+            mockContainer.dispatchEvent(new MouseEvent('mousemove', {
+                clientX: 280,
+                clientY: 220,
+                bubbles: true,
+            }));
+
+            expect(inputManager.getPaddleTarget()).toEqual({ x: 280, y: 220 });
+        });
     });
 
     describe('Keyboard Input', () => {
