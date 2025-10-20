@@ -59,6 +59,7 @@ import { createGameInitializer } from './game-initializer';
 import { createMultiBallController } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, type Reward } from 'game/rewards';
+import { smoothTowards } from 'util/input-helpers';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
 
@@ -139,6 +140,8 @@ const POWER_UP_RADIUS = 16;
 const POWER_UP_FALL_SPEED = 6;
 const POWER_UP_DURATION = 6;
 const STARFIELD_SCROLL_SPEED = { x: 8, y: 4 } as const;
+const PADDLE_SMOOTH_RESPONSIVENESS = 16;
+const PADDLE_SNAP_THRESHOLD = 0.75;
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -1089,11 +1092,18 @@ export const createGameRuntime = async ({
 
         if (paddleTarget) {
             const pf = stage.toPlayfield(paddleTarget);
-            const targetX = pf.x;
             const halfPaddleWidth = paddle.width / 2;
-            const clampedX = Math.max(halfPaddleWidth, Math.min(targetX, PLAYFIELD_WIDTH - halfPaddleWidth));
-            MatterBody.setPosition(paddle.physicsBody, { x: clampedX, y: paddle.physicsBody.position.y });
-            paddle.position.x = clampedX;
+            const desiredX = Math.max(halfPaddleWidth, Math.min(pf.x, PLAYFIELD_WIDTH - halfPaddleWidth));
+            const currentX = paddle.physicsBody.position.x;
+            const smoothedX = smoothTowards(currentX, desiredX, deltaSeconds, {
+                responsiveness: PADDLE_SMOOTH_RESPONSIVENESS,
+                snapThreshold: PADDLE_SNAP_THRESHOLD,
+            });
+            const nextX = Math.max(halfPaddleWidth, Math.min(smoothedX, PLAYFIELD_WIDTH - halfPaddleWidth));
+            MatterBody.setPosition(paddle.physicsBody, { x: nextX, y: paddle.physicsBody.position.y });
+            paddle.position.x = nextX;
+        } else {
+            paddle.position.x = paddle.physicsBody.position.x;
         }
 
         paddle.position.y = paddle.physicsBody.position.y;

@@ -10,6 +10,7 @@ import {
     normalizeKeyboardEvent,
     normalizeMouseEvent,
     normalizeTouchEvent,
+    smoothTowards,
 } from 'util/input-helpers';
 
 const createCanvas = (): HTMLCanvasElement => {
@@ -129,5 +130,21 @@ describe('input helpers', () => {
             getPaddleTarget({ leftPressed: false, rightPressed: false, touchX: 400, launchRequested: false }, 800, 100),
         ).toEqual({ x: 400, y: 0 });
         expect(getPaddleTarget({ leftPressed: false, rightPressed: false, launchRequested: false }, 800, 100)).toBeNull();
+    });
+
+    it('smoothTowards eases towards the target when delta is small', () => {
+        const eased = smoothTowards(0, 100, 1 / 60, { responsiveness: 12 });
+        expect(eased).toBeGreaterThan(0);
+        expect(eased).toBeLessThan(100);
+    });
+
+    it('smoothTowards snaps when within the configured threshold', () => {
+        const snapped = smoothTowards(99.6, 100, 1 / 120, { responsiveness: 12, snapThreshold: 0.75 });
+        expect(snapped).toBe(100);
+    });
+
+    it('smoothTowards converges to target for large delta', () => {
+        const converged = smoothTowards(-50, 50, 0.5, { responsiveness: 12 });
+        expect(converged).toBeCloseTo(50, 3);
     });
 });

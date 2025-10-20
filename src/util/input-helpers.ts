@@ -165,3 +165,41 @@ export function getPaddleTarget(inputState: InputState, screenWidth: number, pad
 
     return null;
 }
+
+const DEFAULT_SMOOTH_RESPONSIVENESS = 18;
+const DEFAULT_SNAP_THRESHOLD = 0.5;
+
+export interface SmoothTowardsOptions {
+    readonly responsiveness?: number;
+    readonly snapThreshold?: number;
+}
+
+/**
+ * Exponential smoothing helper for responsive yet eased movement.
+ */
+export function smoothTowards(
+    current: number,
+    target: number,
+    deltaSeconds: number,
+    options: SmoothTowardsOptions = {},
+): number {
+    const responsiveness = Math.max(0, options.responsiveness ?? DEFAULT_SMOOTH_RESPONSIVENESS);
+    const snapThreshold = options.snapThreshold ?? DEFAULT_SNAP_THRESHOLD;
+
+    if (!Number.isFinite(current) || !Number.isFinite(target)) {
+        return target;
+    }
+
+    if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0 || responsiveness === 0) {
+        return target;
+    }
+
+    const t = 1 - Math.exp(-responsiveness * deltaSeconds);
+    const next = current + (target - current) * t;
+
+    if (Math.abs(target - next) <= snapThreshold) {
+        return target;
+    }
+
+    return next;
+}
