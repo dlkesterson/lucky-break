@@ -83,6 +83,8 @@ const createGameInitializerMock = vi.hoisted(() =>
         const renderStageSoon = vi.fn();
         const musicDirector = {
             setState: vi.fn(),
+            getState: vi.fn(() => null),
+            setEnabled: vi.fn(),
             dispose: vi.fn(),
         };
         initializerState.instances.push({
@@ -835,7 +837,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
         });
 
         expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
@@ -860,7 +861,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
         });
 
         expect(toneState.resumeMock).not.toHaveBeenCalled();
@@ -886,7 +886,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
         });
 
         expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
@@ -906,7 +905,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
         });
 
         try {
@@ -934,7 +932,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
             onAudioBlocked,
         });
 
@@ -958,7 +955,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
             onAudioBlocked,
         });
 
@@ -981,7 +977,6 @@ describe('createGameRuntime', () => {
                 container,
                 random: makeRandomManager(),
                 replayBuffer: makeReplayBuffer(),
-                starfieldTexture: null,
             }),
         ).rejects.toBe(unexpectedError);
 
@@ -996,7 +991,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer: makeReplayBuffer(),
-            starfieldTexture: null,
         });
 
         const disposeSpy = initializerState.instances[0]?.dispose;
@@ -1015,7 +1009,6 @@ describe('createGameRuntime', () => {
             container,
             random: makeRandomManager(),
             replayBuffer,
-            starfieldTexture: null,
         });
 
         const stageInstance = initializerState.instances[0]?.stage;

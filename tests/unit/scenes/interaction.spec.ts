@@ -125,6 +125,7 @@ const createSceneHarness = (): SceneTestHarness => {
     const musicDirector: MusicDirector = {
         setState: vi.fn(),
         getState: vi.fn().mockReturnValue(null),
+        setEnabled: vi.fn(),
         dispose: vi.fn(),
     };
 

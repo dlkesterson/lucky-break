@@ -70,6 +70,7 @@ export interface MusicDirectorOptions {
 export interface MusicDirector {
     readonly setState: (state: MusicState) => void;
     readonly getState: () => MusicState | null;
+    readonly setEnabled: (enabled: boolean) => void;
     readonly dispose: () => void;
 }
 
@@ -266,6 +267,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
 
     let disposed = false;
     let initialized = false;
+    let enabled = true;
     let currentBase: BaseLayerId = 'calm';
     const baseLevels: Record<BaseLayerId, number> = { calm: 0, intense: 0 };
     let melodyLevel = 0;
@@ -334,6 +336,15 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         melodyLevel = melodyTargetLevel;
         currentBase = baseKey;
         initialized = true;
+    };
+
+    const silenceLayers = (time: number) => {
+        for (const key of ['calm', 'intense'] as const) {
+            baseLayers[key].rampTo(0, time, crossfadeSeconds);
+            baseLevels[key] = 0;
+        }
+        melodyLayer.rampTo(0, time, melodyFadeSeconds);
+        melodyLevel = 0;
     };
 
     const updateBaseLayer = (target: BaseLayerId, level: number) => {
@@ -414,6 +425,11 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             combo: normalizedCombo,
         };
 
+        if (!enabled) {
+            lastState = { ...normalizedState };
+            return;
+        }
+
         if (!initialized) {
             applyInitialState(normalizedState);
             lastState = { ...normalizedState };
@@ -445,6 +461,31 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         lastState = { ...normalizedState };
     };
 
+    const setEnabled: MusicDirector['setEnabled'] = (value) => {
+        if (disposed || enabled === value) {
+            return;
+        }
+
+        enabled = value;
+
+        if (!value) {
+            cancelTransition('base');
+            cancelTransition('melody');
+            pendingBaseTarget = null;
+            pendingBaseLevel = 0;
+            pendingMelodyLevel = null;
+            const start = now();
+            silenceLayers(start);
+            initialized = false;
+            return;
+        }
+
+        pendingBaseTarget = null;
+        pendingBaseLevel = 0;
+        pendingMelodyLevel = null;
+        initialized = false;
+    };
+
     const dispose: MusicDirector['dispose'] = () => {
         if (disposed) {
             return;
@@ -463,6 +504,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     return {
         setState,
         getState,
+        setEnabled,
         dispose,
     };
 };

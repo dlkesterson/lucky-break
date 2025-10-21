@@ -836,6 +836,7 @@ export const createGameRuntime = async ({
             loop.stop();
         }
 
+        musicDirector.setEnabled(true);
         random.reset();
         const activeSeed = random.seed();
         sessionElapsedSeconds = 0;
@@ -921,6 +922,7 @@ export const createGameRuntime = async ({
         loop?.stop();
         pendingReward = null;
         activateReward(null);
+        musicDirector.setEnabled(false);
 
         void stage.push('game-over', { score: scoringState.score })
             .then(() => {
