@@ -127,7 +127,10 @@ const levelMocks = vi.hoisted(() => ({
     getLevelSpecMock: vi.fn(),
     getPresetLevelCountMock: vi.fn(),
     getLevelDifficultyMultiplierMock: vi.fn(),
-    remixLevelMock: vi.fn((spec: unknown, _loopCount: number) => spec),
+    remixLevelMock: vi.fn((spec: unknown, loopCount: number) => {
+        void loopCount;
+        return spec;
+    }),
 }));
 
 vi.mock('util/levels', () => ({
@@ -211,11 +214,11 @@ const createPhysics = () => {
     };
 };
 
-type TestLayout = {
-    bricks: Array<{ row: number; col: number; x: number; y: number; hp: number }>;
+interface TestLayout {
+    bricks: { row: number; col: number; x: number; y: number; hp: number }[];
     breakableCount: number;
     spec: { powerUpChanceMultiplier?: number };
-};
+}
 
 const createRuntime = (options: {
     layout: TestLayout;

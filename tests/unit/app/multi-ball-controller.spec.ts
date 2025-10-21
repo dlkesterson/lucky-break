@@ -65,12 +65,14 @@ vi.mock('pixi.js', () => {
     };
 });
 
-let setVelocity: ReturnType<typeof vi.fn>;
+const matterMocks = vi.hoisted(() => ({
+    setVelocity: vi.fn((body: any, velocity: { x: number; y: number }) => {
+        body.velocity = { ...velocity };
+    }),
+}));
 
 vi.mock('matter-js', () => {
-    const setVelocity = vi.fn((body: any, velocity: { x: number; y: number }) => {
-        body.velocity = { ...velocity };
-    });
+    const { setVelocity } = matterMocks;
     const magnitude = (vector: { x: number; y: number }) => Math.hypot(vector.x, vector.y);
     const normalise = (vector: { x: number; y: number }) => {
         const length = magnitude(vector);
@@ -104,7 +106,7 @@ import { Body as MatterBody, type Body } from 'matter-js';
 import { createMultiBallController } from 'app/multi-ball-controller';
 import { mixColors } from 'render/playfield-visuals';
 
-const setVelocityMock = vi.mocked(MatterBody.setVelocity);
+ const matterBodyMock = vi.mocked(MatterBody);
 
 const createBody = (id: number, position: { x: number; y: number }, velocity: { x: number; y: number }) => ({
     id,
@@ -119,7 +121,7 @@ describe('createMultiBallController', () => {
     let paddle: any;
     let ballGraphics: any;
     let gameContainer: any;
-    let visualBodies: Map<any, any>;
+    let visualBodies: Map<Body, any>;
     let drawBallVisual: ReturnType<typeof vi.fn>;
     let colors: any;
     let multiplier: number;
@@ -154,11 +156,12 @@ describe('createMultiBallController', () => {
         paddle = { height: 24 };
         ballGraphics = new Graphics();
         gameContainer = new Container();
-        visualBodies = new Map();
+    visualBodies = new Map<Body, any>();
         drawBallVisual = vi.fn();
         colors = { core: 0x112233, aura: 0x445566, highlight: 0x778899 };
         multiplier = 3;
-        setVelocityMock.mockClear();
+    matterBodyMock.setVelocity.mockClear();
+    matterMocks.setVelocity.mockClear();
     });
 
     it('spawns extra balls with cloned visuals and velocity', () => {
@@ -168,7 +171,7 @@ describe('createMultiBallController', () => {
             paddle,
             ballGraphics,
             gameContainer,
-            visualBodies: visualBodies as unknown as Map<Body, any>,
+            visualBodies,
             drawBallVisual,
             colors,
             multiplier,
@@ -178,7 +181,7 @@ describe('createMultiBallController', () => {
 
         expect(physics.factory.ball).toHaveBeenCalledTimes(2);
         expect(physics.add).toHaveBeenCalledTimes(2);
-        expect(setVelocityMock).toHaveBeenCalledTimes(2);
+        expect(matterBodyMock.setVelocity).toHaveBeenCalledTimes(2);
         expect(drawBallVisual).toHaveBeenCalledTimes(2);
         expect(gameContainer.children).toHaveLength(2);
         expect(controller.count()).toBe(2);
@@ -195,10 +198,10 @@ describe('createMultiBallController', () => {
             innerScale: 0.5,
         });
 
-        const createdBodies = Array.from(visualBodies.keys()) as any[];
+        const createdBodies = Array.from(visualBodies.keys());
         expect(createdBodies).toHaveLength(2);
         createdBodies.forEach((bodyLike) => {
-            expect(controller.isExtraBallBody(bodyLike as unknown as Body)).toBe(true);
+            expect(controller.isExtraBallBody(bodyLike)).toBe(true);
             expect(visualBodies.get(bodyLike)?.parent).toBe(gameContainer);
         });
     });
@@ -210,7 +213,7 @@ describe('createMultiBallController', () => {
             paddle,
             ballGraphics,
             gameContainer,
-            visualBodies: visualBodies as unknown as Map<Body, any>,
+            visualBodies,
             drawBallVisual,
             colors,
             multiplier,
@@ -241,7 +244,7 @@ describe('createMultiBallController', () => {
             paddle,
             ballGraphics,
             gameContainer,
-            visualBodies: visualBodies as unknown as Map<Body, any>,
+            visualBodies,
             drawBallVisual,
             colors,
             multiplier: 1,
@@ -251,7 +254,7 @@ describe('createMultiBallController', () => {
         controller.spawnExtraBalls({ currentLaunchSpeed: 10 });
         expect(physics.factory.ball).not.toHaveBeenCalled();
 
-        expect(controller.promoteExtraBallToPrimary(ball.physicsBody as unknown as Body)).toBe(false);
+        expect(controller.promoteExtraBallToPrimary(ball.physicsBody)).toBe(false);
         expect(physics.remove).not.toHaveBeenCalled();
     });
 
@@ -262,26 +265,26 @@ describe('createMultiBallController', () => {
             paddle,
             ballGraphics,
             gameContainer,
-            visualBodies: visualBodies as unknown as Map<Body, any>,
+            visualBodies,
             drawBallVisual,
             colors,
             multiplier,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 8 });
-        const [firstExtra, secondExtra] = Array.from(visualBodies.keys()) as any[];
+        const [firstExtra, secondExtra] = Array.from(visualBodies.keys());
         physics.remove.mockClear();
 
-        controller.removeExtraBallByBody(firstExtra as unknown as Body);
+        controller.removeExtraBallByBody(firstExtra);
 
         expect(physics.remove).toHaveBeenCalledWith(expect.objectContaining({ id: firstExtra.id }));
-        expect(controller.isExtraBallBody(firstExtra as unknown as Body)).toBe(false);
+        expect(controller.isExtraBallBody(firstExtra)).toBe(false);
         expect(controller.count()).toBe(1);
 
         controller.clear();
 
         expect(controller.count()).toBe(0);
-        expect(controller.isExtraBallBody(secondExtra as unknown as Body)).toBe(false);
+        expect(controller.isExtraBallBody(secondExtra)).toBe(false);
         expect(visualBodies.size).toBe(0);
         expect(gameContainer.children).toHaveLength(0);
     });

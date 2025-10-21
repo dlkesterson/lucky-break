@@ -212,21 +212,22 @@ describe('createMusicDirector', () => {
 
     it('falls back when transport scheduling fails and normalizes state', () => {
         const actions: RecordedAction[] = [];
-        const behaviorQueue: Array<{ type: 'throw' } | { type: 'nan' } | { type: 'handle'; value: number }> = [
+        const behaviorQueue: ({ type: 'throw' } | { type: 'nan' } | { type: 'handle'; value: number })[] = [
             { type: 'throw' },
             { type: 'handle', value: 42 },
             { type: 'nan' },
             { type: 'handle', value: 99 },
             { type: 'handle', value: 77 },
         ];
-        const scheduledCallbacks: Array<(time: number) => void> = [];
+        const scheduledCallbacks: ((time: number) => void)[] = [];
 
-        const scheduleOnce = vi.fn((callback: (time: number) => void, _when: number | string) => {
+        const scheduleOnce = vi.fn((callback: (time: number) => void, when: number | string) => {
             const behavior = behaviorQueue.shift() ?? { type: 'handle', value: 101 };
             if (behavior.type === 'throw') {
                 throw new Error('boom');
             }
             scheduledCallbacks.push(callback);
+            void when;
             if (behavior.type === 'nan') {
                 return Number.NaN;
             }

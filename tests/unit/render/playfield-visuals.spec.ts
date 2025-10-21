@@ -127,7 +127,7 @@ import {
 
 import { Graphics, FillGradient, TilingSprite, Texture } from 'pixi.js';
 
-const getCommands = (value: unknown) => (value as { commands: Array<{ type: string; payload?: any }> }).commands;
+const getCommands = (value: unknown) => (value as { commands: { type: string; payload?: any }[] }).commands;
 
 describe('render/playfield-visuals', () => {
     it('mixes colors with clamping', () => {

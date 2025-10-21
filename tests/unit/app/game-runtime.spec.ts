@@ -90,7 +90,7 @@ vi.mock('./game-initializer', () => ({
 vi.mock('tone', () => {
     const resumeMock = vi.fn(() => {
         const result = toneState.resumeImpl();
-        if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        if (typeof result === 'object' && result !== null && 'then' in result && typeof (result as PromiseLike<unknown>).then === 'function') {
             return Promise.resolve(result).finally(() => {
                 toneState.contextState = 'running';
             });
@@ -100,7 +100,7 @@ vi.mock('tone', () => {
     });
     const transportStartMock = vi.fn(() => {
         const result = toneState.startImpl();
-        if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        if (typeof result === 'object' && result !== null && 'then' in result && typeof (result as PromiseLike<unknown>).then === 'function') {
             return Promise.resolve(result).finally(() => {
                 toneState.transportState = 'started';
             });
@@ -125,7 +125,9 @@ vi.mock('tone', () => {
     }
 
     class MockPlayer {
-        constructor(_options: unknown) { }
+        constructor(options: unknown) {
+            void options;
+        }
         sync() {
             return this;
         }
@@ -135,13 +137,17 @@ vi.mock('tone', () => {
     }
 
     class MockVolume {
-        constructor(_value: number) { }
+        constructor(value: number) {
+            void value;
+        }
         connect = vi.fn();
         dispose = vi.fn();
     }
 
     class MockPanner {
-        constructor(_value: number) { }
+        constructor(value: number) {
+            void value;
+        }
         connect = vi.fn();
         toDestination = vi.fn();
         pan = {
@@ -150,12 +156,12 @@ vi.mock('tone', () => {
         dispose = vi.fn();
     }
 
-    type MockTonePlayer = {
+    interface MockTonePlayer {
         playbackRate: number;
         volume: { value: number };
         start: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
-    };
+    }
 
     class MockPlayers {
         private readonly players: Record<string, MockTonePlayer>;
@@ -586,7 +592,12 @@ vi.mock('pixi.js', () => {
     }
 
     class MockFillGradient {
-        constructor(_x0: number, _y0: number, _x1: number, _y1: number) { }
+        constructor(x0: number, y0: number, x1: number, y1: number) {
+            void x0;
+            void y0;
+            void x1;
+            void y1;
+        }
         addColorStop = vi.fn();
     }
 
