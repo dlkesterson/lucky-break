@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMusicDirector, type MusicLayerFactory } from 'audio/music-director';
 
 interface RecordedAction {
@@ -208,5 +208,91 @@ describe('createMusicDirector', () => {
         director.dispose();
         expect(transport.getClearedCount()).toBe(1);
         expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(3);
+    });
+
+    it('falls back when transport scheduling fails and normalizes state', () => {
+        const actions: RecordedAction[] = [];
+        const behaviorQueue: Array<{ type: 'throw' } | { type: 'nan' } | { type: 'handle'; value: number }> = [
+            { type: 'throw' },
+            { type: 'handle', value: 42 },
+            { type: 'nan' },
+            { type: 'handle', value: 99 },
+            { type: 'handle', value: 77 },
+        ];
+        const scheduledCallbacks: Array<(time: number) => void> = [];
+
+        const scheduleOnce = vi.fn((callback: (time: number) => void, _when: number | string) => {
+            const behavior = behaviorQueue.shift() ?? { type: 'handle', value: 101 };
+            if (behavior.type === 'throw') {
+                throw new Error('boom');
+            }
+            scheduledCallbacks.push(callback);
+            if (behavior.type === 'nan') {
+                return Number.NaN;
+            }
+            return behavior.value;
+        });
+
+        const clear = vi.fn(() => {
+            throw new Error('clear boom');
+        });
+
+        const transport = {
+            scheduleOnce,
+            clear,
+            nextSubdivision: vi.fn(() => Number.NaN),
+        };
+
+        const now = vi.fn(() => 123);
+
+        const director = createMusicDirector({
+            transport,
+            now,
+            crossfadeSeconds: 0.5,
+            melodyFadeSeconds: 0.3,
+            comboBoostRate: 0.2,
+            comboBoostCap: 0.6,
+            layerFactory: createLayerFactory(actions),
+        });
+
+        director.setState({ lives: 3, combo: 0 });
+        actions.length = 0;
+
+        director.setState({ lives: 2, combo: 4 });
+        const baseFallbackRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(baseFallbackRamp?.time).toBe(toPrecision(123));
+        actions.length = 0;
+
+        director.setState({ lives: 1, combo: 12 });
+        const melodyBoostCallback = scheduledCallbacks.shift();
+        melodyBoostCallback?.(Infinity);
+        const melodyBoostRamp = actions.find((entry) => entry.layer === 'melody' && entry.type === 'ramp');
+        expect(melodyBoostRamp?.time).toBe(toPrecision(123));
+        actions.length = 0;
+
+        director.setState({ lives: 1, combo: 0 });
+        const baseCallback = scheduledCallbacks.shift();
+        baseCallback?.(Infinity);
+        const baseRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(baseRamp?.time).toBe(toPrecision(123));
+        baseCallback?.(10);
+        const repeatedRamp = actions.filter((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(repeatedRamp.some((entry) => entry.time === toPrecision(10))).toBe(true);
+        const melodyCallback = scheduledCallbacks.shift();
+        melodyCallback?.(10);
+        const melodyRamp = actions.find((entry) => entry.layer === 'melody' && entry.time === toPrecision(10));
+        expect(melodyRamp).toBeDefined();
+        actions.length = 0;
+
+        director.setState({ lives: 3, combo: Number.NaN });
+
+        const snapshot = director.getState();
+        expect(snapshot).not.toBeNull();
+        const mutated = snapshot ? { ...snapshot, combo: 999 } : null;
+        expect(mutated?.combo).toBe(999);
+        expect(director.getState()?.combo).not.toBe(999);
+
+        director.dispose();
+        expect(clear).toHaveBeenCalled();
     });
 });

@@ -4,6 +4,8 @@ import {
     getLevelDifficultyMultiplier,
     getLevelSpec,
     getPresetLevelCount,
+    getLevelDebugInfo,
+    isLoopedLevel,
     remixLevel,
 } from 'util/levels';
 
@@ -44,5 +46,24 @@ describe('remixLevel', () => {
     it('increases difficulty multiplier after each preset loop', () => {
         const presetCount = getPresetLevelCount();
         expect(getLevelDifficultyMultiplier(presetCount)).toBeGreaterThan(1);
+    });
+
+    it('reports looped status via debug info helper', () => {
+        const presetCount = getPresetLevelCount();
+        const loopedIndex = presetCount + 2;
+        const info = getLevelDebugInfo(loopedIndex);
+
+        expect(info.levelIndex).toBe(loopedIndex);
+        expect(info.presetIndex).toBe(loopedIndex % presetCount);
+        expect(info.isLooped).toBe(true);
+        expect(info.loopCount).toBe(1);
+        expect(info.difficultyMultiplier).toBeCloseTo(getLevelDifficultyMultiplier(loopedIndex));
+        expect(info.spec).toEqual(getLevelSpec(loopedIndex));
+    });
+
+    it('identifies looped levels based on preset count', () => {
+        const presetCount = getPresetLevelCount();
+        expect(isLoopedLevel(presetCount - 1)).toBe(false);
+        expect(isLoopedLevel(presetCount)).toBe(true);
     });
 });
