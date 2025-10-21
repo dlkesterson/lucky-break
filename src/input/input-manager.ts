@@ -74,8 +74,8 @@ export class GameInputManager implements InputManager {
         this.keyDownListener = this.handleKeyDown.bind(this);
         this.keyUpListener = this.handleKeyUp.bind(this);
         this.contextMenuListener = (event) => event.preventDefault();
-    this.gamepadConnectedListener = this.handleGamepadConnected.bind(this);
-    this.gamepadDisconnectedListener = this.handleGamepadDisconnected.bind(this);
+        this.gamepadConnectedListener = this.handleGamepadConnected.bind(this);
+        this.gamepadDisconnectedListener = this.handleGamepadDisconnected.bind(this);
     }
 
     initialize(container: HTMLElement): void {
