@@ -11,6 +11,12 @@ export interface ComputeViewportFitOptions {
     readonly contentHeight: number;
 }
 
+export interface ResolveViewportSizeOptions {
+    readonly container: Element | null;
+    readonly fallbackWidth: number;
+    readonly fallbackHeight: number;
+}
+
 export const computeViewportFit = ({
     containerWidth,
     containerHeight,
@@ -48,5 +54,38 @@ export const computeViewportFit = ({
         scale,
         offsetX,
         offsetY,
+    };
+};
+
+export const resolveViewportSize = ({
+    container,
+    fallbackWidth,
+    fallbackHeight,
+}: ResolveViewportSizeOptions): { width: number; height: number } => {
+    const safeFallbackWidth = Number.isFinite(fallbackWidth) ? Math.max(0, fallbackWidth) : 0;
+    const safeFallbackHeight = Number.isFinite(fallbackHeight) ? Math.max(0, fallbackHeight) : 0;
+
+    if (!container) {
+        return {
+            width: Math.round(safeFallbackWidth),
+            height: Math.round(safeFallbackHeight),
+        };
+    }
+
+    try {
+        const rect = container.getBoundingClientRect();
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+
+        if (width > 0 && height > 0) {
+            return { width, height };
+        }
+    } catch {
+        // Ignore measurement errors and fall back to defaults.
+    }
+
+    return {
+        width: Math.round(safeFallbackWidth),
+        height: Math.round(safeFallbackHeight),
     };
 };

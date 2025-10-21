@@ -1,4 +1,5 @@
 import { Assets, Texture } from 'pixi.js';
+import { loadSoundbank, prefetchSoundbankAssets, countSoundbankAssets } from 'audio/soundbank';
 import { GameTheme } from 'render/theme';
 import { createRandomManager } from 'util/random';
 
@@ -39,7 +40,7 @@ const configureContainer = (container: HTMLElement): void => {
 
 const loadFonts = async (descriptors: readonly string[], report: (loaded: number) => void): Promise<void> => {
     const { preloadFonts } = await import('./preload-fonts');
-    await preloadFonts(descriptors, (progress) => report(Math.min(descriptors.length, progress.loaded)));
+    await preloadFonts([...descriptors], (progress) => report(progress.loaded));
 };
 
 export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreakHandle {
@@ -69,14 +70,43 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
         container,
         autoStart: true,
         loadAssets: async (reportProgress) => {
-            const totalSteps = fontDescriptors.length + 1;
-            const forward = (loaded: number) => reportProgress({ loaded, total: totalSteps });
+            const soundbank = await loadSoundbank();
+            const audioAssetCount = countSoundbankAssets(soundbank);
+            const totalSteps = fontDescriptors.length + audioAssetCount + 1;
 
-            await loadFonts(fontDescriptors, (loaded) => forward(Math.min(totalSteps - 1, loaded)));
-            forward(totalSteps - 1);
+            let completed = 0;
+            const pushProgress = () => reportProgress({ loaded: completed, total: totalSteps });
+            pushProgress();
+
+            const advance = (delta: number) => {
+                if (delta <= 0) {
+                    return;
+                }
+                completed += delta;
+                pushProgress();
+            };
+
+            let fontLoaded = 0;
+            await loadFonts(fontDescriptors, (loadedCount) => {
+                const clamped = Math.min(fontDescriptors.length, Math.max(0, loadedCount));
+                const delta = clamped - fontLoaded;
+                if (delta > 0) {
+                    fontLoaded += delta;
+                    advance(delta);
+                }
+            });
+
+            let audioLoaded = 0;
+            await prefetchSoundbankAssets(soundbank, ({ loaded }) => {
+                const delta = loaded - audioLoaded;
+                if (delta > 0) {
+                    audioLoaded += delta;
+                    advance(delta);
+                }
+            });
 
             starfieldTexture = await Assets.load<Texture>(STARFIELD_TEXTURE_DEF);
-            forward(totalSteps);
+            advance(1);
         },
         onStart: async () => {
             runtime = await createGameRuntime({

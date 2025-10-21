@@ -1,6 +1,12 @@
 import type { RandomSource } from 'util/random';
 
-export type RewardType = 'sticky-paddle' | 'double-points' | 'ghost-brick';
+export type RewardType =
+    | 'sticky-paddle'
+    | 'double-points'
+    | 'ghost-brick'
+    | 'multi-ball'
+    | 'slow-time'
+    | 'wide-paddle';
 
 interface BaseReward {
     readonly type: RewardType;
@@ -21,7 +27,28 @@ export interface GhostBrickReward extends BaseReward {
     readonly ghostCount: number;
 }
 
-export type Reward = StickyPaddleReward | DoublePointsReward | GhostBrickReward;
+export interface MultiBallReward extends BaseReward {
+    readonly type: 'multi-ball';
+    readonly extraBalls: number;
+}
+
+export interface SlowTimeReward extends BaseReward {
+    readonly type: 'slow-time';
+    readonly timeScale: number;
+}
+
+export interface WidePaddleReward extends BaseReward {
+    readonly type: 'wide-paddle';
+    readonly widthMultiplier: number;
+}
+
+export type Reward =
+    | StickyPaddleReward
+    | DoublePointsReward
+    | GhostBrickReward
+    | MultiBallReward
+    | SlowTimeReward
+    | WidePaddleReward;
 
 interface WheelSegment {
     readonly weight: number;
@@ -52,7 +79,31 @@ const WHEEL_SEGMENTS: readonly WheelSegment[] = [
         }),
     },
     {
-        weight: 0.8,
+        weight: 0.85,
+        create: () => ({
+            type: 'wide-paddle',
+            duration: 18,
+            widthMultiplier: 1.85,
+        }),
+    },
+    {
+        weight: 0.78,
+        create: () => ({
+            type: 'multi-ball',
+            duration: 8,
+            extraBalls: 2,
+        }),
+    },
+    {
+        weight: 0.72,
+        create: () => ({
+            type: 'slow-time',
+            duration: 6,
+            timeScale: 0.5,
+        }),
+    },
+    {
+        weight: 0.65,
         create: () => ({
             type: 'ghost-brick',
             duration: 10,

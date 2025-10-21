@@ -27,6 +27,12 @@ const describeReward = (reward: Reward): string => {
             return `Ghost ${reward.ghostCount} Bricks`;
         case 'sticky-paddle':
             return 'Sticky Paddle Boost';
+        case 'multi-ball':
+            return `Multi Ball +${reward.extraBalls}`;
+        case 'slow-time':
+            return `Slow Time ${Math.round((1 - reward.timeScale) * 100)}%`; // approx slowdown
+        case 'wide-paddle':
+            return `Wide Paddle ×${reward.widthMultiplier.toFixed(2)}`;
         default:
             return 'Mystery Reward';
     }

@@ -76,21 +76,21 @@ export interface MusicDirector {
 const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
     calm: {
         id: 'calm',
-        url: new URL('../../assets/073_low-drums.wav', import.meta.url).href,
+        url: new URL('../../assets/samples/073_low-drums.wav', import.meta.url).href,
         baseLevel: 0.68,
         fadeInSeconds: 0.4,
         fadeOutSeconds: 0.4,
     },
     intense: {
         id: 'intense',
-        url: new URL('../../assets/092_crunchy-empires-hiphop.wav', import.meta.url).href,
+        url: new URL('../../assets/samples/092_crunchy-empires-hiphop.wav', import.meta.url).href,
         baseLevel: 0.9,
         fadeInSeconds: 0.3,
         fadeOutSeconds: 0.25,
     },
     melody: {
         id: 'melody',
-        url: new URL('../../assets/092_funkiclassic2.wav', import.meta.url).href,
+        url: new URL('../../assets/samples/092_funkiclassic2.wav', import.meta.url).href,
         baseLevel: 0.8,
         fadeInSeconds: 0.45,
         fadeOutSeconds: 0.35,

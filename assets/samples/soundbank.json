@@ -1,0 +1,45 @@
+{
+  "loops": [
+    {
+      "id": "calm",
+      "url": "./073_low-drums.wav",
+      "category": "music",
+      "bpm": 73,
+      "gain": 0.68
+    },
+    {
+      "id": "intense",
+      "url": "./092_crunchy-empires-hiphop.wav",
+      "category": "music",
+      "bpm": 92,
+      "gain": 0.9
+    },
+    {
+      "id": "melody",
+      "url": "./092_funkiclassic2.wav",
+      "category": "music",
+      "bpm": 92,
+      "gain": 0.8
+    }
+  ],
+  "sfx": [
+    {
+      "id": "brick-hit-low",
+      "url": "./bass-poweron.wav",
+      "category": "sfx",
+      "gain": 0.7
+    },
+    {
+      "id": "brick-hit-mid",
+      "url": "./double-acoustic-bassnote.wav",
+      "category": "sfx",
+      "gain": 0.75
+    },
+    {
+      "id": "brick-hit-high",
+      "url": "./eurobas.wav",
+      "category": "sfx",
+      "gain": 0.8
+    }
+  ]
+}

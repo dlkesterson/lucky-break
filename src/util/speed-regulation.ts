@@ -7,6 +7,15 @@
 
 import { Vector, Body } from 'matter-js';
 
+export interface AdaptiveSpeedConfig {
+    /** Combo count increase required before applying the next speed step */
+    readonly comboStep?: number;
+    /** Percentage gain per combo step (e.g. 0.05 = +5%) */
+    readonly multiplierPerStep?: number;
+    /** Hard cap for the adaptive multiplier (defaults to maxSpeed / baseSpeed) */
+    readonly maxMultiplier?: number;
+}
+
 export interface SpeedRegulationConfig {
     /** Base speed to maintain (target speed) */
     readonly baseSpeed: number;
@@ -15,6 +24,8 @@ export interface SpeedRegulationConfig {
 }
 
 const EPSILON = 1e-6;
+const DEFAULT_COMBO_STEP = 8;
+const DEFAULT_MULTIPLIER_PER_STEP = 0.05;
 
 /**
  * Regulate ball speed to stay within configured bounds
@@ -88,4 +99,34 @@ export function getSpeedDebugInfo(
         isTooFast: speed > config.maxSpeed,
         isWithinRange: speed >= config.baseSpeed && speed <= config.maxSpeed,
     };
+}
+
+/**
+ * Calculate base speed scaled by combo-driven adaptive rules.
+ */
+export function getAdaptiveBaseSpeed(
+    baseSpeed: number,
+    maxSpeed: number,
+    combo: number,
+    config: AdaptiveSpeedConfig = {},
+): number {
+    if (baseSpeed <= 0) {
+        return 0;
+    }
+
+    const step = Math.max(1, config.comboStep ?? DEFAULT_COMBO_STEP);
+    const perStep = config.multiplierPerStep ?? DEFAULT_MULTIPLIER_PER_STEP;
+    const maxMultiplier = Math.max(1, config.maxMultiplier ?? maxSpeed / baseSpeed);
+
+    if (combo <= 0 || perStep <= 0) {
+        return Math.min(baseSpeed, maxSpeed);
+    }
+
+    const stepsReached = Math.floor(combo / step);
+    if (stepsReached <= 0) {
+        return Math.min(baseSpeed, maxSpeed);
+    }
+
+    const comboMultiplier = Math.min(1 + stepsReached * perStep, maxMultiplier);
+    return Math.min(baseSpeed * comboMultiplier, maxSpeed);
 }

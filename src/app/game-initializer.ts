@@ -10,8 +10,9 @@ import {
 } from 'audio/scheduler';
 import { createSfxRouter, type SfxRouter } from 'audio/sfx';
 import { createMusicDirector, type MusicDirector } from 'audio/music-director';
+import { loadSoundbank, requireSoundbankEntry } from 'audio/soundbank';
 import { createSubject, type Subject } from 'util/observable';
-import { computeViewportFit } from 'render/viewport';
+import { resolveViewportSize } from 'render/viewport';
 import { Players, Panner, Volume, Transport, getContext } from 'tone';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
@@ -119,13 +120,15 @@ export const createGameInitializer = async ({
         throw error;
     });
 
+    const soundbank = await loadSoundbank();
+
     const stage = await createStage({ parent: container, theme: GameTheme });
     stage.layers.playfield.sortableChildren = true;
     stage.layers.effects.sortableChildren = true;
 
     const canvas = stage.canvas;
-    canvas.style.width = '100vw';
-    canvas.style.height = '100vh';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     canvas.style.position = 'absolute';
     canvas.style.top = '0';
     canvas.style.left = '0';
@@ -147,7 +150,26 @@ export const createGameInitializer = async ({
             }
         },
     });
-    const musicDirector = createMusicDirector({ transport: Transport });
+    const calmLoop = requireSoundbankEntry(soundbank, 'calm');
+    const intenseLoop = requireSoundbankEntry(soundbank, 'intense');
+    const melodyLoop = requireSoundbankEntry(soundbank, 'melody');
+    const musicDirector = createMusicDirector({
+        transport: Transport,
+        layers: {
+            calm: {
+                url: calmLoop.url,
+                baseLevel: calmLoop.gain ?? 0.68,
+            },
+            intense: {
+                url: intenseLoop.url,
+                baseLevel: intenseLoop.gain ?? 0.9,
+            },
+            melody: {
+                url: melodyLoop.url,
+                baseLevel: melodyLoop.gain ?? 0.8,
+            },
+        },
+    });
     musicDirector.setState({ lives: 3, combo: 0 });
 
     const toDecibels = (gain: number): number => {
@@ -162,11 +184,12 @@ export const createGameInitializer = async ({
         return Math.max(0.5, Math.min(2, rate));
     };
 
-    const brickSampleUrls = {
-        'brick-hit-low': new URL('../../assets/bass-poweron.wav', import.meta.url).href,
-        'brick-hit-mid': new URL('../../assets/double-acoustic-bassnote.wav', import.meta.url).href,
-        'brick-hit-high': new URL('../../assets/eurobas.wav', import.meta.url).href,
-    } as const;
+    const brickSampleIds = ['brick-hit-low', 'brick-hit-mid', 'brick-hit-high'] as const;
+    const brickSampleUrls = brickSampleIds.reduce<Record<string, string>>((acc, id) => {
+        const entry = requireSoundbankEntry(soundbank, id);
+        acc[id] = entry.url;
+        return acc;
+    }, {});
 
     const volume = new Volume(-6);
     const panner = new Panner(0);
@@ -280,7 +303,7 @@ export const createGameInitializer = async ({
     const router = createSfxRouter({
         bus,
         scheduler,
-        brickSampleIds: Object.keys(brickSampleUrls),
+        brickSampleIds,
         trigger: (descriptor) => {
             void ensureToneAudio().catch(console.warn);
             const players = brickPlayers;
@@ -321,23 +344,38 @@ export const createGameInitializer = async ({
         }
     };
 
-    const handleResize = () => {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        stage.resize({ width, height });
-
-        const fit = computeViewportFit({
-            containerWidth: width,
-            containerHeight: height,
-            contentWidth: playfieldSize.width,
-            contentHeight: playfieldSize.height,
+    const resolveViewportDimensions = () => {
+        const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : playfieldSize.width;
+        const fallbackHeight = typeof window !== 'undefined' ? window.innerHeight : playfieldSize.height;
+        return resolveViewportSize({
+            container,
+            fallbackWidth,
+            fallbackHeight,
         });
-
-        stage.layers.root.scale.set(fit.scale, fit.scale);
-        stage.layers.root.position.set(Math.round(fit.offsetX), Math.round(fit.offsetY));
     };
 
-    window.addEventListener('resize', handleResize);
+    const handleResize = () => {
+        const size = resolveViewportDimensions();
+        stage.resize(size);
+    };
+
+    let resizeObserver: ResizeObserver | null = null;
+    const windowResizeHandler = () => {
+        handleResize();
+    };
+
+    if (typeof ResizeObserver === 'function') {
+        resizeObserver = new ResizeObserver(() => {
+            handleResize();
+        });
+        resizeObserver.observe(container);
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('resize', windowResizeHandler);
+        window.addEventListener('orientationchange', windowResizeHandler);
+    }
+
     handleResize();
 
     const dispose = () => {
@@ -347,7 +385,11 @@ export const createGameInitializer = async ({
         audioState$.complete();
         musicDirector.dispose();
         cleanupAudioUnlock();
-        window.removeEventListener('resize', handleResize);
+        resizeObserver?.disconnect();
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('resize', windowResizeHandler);
+            window.removeEventListener('orientationchange', windowResizeHandler);
+        }
         brickPlayers?.dispose();
         brickPlayers = null;
         brickPlayersPromise = null;

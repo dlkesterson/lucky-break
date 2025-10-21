@@ -1,5 +1,6 @@
 import { Container, FillGradient, Graphics } from 'pixi.js';
 import { createSceneManager, type SceneManagerConfig, type SceneManagerHandle, type StageLayers } from './scene-manager';
+import { computeViewportFit } from './viewport';
 import { GameTheme, type GameThemeDefinition } from './theme';
 
 export type StageConfig = SceneManagerConfig;
@@ -382,6 +383,21 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
     const baseResize = baseHandle.resize.bind(baseHandle);
     const baseDestroy = baseHandle.destroy.bind(baseHandle);
 
+    const applyViewportFit = (size: { readonly width: number; readonly height: number }) => {
+        const width = Number.isFinite(size.width) ? Math.max(0, size.width) : 0;
+        const height = Number.isFinite(size.height) ? Math.max(0, size.height) : 0;
+
+        const fit = computeViewportFit({
+            containerWidth: width,
+            containerHeight: height,
+            contentWidth: baseHandle.designSize.width,
+            contentHeight: baseHandle.designSize.height,
+        });
+
+        root.scale.set(fit.scale, fit.scale);
+        root.position.set(Math.round(fit.offsetX), Math.round(fit.offsetY));
+    };
+
     const getResolution = () => {
         const renderer = baseHandle.app.renderer as { resolution?: number };
         return renderer.resolution ?? 1;
@@ -411,6 +427,8 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
         };
     };
 
+    applyViewportFit(baseHandle.designSize);
+
     const themedHandle: StageHandle = {
         ...baseHandle,
         backgroundLayer,
@@ -425,6 +443,7 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
         },
         resize: (size) => {
             baseResize(size);
+            applyViewportFit(size);
             redrawBackground();
             paintTransitionOverlay(overlayColor);
         },

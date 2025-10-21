@@ -17,8 +17,13 @@ const TAP_MAX_DURATION_MS = 250;
 const SWIPE_MIN_DISTANCE = 36;
 const MIN_AIM_DISTANCE = 8;
 const MIN_UPWARD_COMPONENT = 0.25;
+const GAMEPAD_DEADZONE = 0.2;
+const GAMEPAD_MOVE_SPEED_PX_PER_SECOND = 1600;
+const GAMEPAD_PRIMARY_AXIS_INDEX = 0;
+const GAMEPAD_LAUNCH_BUTTONS: readonly number[] = [0, 1, 6, 7];
 
 const cloneVector = (value: Vector2): Vector2 => ({ x: value.x, y: value.y });
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 export class GameInputManager implements InputManager {
     private container: HTMLElement | null = null;
@@ -39,6 +44,11 @@ export class GameInputManager implements InputManager {
     private longPressEligible = false;
     private longPressReady = false;
     private currentAimDirection: Vector2 | null = null;
+    private gamepadIndex: number | null = null;
+    private gamepadCursorX: number | null = null;
+    private gamepadCursorY: number | null = null;
+    private gamepadLastTimestampMs: number | null = null;
+    private gamepadLaunchHeld = false;
     private readonly nonPassiveTouchOptions: AddEventListenerOptions = { passive: false };
     private readonly mouseDownListener: (event: MouseEvent) => void;
     private readonly mouseMoveListener: (event: MouseEvent) => void;
@@ -50,6 +60,8 @@ export class GameInputManager implements InputManager {
     private readonly keyDownListener: (event: KeyboardEvent) => void;
     private readonly keyUpListener: (event: KeyboardEvent) => void;
     private readonly contextMenuListener: (event: Event) => void;
+    private readonly gamepadConnectedListener: (event: GamepadEvent) => void;
+    private readonly gamepadDisconnectedListener: (event: GamepadEvent) => void;
 
     constructor() {
         this.mouseDownListener = this.handleMouseDown.bind(this);
@@ -62,6 +74,8 @@ export class GameInputManager implements InputManager {
         this.keyDownListener = this.handleKeyDown.bind(this);
         this.keyUpListener = this.handleKeyUp.bind(this);
         this.contextMenuListener = (event) => event.preventDefault();
+    this.gamepadConnectedListener = this.handleGamepadConnected.bind(this);
+    this.gamepadDisconnectedListener = this.handleGamepadDisconnected.bind(this);
     }
 
     initialize(container: HTMLElement): void {
@@ -78,6 +92,12 @@ export class GameInputManager implements InputManager {
         this.activeTouchId = null;
         this.suppressMouseInput = false;
         this.hasReceivedInput = false;
+        this.gamepadIndex = null;
+        const { width, height } = this.getCanvasSize();
+        this.gamepadCursorX = width > 0 ? width / 2 : null;
+        this.gamepadCursorY = height > 0 ? Math.max(0, height * 0.85) : null;
+        this.gamepadLastTimestampMs = null;
+        this.gamepadLaunchHeld = false;
 
         this.setupEventListeners();
     }
@@ -106,6 +126,11 @@ export class GameInputManager implements InputManager {
         // Keyboard events
         document.addEventListener('keydown', this.keyDownListener);
         document.addEventListener('keyup', this.keyUpListener);
+
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('gamepadconnected', this.gamepadConnectedListener);
+            window.addEventListener('gamepaddisconnected', this.gamepadDisconnectedListener);
+        }
     }
 
     private teardownEventListeners(): void {
@@ -126,6 +151,11 @@ export class GameInputManager implements InputManager {
 
         document.removeEventListener('keydown', this.keyDownListener);
         document.removeEventListener('keyup', this.keyUpListener);
+
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('gamepadconnected', this.gamepadConnectedListener);
+            window.removeEventListener('gamepaddisconnected', this.gamepadDisconnectedListener);
+        }
 
         this.mouseEventTarget = null;
     }
@@ -274,6 +304,8 @@ export class GameInputManager implements InputManager {
     }
 
     getPaddleTarget(): Vector2 | null {
+        this.updateGamepadState();
+
         // Don't return mouse/touch position until user has actually moved after initialization
         if (!this.hasReceivedInput) {
             return null;
@@ -286,6 +318,11 @@ export class GameInputManager implements InputManager {
 
         if (this.touchPosition) {
             return { ...this.touchPosition };
+        }
+
+        const gamepadTarget = this.getGamepadTarget();
+        if (gamepadTarget) {
+            return { ...gamepadTarget };
         }
 
         // Keyboard control - simulate left/right movement from arrow keys
@@ -303,6 +340,7 @@ export class GameInputManager implements InputManager {
     }
 
     shouldLaunch(): boolean {
+        this.updateGamepadState();
         return this.launchManager.isLaunchPending();
     }
 
@@ -355,6 +393,7 @@ export class GameInputManager implements InputManager {
     }
 
     getDebugState(): InputDebugState {
+        this.updateGamepadState();
         return {
             activeInputs: Array.from(this.activeInputs),
             mousePosition: this.mousePosition,
@@ -380,6 +419,158 @@ export class GameInputManager implements InputManager {
         this.activeTouchId = null;
         this.suppressMouseInput = false;
         this.hasReceivedInput = false;
+        this.gamepadIndex = null;
+        this.gamepadCursorX = null;
+        this.gamepadCursorY = null;
+        this.gamepadLastTimestampMs = null;
+        this.gamepadLaunchHeld = false;
+    }
+
+    private updateGamepadState(): void {
+        const gamepad = this.readActiveGamepad();
+        if (!gamepad) {
+            this.gamepadLastTimestampMs = null;
+            this.gamepadLaunchHeld = false;
+            return;
+        }
+
+        const nowMs = this.getTimestamp();
+        const elapsedMs = this.gamepadLastTimestampMs !== null ? Math.max(0, nowMs - this.gamepadLastTimestampMs) : 0;
+        this.gamepadLastTimestampMs = nowMs;
+        const deltaSeconds = elapsedMs / 1000;
+
+        const { width, height } = this.getCanvasSize();
+        if (this.gamepadCursorX === null && width > 0) {
+            this.gamepadCursorX = width / 2;
+        }
+        if (this.gamepadCursorY === null && height > 0) {
+            this.gamepadCursorY = Math.max(0, height * 0.85);
+        }
+
+        const axisRaw = gamepad.axes[GAMEPAD_PRIMARY_AXIS_INDEX] ?? 0;
+        const axisValue = this.applyGamepadDeadZone(axisRaw);
+        if (axisValue !== 0) {
+            this.activeInputs.add('gamepad');
+            this.hasReceivedInput = true;
+
+            if (deltaSeconds > 0 && width > 0 && this.gamepadCursorX !== null) {
+                const deltaPixels = axisValue * GAMEPAD_MOVE_SPEED_PX_PER_SECOND * deltaSeconds;
+                this.gamepadCursorX = clamp(this.gamepadCursorX + deltaPixels, 0, width);
+            }
+        }
+
+        const launchPressed = this.isGamepadLaunchPressed(gamepad);
+        if (launchPressed) {
+            this.activeInputs.add('gamepad');
+            this.hasReceivedInput = true;
+        }
+
+        if (launchPressed && !this.gamepadLaunchHeld) {
+            this.triggerGamepadLaunch();
+        }
+
+        this.gamepadLaunchHeld = launchPressed;
+    }
+
+    private readActiveGamepad(): Gamepad | null {
+        if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
+            return null;
+        }
+
+        const gamepads = navigator.getGamepads();
+        if (!gamepads) {
+            return null;
+        }
+
+        if (this.gamepadIndex !== null) {
+            const existing = gamepads[this.gamepadIndex];
+            if (existing?.connected) {
+                return existing;
+            }
+        }
+
+        for (const candidate of Array.from(gamepads)) {
+            if (candidate?.connected) {
+                this.gamepadIndex = candidate.index;
+                return candidate;
+            }
+        }
+
+        this.gamepadIndex = null;
+        return null;
+    }
+
+    private handleGamepadConnected(event: GamepadEvent): void {
+        if (event.gamepad && Number.isInteger(event.gamepad.index)) {
+            this.gamepadIndex = event.gamepad.index;
+        }
+    }
+
+    private handleGamepadDisconnected(event: GamepadEvent): void {
+        if (this.gamepadIndex === event.gamepad.index) {
+            this.gamepadIndex = null;
+        }
+    }
+
+    private applyGamepadDeadZone(value: number): number {
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+
+        const magnitude = Math.abs(value);
+        if (magnitude < GAMEPAD_DEADZONE) {
+            return 0;
+        }
+
+        const adjusted = (magnitude - GAMEPAD_DEADZONE) / (1 - GAMEPAD_DEADZONE);
+        return value < 0 ? -adjusted : adjusted;
+    }
+
+    private isGamepadLaunchPressed(gamepad: Gamepad): boolean {
+        for (const index of GAMEPAD_LAUNCH_BUTTONS) {
+            const button = gamepad.buttons[index];
+            if (button?.pressed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private getGamepadTarget(): Vector2 | null {
+        if (this.gamepadCursorX === null) {
+            return null;
+        }
+
+        const { height } = this.getCanvasSize();
+        const y = this.gamepadCursorY ?? (height > 0 ? Math.max(0, height * 0.85) : 0);
+        return { x: this.gamepadCursorX, y };
+    }
+
+    private triggerGamepadLaunch(): void {
+        const target = this.getGamepadTarget() ?? this.mousePosition ?? this.touchPosition ?? this.getFallbackLaunchPosition();
+        this.launchManager.triggerTapLaunch(target, {
+            aimDirection: this.getDefaultLaunchDirection(),
+        });
+    }
+
+    private getFallbackLaunchPosition(): Vector2 {
+        const { width, height } = this.getCanvasSize();
+        return {
+            x: width > 0 ? width / 2 : 0,
+            y: height > 0 ? Math.max(0, height * 0.85) : 0,
+        };
+    }
+
+    private getCanvasSize(): { width: number; height: number } {
+        if (this.canvas) {
+            return { width: this.canvas.width, height: this.canvas.height };
+        }
+
+        if (this.container) {
+            return { width: this.container.clientWidth, height: this.container.clientHeight };
+        }
+
+        return { width: 0, height: 0 };
     }
 
     private scheduleLongPressCheck(): void {

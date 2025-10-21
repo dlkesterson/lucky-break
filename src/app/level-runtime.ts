@@ -1,4 +1,4 @@
-import { Graphics, Container } from 'pixi.js';
+import { Graphics, Container, Sprite } from 'pixi.js';
 import { Body as MatterBody, Bodies } from 'matter-js';
 import type { Body } from 'matter-js';
 import type { StageHandle } from 'render/stage';
@@ -11,7 +11,8 @@ import {
     remixLevel,
     type BrickSpec,
 } from 'util/levels';
-import { paintBrickVisual, computeBrickFillColor, mixColors } from 'render/playfield-visuals';
+import { mixColors } from 'render/playfield-visuals';
+import { createBrickTextureCache } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
 
@@ -59,6 +60,7 @@ export interface LevelRuntimeHandle {
     readonly brickVisualState: Map<Body, { baseColor: number; maxHp: number; currentHp: number }>;
     loadLevel(levelIndex: number): LevelLoadResult;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
+    updateBrickDamage(body: Body, currentHp: number): void;
     spawnPowerUp(type: PowerUpType, position: { readonly x: number; readonly y: number }): void;
     findPowerUp(body: Body): FallingPowerUp | null;
     removePowerUp(powerUp: FallingPowerUp): void;
@@ -88,11 +90,12 @@ export const createLevelRuntime = ({
     const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
+    const brickTextures = createBrickTextureCache(stage.app.renderer);
 
     const updateBrickLighting: LevelRuntimeHandle['updateBrickLighting'] = (ballPosition) => {
         brickVisualState.forEach((state, body) => {
             const visual = visualBodies.get(body);
-            if (!(visual instanceof Graphics)) {
+            if (!(visual instanceof Sprite)) {
                 return;
             }
 
@@ -110,6 +113,34 @@ export const createLevelRuntime = ({
                 visual.blendMode = 'normal';
             }
         });
+    };
+
+    const updateBrickDamage: LevelRuntimeHandle['updateBrickDamage'] = (body, currentHp) => {
+        const visual = visualBodies.get(body);
+        if (!(visual instanceof Sprite)) {
+            return;
+        }
+
+        const state = brickVisualState.get(body);
+        if (!state) {
+            return;
+        }
+
+        const safeHp = Math.max(0, Math.min(state.maxHp, Math.round(currentHp)));
+        state.currentHp = safeHp;
+
+        const texture = brickTextures.get({
+            baseColor: state.baseColor,
+            maxHp: state.maxHp,
+            currentHp: safeHp,
+            width: brickSize.width,
+            height: brickSize.height,
+        });
+
+        visual.texture = texture;
+        visual.alpha = brickLighting.restAlpha;
+        visual.tint = 0xffffff;
+        visual.blendMode = 'normal';
     };
 
     const clearBricks = () => {
@@ -158,11 +189,18 @@ export const createLevelRuntime = ({
 
             const paletteColor = rowColors[brickSpec.row % rowColors.length];
             const maxHp = Math.max(1, brickSpec.hp);
-            const initialColor = computeBrickFillColor(paletteColor, maxHp, maxHp);
-            const brickVisual = new Graphics();
-            paintBrickVisual(brickVisual, brickSize.width, brickSize.height, initialColor, 0, brickLighting.restAlpha);
+            const texture = brickTextures.get({
+                baseColor: paletteColor,
+                maxHp,
+                currentHp: maxHp,
+                width: brickSize.width,
+                height: brickSize.height,
+            });
+            const brickVisual = new Sprite(texture);
+            brickVisual.anchor.set(0.5);
             brickVisual.position.set(brickSpec.x, brickSpec.y);
             brickVisual.zIndex = 5;
+            brickVisual.alpha = brickLighting.restAlpha;
             brickVisual.eventMode = 'none';
             visualBodies.set(brick, brickVisual);
             stage.layers.playfield.addChild(brickVisual);
@@ -276,8 +314,9 @@ export const createLevelRuntime = ({
             body.isSensor = true;
 
             const visual = visualBodies.get(body);
-            const originalAlpha = visual instanceof Graphics ? visual.alpha : undefined;
-            if (visual instanceof Graphics) {
+            const isRenderable = visual instanceof Graphics || visual instanceof Sprite;
+            const originalAlpha = isRenderable ? visual.alpha : undefined;
+            if (isRenderable) {
                 visual.alpha = 0.35;
             }
 
@@ -286,7 +325,7 @@ export const createLevelRuntime = ({
                 remaining: duration,
                 restore: () => {
                     body.isSensor = originalSensor;
-                    if (visual instanceof Graphics && originalAlpha !== undefined) {
+                    if (isRenderable && originalAlpha !== undefined) {
                         visual.alpha = originalAlpha;
                     }
                 },
@@ -319,6 +358,7 @@ export const createLevelRuntime = ({
         brickVisualState,
         loadLevel,
         updateBrickLighting,
+        updateBrickDamage,
         spawnPowerUp,
         findPowerUp,
         removePowerUp,

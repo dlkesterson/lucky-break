@@ -1,7 +1,8 @@
 /**
  * Input handling module for paddle control and ball launch mechanics
  *
- * This module provides cross-platform input handling for mouse, keyboard, and touch
+ * This module provides cross-platform input handling for mouse, keyboard, touch,
+ * and gamepad
  * interactions, including paddle movement and launch trigger detection.
  */
 

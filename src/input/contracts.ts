@@ -95,4 +95,4 @@ export interface InputDebugState {
     launchPending: boolean;
 }
 
-export type InputType = 'mouse' | 'keyboard' | 'touch';
+export type InputType = 'mouse' | 'keyboard' | 'touch' | 'gamepad';

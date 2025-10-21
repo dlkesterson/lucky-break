@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo } from 'util/speed-regulation';
+import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo, getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { Bodies, Body, Vector } from 'matter-js';
 
 describe('speed-regulation', () => {
@@ -133,6 +133,23 @@ describe('speed-regulation', () => {
             expect(info.isTooSlow).toBe(true);
             expect(info.isTooFast).toBe(false);
             expect(info.isWithinRange).toBe(false);
+        });
+    });
+
+    describe('getAdaptiveBaseSpeed', () => {
+        it('should return base speed when combo below first step', () => {
+            const result = getAdaptiveBaseSpeed(8, 14, 7);
+            expect(result).toBe(8);
+        });
+
+        it('should increase base speed by 5 percent per combo step', () => {
+            const result = getAdaptiveBaseSpeed(8, 14, 16); // two steps at default config
+            expect(result).toBeCloseTo(8 * 1.1, 5);
+        });
+
+        it('should clamp adaptive speed to max speed', () => {
+            const result = getAdaptiveBaseSpeed(10, 12, 64); // large combo should cap at 12
+            expect(result).toBe(12);
         });
     });
 });

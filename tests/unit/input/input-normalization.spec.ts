@@ -6,7 +6,7 @@
  * Purpose: Test input normalization across mouse, keyboard, and touch
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GameInputManager } from 'input/input-manager';
 
 describe('Input Normalization', () => {
@@ -18,6 +18,14 @@ describe('Input Normalization', () => {
         mockContainer.style.width = '800px';
         mockContainer.style.height = '600px';
         document.body.appendChild(mockContainer);
+        Object.defineProperty(mockContainer, 'clientWidth', {
+            configurable: true,
+            get: () => 800,
+        });
+        Object.defineProperty(mockContainer, 'clientHeight', {
+            configurable: true,
+            get: () => 600,
+        });
 
         inputManager = new GameInputManager();
         inputManager.initialize(mockContainer);
@@ -195,6 +203,98 @@ describe('Input Normalization', () => {
             }));
 
             expect(inputManager.getPaddleTarget()).toEqual({ x: 280, y: 220 });
+        });
+    });
+
+    describe('Gamepad Input', () => {
+        let restoreNavigator: (() => void) | null = null;
+        let currentGamepads: (Gamepad | null)[] = [];
+
+        const createButton = (pressed = false): GamepadButton => ({
+            pressed,
+            touched: pressed,
+            value: pressed ? 1 : 0,
+        });
+
+        const createGamepad = (axes: number[], pressedButtons: readonly number[] = []): Gamepad => {
+            const buttons = Array.from({ length: 8 }, (_, index) =>
+                pressedButtons.includes(index) ? createButton(true) : createButton(false)
+            );
+
+            return {
+                id: 'Test Gamepad',
+                index: 0,
+                connected: true,
+                mapping: 'standard',
+                axes,
+                buttons,
+                timestamp: 0,
+                vibrationActuator: undefined,
+            } as unknown as Gamepad;
+        };
+
+        beforeEach(() => {
+            currentGamepads = [];
+            const nav = navigator as Navigator & { getGamepads?: () => (Gamepad | null)[] };
+            Object.defineProperty(nav, 'getGamepads', {
+                configurable: true,
+                value: vi.fn(() => currentGamepads),
+            });
+            restoreNavigator = () => {
+                delete (nav as { getGamepads?: () => (Gamepad | null)[] }).getGamepads;
+                restoreNavigator = null;
+            };
+        });
+
+        afterEach(() => {
+            restoreNavigator?.();
+        });
+
+        it('should translate analog stick input into paddle movement', () => {
+            const nowValues = [0, 16.67, 33.34];
+            let nowIndex = 0;
+            const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => {
+                const value = nowValues[Math.min(nowIndex, nowValues.length - 1)];
+                nowIndex += 1;
+                return value;
+            });
+
+            currentGamepads = [createGamepad([0.75, 0, 0, 0])];
+
+            // First poll establishes baseline and sets hasReceivedInput
+            inputManager.getPaddleTarget();
+
+            // Second poll applies movement with elapsed time
+            const target = inputManager.getPaddleTarget();
+            expect(target).not.toBeNull();
+            if (!target) {
+                throw new Error('Expected a paddle target for gamepad input');
+            }
+            expect(target.x).toBeGreaterThan(400);
+            expect(target.x).toBeLessThanOrEqual(800);
+
+            const debugState = inputManager.getDebugState();
+            expect(debugState.activeInputs).toContain('gamepad');
+
+            nowSpy.mockRestore();
+        });
+
+        it('should trigger launch when launch button is pressed', () => {
+            const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => 0);
+
+            currentGamepads = [createGamepad([0, 0, 0, 0])];
+
+            // Initial poll
+            inputManager.getPaddleTarget();
+
+            currentGamepads = [createGamepad([0, 0, 0, 0], [0])];
+
+            expect(inputManager.shouldLaunch()).toBe(true);
+            const intent = inputManager.consumeLaunchIntent();
+            expect(intent).not.toBeNull();
+            expect(intent?.trigger.type).toBe('tap');
+
+            nowSpy.mockRestore();
         });
     });
 

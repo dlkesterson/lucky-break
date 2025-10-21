@@ -27,7 +27,7 @@ export interface Rectangle {
 /**
  * Input types supported by the game
  */
-export type InputType = 'mouse' | 'keyboard' | 'touch';
+export type InputType = 'mouse' | 'keyboard' | 'touch' | 'gamepad';
 
 /**
  * Normalized input state for paddle control

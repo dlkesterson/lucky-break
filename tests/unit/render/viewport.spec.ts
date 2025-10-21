@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeViewportFit } from '../../../src/render/viewport';
+import { computeViewportFit, resolveViewportSize } from '../../../src/render/viewport';
 
 describe('computeViewportFit', () => {
     it('centers content for wider container', () => {
@@ -46,5 +46,57 @@ describe('computeViewportFit', () => {
             contentWidth: 0,
             contentHeight: 10,
         })).toThrowError(RangeError);
+    });
+});
+
+describe('resolveViewportSize', () => {
+    const createRect = (width: number, height: number): DOMRectReadOnly => ({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: height,
+        width,
+        height,
+        toJSON: () => ({}),
+    });
+
+    it('returns container bounds when available', () => {
+        const element = {
+            getBoundingClientRect: () => createRect(321.8, 480.3),
+        } as unknown as Element;
+
+        const result = resolveViewportSize({
+            container: element,
+            fallbackWidth: 100,
+            fallbackHeight: 100,
+        });
+
+        expect(result).toEqual({ width: 322, height: 480 });
+    });
+
+    it('falls back when container reports zero size', () => {
+        const element = {
+            getBoundingClientRect: () => createRect(0, 0),
+        } as unknown as Element;
+
+        const result = resolveViewportSize({
+            container: element,
+            fallbackWidth: 640,
+            fallbackHeight: 480,
+        });
+
+        expect(result).toEqual({ width: 640, height: 480 });
+    });
+
+    it('falls back when container missing', () => {
+        const result = resolveViewportSize({
+            container: null,
+            fallbackWidth: 320,
+            fallbackHeight: 180,
+        });
+
+        expect(result).toEqual({ width: 320, height: 180 });
     });
 });
