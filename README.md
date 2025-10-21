@@ -3,7 +3,7 @@
 # Lucky Break
 
 [![CI](https://github.com/dlkesterson/lucky-break/actions/workflows/ci.yml/badge.svg)](https://github.com/dlkesterson/lucky-break/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fdlkesterson.github.io%2Flucky-break%2Fcoverage-summary.json&label=coverage)](https://dlkesterson.github.io/lucky-break/coverage/)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fdlkesterson.github.io%2Flucky-break%2Fcoverage%2Fcoverage-summary.json&label=coverage)](https://dlkesterson.github.io/lucky-break/coverage/)
 
 Lucky Break is a browser-based brick breaker with a deterministic game loop, responsive input on every device, and reactive audio that ramps with the action.
 

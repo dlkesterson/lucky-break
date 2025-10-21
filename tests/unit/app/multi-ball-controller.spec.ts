@@ -106,7 +106,7 @@ import { Body as MatterBody, type Body } from 'matter-js';
 import { createMultiBallController } from 'app/multi-ball-controller';
 import { mixColors } from 'render/playfield-visuals';
 
- const matterBodyMock = vi.mocked(MatterBody);
+const matterBodyMock = vi.mocked(MatterBody);
 
 const createBody = (id: number, position: { x: number; y: number }, velocity: { x: number; y: number }) => ({
     id,
@@ -156,12 +156,12 @@ describe('createMultiBallController', () => {
         paddle = { height: 24 };
         ballGraphics = new Graphics();
         gameContainer = new Container();
-    visualBodies = new Map<Body, any>();
+        visualBodies = new Map<Body, any>();
         drawBallVisual = vi.fn();
         colors = { core: 0x112233, aura: 0x445566, highlight: 0x778899 };
         multiplier = 3;
-    matterBodyMock.setVelocity.mockClear();
-    matterMocks.setVelocity.mockClear();
+        matterBodyMock.setVelocity.mockClear();
+        matterMocks.setVelocity.mockClear();
     });
 
     it('spawns extra balls with cloned visuals and velocity', () => {

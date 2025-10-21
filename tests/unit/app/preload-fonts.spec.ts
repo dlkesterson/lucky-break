@@ -26,7 +26,7 @@ describe('preloadFonts', () => {
     });
 
     it('loads fonts sequentially and reports progress updates', async () => {
-    const pendingLoads: (() => void)[] = [];
+        const pendingLoads: (() => void)[] = [];
         const load = vi.fn((descriptor: string) => {
             expect(typeof descriptor).toBe('string');
             return new Promise<void>((resolve) => {
