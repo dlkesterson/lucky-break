@@ -7,7 +7,7 @@ import type { RandomSource } from './random';
  * Spawns temporary power-ups on brick breaks with visual and gameplay effects
  */
 
-export type PowerUpType = 'paddle-width' | 'ball-speed' | 'multi-ball' | 'sticky-paddle';
+export type PowerUpType = 'paddle-width' | 'ball-speed' | 'multi-ball' | 'sticky-paddle' | 'laser';
 
 export interface PowerUpEffect {
     /** Type of power-up */
@@ -53,7 +53,7 @@ export function shouldSpawnPowerUp(config: PowerUpConfig = {}, rng: RandomSource
  * @returns Random power-up type
  */
 export function selectRandomPowerUpType(rng: RandomSource = Math.random): PowerUpType {
-    const types: PowerUpType[] = ['paddle-width', 'ball-speed', 'multi-ball', 'sticky-paddle'];
+    const types: PowerUpType[] = ['paddle-width', 'ball-speed', 'multi-ball', 'sticky-paddle', 'laser'];
     return types[Math.floor(rng() * types.length)];
 }
 

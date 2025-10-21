@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('render/effects/filters', () => ({
+    createGlowFilter: vi.fn(),
+    createDistortionFilter: vi.fn(),
+}));
+
 vi.mock('pixi.js', async () => {
     class Container {
         public children: unknown[] = [];

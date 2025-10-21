@@ -18,9 +18,11 @@ const toneState = vi.hoisted(() => ({
 const createStageStub = () => {
     const makeLifecycleContainer = () => ({
         addChild: vi.fn(),
+        addChildAt: vi.fn(),
     });
 
-    const layers: Record<string, { addChild: ReturnType<typeof vi.fn> }> = {
+    const layers: Record<string, { addChild: ReturnType<typeof vi.fn>; addChildAt: ReturnType<typeof vi.fn> }> = {
+        root: makeLifecycleContainer(),
         playfield: makeLifecycleContainer(),
         effects: makeLifecycleContainer(),
         hud: makeLifecycleContainer(),
@@ -37,6 +39,15 @@ const createStageStub = () => {
         app: {
             renderer: {},
             render: vi.fn(),
+            stage: {
+                root: {
+                    addChildAt: vi.fn(),
+                },
+            },
+            screen: {
+                width: 800,
+                height: 600,
+            },
         },
         register: vi.fn(),
         transitionTo: vi.fn().mockResolvedValue(undefined),
@@ -446,6 +457,13 @@ vi.mock('scenes/pause', () => ({
     createPauseScene: vi.fn(() => createMockScene()),
 }));
 
+vi.mock('render/effects/starfield', () => ({
+    createStarfield: vi.fn(() => ({
+        children: [],
+    })),
+    updateStarfieldColor: vi.fn(),
+}));
+
 vi.mock('physics/ball-attachment', () => {
     class BallAttachmentController {
         createAttachedBall(position: { x: number; y: number }, options: { radius: number }) {
@@ -673,11 +691,6 @@ vi.mock('pixi.js', () => {
         }
     }
 
-    class MockGraphics extends MockContainer {
-        clear = vi.fn();
-        rect = vi.fn();
-        fill = vi.fn();
-    }
     class MockSprite extends MockContainer { }
     class MockTexture {
         static WHITE = new MockTexture();
@@ -715,7 +728,15 @@ vi.mock('pixi.js', () => {
 
     return {
         Container: MockContainer,
-        Graphics: MockGraphics,
+        Graphics: vi.fn(() => ({
+            beginFill: vi.fn().mockReturnThis(),
+            drawCircle: vi.fn().mockReturnThis(),
+            endFill: vi.fn().mockReturnThis(),
+            lineStyle: vi.fn().mockReturnThis(),
+            drawRect: vi.fn().mockReturnThis(),
+            addChild: vi.fn().mockReturnThis(),
+            destroy: vi.fn().mockReturnThis(),
+        })),
         Sprite: MockSprite,
         Texture: MockTexture,
         ColorMatrixFilter: MockColorMatrixFilter,

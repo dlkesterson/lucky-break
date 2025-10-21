@@ -1,4 +1,5 @@
 import { Application, Container, Sprite } from 'pixi.js';
+import { createGlowFilter, createDistortionFilter } from './effects/filters';
 
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
@@ -208,6 +209,10 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
 
     const root = app.stage;
     root.sortableChildren = true;
+
+    const glowFilter = createGlowFilter();
+    const distortionFilter = createDistortionFilter(app);
+    root.filters = [glowFilter, distortionFilter];
 
     const playfield = new Container();
     playfield.label = 'playfield';

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@pixi/filter-displacement':
+        specifier: ^7.4.3
+        version: 7.4.3(@pixi/core@7.4.3)
       '@pixi/filter-glow':
         specifier: ^5.2.1
         version: 5.2.1(@pixi/core@7.4.3)
@@ -868,6 +871,14 @@ packages:
 
   /@pixi/extensions@7.4.3:
     resolution: {integrity: sha512-FhoiYkHQEDYHUE7wXhqfsTRz6KxLXjuMbSiAwnLb9uG1vAgp6q6qd6HEsf4X30YaZbLFY8a4KY6hFZWjF+4Fdw==}
+    dev: false
+
+  /@pixi/filter-displacement@7.4.3(@pixi/core@7.4.3):
+    resolution: {integrity: sha512-ax+cFA2mEnKgqf9F8qInpv09GNWzjwnASLETpwPXzWBtlAlNCeHV2tCv3+SlMdEKUkwG9sA7AmjjjC2JBUyt+Q==}
+    peerDependencies:
+      '@pixi/core': 7.4.3
+    dependencies:
+      '@pixi/core': 7.4.3
     dev: false
 
   /@pixi/filter-glow@5.2.1(@pixi/core@7.4.3):
