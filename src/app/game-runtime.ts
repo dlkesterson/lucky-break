@@ -62,6 +62,7 @@ import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
 import type { GameSceneServices } from './scene-services';
+import { FeedbackManager } from 'render/effects/FeedbackManager';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
 const runtimeLogger = rootLogger.child('game-runtime');
@@ -423,6 +424,8 @@ export const createGameRuntime = async ({
     paddleLightHandle.container.alpha = 0.9;
     stage.addToLayer('effects', paddleLightHandle.container);
     paddleLight = paddleLightHandle;
+
+    const feedbackManager = new FeedbackManager(stage.app, stage.layers.effects);
 
     const ballController = new BallAttachmentController();
     const paddleController = new PaddleBodyController();
@@ -971,7 +974,8 @@ export const createGameRuntime = async ({
 
                 if (nextHp > 0) {
                     brickHealth.set(brick, nextHp);
-
+                    feedbackManager.createRipple(brick.position.x, brick.position.y);
+                    feedbackManager.startScreenShake(10, 5);
                     levelRuntime.updateBrickDamage(brick, nextHp);
 
                     bus.publish('BrickHit', {
@@ -992,6 +996,8 @@ export const createGameRuntime = async ({
                         speed: impactVelocity,
                     });
                 } else {
+                    feedbackManager.createDebris(brick.position.x, brick.position.y);
+                    feedbackManager.showVignette();
                     bus.publish('BrickBreak', {
                         sessionId,
                         row,
@@ -1072,6 +1078,7 @@ export const createGameRuntime = async ({
             if ((bodyA.label === 'ball' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'ball')) {
                 const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
                 const paddleBody = bodyA.label === 'paddle' ? bodyA : bodyB;
+                feedbackManager.createRipple(ballBody.position.x, ballBody.position.y);
                 const reflectionData = calculateReflectionData(ballBody.position.x, paddleBody.position.x, {
                     paddleWidth: paddle.width,
                     minSpeed: currentBaseSpeed,
@@ -1114,6 +1121,7 @@ export const createGameRuntime = async ({
             if ((bodyA.label === 'ball' && bodyB.label.startsWith('wall-')) || (bodyB.label === 'ball' && bodyA.label.startsWith('wall-'))) {
                 const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
                 const wallBody = bodyA.label === 'ball' ? bodyB : bodyA;
+                feedbackManager.createRipple(ballBody.position.x, ballBody.position.y);
                 const wallToSide: Record<string, 'left' | 'right' | 'top' | 'bottom'> = {
                     'wall-left': 'left',
                     'wall-right': 'right',
@@ -1199,6 +1207,39 @@ export const createGameRuntime = async ({
                 const entry = findCoin(coinBody);
                 if (entry) {
                     removeCoin(entry);
+                }
+            }
+        });
+    });
+
+    Events.on(physics.engine, 'collisionActive', (event: IEventCollision<Engine>) => {
+        event.pairs.forEach((pair) => {
+            const { bodyA, bodyB } = pair;
+
+            if ((bodyA.label === 'laser' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'laser')) {
+                const brick = bodyA.label === 'brick' ? bodyA : bodyB;
+                const laser = bodyA.label === 'laser' ? bodyA : bodyB;
+
+                physics.remove(laser);
+                removeBodyVisual(laser);
+
+                const currentHp = brickHealth.get(brick) ?? 1;
+                const nextHp = currentHp - 1;
+
+                if (nextHp > 0) {
+                    brickHealth.set(brick, nextHp);
+                    levelRuntime.updateBrickDamage(brick, nextHp);
+                } else {
+                    physics.remove(brick);
+                    removeBodyVisual(brick);
+                    brickHealth.delete(brick);
+                    brickMetadata.delete(brick);
+                    brickVisualState.delete(brick);
+
+                    if (session.snapshot().brickRemaining === 0) {
+                        session.completeRound();
+                        handleLevelComplete();
+                    }
                 }
             }
         });
@@ -1446,6 +1487,22 @@ export const createGameRuntime = async ({
         ballGlowPulse = Math.max(0, ballGlowPulse - deltaSeconds * 1.6);
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);
         comboRingPulse = Math.max(0, comboRingPulse - deltaSeconds * 1.05);
+
+        if (MatterVector.magnitude(ball.physicsBody.velocity) > 10) {
+            feedbackManager.createBallTrail(ballGraphics);
+        }
+
+        if (scoringState.combo > 0 && scoringState.combo % 5 === 0) {
+            feedbackManager.createShockwave(ball.physicsBody.position.x, ball.physicsBody.position.y);
+        }
+
+        if (powerUpManager.isActive('laser')) {
+            const laserBody = feedbackManager.createLaserBeam(paddle.physicsBody.position.x, paddle.physicsBody.position.y - 30);
+            physics.add(laserBody);
+        }
+
+        feedbackManager.updateStarfield(scoringState.combo);
+        feedbackManager.update(deltaSeconds);
     };
 
     loop = createGameLoop(
