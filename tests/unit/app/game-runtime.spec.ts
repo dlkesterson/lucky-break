@@ -52,6 +52,30 @@ const initializerState = vi.hoisted(() => ({
     instances: [] as any[],
 }));
 
+const powerUpManagerState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
+const inputManagerState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
+const paddleState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
+const ballState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
+const physicsWorldState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
+const launchControllerState = vi.hoisted(() => ({
+    instances: [] as any[],
+}));
+
 const createGameInitializerMock = vi.hoisted(() =>
     vi.fn(async (options: unknown) => {
         const stage = createStageStub();
@@ -234,18 +258,22 @@ vi.mock('render/theme', () => ({
 }));
 
 vi.mock('physics/world', () => ({
-    createPhysicsWorld: vi.fn(() => ({
-        factory: {
-            bounds: vi.fn(() => ({ label: 'bounds', position: { x: 0, y: 0 }, angle: 0 })),
-        },
-        add: vi.fn(),
-        remove: vi.fn(),
-        attachBallToPaddle: vi.fn(),
-        detachBallFromPaddle: vi.fn(),
-        updateBallAttachment: vi.fn(),
-        step: vi.fn(),
-        engine: {},
-    })),
+    createPhysicsWorld: vi.fn(() => {
+        const instance = {
+            factory: {
+                bounds: vi.fn(() => ({ label: 'bounds', position: { x: 0, y: 0 }, angle: 0 })),
+            },
+            add: vi.fn(),
+            remove: vi.fn(),
+            attachBallToPaddle: vi.fn(),
+            detachBallFromPaddle: vi.fn(),
+            updateBallAttachment: vi.fn(),
+            step: vi.fn(),
+            engine: {},
+        };
+        physicsWorldState.instances.push(instance);
+        return instance;
+    }),
 }));
 
 vi.mock('./loop', () => ({
@@ -370,13 +398,15 @@ vi.mock('physics/ball-attachment', () => {
                 velocity: { x: 0, y: 0 },
                 angle: 0,
             };
-            return {
+            const ball = {
                 physicsBody,
                 radius: options.radius,
                 isAttached: true,
                 attachmentOffset: { x: 0, y: 0 },
                 position: { ...position },
             };
+            ballState.instances.push(ball);
+            return ball;
         }
         updateAttachment = vi.fn();
     }
@@ -392,12 +422,14 @@ vi.mock('render/paddle-body', () => {
                 velocity: { x: 0, y: 0 },
                 angle: 0,
             };
-            return {
+            const paddle = {
                 physicsBody,
                 width: options.width,
                 height: options.height,
                 position: { ...position },
             };
+            paddleState.instances.push(paddle);
+            return paddle;
         }
         getPaddleCenter = vi.fn((paddle: { physicsBody: { position: { x: number; y: number } } }) => ({
             x: paddle.physicsBody.position.x,
@@ -409,6 +441,9 @@ vi.mock('render/paddle-body', () => {
 
 vi.mock('input/input-manager', () => {
     class GameInputManager {
+        constructor() {
+            inputManagerState.instances.push(this);
+        }
         initialize = vi.fn();
         resetLaunchTrigger = vi.fn();
         syncPaddlePosition = vi.fn();
@@ -421,6 +456,9 @@ vi.mock('input/input-manager', () => {
 
 vi.mock('physics/ball-launch', () => ({
     PhysicsBallLaunchController: class {
+        constructor() {
+            launchControllerState.instances.push(this);
+        }
         launch = vi.fn();
     },
 }));
@@ -460,6 +498,9 @@ vi.mock('./combo-milestones', () => ({
 
 vi.mock('util/power-ups', () => {
     class PowerUpManager {
+        constructor() {
+            powerUpManagerState.instances.push(this);
+        }
         #effects = new Map<string, { type: string; remainingTime: number }>();
         activate(type: string, options: { defaultDuration?: number }) {
             const remainingTime = options.defaultDuration ?? 0;
@@ -477,14 +518,14 @@ vi.mock('util/power-ups', () => {
         isActive(type: string) {
             return this.#effects.has(type);
         }
-        update(delta: number) {
+        update = vi.fn((delta: number) => {
             for (const entry of this.#effects.values()) {
                 entry.remainingTime = Math.max(0, entry.remainingTime - delta);
                 if (entry.remainingTime === 0) {
                     this.#effects.delete(entry.type);
                 }
             }
-        }
+        });
     }
     return {
         PowerUpManager,
@@ -730,6 +771,7 @@ vi.mock('util/log', () => ({
 }));
 
 import { createGameRuntime } from 'app/game-runtime';
+import { createGameplayScene } from 'scenes/gameplay';
 
 describe('createGameRuntime', () => {
     const makeRandomManager = () => ({
@@ -777,6 +819,12 @@ describe('createGameRuntime', () => {
         toneState.resumeMock.mockClear();
         toneState.transportStartMock.mockClear();
         initializerState.instances.length = 0;
+        powerUpManagerState.instances.length = 0;
+        inputManagerState.instances.length = 0;
+        paddleState.instances.length = 0;
+        ballState.instances.length = 0;
+        physicsWorldState.instances.length = 0;
+        launchControllerState.instances.length = 0;
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {
@@ -799,6 +847,79 @@ describe('createGameRuntime', () => {
         });
 
         handle.dispose();
+    });
+
+    it('skips Tone resume and transport start when audio is already running', async () => {
+        toneState.contextState = 'running';
+        toneState.transportState = 'started';
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+            starfieldTexture: null,
+        });
+
+        expect(toneState.resumeMock).not.toHaveBeenCalled();
+        expect(toneState.transportStartMock).not.toHaveBeenCalled();
+
+        handle.dispose();
+    });
+
+    it('handles synchronous Tone resume and transport responses', async () => {
+        toneState.resumeImpl = () => {
+            toneState.contextState = 'running';
+            return undefined as unknown as Promise<void>;
+        };
+        toneState.startImpl = () => {
+            toneState.transportState = 'started';
+            return undefined as unknown as Promise<void>;
+        };
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+            starfieldTexture: null,
+        });
+
+        expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
+        expect(toneState.transportStartMock).toHaveBeenCalledTimes(1);
+
+        handle.dispose();
+    });
+
+    it('continues initialization if Tone resume never settles', async () => {
+        vi.useFakeTimers();
+        toneState.resumeImpl = () => new Promise(() => {/* intentional no-op */ });
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const runtimePromise = createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+            starfieldTexture: null,
+        });
+
+        try {
+            await vi.advanceTimersByTimeAsync(250);
+            const handle = await runtimePromise;
+
+            expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
+            expect(toneState.transportStartMock).toHaveBeenCalledTimes(1);
+
+            handle.dispose();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('invokes onAudioBlocked when autoplay is prevented and continues initialization', async () => {
@@ -825,6 +946,48 @@ describe('createGameRuntime', () => {
         handle.dispose();
     });
 
+    it('invokes onAudioBlocked for autoplay errors identified by message', async () => {
+        const blockedError = new Error('Audio context was not allowed to start automatically.');
+        toneState.resumeImpl = () => Promise.reject(blockedError);
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const onAudioBlocked = vi.fn();
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+            starfieldTexture: null,
+            onAudioBlocked,
+        });
+
+        expect(onAudioBlocked).toHaveBeenCalledTimes(1);
+        expect(onAudioBlocked).toHaveBeenCalledWith(blockedError);
+        expect(toneState.transportStartMock).not.toHaveBeenCalled();
+
+        handle.dispose();
+    });
+
+    it('rethrows unexpected Tone resume errors', async () => {
+        const unexpectedError = new Error('Network failure');
+        toneState.resumeImpl = () => Promise.reject(unexpectedError);
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        await expect(
+            createGameRuntime({
+                container,
+                random: makeRandomManager(),
+                replayBuffer: makeReplayBuffer(),
+                starfieldTexture: null,
+            }),
+        ).rejects.toBe(unexpectedError);
+
+        expect(toneState.transportStartMock).not.toHaveBeenCalled();
+    });
+
     it('disposes initializer resources when handle is disposed', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
@@ -841,5 +1004,83 @@ describe('createGameRuntime', () => {
 
         handle.dispose();
         expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('executes gameplay update to advance physics, input, and replay state', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const replayBuffer = makeReplayBuffer();
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer,
+            starfieldTexture: null,
+        });
+
+        const stageInstance = initializerState.instances[0]?.stage;
+        expect(stageInstance).toBeDefined();
+        const stage = stageInstance!;
+
+        const registerCalls = stage.register.mock.calls as [
+            string,
+            (context: unknown) => unknown,
+            unknown?,
+        ][];
+        const gameplayRegistration = registerCalls.find(([name]) => name === 'gameplay');
+        expect(gameplayRegistration).toBeDefined();
+        const gameplayFactory = gameplayRegistration?.[1];
+        expect(gameplayFactory).toBeInstanceOf(Function);
+
+        gameplayFactory?.({} as never);
+
+        const gameplayMock = vi.mocked(createGameplayScene);
+        const gameplayOptions = gameplayMock.mock.calls.at(-1)?.[1] as { onUpdate: (delta: number) => void } | undefined;
+        expect(gameplayOptions?.onUpdate).toBeDefined();
+        const onUpdate = gameplayOptions!.onUpdate;
+
+        const powerManager = powerUpManagerState.instances[0];
+        const physicsWorld = physicsWorldState.instances[0];
+        const inputManager = inputManagerState.instances[0];
+        const launchController = launchControllerState.instances[0];
+        const paddle = paddleState.instances[0];
+        const ball = ballState.instances[0];
+
+        expect(powerManager).toBeDefined();
+        expect(physicsWorld).toBeDefined();
+        expect(inputManager).toBeDefined();
+        expect(launchController).toBeDefined();
+        expect(paddle).toBeDefined();
+        expect(ball).toBeDefined();
+
+        const paddleTarget = { x: 600, y: 680 };
+        inputManager!.getPaddleTarget.mockReturnValue(paddleTarget);
+        stage.toPlayfield.mockImplementation((point: { x: number; y: number }) => point);
+        inputManager!.shouldLaunch.mockReturnValue(true);
+        inputManager!.consumeLaunchIntent.mockReturnValue({ direction: { x: 0, y: -1 } });
+
+        const resetCallsBefore = inputManager!.resetLaunchTrigger.mock.calls.length;
+
+        onUpdate(0.016);
+
+        expect(powerManager!.update).toHaveBeenCalledWith(0.016);
+        expect(replayBuffer.markTime).toHaveBeenCalledTimes(1);
+        expect(replayBuffer.markTime.mock.calls[0]?.[0]).toBeCloseTo(0.016, 5);
+        expect(replayBuffer.recordPaddleTarget).toHaveBeenCalledTimes(1);
+        const [targetTime, targetPoint] = replayBuffer.recordPaddleTarget.mock.calls[0]!;
+        expect(targetTime).toBeCloseTo(0.016, 5);
+        expect(targetPoint).toEqual(paddleTarget);
+        expect(physicsWorld!.updateBallAttachment).toHaveBeenCalledWith(ball!.physicsBody, expect.objectContaining({ x: paddle!.physicsBody.position.x, y: paddle!.physicsBody.position.y }));
+        expect(inputManager!.syncPaddlePosition).toHaveBeenCalledWith(expect.objectContaining({ x: paddle!.physicsBody.position.x }));
+        expect(replayBuffer.recordLaunch).toHaveBeenCalledTimes(1);
+        expect(physicsWorld!.detachBallFromPaddle).toHaveBeenCalledWith(ball!.physicsBody);
+        expect(launchController!.launch).toHaveBeenCalledTimes(1);
+        const [, , launchSpeed] = launchController!.launch.mock.calls[0]!;
+        expect(launchSpeed).toBeCloseTo(9, 5);
+        expect(physicsWorld!.step).toHaveBeenCalledTimes(1);
+        expect(physicsWorld!.step.mock.calls[0]?.[0]).toBeCloseTo(16, 5);
+        expect(inputManager!.resetLaunchTrigger.mock.calls.length).toBe(resetCallsBefore + 1);
+
+        handle.dispose();
     });
 });

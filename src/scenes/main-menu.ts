@@ -1,7 +1,8 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
+import { GameTheme } from 'render/theme';
 
 export interface MainMenuSceneOptions {
     readonly title?: string;
@@ -12,6 +13,8 @@ export interface MainMenuSceneOptions {
 
 const DEFAULT_TITLE = 'Lucky Break';
 const DEFAULT_PROMPT = 'Tap anywhere to begin';
+
+const hexToNumber = (hex: string) => Number.parseInt(hex.replace('#', ''), 16);
 
 export const createMainMenuScene = (
     context: SceneContext<GameSceneServices>,
@@ -63,50 +66,71 @@ export const createMainMenuScene = (
 
             const { width, height } = context.designSize;
 
+            const overlay = new Graphics();
+            overlay.rect(0, 0, width, height);
+            overlay.fill({ color: hexToNumber(GameTheme.background.to), alpha: 0.78 });
+            overlay.eventMode = 'none';
+
+            const panelWidth = Math.min(width * 0.72, 820);
+            const panelHeight = Math.min(height * 0.7, 520);
+            const panelX = (width - panelWidth) / 2;
+            const panelY = (height - panelHeight) / 2;
+
+            const panel = new Graphics();
+            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 36)
+                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.94 })
+                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 6, alignment: 0.5 });
+            panel.eventMode = 'none';
+
+            const displayTitle = (options.title ?? DEFAULT_TITLE).toUpperCase();
+
             const title = new Text({
-                text: options.title ?? DEFAULT_TITLE,
+                text: displayTitle,
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
-                    fontSize: 64,
-                    fontWeight: 'bold',
+                    fill: hexToNumber(GameTheme.hud.accent),
+                    fontFamily: GameTheme.font,
+                    fontSize: 96,
+                    fontWeight: '900',
                     align: 'center',
+                    letterSpacing: 2,
                 },
             });
             title.anchor.set(0.5);
-            title.position.set(width / 2, height / 2 - 60);
+            title.position.set(width / 2, panelY + panelHeight * 0.28);
 
             promptLabel = new Text({
-                text: options.prompt ?? DEFAULT_PROMPT,
+                text: (options.prompt ?? DEFAULT_PROMPT).toUpperCase(),
                 style: {
-                    fill: 0xffe066,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 32,
+                    fill: hexToNumber(GameTheme.accents.powerUp),
+                    fontFamily: GameTheme.font,
+                    fontSize: 40,
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             promptLabel.anchor.set(0.5);
-            promptLabel.position.set(width / 2, height / 2 + 40);
+            promptLabel.position.set(width / 2, panelY + panelHeight * 0.58);
 
             const helpLines = options.helpText ?? [
-                'Left/right drag or arrow keys to move the paddle',
-                'Tap or press space to launch the ball',
-                'Catch power-ups to stack modifiers',
+                'Aim with the paddle to send the ball through the bricks.',
+                'Launch with tap, click, or spacebar and ride the streaks.',
+                'Snag power-ups to stack payouts and trigger lucky breaks!',
             ];
 
             helpLabel = new Text({
                 text: helpLines.join('\n'),
                 style: {
-                    fill: 0xa0a0a0,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 20,
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 22,
                     align: 'center',
+                    lineHeight: 32,
                 },
             });
             helpLabel.anchor.set(0.5, 0);
-            helpLabel.position.set(width / 2, height / 2 + 100);
+            helpLabel.position.set(width / 2, panelY + panelHeight * 0.66);
 
-            container.addChild(title, promptLabel, helpLabel);
+            container.addChild(overlay, panel, title, promptLabel, helpLabel);
             context.addToLayer('hud', container);
             context.renderStageSoon();
             pushIdleAudioState();

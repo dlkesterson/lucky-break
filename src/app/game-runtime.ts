@@ -41,7 +41,7 @@ import {
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createComboRing } from 'render/combo-ring';
-import { Sprite, Container, Graphics, Texture, ColorMatrixFilter, type Filter } from 'pixi.js';
+import { Sprite, Container, Graphics, ColorMatrixFilter, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import {
     Events,
@@ -143,7 +143,6 @@ const BRICK_HEIGHT = 40;
 const POWER_UP_RADIUS = 16;
 const POWER_UP_FALL_SPEED = 6;
 const POWER_UP_DURATION = 6;
-const STARFIELD_SCROLL_SPEED = { x: 8, y: 4 } as const;
 const PADDLE_SMOOTH_RESPONSIVENESS = 16;
 const PADDLE_SNAP_THRESHOLD = 0.75;
 
@@ -152,7 +151,6 @@ export interface GameRuntimeOptions {
     readonly playfieldDimensions?: { readonly width: number; readonly height: number };
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
-    readonly starfieldTexture: Texture | null;
     readonly onAudioBlocked?: (error: unknown) => void;
 }
 
@@ -169,7 +167,6 @@ export const createGameRuntime = async ({
     playfieldDimensions = PLAYFIELD_DEFAULT,
     random,
     replayBuffer,
-    starfieldTexture,
     onAudioBlocked,
 }: GameRuntimeOptions): Promise<GameRuntimeHandle> => {
     await ensureToneAudio().catch((error) => {
@@ -378,9 +375,7 @@ export const createGameRuntime = async ({
         session.startRound({ breakableBricks: result.breakableBricks });
     };
 
-    const STARFIELD_TEXTURE = starfieldTexture ?? Texture.WHITE;
-    const playfieldBackgroundLayer = createPlayfieldBackgroundLayer(playfieldDimensions, STARFIELD_TEXTURE);
-    stage.addToLayer('playfield', playfieldBackgroundLayer.container);
+    stage.addToLayer('playfield', createPlayfieldBackgroundLayer(playfieldDimensions).container);
 
     const gameContainer = new Container();
     gameContainer.zIndex = 10;
@@ -400,12 +395,12 @@ export const createGameRuntime = async ({
 
     const paddleLightHandle = createDynamicLight({
         color: themeAccents.powerUp,
-        minRadius: 55,
-        maxRadius: 180,
-        baseRadius: 200,
-        minIntensity: 0.02,
-        maxIntensity: 0.12,
-        speedForMaxIntensity: BALL_MAX_SPEED * 0.55,
+        minRadius: 140,
+        maxRadius: 140,
+        baseRadius: 140,
+        minIntensity: 0,
+        maxIntensity: 0,
+        speedForMaxIntensity: Number.POSITIVE_INFINITY,
         radiusLerpSpeed: 6,
         intensityLerpSpeed: 5,
     });
@@ -471,14 +466,6 @@ export const createGameRuntime = async ({
     drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
     paddleGraphics.eventMode = 'none';
     paddleGraphics.zIndex = 60;
-    const paddleGlowFilter = new GlowFilter({
-        distance: 14,
-        outerStrength: 1.2,
-        innerStrength: 0,
-        color: themePaddleGradient[1] ?? themeBallColors.aura,
-        quality: 0.3,
-    });
-    paddleGraphics.filters = [paddleGlowFilter as unknown as Filter];
     gameContainer.addChild(paddleGraphics);
     visualBodies.set(paddle.physicsBody, paddleGraphics);
 
@@ -1225,20 +1212,6 @@ export const createGameRuntime = async ({
         const basePaddleWidth = 100;
         paddle.width = basePaddleWidth * paddleScale;
 
-        const paddleWidthActive = powerUpManager.isActive('paddle-width');
-        const paddlePulseInfluence = Math.min(1, paddleGlowPulse);
-        const paddlePulseLevel = Math.max(paddleWidthActive ? 0.65 : 0, paddlePulseInfluence * 0.85);
-        const paddleAccentColor = paddleWidthActive
-            ? themeAccents.powerUp
-            : paddlePulseInfluence > 0
-                ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence)
-                : undefined;
-
-        drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults, {
-            accentColor: paddleAccentColor ?? paddleVisualDefaults.accentColor,
-            pulseStrength: paddlePulseLevel,
-        });
-
         decayCombo(scoringState, deltaSeconds);
 
         const paddleTarget = inputManager.getPaddleTarget();
@@ -1279,6 +1252,23 @@ export const createGameRuntime = async ({
         });
         previousPaddlePosition = { x: paddleCenter.x, y: paddleCenter.y };
 
+        const paddleWidthActive = powerUpManager.isActive('paddle-width');
+        const paddlePulseInfluence = clampUnit(paddleGlowPulse);
+        const paddleMotionGlow = clampUnit(paddleSpeed / Math.max(80, paddle.speed * 0.85));
+        const pulseBase = paddleWidthActive ? 0.65 : 0;
+        const paddlePulseLevel = clampUnit(pulseBase + paddlePulseInfluence * 0.85 + paddleMotionGlow * 0.6);
+        const paddleAccentColor = paddleWidthActive
+            ? themeAccents.powerUp
+            : paddlePulseInfluence > 0
+                ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence)
+                : undefined;
+
+        drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults, {
+            accentColor: paddleAccentColor ?? paddleVisualDefaults.accentColor,
+            pulseStrength: paddlePulseLevel,
+            motionGlow: paddleMotionGlow,
+        });
+
         ballController.updateAttachment(ball, paddleCenter);
         if (ball.isAttached) {
             physics.updateBallAttachment(ball.physicsBody, paddleCenter);
@@ -1312,9 +1302,6 @@ export const createGameRuntime = async ({
             visual.y = body.position.y;
             visual.rotation = body.angle;
         });
-
-        playfieldBackgroundLayer.tiling.tilePosition.x += movementDelta * STARFIELD_SCROLL_SPEED.x;
-        playfieldBackgroundLayer.tiling.tilePosition.y += movementDelta * STARFIELD_SCROLL_SPEED.y;
 
         updateBrickLighting(ball.physicsBody.position);
 
@@ -1373,12 +1360,6 @@ export const createGameRuntime = async ({
         const glowColor = mixColors(themeBallColors.highlight, themeAccents.combo, Math.min(1, comboEnergy * 0.75));
         ballGlowFilter.color = glowColor;
         ballGlowFilter.outerStrength = Math.min(5, 1.4 + comboEnergy * 0.8 + ballPulse * 2.6);
-
-        const fallbackPaddleGlow = themePaddleGradient[themePaddleGradient.length - 1] ?? themeBallColors.aura;
-        const paddleGlowIntensity = Math.max(paddleWidthActive ? 0.4 : 0, paddleGlowPulse * 0.8);
-        paddleGlowFilter.outerStrength = Math.min(4.5, 1 + GameTheme.paddle.glow * 2 + paddleGlowIntensity * 2.2);
-        const paddleGlowColor = paddleAccentColor ?? mixColors(fallbackPaddleGlow, themeAccents.powerUp, Math.min(1, paddleGlowPulse));
-        paddleGlowFilter.color = paddleGlowColor;
 
         ballGlowPulse = Math.max(0, ballGlowPulse - deltaSeconds * 1.6);
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);

@@ -1,7 +1,8 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
+import { GameTheme } from 'render/theme';
 
 export interface GameOverPayload {
     readonly score: number;
@@ -16,6 +17,8 @@ export interface GameOverSceneOptions {
 
 const DEFAULT_TITLE = 'Game Over';
 const DEFAULT_PROMPT = 'Tap to try again';
+
+const hexToNumber = (hex: string) => Number.parseInt(hex.replace('#', ''), 16);
 
 export const createGameOverScene = (
     context: SceneContext<GameSceneServices>,
@@ -68,46 +71,66 @@ export const createGameOverScene = (
             const { width, height } = context.designSize;
             const effectivePayload = payload ?? { score: 0 };
 
+            const overlay = new Graphics();
+            overlay.rect(0, 0, width, height);
+            overlay.fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.8 });
+            overlay.eventMode = 'none';
+
+            const panelWidth = Math.min(width * 0.68, 720);
+            const panelHeight = Math.min(height * 0.6, 460);
+            const panelX = (width - panelWidth) / 2;
+            const panelY = (height - panelHeight) / 2;
+
+            const panel = new Graphics();
+            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 28)
+                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.96 })
+                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 5, alignment: 0.5 });
+            panel.eventMode = 'none';
+
+            const displayTitle = (options.title ? options.title(effectivePayload) : DEFAULT_TITLE).toUpperCase();
+
             const title = new Text({
-                text: options.title ? options.title(effectivePayload) : DEFAULT_TITLE,
+                text: displayTitle,
                 style: {
-                    fill: 0xff6666,
-                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
-                    fontSize: 56,
-                    fontWeight: 'bold',
+                    fill: hexToNumber(GameTheme.hud.danger),
+                    fontFamily: GameTheme.font,
+                    fontSize: 88,
+                    fontWeight: '900',
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             title.anchor.set(0.5);
-            title.position.set(width / 2, height / 2 - 80);
+            title.position.set(width / 2, panelY + panelHeight * 0.25);
 
             scoreLabel = new Text({
                 text: options.scoreLabel
                     ? options.scoreLabel(effectivePayload)
                     : `Final Score: ${effectivePayload.score}`,
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 32,
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 30,
                     align: 'center',
                 },
             });
             scoreLabel.anchor.set(0.5);
-            scoreLabel.position.set(width / 2, height / 2 - 10);
+            scoreLabel.position.set(width / 2, panelY + panelHeight * 0.48);
 
             promptLabel = new Text({
-                text: options.prompt ?? DEFAULT_PROMPT,
+                text: (options.prompt ?? DEFAULT_PROMPT).toUpperCase(),
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 28,
+                    fill: hexToNumber(GameTheme.accents.powerUp),
+                    fontFamily: GameTheme.font,
+                    fontSize: 36,
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             promptLabel.anchor.set(0.5);
-            promptLabel.position.set(width / 2, height / 2 + 60);
+            promptLabel.position.set(width / 2, panelY + panelHeight * 0.7);
 
-            container.addChild(title, scoreLabel, promptLabel);
+            container.addChild(overlay, panel, title, scoreLabel, promptLabel);
             context.addToLayer('hud', container);
             context.renderStageSoon();
             pushIdleAudioState();

@@ -53,9 +53,11 @@ vi.mock('pixi.js', () => {
     }
 
     class Graphics extends Container {
-        public rect = vi.fn();
-        public fill = vi.fn();
-        public clear = vi.fn();
+        public rect = vi.fn().mockReturnThis();
+        public fill = vi.fn().mockReturnThis();
+        public clear = vi.fn().mockReturnThis();
+        public roundRect = vi.fn().mockReturnThis();
+        public stroke = vi.fn().mockReturnThis();
     }
 
     return { Container, Text, Graphics };

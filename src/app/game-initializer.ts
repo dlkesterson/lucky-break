@@ -273,6 +273,10 @@ export const createGameInitializer = async ({
             }
 
             void ensureToneAudio()
+                .then(() => {
+                    const currentMusicState = musicDirector.getState() ?? { lives: 3, combo: 0 };
+                    musicDirector.setState(currentMusicState);
+                })
                 .catch((unlockError) => {
                     console.warn('Audio unlock attempt deferred until interaction', unlockError);
                     onAudioBlocked?.(unlockError);

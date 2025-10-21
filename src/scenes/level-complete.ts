@@ -1,8 +1,9 @@
-import { Container, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { Reward } from 'game/rewards';
 import type { UiSceneTransitionAction } from 'app/events';
+import { GameTheme } from 'render/theme';
 
 export interface LevelCompletePayload {
     readonly level: number;
@@ -18,6 +19,8 @@ export interface LevelCompleteSceneOptions {
 }
 
 const DEFAULT_PROMPT = 'Tap to continue';
+
+const hexToNumber = (hex: string) => Number.parseInt(hex.replace('#', ''), 16);
 
 const describeReward = (reward: Reward): string => {
     switch (reward.type) {
@@ -96,57 +99,78 @@ export const createLevelCompleteScene = (
 
             const { width, height } = context.designSize;
 
+            const overlay = new Graphics();
+            overlay.rect(0, 0, width, height);
+            overlay.fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.78 });
+            overlay.eventMode = 'none';
+
+            const panelWidth = Math.min(width * 0.7, 760);
+            const panelHeight = Math.min(height * 0.62, 480);
+            const panelX = (width - panelWidth) / 2;
+            const panelY = (height - panelHeight) / 2;
+
+            const panel = new Graphics();
+            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 28)
+                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.95 })
+                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 5, alignment: 0.5 });
+            panel.eventMode = 'none';
+
+            const defaultTitle = `Level ${payload.level} Complete`;
+            const displayTitle = (options.title ? options.title(payload) : defaultTitle).toUpperCase();
+
             const title = new Text({
-                text: options.title ? options.title(payload) : `Level ${payload.level} Complete`,
+                text: displayTitle,
                 style: {
-                    fill: 0x66ff99,
-                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
-                    fontSize: 56,
-                    fontWeight: 'bold',
+                    fill: hexToNumber(GameTheme.accents.combo),
+                    fontFamily: GameTheme.font,
+                    fontSize: 84,
+                    fontWeight: '900',
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             title.anchor.set(0.5);
-            title.position.set(width / 2, height / 2 - 80);
+            title.position.set(width / 2, panelY + panelHeight * 0.25);
 
             const score = new Text({
                 text: options.scoreLabel ? options.scoreLabel(payload) : `Score: ${payload.score}`,
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 32,
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 30,
                     align: 'center',
                 },
             });
             score.anchor.set(0.5);
-            score.position.set(width / 2, height / 2 - 10);
+            score.position.set(width / 2, panelY + panelHeight * 0.48);
 
+            let rewardText: Text | null = null;
             if (payload.reward) {
-                const rewardText = new Text({
+                rewardText = new Text({
                     text: `Reward: ${describeReward(payload.reward)}`,
                     style: {
-                        fill: 0xffb347,
-                        fontFamily: 'Overpass Mono',
+                        fill: hexToNumber(GameTheme.accents.powerUp),
+                        fontFamily: GameTheme.monoFont,
                         fontSize: 26,
                         align: 'center',
                     },
                 });
                 rewardText.anchor.set(0.5);
-                rewardText.position.set(width / 2, height / 2 + 35);
-                container.addChild(rewardText);
+                rewardText.position.set(width / 2, panelY + panelHeight * 0.6);
             }
 
             promptLabel = new Text({
-                text: options.prompt ?? DEFAULT_PROMPT,
+                text: (options.prompt ?? DEFAULT_PROMPT).toUpperCase(),
                 style: {
-                    fill: 0xffe066,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 28,
+                    fill: hexToNumber(GameTheme.accents.combo),
+                    fontFamily: GameTheme.font,
+                    fontSize: 34,
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             promptLabel.anchor.set(0.5);
-            promptLabel.position.set(width / 2, height / 2 + 60);
+            promptLabel.position.set(width / 2, panelY + panelHeight * 0.76);
 
             const continueHandler = () => {
                 const result = payload.onContinue();
@@ -157,7 +181,10 @@ export const createLevelCompleteScene = (
 
             container.on('pointertap', continueHandler);
             context.addToLayer('hud', container);
-            container.addChild(title, score, promptLabel);
+            container.addChild(overlay, panel, title, score, promptLabel);
+            if (rewardText) {
+                container.addChild(rewardText);
+            }
             context.renderStageSoon();
             pushIdleAudioState();
             emitSceneEvent('enter');

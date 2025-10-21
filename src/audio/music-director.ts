@@ -113,20 +113,67 @@ const createToneMusicLayer: MusicLayerFactory = (definition, { now }) => {
         autostart: false,
         fadeIn: definition.fadeInSeconds ?? 0.1,
         fadeOut: definition.fadeOutSeconds ?? 0.2,
-    }).sync();
+    });
 
     const gain = new Gain(0);
     player.connect(gain);
     gain.toDestination();
 
     let started = false;
+    let startRequested = false;
+    let startError: unknown = null;
+    let loadPromise: Promise<void> | null = null;
+
+    const ensureLoaded = (): Promise<void> => {
+        loadPromise ??= player
+            .load(definition.url)
+            .then(() => undefined)
+            .catch((error: unknown) => {
+                loadPromise = null;
+                throw error;
+            });
+        return loadPromise;
+    };
+
+    const startPlayer = () => {
+        if (started) {
+            return;
+        }
+        if (startError) {
+            startError = null;
+        }
+        const startTime = Math.max(now(), 0) + 0.02;
+        try {
+            player.start(startTime);
+            started = true;
+        } catch (error) {
+            startError = error;
+            started = false;
+            startRequested = false;
+            console.warn('Failed to start music layer', definition.id, error);
+        }
+    };
 
     const ensureStarted = () => {
         if (started) {
             return;
         }
-        player.start(0);
-        started = true;
+        if (startRequested) {
+            if (startError) {
+                startPlayer();
+            }
+            return;
+        }
+        startRequested = true;
+        void ensureLoaded()
+            .then(() => {
+                startPlayer();
+            })
+            .catch((error: unknown) => {
+                startRequested = false;
+                startError = error;
+                console.error('Failed to load music layer', definition.id, error);
+            });
     };
 
     const setImmediate = (level: number) => {
@@ -290,13 +337,21 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     };
 
     const updateBaseLayer = (target: BaseLayerId, level: number) => {
-        const alreadyAtLevel = Math.abs(baseLevels[target] - level) <= LEVEL_EPSILON && currentBase === target;
+        const recordedLevel = baseLevels[target];
+        const actualLevel = baseLayers[target].getLevel();
+        const recordedMatches = Math.abs(recordedLevel - level) <= LEVEL_EPSILON;
+        const actualMatches = Math.abs(actualLevel - level) <= LEVEL_EPSILON;
+        const alreadyAtLevel = currentBase === target && recordedMatches && actualMatches;
 
         if (alreadyAtLevel && pendingBaseTarget === null) {
             return;
         }
 
-        if (pendingBaseTarget === target && Math.abs(pendingBaseLevel - level) <= LEVEL_EPSILON) {
+        if (
+            pendingBaseTarget === target &&
+            Math.abs(pendingBaseLevel - level) <= LEVEL_EPSILON &&
+            actualMatches
+        ) {
             return;
         }
 
@@ -327,7 +382,9 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     };
 
     const updateMelodyLayer = (level: number) => {
-        const alreadyAtLevel = Math.abs(melodyLevel - level) <= LEVEL_EPSILON;
+        const actualLevel = melodyLayer.getLevel();
+        const alreadyAtLevel =
+            Math.abs(melodyLevel - level) <= LEVEL_EPSILON && Math.abs(actualLevel - level) <= LEVEL_EPSILON;
         if (alreadyAtLevel && pendingMelodyLevel === null) {
             return;
         }
@@ -363,16 +420,21 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             return;
         }
 
+        const baseTarget = selectBaseLayer(normalizedState.lives);
+        const baseMismatch = Math.abs(baseLayers[baseTarget].getLevel() - baseLevels[baseTarget]) > LEVEL_EPSILON * 2;
+        const melodyMismatch = Math.abs(melodyLayer.getLevel() - melodyLevel) > LEVEL_EPSILON * 2;
+
         if (
             lastState &&
             lastState.lives === normalizedState.lives &&
-            Math.abs(lastState.combo - normalizedState.combo) <= LEVEL_EPSILON
+            Math.abs(lastState.combo - normalizedState.combo) <= LEVEL_EPSILON &&
+            !baseMismatch &&
+            !melodyMismatch
         ) {
             return;
         }
 
         const boost = computeComboBoost(normalizedState.combo, comboBoostRate, comboBoostCap);
-        const baseTarget = selectBaseLayer(normalizedState.lives);
         const baseTargetLevel = clamp01(definitions[baseTarget].baseLevel + boost);
         const melodyTargetLevel = normalizedState.lives === 1
             ? clamp01(definitions.melody.baseLevel + boost * 0.5)

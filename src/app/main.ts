@@ -1,4 +1,3 @@
-import { Assets, Texture } from 'pixi.js';
 import { loadSoundbank, prefetchSoundbankAssets, countSoundbankAssets } from 'audio/soundbank';
 import { GameTheme } from 'render/theme';
 import { createRandomManager } from 'util/random';
@@ -17,11 +16,6 @@ export interface LuckyBreakHandle {
     readonly withSeed: (seed: number) => void;
     readonly getSeed: () => number;
 }
-
-const STARFIELD_TEXTURE_DEF = {
-    alias: 'starfield-background',
-    src: new URL('../../assets/Starfield_08-512x512.png', import.meta.url).href,
-} as const;
 
 const parsePrimaryFontFamily = (value: string): string => {
     const primary = value.split(',')[0]?.trim() ?? value;
@@ -52,7 +46,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
     replayBuffer.begin(random.seed());
 
     let runtime: GameRuntimeHandle | null = null;
-    let starfieldTexture: Texture | null = null;
 
     const primaryFont = parsePrimaryFontFamily(GameTheme.font);
     const monoFont = parsePrimaryFontFamily(GameTheme.monoFont ?? GameTheme.font);
@@ -72,7 +65,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
         loadAssets: async (reportProgress) => {
             const soundbank = await loadSoundbank();
             const audioAssetCount = countSoundbankAssets(soundbank);
-            const totalSteps = fontDescriptors.length + audioAssetCount + 1;
+            const totalSteps = fontDescriptors.length + audioAssetCount;
 
             let completed = 0;
             const pushProgress = () => reportProgress({ loaded: completed, total: totalSteps });
@@ -105,8 +98,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 }
             });
 
-            starfieldTexture = await Assets.load<Texture>(STARFIELD_TEXTURE_DEF);
-            advance(1);
         },
         onStart: async () => {
             runtime = await createGameRuntime({
@@ -114,7 +105,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 playfieldDimensions: { width: 1280, height: 720 },
                 random,
                 replayBuffer,
-                starfieldTexture,
                 onAudioBlocked: (error) => {
                     console.warn('Audio context suspended; will retry after the first user interaction.', error);
                 },

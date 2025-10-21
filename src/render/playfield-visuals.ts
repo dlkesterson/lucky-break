@@ -1,4 +1,4 @@
-import { Container, FillGradient, Graphics, TilingSprite, Texture } from 'pixi.js';
+import { Container, FillGradient, Graphics, Texture, TilingSprite } from 'pixi.js';
 
 export const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -18,6 +18,7 @@ export interface PaddleVisualPalette {
     readonly gradient?: readonly number[];
     readonly accentColor?: number;
     readonly pulseStrength?: number;
+    readonly motionGlow?: number;
 }
 
 export interface BallVisualDefaults {
@@ -109,77 +110,119 @@ export const drawPaddleVisual = (
     const halfHeight = height / 2;
     const cornerRadius = Math.min(halfHeight, 14);
     const gradientStops = palette.gradient ?? defaults.gradient;
-    const accentColor = palette.accentColor ?? defaults.accentColor;
+    const motionGlow = clampUnit(palette.motionGlow ?? 0);
+    const accentBase = palette.accentColor ?? defaults.accentColor;
+    const accentColor = motionGlow > 0 ? mixColors(accentBase, 0xffffff, 0.35 * motionGlow) : accentBase;
     const pulseStrength = Math.max(0, Math.min(1, palette.pulseStrength ?? 0));
 
+    const brighten = (color: number) => (motionGlow > 0 ? mixColors(color, 0xffffff, 0.45 * motionGlow) : color);
+    const startColor = brighten(gradientStops[0] ?? defaults.gradient[0]);
+    const endColor = brighten(
+        gradientStops[gradientStops.length - 1] ?? defaults.gradient[defaults.gradient.length - 1],
+    );
+
     const gradient = new FillGradient(-halfWidth, -halfHeight, halfWidth, halfHeight);
-    gradient.addColorStop(0, gradientStops[0] ?? defaults.gradient[0]);
-    gradient.addColorStop(1, gradientStops[gradientStops.length - 1] ?? defaults.gradient[defaults.gradient.length - 1]);
+    gradient.addColorStop(0, startColor);
+    gradient.addColorStop(1, endColor);
 
     graphics.clear();
     graphics.roundRect(-halfWidth, -halfHeight, width, height, cornerRadius);
     graphics.fill(gradient);
     graphics.stroke({ color: accentColor, width: 2, alpha: 0.4 + pulseStrength * 0.4 });
 
-    const topBandAlpha = 0.16 + pulseStrength * 0.12;
+    const topBandAlpha = 0.16 + pulseStrength * 0.12 + motionGlow * 0.25;
     graphics.rect(-halfWidth + 3, -halfHeight + 2, width - 6, height * 0.35);
     graphics.fill({ color: 0xffffff, alpha: topBandAlpha });
 
-    const baseBandAlpha = 0.1 + pulseStrength * 0.1;
+    const baseBandAlpha = 0.1 + pulseStrength * 0.1 + motionGlow * 0.2;
     graphics.rect(-halfWidth + 2, halfHeight - height * 0.28, width - 4, height * 0.28);
     graphics.fill({ color: accentColor, alpha: baseBandAlpha });
+
+    if (motionGlow > 0.01) {
+        const glowAlpha = 0.08 + motionGlow * 0.18;
+        graphics.roundRect(-halfWidth + 1.5, -halfHeight + 1.5, width - 3, height - 3, Math.max(2, cornerRadius * 0.7));
+        graphics.fill({ color: 0xffffff, alpha: glowAlpha });
+    }
 
     graphics.alpha = 0.96;
     graphics.blendMode = 'normal';
 };
 
-const drawBackgroundOverlay = (graphics: Graphics, dimensions: PlayfieldDimensions): void => {
-    const { width, height } = dimensions;
-    graphics.clear();
-    graphics.rect(0, 0, width, height);
-    graphics.fill({ color: 0x05060d, alpha: 0.55 });
-    graphics.stroke({ color: 0x2a2a2a, width: 4, alignment: 0, alpha: 0.35 });
-
-    graphics.rect(0, 0, width, height * 0.45);
-    graphics.fill({ color: 0x0c1830, alpha: 0.25 });
-
-    const gridSpacing = 80;
-    for (let y = gridSpacing; y < height; y += gridSpacing) {
-        graphics.rect(0, y, width, 1);
-        graphics.fill({ color: 0x10172a, alpha: 0.12 });
-    }
-
-    for (let x = gridSpacing; x < width; x += gridSpacing) {
-        graphics.rect(x, 0, 1, height);
-        graphics.fill({ color: 0x10172a, alpha: 0.1 });
-    }
-};
+export interface PlayfieldBackgroundLayer {
+    readonly container: Container;
+    readonly tilingSprite: TilingSprite | null;
+    readonly overlay: Graphics;
+}
 
 export const createPlayfieldBackgroundLayer = (
     dimensions: PlayfieldDimensions,
-    texture: Texture,
-): { readonly container: Container; readonly tiling: TilingSprite } => {
+    texture?: Texture | null,
+): PlayfieldBackgroundLayer => {
     const container = new Container();
     container.eventMode = 'none';
     container.zIndex = -100;
 
-    const tiling = new TilingSprite({
-        texture,
-        width: dimensions.width,
-        height: dimensions.height,
-    });
-    tiling.eventMode = 'none';
-    tiling.alpha = 0.78;
-    tiling.tileScale.set(0.9, 0.9);
-    tiling.tint = 0x2b4a7a;
+    let tilingSprite: TilingSprite | null = null;
+    if (texture) {
+        tilingSprite = new TilingSprite({
+            texture,
+            width: dimensions.width,
+            height: dimensions.height,
+        });
+        tilingSprite.eventMode = 'none';
+        tilingSprite.alpha = 0.78;
+        tilingSprite.tileScale.set(0.45);
+        container.addChild(tilingSprite);
+    }
 
     const overlay = new Graphics();
     overlay.eventMode = 'none';
-    drawBackgroundOverlay(overlay, dimensions);
+    overlay.clear();
 
-    container.addChild(tiling, overlay);
+    const skyGradient = new FillGradient(0, 0, 0, dimensions.height);
+    skyGradient.addColorStop(0, 0x1b2757);
+    skyGradient.addColorStop(0.35, 0x2f5ec6);
+    skyGradient.addColorStop(0.7, 0x69b8ff);
+    skyGradient.addColorStop(1, 0xf6fbff);
 
-    return { container, tiling };
+    overlay.rect(0, 0, dimensions.width, dimensions.height);
+    overlay.fill(skyGradient);
+
+    overlay.circle(dimensions.width * 0.5, dimensions.height * 0.28, dimensions.width * 0.65);
+    overlay.fill({ color: 0xffffff, alpha: 0.1 });
+    overlay.blendMode = 'normal';
+
+    overlay.rect(0, dimensions.height * 0.58, dimensions.width, dimensions.height * 0.42);
+    overlay.fill({ color: 0xffffff, alpha: 0.16 });
+
+    const clouds = [
+        { width: 0.72, height: 0.04, y: 0.22, offset: -0.18 },
+        { width: 0.58, height: 0.035, y: 0.32, offset: 0.12 },
+        { width: 0.66, height: 0.038, y: 0.4, offset: -0.05 },
+        { width: 0.54, height: 0.03, y: 0.48, offset: 0.18 },
+    ] as const;
+
+    for (const cloud of clouds) {
+        const bandWidth = dimensions.width * cloud.width;
+        const bandHeight = dimensions.height * cloud.height;
+        const bandY = dimensions.height * cloud.y;
+        const bandX = (dimensions.width - bandWidth) / 2 + dimensions.width * cloud.offset * 0.25;
+
+        overlay.roundRect(bandX, bandY, bandWidth, bandHeight, bandHeight * 0.45);
+        overlay.fill({ color: 0xffffff, alpha: 0.1 });
+    }
+
+    overlay.circle(dimensions.width * 0.5, dimensions.height * 0.62, dimensions.width * 0.55);
+    overlay.fill({ color: 0xffffff, alpha: 0.08 });
+    overlay.blendMode = 'add';
+
+    container.addChild(overlay);
+
+    return {
+        container,
+        tilingSprite,
+        overlay,
+    };
 };
 
 export const paintBrickVisual = (

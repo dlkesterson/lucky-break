@@ -2,6 +2,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
+import { GameTheme } from 'render/theme';
 
 export interface PauseScenePayload {
     readonly score: number;
@@ -19,6 +20,8 @@ export interface PauseSceneOptions {
 
 const DEFAULT_TITLE = 'Paused';
 const DEFAULT_RESUME_LABEL = 'Tap to resume';
+
+const hexToNumber = (hex: string) => Number.parseInt(hex.replace('#', ''), 16);
 
 export const createPauseScene = (
     context: SceneContext<GameSceneServices>,
@@ -82,45 +85,61 @@ export const createPauseScene = (
 
             const background = new Graphics();
             background.rect(0, 0, width, height);
-            background.fill({ color: 0x000000, alpha: 0.7 });
+            background.fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.78 });
             background.eventMode = 'none';
 
+            const panelWidth = Math.min(width * 0.7, 760);
+            const panelHeight = Math.min(height * 0.65, 520);
+            const panelX = (width - panelWidth) / 2;
+            const panelY = (height - panelHeight) / 2;
+
+            const panel = new Graphics();
+            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 28)
+                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.95 })
+                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 5, alignment: 0.5 });
+            panel.eventMode = 'none';
+
+            const displayTitle = (options.title ?? DEFAULT_TITLE).toUpperCase();
+
             const title = new Text({
-                text: options.title ?? DEFAULT_TITLE,
+                text: displayTitle,
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
-                    fontSize: 60,
-                    fontWeight: 'bold',
+                    fill: hexToNumber(GameTheme.hud.accent),
+                    fontFamily: GameTheme.font,
+                    fontSize: 82,
+                    fontWeight: '900',
                     align: 'center',
                 },
             });
             title.anchor.set(0.5);
-            title.position.set(width / 2, height / 2 - 120);
+            title.position.set(width / 2, panelY + panelHeight * 0.2);
 
             const score = new Text({
                 text: `Score: ${payload.score}`,
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 28,
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 30,
                     align: 'center',
                 },
             });
             score.anchor.set(0.5);
-            score.position.set(width / 2, height / 2 - 40);
+            score.position.set(width / 2, panelY + panelHeight * 0.38);
+
+            const resumeCopy = (options.resumeLabel ?? DEFAULT_RESUME_LABEL).toUpperCase();
 
             resumeText = new Text({
-                text: options.resumeLabel ?? DEFAULT_RESUME_LABEL,
+                text: resumeCopy,
                 style: {
-                    fill: 0xffe066,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 26,
+                    fill: hexToNumber(GameTheme.accents.combo),
+                    fontFamily: GameTheme.font,
+                    fontSize: 34,
                     align: 'center',
+                    letterSpacing: 1,
                 },
             });
             resumeText.anchor.set(0.5);
-            resumeText.position.set(width / 2, height / 2 + 20);
+            resumeText.position.set(width / 2, panelY + panelHeight * 0.52);
 
             const legendTitle = payload.legendTitle ?? null;
             const legendLines = payload.legendLines ?? [];
@@ -128,43 +147,43 @@ export const createPauseScene = (
             const legendTitleText = new Text({
                 text: legendTitle ?? '',
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass, "Overpass Mono", sans-serif',
-                    fontSize: 24,
-                    fontWeight: 'bold',
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.font,
+                    fontSize: 26,
+                    fontWeight: '700',
                     align: 'center',
                 },
             });
             legendTitleText.anchor.set(0.5);
-            legendTitleText.position.set(width / 2, height / 2 + 90);
+            legendTitleText.position.set(width / 2, panelY + panelHeight * 0.65);
             legendTitleText.visible = Boolean(legendTitle);
 
             const legendBodyText = new Text({
                 text: legendLines.join('\n'),
                 style: {
-                    fill: 0xffffff,
-                    fontFamily: 'Overpass Mono',
-                    fontSize: 18,
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 20,
                     align: 'center',
-                    lineHeight: 26,
+                    lineHeight: 30,
                 },
             });
             legendBodyText.anchor.set(0.5, 0);
-            legendBodyText.position.set(width / 2, height / 2 + 130);
+            legendBodyText.position.set(width / 2, panelY + panelHeight * 0.7);
             legendBodyText.visible = legendLines.length > 0;
 
             const quitLabel = options.quitLabel ?? 'Hold Q to quit to menu';
             const quitText = new Text({
                 text: payload.onQuit ? quitLabel : '',
                 style: {
-                    fill: 0xb0b0b0,
-                    fontFamily: 'Overpass Mono',
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
                     fontSize: 18,
                     align: 'center',
                 },
             });
             quitText.anchor.set(0.5);
-            quitText.position.set(width / 2, height / 2 + 220);
+            quitText.position.set(width / 2, panelY + panelHeight * 0.88);
             quitText.visible = Boolean(payload.onQuit);
             quitText.eventMode = payload.onQuit ? 'static' : 'none';
             if (payload.onQuit) {
@@ -177,6 +196,7 @@ export const createPauseScene = (
 
             container.addChild(
                 background,
+                panel,
                 title,
                 score,
                 resumeText,

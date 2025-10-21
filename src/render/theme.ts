@@ -31,23 +31,23 @@ export interface GameThemeDefinition {
 }
 
 export const GameTheme: GameThemeDefinition = {
-    background: { from: '#06081A', to: '#0E1B2B', starAlpha: 0.15 },
-    brickColors: ['#00E0FF', '#0090FF', '#A000FF'],
-    paddle: { gradient: ['#00FFA8', '#00C9FF'], glow: 0.4 },
-    ball: { core: '#FF4F81', aura: '#FFE6EB', highlight: '#FF99BD' },
-    font: 'Overpass, sans-serif',
+    background: { from: '#160B27', to: '#2B1140', starAlpha: 0.18 },
+    brickColors: ['#F3443C', '#FF8A34', '#FFD04A', '#95D146'],
+    paddle: { gradient: ['#4CB7FF', '#1E3F9A'], glow: 0.48 },
+    ball: { core: '#F8F4DD', aura: '#FFF2D7', highlight: '#FFFFFF' },
+    font: 'Luckiest Guy, Overpass, sans-serif',
     monoFont: 'Overpass Mono, monospace',
     hud: {
-        panelFill: '#081226',
-        panelLine: '#1D9FFF',
-        textPrimary: '#F2FBFF',
-        textSecondary: '#80E8FF',
-        accent: '#FFE164',
-        danger: '#FF6B8B',
+        panelFill: '#1A1230',
+        panelLine: '#FF8A34',
+        textPrimary: '#FFEFD9',
+        textSecondary: '#FFCE63',
+        accent: '#FFD04A',
+        danger: '#F3443C',
     },
     accents: {
-        combo: '#FFE164',
-        powerUp: '#7CFFEB',
+        combo: '#FFD04A',
+        powerUp: '#FF6B35',
     },
 } as const;
 
