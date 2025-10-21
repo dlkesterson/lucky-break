@@ -46,6 +46,7 @@ describe('createGameSessionManager', () => {
         const hud = expectHud(snapshot);
         expect(hud).toMatchObject({
             score: 0,
+            coins: 0,
             lives: 3,
             round: 1,
             brickRemaining: 0,
@@ -55,6 +56,11 @@ describe('createGameSessionManager', () => {
                 speedPressure: 0,
                 brickDensity: 1,
                 comboHeat: 0,
+            },
+            entropy: {
+                charge: 0,
+                stored: 0,
+                trend: 'stable',
             },
             audio: {
                 scene: 'calm',
@@ -97,6 +103,18 @@ describe('createGameSessionManager', () => {
         expect(hud.score).toBe(350);
         expect(hud.brickRemaining).toBe(1);
         expect(hud.momentum.brickDensity).toBeCloseTo(1 / 3, 5);
+    });
+
+    it('collects coin pickups and increases the score', () => {
+        const { manager } = createSnapshot();
+
+        manager.collectCoins(7);
+        manager.collectCoins(2.6);
+
+        const snapshot = manager.snapshot();
+        expect(snapshot.coins).toBe(9);
+        expect(snapshot.score).toBe(9);
+        expect(snapshot.hud.coins).toBe(9);
     });
 
     it('marks the round complete when all bricks are cleared', () => {
@@ -255,5 +273,20 @@ describe('createGameSessionManager', () => {
         const hud = expectHud(snapshot);
         expect(hud.lives).toBe(0);
         expect(hud.prompts[0]).toMatchObject({ id: 'round-failed', severity: 'error' });
+    });
+
+    it('tracks entropy changes from gameplay events', () => {
+        const { manager } = createSnapshot();
+
+        manager.recordEntropyEvent({ type: 'brick-hit', comboHeat: 4, impactVelocity: 12 });
+        manager.recordEntropyEvent({ type: 'coin-collect', coinValue: 6 });
+
+        const snapshot = manager.snapshot();
+        expect(snapshot.entropy.charge).toBeGreaterThan(0);
+        expect(snapshot.hud.entropy.trend).toBe('rising');
+
+        const entropyState = manager.getEntropyState();
+        expect(entropyState.charge).toBeCloseTo(snapshot.entropy.charge, 5);
+        expect(entropyState.stored).toBe(snapshot.entropy.stored);
     });
 });

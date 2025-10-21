@@ -35,6 +35,18 @@ export interface FallingPowerUp {
     readonly visual: Graphics;
 }
 
+export interface FallingCoin {
+    readonly value: number;
+    readonly body: Body;
+    readonly visual: Graphics;
+}
+
+export interface SpawnCoinOptions {
+    readonly value: number;
+    readonly position: { readonly x: number; readonly y: number };
+    readonly fallSpeed?: number;
+}
+
 export interface LevelLoadResult {
     readonly breakableBricks: number;
     readonly powerUpChanceMultiplier: number;
@@ -52,6 +64,7 @@ export interface LevelRuntimeOptions {
     readonly brickLighting: { readonly radius: number; readonly restAlpha: number };
     readonly rowColors: readonly number[];
     readonly powerUp: { readonly radius: number; readonly fallSpeed: number };
+    readonly coin: { readonly radius: number; readonly fallSpeed: number };
 }
 
 export interface LevelRuntimeHandle {
@@ -65,6 +78,10 @@ export interface LevelRuntimeHandle {
     findPowerUp(body: Body): FallingPowerUp | null;
     removePowerUp(powerUp: FallingPowerUp): void;
     clearActivePowerUps(): void;
+    spawnCoin(options: SpawnCoinOptions): void;
+    findCoin(body: Body): FallingCoin | null;
+    removeCoin(coin: FallingCoin): void;
+    clearActiveCoins(): void;
     resetGhostBricks(): void;
     clearGhostEffect(body: Body): void;
     applyGhostBrickReward(duration: number, count: number): void;
@@ -82,6 +99,7 @@ export const createLevelRuntime = ({
     brickLighting,
     rowColors,
     powerUp,
+    coin,
 }: LevelRuntimeOptions): LevelRuntimeHandle => {
     const presetLevelCount = getPresetLevelCount();
 
@@ -90,6 +108,7 @@ export const createLevelRuntime = ({
     const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
+    const activeCoins: FallingCoin[] = [];
     const brickTextures = createBrickTextureCache(stage.app.renderer);
 
     const updateBrickLighting: LevelRuntimeHandle['updateBrickLighting'] = (ballPosition) => {
@@ -158,6 +177,7 @@ export const createLevelRuntime = ({
         resetGhostBricks();
         clearBricks();
         clearActivePowerUps();
+        clearActiveCoins();
 
         const baseSpec = getLevelSpec(levelIndex);
         const loopCount = Math.floor(levelIndex / presetLevelCount);
@@ -279,6 +299,52 @@ export const createLevelRuntime = ({
         }
     };
 
+    const spawnCoin: LevelRuntimeHandle['spawnCoin'] = (options) => {
+        const fallSpeed = options.fallSpeed ?? coin.fallSpeed;
+        const body = Bodies.circle(options.position.x, options.position.y, coin.radius, {
+            label: 'coin',
+            isSensor: true,
+            frictionAir: 0,
+        });
+
+        MatterBody.setVelocity(body, { x: 0, y: fallSpeed });
+        physics.add(body);
+
+        const visual = new Graphics();
+        visual.circle(0, 0, coin.radius);
+        visual.fill({ color: 0xf5c542, alpha: 0.92 });
+        visual.position.set(options.position.x, options.position.y);
+        visual.scale.set(1);
+        stage.addToLayer('effects', visual);
+
+        visualBodies.set(body, visual);
+        activeCoins.push({ value: options.value, body, visual });
+    };
+
+    const findCoin: LevelRuntimeHandle['findCoin'] = (body) => {
+        return activeCoins.find((entry) => entry.body === body) ?? null;
+    };
+
+    const removeCoin: LevelRuntimeHandle['removeCoin'] = (entry) => {
+        physics.remove(entry.body);
+        removeBodyVisual(entry.body);
+        const index = activeCoins.indexOf(entry);
+        if (index >= 0) {
+            activeCoins.splice(index, 1);
+        }
+    };
+
+    const clearActiveCoins: LevelRuntimeHandle['clearActiveCoins'] = () => {
+        while (activeCoins.length > 0) {
+            const entry = activeCoins.pop();
+            if (!entry) {
+                continue;
+            }
+            physics.remove(entry.body);
+            removeBodyVisual(entry.body);
+        }
+    };
+
     const resetGhostBricks: LevelRuntimeHandle['resetGhostBricks'] = () => {
         while (ghostBrickEffects.length > 0) {
             ghostBrickEffects.pop()?.restore();
@@ -363,6 +429,10 @@ export const createLevelRuntime = ({
         findPowerUp,
         removePowerUp,
         clearActivePowerUps,
+        spawnCoin,
+        findCoin,
+        removeCoin,
+        clearActiveCoins,
         resetGhostBricks,
         clearGhostEffect,
         applyGhostBrickReward,

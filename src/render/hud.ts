@@ -1,7 +1,7 @@
 import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
 
 export interface HudScoreboardEntry {
-    readonly id: 'score' | 'lives' | 'bricks' | 'momentum' | 'audio';
+    readonly id: 'score' | 'coins' | 'lives' | 'bricks' | 'entropy' | 'momentum' | 'audio';
     readonly label: string;
     readonly value: string;
 }
@@ -27,6 +27,11 @@ const capitalize = (value: string): string => value.charAt(0).toUpperCase() + va
 
 const formatScore = (score: number): string => SCORE_FORMATTER.format(Math.max(0, Math.floor(score)));
 
+const formatCoins = (coins: number): string => {
+    const safe = Math.max(0, Math.floor(coins));
+    return `${SCORE_FORMATTER.format(safe)}c`;
+};
+
 const formatLives = (lives: number): string => {
     if (lives <= 0) {
         return '—';
@@ -46,6 +51,15 @@ const formatBrickProgress = (remaining: number, total: number): string => {
 };
 
 const formatMomentum = (comboHeat: number, volleyLength: number): string => `Heat ${comboHeat} · Volley ${volleyLength}`;
+
+const formatEntropy = (
+    entropy: GameSessionSnapshot['hud']['entropy'],
+): string => {
+    const charge = Math.round(entropy.charge);
+    const stored = Math.round(entropy.stored);
+    const indicator = entropy.trend === 'rising' ? '↑' : entropy.trend === 'falling' ? '↓' : '→';
+    return `${charge}% ${indicator} bank ${stored}%`;
+};
 
 const formatAudio = (muted: boolean, masterVolume: number): string => {
     if (muted || masterVolume <= 0) {
@@ -92,6 +106,11 @@ export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboard
             value: formatScore(snapshot.hud.score),
         },
         {
+            id: 'coins',
+            label: 'Coins',
+            value: formatCoins(snapshot.hud.coins),
+        },
+        {
             id: 'lives',
             label: 'Lives',
             value: formatLives(snapshot.hud.lives),
@@ -100,6 +119,11 @@ export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboard
             id: 'bricks',
             label: 'Bricks',
             value: formatBrickProgress(snapshot.hud.brickRemaining, snapshot.hud.brickTotal),
+        },
+        {
+            id: 'entropy',
+            label: 'Entropy',
+            value: formatEntropy(snapshot.hud.entropy),
         },
         {
             id: 'momentum',

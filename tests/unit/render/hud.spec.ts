@@ -7,6 +7,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
         sessionId: 'session-001',
         status: 'active',
         score: 4250,
+        coins: 18,
         livesRemaining: 2,
         round: 3,
         elapsedTimeMs: 120_000,
@@ -18,6 +19,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
             speedPressure: 0.62,
             brickDensity: 32 / 96,
             comboHeat: 7,
+            comboTimer: 1.2,
             updatedAt: 120_000,
         },
         audio: {
@@ -34,8 +36,16 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
             controlScheme: 'keyboard',
             controlSensitivity: 0.5,
         },
+        entropy: {
+            charge: 48,
+            stored: 18,
+            trend: 'rising',
+            lastEvent: 'brick-break',
+            updatedAt: 120_000,
+        },
         hud: {
             score: 4250,
+            coins: 18,
             lives: 2,
             round: 3,
             brickRemaining: 32,
@@ -45,6 +55,12 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
                 speedPressure: 0.62,
                 brickDensity: 32 / 96,
                 comboHeat: 7,
+                comboTimer: 1.2,
+            },
+            entropy: {
+                charge: 48,
+                stored: 18,
+                trend: 'rising',
             },
             audio: {
                 scene: 'focused',
@@ -93,8 +109,17 @@ describe('buildHudScoreboard', () => {
                 durationMs: 95_000,
                 timestamp: 215_000,
             },
+            coins: 24,
+            entropy: {
+                charge: 62,
+                stored: 32,
+                trend: 'rising',
+                lastEvent: 'round-complete',
+                updatedAt: 215_000,
+            },
             hud: {
                 score: 6800,
+                coins: 24,
                 lives: 2,
                 round: 3,
                 brickRemaining: 0,
@@ -104,6 +129,12 @@ describe('buildHudScoreboard', () => {
                     speedPressure: 0.85,
                     brickDensity: 0,
                     comboHeat: 12,
+                    comboTimer: 1.4,
+                },
+                entropy: {
+                    charge: 62,
+                    stored: 32,
+                    trend: 'rising',
                 },
                 audio: {
                     scene: 'climax',
@@ -149,8 +180,17 @@ describe('buildHudScoreboard', () => {
                 controlScheme: 'touch',
                 controlSensitivity: 0.75,
             },
+            coins: 24,
+            entropy: {
+                charge: 12,
+                stored: 28,
+                trend: 'falling',
+                lastEvent: 'life-loss',
+                updatedAt: 184_000,
+            },
             hud: {
                 score: 1800,
+                coins: 24,
                 lives: 0,
                 round: 3,
                 brickRemaining: 12,
@@ -160,6 +200,12 @@ describe('buildHudScoreboard', () => {
                     speedPressure: 0.2,
                     brickDensity: 0.125,
                     comboHeat: 1,
+                    comboTimer: 0.4,
+                },
+                entropy: {
+                    charge: 12,
+                    stored: 28,
+                    trend: 'falling',
                 },
                 audio: {
                     scene: 'calm',

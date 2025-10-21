@@ -297,16 +297,62 @@ vi.mock('./loop', () => ({
 
 vi.mock('./state', () => ({
     createGameSessionManager: vi.fn(() => {
-        const state = {
+        const state: any = {
             sessionId: 'session-test',
             livesRemaining: 3,
             brickRemaining: 0,
+            brickTotal: 0,
+            round: 1,
+            status: 'active',
+            score: 0,
+            coins: 0,
+            entropy: {
+                charge: 0,
+                stored: 0,
+                trend: 'stable',
+                lastEvent: null,
+                updatedAt: Date.now(),
+            },
         };
         return {
             startRound: vi.fn((options: { breakableBricks: number }) => {
                 state.brickRemaining = options.breakableBricks;
+                state.brickTotal = options.breakableBricks;
             }),
-            snapshot: vi.fn(() => ({ ...state })),
+            snapshot: vi.fn(() => ({
+                ...state,
+                hud: {
+                    score: state.score,
+                    coins: state.coins,
+                    lives: state.livesRemaining,
+                    round: state.round,
+                    brickRemaining: state.brickRemaining,
+                    brickTotal: state.brickTotal,
+                    momentum: {
+                        volleyLength: 0,
+                        speedPressure: 0,
+                        brickDensity: state.brickTotal === 0 ? 0 : state.brickRemaining / state.brickTotal,
+                        comboHeat: 0,
+                        comboTimer: 0,
+                    },
+                    entropy: {
+                        charge: state.entropy.charge,
+                        stored: state.entropy.stored,
+                        trend: state.entropy.trend,
+                    },
+                    audio: {
+                        scene: 'calm',
+                        nextScene: null,
+                        barCountdown: 0,
+                    },
+                    prompts: [],
+                    settings: {
+                        muted: false,
+                        masterVolume: 1,
+                        reducedMotion: false,
+                    },
+                },
+            })),
             recordBrickBreak: vi.fn(),
             recordLifeLost: vi.fn(() => {
                 state.livesRemaining = Math.max(0, state.livesRemaining - 1);
@@ -314,6 +360,15 @@ vi.mock('./state', () => ({
             completeRound: vi.fn(() => {
                 state.brickRemaining = 0;
             }),
+            recordEntropyEvent: vi.fn((event: { type?: string }) => {
+                state.entropy.lastEvent = event?.type ?? null;
+            }),
+            collectCoins: vi.fn((amount: number) => {
+                const safeAmount = Math.max(0, Math.floor(amount));
+                state.coins += safeAmount;
+                state.score += safeAmount;
+            }),
+            getEntropyState: vi.fn(() => ({ ...state.entropy })),
         };
     }),
 }));

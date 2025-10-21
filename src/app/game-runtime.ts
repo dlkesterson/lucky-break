@@ -145,6 +145,11 @@ const POWER_UP_FALL_SPEED = 6;
 const POWER_UP_DURATION = 6;
 const PADDLE_SMOOTH_RESPONSIVENESS = 16;
 const PADDLE_SNAP_THRESHOLD = 0.75;
+const COIN_RADIUS = 13;
+const COIN_FALL_SPEED = 5.8;
+const COIN_BASE_VALUE = 5;
+const COIN_MIN_VALUE = 3;
+const COIN_MAX_VALUE = 30;
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -335,6 +340,7 @@ export const createGameRuntime = async ({
         brickLighting: { radius: BRICK_LIGHT_RADIUS, restAlpha: BRICK_REST_ALPHA },
         rowColors,
         powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
+        coin: { radius: COIN_RADIUS, fallSpeed: COIN_FALL_SPEED },
     });
 
     const brickHealth = levelRuntime.brickHealth;
@@ -351,6 +357,15 @@ export const createGameRuntime = async ({
     const removePowerUp = (
         ...args: Parameters<typeof levelRuntime.removePowerUp>
     ) => levelRuntime.removePowerUp(...args);
+    const spawnCoin = (
+        ...args: Parameters<typeof levelRuntime.spawnCoin>
+    ) => levelRuntime.spawnCoin(...args);
+    const findCoin = (
+        ...args: Parameters<typeof levelRuntime.findCoin>
+    ) => levelRuntime.findCoin(...args);
+    const removeCoin = (
+        ...args: Parameters<typeof levelRuntime.removeCoin>
+    ) => levelRuntime.removeCoin(...args);
     const clearGhostEffect = (
         ...args: Parameters<typeof levelRuntime.clearGhostEffect>
     ) => levelRuntime.clearGhostEffect(...args);
@@ -969,6 +984,13 @@ export const createGameRuntime = async ({
                         previousHp: currentHp,
                         remainingHp: nextHp,
                     });
+
+                    session.recordEntropyEvent({
+                        type: 'brick-hit',
+                        comboHeat: scoringState.combo,
+                        impactVelocity,
+                        speed: impactVelocity,
+                    });
                 } else {
                     bus.publish('BrickBreak', {
                         sessionId,
@@ -1005,6 +1027,7 @@ export const createGameRuntime = async ({
                             impactVelocity,
                             brickType: 'standard',
                             initialHp,
+                            comboHeat: scoringState.combo,
                         },
                     });
 
@@ -1012,6 +1035,22 @@ export const createGameRuntime = async ({
                     if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
                         const powerUpType = selectRandomPowerUpType(random.random);
                         levelRuntime.spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
+                    }
+
+                    const entropyState = session.getEntropyState();
+                    const entropyRatio = Math.max(0, Math.min(1, entropyState.charge / 100));
+                    const baseCoinChance = 0.18;
+                    const comboBonus = Math.min(0.3, scoringState.combo * 0.015);
+                    const entropyBonus = Math.min(0.25, entropyRatio * 0.4);
+                    const rewardBonus = activeReward?.type === 'double-points' ? 0.05 : 0;
+                    const coinChance = Math.min(0.75, baseCoinChance + comboBonus + entropyBonus + rewardBonus);
+                    if (random.random() < coinChance) {
+                        const valueSeed = Math.round(COIN_BASE_VALUE + scoringState.combo * 0.4 + entropyRatio * 12);
+                        const coinValue = Math.max(COIN_MIN_VALUE, Math.min(COIN_MAX_VALUE, valueSeed));
+                        spawnCoin({
+                            value: coinValue,
+                            position: { x: brick.position.x, y: brick.position.y },
+                        });
                     }
 
                     clearGhostEffect(brick);
@@ -1064,6 +1103,12 @@ export const createGameRuntime = async ({
                     speed: impactSpeed,
                     impactOffset: reflectionData.impactOffset,
                 });
+
+                session.recordEntropyEvent({
+                    type: 'paddle-hit',
+                    speed: impactSpeed,
+                    comboHeat: scoringState.combo,
+                });
             }
 
             if ((bodyA.label === 'ball' && bodyB.label.startsWith('wall-')) || (bodyB.label === 'ball' && bodyA.label.startsWith('wall-'))) {
@@ -1077,10 +1122,16 @@ export const createGameRuntime = async ({
                 };
                 const side = wallToSide[wallBody.label];
                 if (side) {
+                    const wallSpeed = MatterVector.magnitude(ballBody.velocity);
                     bus.publish('WallHit', {
                         sessionId,
                         side,
-                        speed: MatterVector.magnitude(ballBody.velocity),
+                        speed: wallSpeed,
+                    });
+
+                    session.recordEntropyEvent({
+                        type: 'wall-hit',
+                        speed: wallSpeed,
                     });
                 }
             }
@@ -1097,7 +1148,9 @@ export const createGameRuntime = async ({
                     return;
                 }
 
+                const comboBeforeReset = scoringState.combo;
                 session.recordLifeLost('ball-drop');
+                session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
                 resetCombo(scoringState);
 
                 if (session.snapshot().livesRemaining > 0) {
@@ -1118,11 +1171,34 @@ export const createGameRuntime = async ({
                 }
             }
 
+            if ((bodyA.label === 'coin' && bodyB.label === 'paddle') || (bodyA.label === 'paddle' && bodyB.label === 'coin')) {
+                const coinBody = bodyA.label === 'coin' ? bodyA : bodyB;
+                const entry = findCoin(coinBody);
+                if (entry) {
+                    session.collectCoins(entry.value);
+                    session.recordEntropyEvent({
+                        type: 'coin-collect',
+                        coinValue: entry.value,
+                        comboHeat: scoringState.combo,
+                    });
+                    removeCoin(entry);
+                    hudDisplay.pulseCombo(0.4);
+                }
+            }
+
             if ((bodyA.label === 'powerup' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'powerup')) {
                 const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
                 const entry = findPowerUp(powerUpBody);
                 if (entry) {
                     removePowerUp(entry);
+                }
+            }
+
+            if ((bodyA.label === 'coin' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'coin')) {
+                const coinBody = bodyA.label === 'coin' ? bodyA : bodyB;
+                const entry = findCoin(coinBody);
+                if (entry) {
+                    removeCoin(entry);
                 }
             }
         });
@@ -1214,7 +1290,11 @@ export const createGameRuntime = async ({
         const basePaddleWidth = 100;
         paddle.width = basePaddleWidth * paddleScale;
 
+        const comboBeforeDecay = scoringState.combo;
         decayCombo(scoringState, deltaSeconds);
+        if (comboBeforeDecay > 0 && scoringState.combo === 0) {
+            session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeDecay });
+        }
 
         const paddleTarget = inputManager.getPaddleTarget();
         const targetSnapshot = paddleTarget ? { x: paddleTarget.x, y: paddleTarget.y } : null;

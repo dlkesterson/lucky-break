@@ -101,7 +101,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     summaryText.alpha = 0.8;
     container.addChild(summaryText);
 
-    const entryOrder: readonly HudScoreboardEntry['id'][] = ['score', 'lives', 'bricks', 'momentum', 'audio'];
+    const entryOrder: readonly HudScoreboardEntry['id'][] = ['score', 'coins', 'lives', 'bricks', 'entropy', 'momentum', 'audio'];
     const entryTexts = new Map<HudScoreboardEntry['id'], Text>();
 
     entryOrder.forEach((id, index) => {
