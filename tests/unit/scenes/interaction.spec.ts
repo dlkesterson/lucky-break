@@ -62,6 +62,13 @@ vi.mock('pixi.js', () => {
 });
 
 import type { SceneContext, StageLayers } from 'render/scene-manager';
+import type { GameSceneServices } from 'app/scene-services';
+import type { LuckyBreakEventBus } from 'app/events';
+import type { ToneScheduler, ReactiveAudioGameState } from 'audio/scheduler';
+import type { Subject } from 'util/observable';
+import type { MusicDirector } from 'audio/music-director';
+import type { RandomManager } from 'util/random';
+import type { ReplayBuffer } from 'app/replay-buffer';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createPauseScene } from 'scenes/pause';
 import { createGameplayScene } from 'scenes/gameplay';
@@ -71,8 +78,9 @@ import { Container } from 'pixi.js';
 import type { Application } from 'pixi.js';
 
 interface SceneTestHarness {
-    context: SceneContext;
+    context: SceneContext<GameSceneServices>;
     getLastAdded: () => Container | null;
+    services: GameSceneServices;
 }
 
 const createSceneHarness = (): SceneTestHarness => {
@@ -85,7 +93,80 @@ const createSceneHarness = (): SceneTestHarness => {
 
     let lastAdded: Container | null = null;
 
-    const context: SceneContext = {
+    const renderStageSoon = vi.fn();
+
+    const noopSubscription = { unsubscribe: vi.fn() };
+
+    const bus: LuckyBreakEventBus = {
+        publish: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(noopSubscription),
+        subscribeOnce: vi.fn().mockReturnValue(noopSubscription),
+        unsubscribe: vi.fn(),
+        clear: vi.fn(),
+        listeners: vi.fn().mockReturnValue([]),
+    };
+
+    const scheduler: ToneScheduler = {
+        lookAheadMs: 0,
+        schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+        context: {} as AudioContext,
+    };
+
+    const audioState$: Subject<ReactiveAudioGameState> = {
+        next: vi.fn(),
+        complete: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(noopSubscription),
+    };
+
+    const musicDirector: MusicDirector = {
+        setState: vi.fn(),
+        getState: vi.fn().mockReturnValue(null),
+        dispose: vi.fn(),
+    };
+
+    const random: RandomManager = {
+        seed: vi.fn().mockReturnValue(1),
+        setSeed: vi.fn().mockReturnValue(1),
+        reset: vi.fn(),
+        next: vi.fn().mockReturnValue(0.5),
+        random: vi.fn().mockReturnValue(0.5),
+        nextInt: vi.fn().mockReturnValue(0),
+        boolean: vi.fn().mockReturnValue(false),
+    };
+
+    const replayBuffer: ReplayBuffer = {
+        begin: vi.fn(),
+        recordSeed: vi.fn(),
+        recordPaddleTarget: vi.fn(),
+        recordLaunch: vi.fn(),
+        markTime: vi.fn(),
+        snapshot: vi.fn().mockReturnValue({
+            version: 1,
+            seed: null,
+            durationSeconds: 0,
+            events: [],
+        }),
+        toJSON: vi.fn().mockReturnValue({
+            version: 1,
+            seed: null,
+            durationSeconds: 0,
+            events: [],
+        }),
+    };
+
+    const services: GameSceneServices = {
+        bus,
+        scheduler,
+        audioState$,
+        musicDirector,
+        random,
+        replayBuffer,
+        renderStageSoon,
+    };
+
+    const context: SceneContext<GameSceneServices> = {
         app: {} as Application,
         layers,
         addToLayer: (layer, node) => {
@@ -100,18 +181,21 @@ const createSceneHarness = (): SceneTestHarness => {
         switchScene: vi.fn(),
         pushScene: vi.fn(),
         popScene: vi.fn(),
+        transitionScene: vi.fn(),
         designSize: { width: 1280, height: 720 },
+        ...services,
     };
 
     return {
         context,
         getLastAdded: () => lastAdded,
+        services,
     };
 };
 
 describe('scene interaction lifecycles', () => {
     it('toggles main menu interaction when suspended and resumed', () => {
-        const { context, getLastAdded } = createSceneHarness();
+        const { context, getLastAdded, services } = createSceneHarness();
         const scene = createMainMenuScene(context, {
             onStart: vi.fn(),
         });
@@ -122,17 +206,35 @@ describe('scene interaction lifecycles', () => {
         expect(container?.eventMode).toBe('static');
         expect(container?.cursor).toBe('pointer');
 
+        expect(services.audioState$.next).toHaveBeenCalledWith({
+            combo: 0,
+            activePowerUps: [],
+            lookAheadMs: services.scheduler.lookAheadMs,
+        });
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'main-menu',
+            action: 'enter',
+        });
+
         void scene.suspend?.();
         expect(container?.eventMode).toBe('none');
         expect(container?.cursor).toBe('default');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'main-menu',
+            action: 'suspend',
+        });
 
         void scene.resume?.();
         expect(container?.eventMode).toBe('static');
         expect(container?.cursor).toBe('pointer');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'main-menu',
+            action: 'resume',
+        });
     });
 
     it('disables pause overlay interaction while suspended', () => {
-        const { context, getLastAdded } = createSceneHarness();
+        const { context, getLastAdded, services } = createSceneHarness();
         const scene = createPauseScene(context, {
             resumeLabel: 'Resume',
         });
@@ -148,16 +250,28 @@ describe('scene interaction lifecycles', () => {
         const container = getLastAdded();
         expect(container).not.toBeNull();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'pause',
+            action: 'enter',
+        });
 
         void scene.suspend?.();
         expect(container?.eventMode).toBe('none');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'pause',
+            action: 'suspend',
+        });
 
         void scene.resume?.();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'pause',
+            action: 'resume',
+        });
     });
 
     it('invokes gameplay suspend and resume callbacks', () => {
-        const { context } = createSceneHarness();
+        const { context, services } = createSceneHarness();
         const onSuspend = vi.fn();
         const onResume = vi.fn();
 
@@ -172,10 +286,18 @@ describe('scene interaction lifecycles', () => {
 
         expect(onSuspend).toHaveBeenCalledTimes(1);
         expect(onResume).toHaveBeenCalledTimes(1);
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'gameplay',
+            action: 'suspend',
+        });
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'gameplay',
+            action: 'resume',
+        });
     });
 
     it('toggles level-complete interaction when suspended and resumed', () => {
-        const { context, getLastAdded } = createSceneHarness();
+        const { context, getLastAdded, services } = createSceneHarness();
         const scene = createLevelCompleteScene(context, {});
 
         void scene.init({
@@ -187,16 +309,28 @@ describe('scene interaction lifecycles', () => {
         const container = getLastAdded();
         expect(container).not.toBeNull();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'level-complete',
+            action: 'enter',
+        });
 
         void scene.suspend?.();
         expect(container?.eventMode).toBe('none');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'level-complete',
+            action: 'suspend',
+        });
 
         void scene.resume?.();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'level-complete',
+            action: 'resume',
+        });
     });
 
     it('toggles game-over interaction when suspended and resumed', () => {
-        const { context, getLastAdded } = createSceneHarness();
+        const { context, getLastAdded, services } = createSceneHarness();
         const scene = createGameOverScene(context, {
             onRestart: vi.fn(),
         });
@@ -206,11 +340,23 @@ describe('scene interaction lifecycles', () => {
         const container = getLastAdded();
         expect(container).not.toBeNull();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'game-over',
+            action: 'enter',
+        });
 
         void scene.suspend?.();
         expect(container?.eventMode).toBe('none');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'game-over',
+            action: 'suspend',
+        });
 
         void scene.resume?.();
         expect(container?.eventMode).toBe('static');
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'game-over',
+            action: 'resume',
+        });
     });
 });

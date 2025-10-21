@@ -9,6 +9,7 @@ import {
     type ReactiveAudioLayer,
 } from 'audio/scheduler';
 import { createSfxRouter, type SfxRouter } from 'audio/sfx';
+import { createMusicDirector, type MusicDirector } from 'audio/music-director';
 import { createSubject, type Subject } from 'util/observable';
 import { computeViewportFit } from 'render/viewport';
 import { Players, Panner, Volume, Transport, getContext } from 'tone';
@@ -97,6 +98,7 @@ export interface GameInitializerResult {
     readonly audioState$: Subject<ReactiveAudioGameState>;
     readonly reactiveAudioLayer: ReactiveAudioLayer;
     readonly router: SfxRouter;
+    readonly musicDirector: MusicDirector;
     readonly renderStageOnce: () => void;
     readonly renderStageSoon: () => void;
     readonly cleanupAudioUnlock: () => void;
@@ -145,6 +147,8 @@ export const createGameInitializer = async ({
             }
         },
     });
+    const musicDirector = createMusicDirector({ transport: Transport });
+    musicDirector.setState({ lives: 3, combo: 0 });
 
     const toDecibels = (gain: number): number => {
         if (gain <= 0) {
@@ -341,6 +345,7 @@ export const createGameInitializer = async ({
         scheduler.dispose();
         reactiveAudioLayer.dispose();
         audioState$.complete();
+        musicDirector.dispose();
         cleanupAudioUnlock();
         window.removeEventListener('resize', handleResize);
         brickPlayers?.dispose();
@@ -357,6 +362,7 @@ export const createGameInitializer = async ({
         audioState$,
         reactiveAudioLayer,
         router,
+        musicDirector,
         renderStageOnce,
         renderStageSoon,
         cleanupAudioUnlock,

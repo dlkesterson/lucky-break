@@ -1,5 +1,7 @@
 import { Container, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
+import type { GameSceneServices } from 'app/scene-services';
+import type { UiSceneTransitionAction } from 'app/events';
 
 export interface MainMenuSceneOptions {
     readonly title?: string;
@@ -12,9 +14,9 @@ const DEFAULT_TITLE = 'Lucky Break';
 const DEFAULT_PROMPT = 'Tap anywhere to begin';
 
 export const createMainMenuScene = (
-    context: SceneContext,
+    context: SceneContext<GameSceneServices>,
     options: MainMenuSceneOptions,
-): Scene => {
+): Scene<unknown, GameSceneServices> => {
     let container: Container | null = null;
     let promptLabel: Text | null = null;
     let helpLabel: Text | null = null;
@@ -27,6 +29,21 @@ export const createMainMenuScene = (
         }
     };
 
+    const emitSceneEvent = (action: UiSceneTransitionAction) => {
+        context.bus.publish('UiSceneTransition', {
+            scene: 'main-menu',
+            action,
+        });
+    };
+
+    const pushIdleAudioState = () => {
+        context.audioState$.next({
+            combo: 0,
+            activePowerUps: [],
+            lookAheadMs: context.scheduler.lookAheadMs,
+        });
+    };
+
     const setInteraction = (enabled: boolean) => {
         if (!container) {
             return;
@@ -35,6 +52,7 @@ export const createMainMenuScene = (
         container.eventMode = enabled ? 'static' : 'none';
         container.interactiveChildren = enabled;
         container.cursor = enabled ? 'pointer' : 'default';
+        context.renderStageSoon();
     };
 
     return {
@@ -90,6 +108,9 @@ export const createMainMenuScene = (
 
             container.addChild(title, promptLabel, helpLabel);
             context.addToLayer('hud', container);
+            context.renderStageSoon();
+            pushIdleAudioState();
+            emitSceneEvent('enter');
         },
         update(deltaSeconds) {
             if (!promptLabel) {
@@ -110,12 +131,19 @@ export const createMainMenuScene = (
             container = null;
             promptLabel = null;
             helpLabel = null;
+            pushIdleAudioState();
+            emitSceneEvent('exit');
+            context.renderStageSoon();
         },
         suspend() {
             setInteraction(false);
+            pushIdleAudioState();
+            emitSceneEvent('suspend');
         },
         resume() {
             setInteraction(true);
+            pushIdleAudioState();
+            emitSceneEvent('resume');
         },
     };
 };

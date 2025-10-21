@@ -1,5 +1,4 @@
 import { GameTheme } from 'render/theme';
-import type { SceneContext } from 'render/scene-manager';
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
@@ -54,6 +53,7 @@ import {
     type Body,
 } from 'matter-js';
 import { Transport, getContext } from 'tone';
+import type { MusicState } from 'audio/music-director';
 import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
@@ -62,6 +62,7 @@ import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
+import type { GameSceneServices } from './scene-services';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
 const runtimeLogger = rootLogger.child('game-runtime');
@@ -224,6 +225,7 @@ export const createGameRuntime = async ({
         bus,
         scheduler,
         audioState$,
+        musicDirector,
         renderStageSoon,
         dispose: disposeInitializer,
     } = await createGameInitializer({
@@ -256,8 +258,33 @@ export const createGameRuntime = async ({
             random: random.random,
         });
 
+    const toMusicLives = (lives: number): 1 | 2 | 3 => {
+        if (lives >= 3) {
+            return 3;
+        }
+        if (lives <= 1) {
+            return 1;
+        }
+        return 2;
+    };
+
+    let lastMusicState: MusicState | null = null;
+    const pushMusicState = (state: MusicState) => {
+        if (
+            lastMusicState &&
+            lastMusicState.lives === state.lives &&
+            Math.abs(lastMusicState.combo - state.combo) <= 1e-3
+        ) {
+            return;
+        }
+
+        musicDirector.setState(state);
+        lastMusicState = { ...state };
+    };
+
     let session = createSession();
     let scoringState = createScoring();
+    pushMusicState({ lives: 3, combo: 0 });
     const powerUpManager = new PowerUpManager();
     let currentLevelIndex = 0;
     let loop: ReturnType<typeof createGameLoop> | null = null;
@@ -270,6 +297,18 @@ export const createGameRuntime = async ({
 
     const visualBodies = new Map<Body, Container>();
     let brickLayoutBounds: BrickLayoutBounds | null = null;
+
+    const sharedSceneServices: GameSceneServices = {
+        bus,
+        scheduler,
+        audioState$,
+        musicDirector,
+        random,
+        replayBuffer,
+        renderStageSoon,
+    };
+
+    const provideSceneServices = (): GameSceneServices => sharedSceneServices;
 
     const removeBodyVisual = (body: Body): void => {
         const visual = visualBodies.get(body);
@@ -767,6 +806,7 @@ export const createGameRuntime = async ({
         replayBuffer.begin(activeSeed);
 
         session = createSession();
+        pushMusicState({ lives: 3, combo: 0 });
         currentLevelIndex = 0;
         pendingReward = null;
         activateReward(null);
@@ -1064,6 +1104,12 @@ export const createGameRuntime = async ({
 
         powerUpManager.update(deltaSeconds);
 
+        const sessionSnapshot = session.snapshot();
+        pushMusicState({
+            lives: toMusicLives(sessionSnapshot.livesRemaining),
+            combo: scoringState.combo,
+        });
+
         const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
         const difficultyScale = levelDifficultyMultiplier;
         currentBaseSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale;
@@ -1268,7 +1314,7 @@ export const createGameRuntime = async ({
         },
     );
 
-    stage.register('main-menu', (context: SceneContext) =>
+    stage.register('main-menu', (context) =>
         createMainMenuScene(context, {
             helpText: [
                 'Drag or use arrow keys to aim the paddle',
@@ -1279,9 +1325,10 @@ export const createGameRuntime = async ({
                 void beginNewSession();
             },
         }),
+        { provideContext: provideSceneServices },
     );
 
-    stage.register('gameplay', (context: SceneContext) =>
+    stage.register('gameplay', (context) =>
         createGameplayScene(context, {
             onUpdate: runGameplayUpdate,
             onSuspend: () => {
@@ -1291,24 +1338,27 @@ export const createGameRuntime = async ({
                 inputManager.resetLaunchTrigger();
             },
         }),
+        { provideContext: provideSceneServices },
     );
 
     const quitLabel = 'Tap here or press Q to quit to menu';
 
-    stage.register('pause', (context: SceneContext) =>
+    stage.register('pause', (context) =>
         createPauseScene(context, {
             resumeLabel: 'Tap to resume',
             quitLabel,
         }),
+        { provideContext: provideSceneServices },
     );
 
-    stage.register('level-complete', (context: SceneContext) =>
+    stage.register('level-complete', (context) =>
         createLevelCompleteScene(context, {
             prompt: 'Tap to continue',
         }),
+        { provideContext: provideSceneServices },
     );
 
-    stage.register('game-over', (context: SceneContext) =>
+    stage.register('game-over', (context) =>
         createGameOverScene(context, {
             prompt: 'Tap to restart',
             onRestart: () => {
@@ -1319,6 +1369,7 @@ export const createGameRuntime = async ({
                 void beginNewSession();
             },
         }),
+        { provideContext: provideSceneServices },
     );
 
     await stage.transitionTo('main-menu', undefined, { immediate: true });

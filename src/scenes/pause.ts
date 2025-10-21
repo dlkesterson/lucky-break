@@ -1,5 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
+import type { GameSceneServices } from 'app/scene-services';
+import type { UiSceneTransitionAction } from 'app/events';
 
 export interface PauseScenePayload {
     readonly score: number;
@@ -19,12 +21,27 @@ const DEFAULT_TITLE = 'Paused';
 const DEFAULT_RESUME_LABEL = 'Tap to resume';
 
 export const createPauseScene = (
-    context: SceneContext,
+    context: SceneContext<GameSceneServices>,
     options: PauseSceneOptions = {},
-): Scene<PauseScenePayload> => {
+): Scene<PauseScenePayload, GameSceneServices> => {
     let container: Container | null = null;
     let resumeText: Text | null = null;
     let elapsed = 0;
+
+    const emitSceneEvent = (action: UiSceneTransitionAction) => {
+        context.bus.publish('UiSceneTransition', {
+            scene: 'pause',
+            action,
+        });
+    };
+
+    const pushIdleAudioState = () => {
+        context.audioState$.next({
+            combo: 0,
+            activePowerUps: [],
+            lookAheadMs: context.scheduler.lookAheadMs,
+        });
+    };
 
     const setInteraction = (enabled: boolean) => {
         if (!container) {
@@ -34,6 +51,7 @@ export const createPauseScene = (
         container.eventMode = enabled ? 'static' : 'none';
         container.interactiveChildren = enabled;
         container.cursor = enabled ? 'pointer' : 'default';
+        context.renderStageSoon();
     };
 
     const dispose = () => {
@@ -48,6 +66,7 @@ export const createPauseScene = (
         container = null;
         resumeText = null;
         elapsed = 0;
+        context.renderStageSoon();
     };
 
     return {
@@ -171,6 +190,9 @@ export const createPauseScene = (
             });
 
             context.addToLayer('hud', container);
+            context.renderStageSoon();
+            pushIdleAudioState();
+            emitSceneEvent('enter');
         },
         update(deltaSeconds) {
             if (!resumeText) {
@@ -182,13 +204,19 @@ export const createPauseScene = (
             resumeText.alpha = 0.4 + pulse * 0.6;
         },
         destroy() {
+            emitSceneEvent('exit');
+            pushIdleAudioState();
             dispose();
         },
         suspend() {
             setInteraction(false);
+            pushIdleAudioState();
+            emitSceneEvent('suspend');
         },
         resume() {
             setInteraction(true);
+            pushIdleAudioState();
+            emitSceneEvent('resume');
         },
     };
 };

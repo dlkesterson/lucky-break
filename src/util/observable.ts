@@ -1,14 +1,14 @@
 export interface Subscription {
-    unsubscribe(): void;
+    unsubscribe(this: void): void;
 }
 
 export interface Observable<T> {
-    subscribe(observer: (value: T) => void): Subscription;
+    subscribe(this: void, observer: (value: T) => void): Subscription;
 }
 
 export interface Subject<T> extends Observable<T> {
-    next(value: T): void;
-    complete(): void;
+    next(this: void, value: T): void;
+    complete(this: void): void;
 }
 
 export const createSubject = <T>(): Subject<T> => {

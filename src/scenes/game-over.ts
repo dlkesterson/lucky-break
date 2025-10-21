@@ -1,5 +1,7 @@
 import { Container, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
+import type { GameSceneServices } from 'app/scene-services';
+import type { UiSceneTransitionAction } from 'app/events';
 
 export interface GameOverPayload {
     readonly score: number;
@@ -16,13 +18,28 @@ const DEFAULT_TITLE = 'Game Over';
 const DEFAULT_PROMPT = 'Tap to try again';
 
 export const createGameOverScene = (
-    context: SceneContext,
+    context: SceneContext<GameSceneServices>,
     options: GameOverSceneOptions,
-): Scene<GameOverPayload> => {
+): Scene<GameOverPayload, GameSceneServices> => {
     let container: Container | null = null;
     let promptLabel: Text | null = null;
     let scoreLabel: Text | null = null;
     let elapsed = 0;
+
+    const emitSceneEvent = (action: UiSceneTransitionAction) => {
+        context.bus.publish('UiSceneTransition', {
+            scene: 'game-over',
+            action,
+        });
+    };
+
+    const pushIdleAudioState = () => {
+        context.audioState$.next({
+            combo: 0,
+            activePowerUps: [],
+            lookAheadMs: context.scheduler.lookAheadMs,
+        });
+    };
 
     const restart = () => {
         const result = options.onRestart();
@@ -39,6 +56,7 @@ export const createGameOverScene = (
         container.eventMode = enabled ? 'static' : 'none';
         container.interactiveChildren = enabled;
         container.cursor = enabled ? 'pointer' : 'default';
+        context.renderStageSoon();
     };
 
     return {
@@ -91,6 +109,9 @@ export const createGameOverScene = (
 
             container.addChild(title, scoreLabel, promptLabel);
             context.addToLayer('hud', container);
+            context.renderStageSoon();
+            pushIdleAudioState();
+            emitSceneEvent('enter');
         },
         update(deltaSeconds) {
             if (!promptLabel) {
@@ -111,12 +132,19 @@ export const createGameOverScene = (
             container = null;
             promptLabel = null;
             scoreLabel = null;
+            pushIdleAudioState();
+            emitSceneEvent('exit');
+            context.renderStageSoon();
         },
         suspend() {
             setInteraction(false);
+            pushIdleAudioState();
+            emitSceneEvent('suspend');
         },
         resume() {
             setInteraction(true);
+            pushIdleAudioState();
+            emitSceneEvent('resume');
         },
     };
 };

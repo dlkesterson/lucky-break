@@ -71,7 +71,7 @@ export interface SceneDimensions {
     readonly height: number;
 }
 
-export interface SceneContext {
+export interface SceneRuntimeContext {
     readonly app: Application;
     readonly layers: StageLayers;
     readonly addToLayer: (layer: SceneLayerName, container: Container) => void;
@@ -85,15 +85,36 @@ export interface SceneContext {
     readonly designSize: SceneDimensions;
 }
 
-export interface Scene<TPayload = unknown> {
+export type SceneContext<TServices extends object = Record<string, never>> = SceneRuntimeContext & TServices;
+
+export interface Scene<TPayload = unknown, TServices extends object = Record<string, never>> {
     init(payload?: TPayload): void | Promise<void>;
     update(deltaSeconds: number): void;
     destroy(): void;
     suspend?(): void;
     resume?(): void;
+    /**
+     * Internal type-brand used to associate the scene with its contextual services.
+     * Scenes do not need to implement this field.
+     */
+    readonly __contextBrand?: (services: SceneContext<TServices>) => void;
 }
 
-export type SceneFactory<TPayload = unknown> = (context: SceneContext) => Scene<TPayload>;
+export type SceneFactory<
+    TPayload = unknown,
+    TServices extends object = Record<string, never>,
+> = (context: SceneContext<TServices>) => Scene<TPayload, TServices>;
+
+type SceneContextProvider<TServices extends object> = (runtime: SceneRuntimeContext) => TServices;
+
+export interface SceneRegistrationOptions<TServices extends object = Record<string, never>> {
+    readonly provideContext?: SceneContextProvider<TServices>;
+}
+
+interface SceneRegistration<TPayload, TServices extends object> {
+    readonly factory: SceneFactory<TPayload, TServices>;
+    readonly provideContext?: SceneContextProvider<TServices>;
+}
 
 export interface SceneManagerHandle {
     readonly app: Application;
@@ -105,7 +126,11 @@ export interface SceneManagerHandle {
     readonly removeFromLayer: (container: Container) => void;
     readonly resize: (size: { readonly width: number; readonly height: number }) => void;
     readonly designSize: SceneDimensions;
-    register<TPayload = unknown>(name: string, factory: SceneFactory<TPayload>): void;
+    register<TPayload = unknown, TServices extends object = Record<string, never>>(
+        name: string,
+        factory: SceneFactory<TPayload, TServices>,
+        options?: SceneRegistrationOptions<TServices>,
+    ): void;
     switch<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
     transition<TPayload = unknown>(name: string, payload?: TPayload, options?: SceneTransitionOptions): Promise<void>;
     push<TPayload = unknown>(name: string, payload?: TPayload): Promise<void>;
@@ -242,8 +267,9 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         resizeRenderer(app, size.width, size.height);
     };
 
-    const sceneFactories = new Map<string, SceneFactory<unknown>>();
-    const sceneStack: { readonly name: string; readonly scene: Scene<unknown> }[] = [];
+    type UnknownServices = Record<string, unknown>;
+    const sceneRegistrations = new Map<string, SceneRegistration<unknown, UnknownServices>>();
+    const sceneStack: { readonly name: string; readonly scene: Scene<unknown, UnknownServices> }[] = [];
     let destroyed = false;
     let activeTransition:
         | {
@@ -265,12 +291,39 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         }
     };
 
-    const instantiateScene = (name: string): Scene<unknown> => {
-        const factory = sceneFactories.get(name);
-        if (!factory) {
+    const createRuntimeContext = (): SceneRuntimeContext => ({
+        app,
+        layers,
+        addToLayer,
+        removeFromLayer,
+        acquireSprite,
+        releaseSprite,
+        switchScene,
+        pushScene,
+        popScene,
+        transitionScene,
+        designSize,
+    });
+
+    const instantiateScene = (name: string): Scene<unknown, UnknownServices> => {
+        const registration = sceneRegistrations.get(name);
+        if (!registration) {
             throw new Error(`Scene "${name}" is not registered`);
         }
-        return factory(sceneContext);
+
+        const runtimeContext = createRuntimeContext();
+        const services = registration.provideContext ? registration.provideContext(runtimeContext) : {};
+
+        if (services && typeof services === 'object') {
+            for (const key of Reflect.ownKeys(services)) {
+                if (Object.prototype.hasOwnProperty.call(runtimeContext, key)) {
+                    throw new Error(`Scene context provider attempted to override built-in property "${String(key)}"`);
+                }
+            }
+        }
+
+        const sceneContext = Object.assign({}, runtimeContext, services) as SceneContext<UnknownServices>;
+        return registration.factory(sceneContext);
     };
 
     const pushInternal = async (name: string, payload: unknown, suspendPrevious: boolean) => {
@@ -410,25 +463,18 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         next?.scene.resume?.();
     };
 
-    const sceneContext: SceneContext = {
-        app,
-        layers,
-        addToLayer,
-        removeFromLayer,
-        acquireSprite,
-        releaseSprite,
-        switchScene,
-        pushScene,
-        popScene,
-        transitionScene,
-        designSize,
-    };
-
-    const register = <TPayload,>(name: string, factory: SceneFactory<TPayload>) => {
-        if (sceneFactories.has(name)) {
+    const register = <TPayload = unknown, TServices extends object = Record<string, never>>(
+        name: string,
+        factory: SceneFactory<TPayload, TServices>,
+        options?: SceneRegistrationOptions<TServices>,
+    ) => {
+        if (sceneRegistrations.has(name)) {
             throw new Error(`Scene "${name}" already registered`);
         }
-        sceneFactories.set(name, factory as SceneFactory<unknown>);
+        sceneRegistrations.set(name, {
+            factory: factory as SceneFactory<unknown, UnknownServices>,
+            provideContext: options?.provideContext as SceneContextProvider<UnknownServices> | undefined,
+        });
     };
 
     const update = (deltaSeconds: number) => {

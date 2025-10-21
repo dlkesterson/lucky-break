@@ -68,6 +68,14 @@ export interface ComboMilestonePayload {
     readonly totalScore: number;
 }
 
+export type UiSceneName = 'main-menu' | 'gameplay' | 'pause' | 'level-complete' | 'game-over';
+export type UiSceneTransitionAction = 'enter' | 'exit' | 'suspend' | 'resume';
+
+export interface UiSceneTransitionPayload {
+    readonly scene: UiSceneName;
+    readonly action: UiSceneTransitionAction;
+}
+
 export interface LuckyBreakEventMap {
     readonly BrickBreak: BrickBreakPayload;
     readonly BrickHit: BrickHitPayload;
@@ -77,6 +85,7 @@ export interface LuckyBreakEventMap {
     readonly BallLaunched: BallLaunchedPayload;
     readonly RoundCompleted: RoundCompletedPayload;
     readonly ComboMilestoneReached: ComboMilestonePayload;
+    readonly UiSceneTransition: UiSceneTransitionPayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;
@@ -93,24 +102,31 @@ export type EventListener<EventName extends LuckyBreakEventName> = (
 
 export interface LuckyBreakEventBus {
     publish<EventName extends LuckyBreakEventName>(
+        this: void,
         type: EventName,
         payload: LuckyBreakEventMap[EventName],
         timestamp?: number,
     ): void;
     subscribe<EventName extends LuckyBreakEventName>(
+        this: void,
         type: EventName,
         listener: EventListener<EventName>,
     ): () => void;
     subscribeOnce<EventName extends LuckyBreakEventName>(
+        this: void,
         type: EventName,
         listener: EventListener<EventName>,
     ): () => void;
     unsubscribe<EventName extends LuckyBreakEventName>(
+        this: void,
         type: EventName,
         listener: EventListener<EventName>,
     ): void;
-    clear(): void;
-    listeners<EventName extends LuckyBreakEventName>(type: EventName): readonly EventListener<EventName>[];
+    clear(this: void): void;
+    listeners<EventName extends LuckyBreakEventName>(
+        this: void,
+        type: EventName,
+    ): readonly EventListener<EventName>[];
 }
 
 export interface BrickBreakEventInput {
@@ -133,9 +149,9 @@ export interface RoundCompletedEventInput {
 }
 
 export interface ScoringEventEmitter {
-    readonly brickBreak: (event: BrickBreakEventInput) => void;
-    readonly roundCompleted: (event: RoundCompletedEventInput) => void;
-    readonly lifeLost: (event: LifeLostPayload & { readonly timestamp?: number }) => void;
+    readonly brickBreak: (this: void, event: BrickBreakEventInput) => void;
+    readonly roundCompleted: (this: void, event: RoundCompletedEventInput) => void;
+    readonly lifeLost: (this: void, event: LifeLostPayload & { readonly timestamp?: number }) => void;
 }
 
 type InternalListener = EventListener<LuckyBreakEventName>;

@@ -14,6 +14,7 @@ export {
     type SceneContext,
     type Scene,
     type SceneFactory,
+    type SceneRegistrationOptions,
     type SceneLayerName,
     type StageLayers,
     type SceneTransitionOptions,

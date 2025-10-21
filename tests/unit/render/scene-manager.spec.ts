@@ -95,7 +95,7 @@ vi.mock('pixi.js', async () => {
     };
 });
 
-import { createSceneManager, type Scene } from 'render/scene-manager';
+import { createSceneManager, type Scene, type SceneRegistrationOptions } from 'render/scene-manager';
 
 describe('createSceneManager', () => {
     let manager: Awaited<ReturnType<typeof createSceneManager>>;
@@ -403,5 +403,37 @@ describe('createSceneManager', () => {
 
         manager.update(0.016);
         expect(baseUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('merges scene-specific services while protecting core bindings', async () => {
+        const initSpy = vi.fn();
+
+        manager.register('with-services', (context) => ({
+            init: () => {
+                initSpy(context.tag, context.generate());
+            },
+            update: vi.fn(),
+            destroy: vi.fn(),
+        }), {
+            provideContext: () => ({
+                tag: 'special',
+                generate: () => 42,
+            }),
+        });
+
+        await manager.switch('with-services');
+        expect(initSpy).toHaveBeenCalledWith('special', 42);
+
+        manager.register('collision', () => ({
+            init: vi.fn(),
+            update: vi.fn(),
+            destroy: vi.fn(),
+        }), {
+            provideContext: (() => ({ app: null })) as SceneRegistrationOptions<{ app: null }>['provideContext'],
+        });
+
+        await expect(manager.switch('collision')).rejects.toThrow(
+            'Scene context provider attempted to override built-in property "app"',
+        );
     });
 });

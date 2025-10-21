@@ -1,6 +1,8 @@
 import { Container, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
+import type { GameSceneServices } from 'app/scene-services';
 import type { Reward } from 'game/rewards';
+import type { UiSceneTransitionAction } from 'app/events';
 
 export interface LevelCompletePayload {
     readonly level: number;
@@ -31,12 +33,27 @@ const describeReward = (reward: Reward): string => {
 };
 
 export const createLevelCompleteScene = (
-    context: SceneContext,
+    context: SceneContext<GameSceneServices>,
     options: LevelCompleteSceneOptions = {},
-): Scene<LevelCompletePayload> => {
+): Scene<LevelCompletePayload, GameSceneServices> => {
     let container: Container | null = null;
     let promptLabel: Text | null = null;
     let elapsed = 0;
+
+    const emitSceneEvent = (action: UiSceneTransitionAction) => {
+        context.bus.publish('UiSceneTransition', {
+            scene: 'level-complete',
+            action,
+        });
+    };
+
+    const pushIdleAudioState = () => {
+        context.audioState$.next({
+            combo: 0,
+            activePowerUps: [],
+            lookAheadMs: context.scheduler.lookAheadMs,
+        });
+    };
 
     const setInteraction = (enabled: boolean) => {
         if (!container) {
@@ -46,6 +63,7 @@ export const createLevelCompleteScene = (
         container.eventMode = enabled ? 'static' : 'none';
         container.interactiveChildren = enabled;
         container.cursor = enabled ? 'pointer' : 'default';
+        context.renderStageSoon();
     };
 
     const teardown = () => {
@@ -58,6 +76,7 @@ export const createLevelCompleteScene = (
         container = null;
         promptLabel = null;
         elapsed = 0;
+        context.renderStageSoon();
     };
 
     return {
@@ -133,6 +152,9 @@ export const createLevelCompleteScene = (
             container.on('pointertap', continueHandler);
             context.addToLayer('hud', container);
             container.addChild(title, score, promptLabel);
+            context.renderStageSoon();
+            pushIdleAudioState();
+            emitSceneEvent('enter');
         },
         update(deltaSeconds) {
             if (!promptLabel) {
@@ -144,12 +166,18 @@ export const createLevelCompleteScene = (
         },
         destroy() {
             teardown();
+            pushIdleAudioState();
+            emitSceneEvent('exit');
         },
         suspend() {
             setInteraction(false);
+            pushIdleAudioState();
+            emitSceneEvent('suspend');
         },
         resume() {
             setInteraction(true);
+            pushIdleAudioState();
+            emitSceneEvent('resume');
         },
     };
 };
