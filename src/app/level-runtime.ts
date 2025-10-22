@@ -9,12 +9,14 @@ import {
     getPresetLevelCount,
     getLevelDifficultyMultiplier,
     remixLevel,
+    getLoopScalingInfo,
     type BrickSpec,
 } from 'util/levels';
 import { mixColors } from 'render/playfield-visuals';
 import { createBrickTextureCache } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
+import type { RandomSource } from 'util/random';
 
 export interface BrickLayoutBounds {
     readonly minX: number;
@@ -65,6 +67,7 @@ export interface LevelRuntimeOptions {
     readonly rowColors: readonly number[];
     readonly powerUp: { readonly radius: number; readonly fallSpeed: number };
     readonly coin: { readonly radius: number; readonly fallSpeed: number };
+    readonly getLayoutRandom?: (levelIndex: number) => RandomSource;
 }
 
 export interface LevelRuntimeHandle {
@@ -101,6 +104,7 @@ export const createLevelRuntime = ({
     rowColors,
     powerUp,
     coin,
+    getLayoutRandom,
 }: LevelRuntimeOptions): LevelRuntimeHandle => {
     const presetLevelCount = getPresetLevelCount();
 
@@ -194,7 +198,14 @@ export const createLevelRuntime = ({
         const baseSpec = getLevelSpec(levelIndex);
         const loopCount = Math.floor(levelIndex / presetLevelCount);
         const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
-        const layout = generateLevelLayout(effectiveSpec, brickSize.width, brickSize.height, playfieldWidth);
+        const scaling = getLoopScalingInfo(loopCount);
+        const layoutRandom = typeof getLayoutRandom === 'function' ? getLayoutRandom(levelIndex) : undefined;
+        const layout = generateLevelLayout(effectiveSpec, brickSize.width, brickSize.height, playfieldWidth, {
+            random: layoutRandom,
+            fortifiedChance: scaling.fortifiedChance,
+            voidColumnChance: scaling.voidColumnChance,
+            centerFortifiedBias: scaling.centerFortifiedBias,
+        });
         const difficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
         const chanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;
 

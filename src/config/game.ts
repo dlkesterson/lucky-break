@@ -3,6 +3,34 @@ interface NumericRange {
     readonly max: number;
 }
 
+interface LevelLoopProgressionStep {
+    readonly speedMultiplier: number;
+    readonly brickHpMultiplier: number;
+    readonly brickHpBonus: number;
+    readonly powerUpChanceMultiplier: number;
+    readonly gapScale: number;
+    readonly fortifiedChance: number;
+    readonly voidColumnChance: number;
+    readonly centerFortifiedBias: number;
+}
+
+interface LevelLoopProgressionFallback {
+    readonly speedMultiplierIncrement: number;
+    readonly brickHpMultiplierIncrement: number;
+    readonly brickHpBonusIncrement: number;
+    readonly powerUpChanceMultiplierStep: number;
+    readonly gapScaleStep: number;
+    readonly fortifiedChanceIncrement: number;
+    readonly voidColumnChanceIncrement: number;
+    readonly centerFortifiedBiasIncrement: number;
+    readonly maxSpeedMultiplier: number;
+    readonly minPowerUpChanceMultiplier: number;
+    readonly minGapScale: number;
+    readonly maxFortifiedChance: number;
+    readonly maxVoidColumnChance: number;
+    readonly maxCenterFortifiedBias: number;
+}
+
 export type RewardKey =
     | 'sticky-paddle'
     | 'double-points'
@@ -117,8 +145,10 @@ export interface GameConfig {
     readonly levels: {
         readonly defaultGap: number;
         readonly defaultStartY: number;
-        readonly loopDifficultyIncrement: number;
-        readonly powerUpChanceLoopIncrement: number;
+        readonly minGap: number;
+        readonly maxVoidColumns: number;
+        readonly loopProgression: readonly LevelLoopProgressionStep[];
+        readonly loopFallback: LevelLoopProgressionFallback;
     };
     readonly rewards: {
         readonly definitions: RewardDefinitionMap;
@@ -192,8 +222,56 @@ export const gameConfig = {
     levels: {
         defaultGap: 20,
         defaultStartY: 100,
-        loopDifficultyIncrement: 0.2,
-        powerUpChanceLoopIncrement: 0.1,
+        minGap: 8,
+        maxVoidColumns: 2,
+        loopProgression: [
+            {
+                speedMultiplier: 1.08,
+                brickHpMultiplier: 1.25,
+                brickHpBonus: 0.5,
+                powerUpChanceMultiplier: 0.9,
+                gapScale: 0.95,
+                fortifiedChance: 0.12,
+                voidColumnChance: 0.05,
+                centerFortifiedBias: 0.35,
+            },
+            {
+                speedMultiplier: 1.16,
+                brickHpMultiplier: 1.4,
+                brickHpBonus: 1,
+                powerUpChanceMultiplier: 0.85,
+                gapScale: 0.9,
+                fortifiedChance: 0.2,
+                voidColumnChance: 0.08,
+                centerFortifiedBias: 0.45,
+            },
+            {
+                speedMultiplier: 1.24,
+                brickHpMultiplier: 1.6,
+                brickHpBonus: 1.5,
+                powerUpChanceMultiplier: 0.8,
+                gapScale: 0.85,
+                fortifiedChance: 0.28,
+                voidColumnChance: 0.12,
+                centerFortifiedBias: 0.5,
+            },
+        ],
+        loopFallback: {
+            speedMultiplierIncrement: 0.06,
+            brickHpMultiplierIncrement: 0.2,
+            brickHpBonusIncrement: 0.75,
+            powerUpChanceMultiplierStep: -0.05,
+            gapScaleStep: -0.04,
+            fortifiedChanceIncrement: 0.05,
+            voidColumnChanceIncrement: 0.03,
+            centerFortifiedBiasIncrement: 0.05,
+            maxSpeedMultiplier: 2,
+            minPowerUpChanceMultiplier: 0.55,
+            minGapScale: 0.7,
+            maxFortifiedChance: 0.6,
+            maxVoidColumnChance: 0.25,
+            maxCenterFortifiedBias: 0.8,
+        },
     },
     rewards: {
         definitions: rewardDefinitions,

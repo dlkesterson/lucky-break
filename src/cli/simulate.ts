@@ -1,5 +1,8 @@
-import { createEventBus, type EventEnvelope, type LuckyBreakEventBus, type LuckyBreakEventName } from 'app/events';
-import { createGameSessionManager } from 'app/state';
+import { readFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
+import type { ReplayRecording } from 'app/replay-buffer';
+import { runHeadlessEngine, type HeadlessSimulationResult } from './headless-engine';
+import type { EventEnvelope, LuckyBreakEventName } from 'app/events';
 
 export interface SimulateCommandIO {
     readonly readStdin: () => Promise<string>;
@@ -19,135 +22,87 @@ export interface SimulationInput {
     readonly round?: number;
     readonly durationSec?: number;
     readonly options?: SimulationOptions;
+    readonly replayPath?: string;
+    readonly replay?: ReplayRecording;
 }
 
 export interface SimulationResult {
     readonly ok: true;
     readonly sessionId: string;
+    readonly seed: number;
+    readonly round: number;
     readonly score: number;
-    readonly events: number;
-    readonly volleyStats: {
-        readonly longestVolley: number;
-        readonly averageSpeed: number;
-    };
     readonly durationMs: number;
-}
-
-interface SimulationMetrics {
-    longestVolley: number;
-    currentVolley: number;
-    speedTotal: number;
+    readonly frames: number;
+    readonly events: number;
+    readonly metrics: HeadlessSimulationResult['metrics'];
+    readonly volleyStats: HeadlessSimulationResult['volley'];
+    readonly snapshot: HeadlessSimulationResult['snapshot'];
+    readonly telemetry?: {
+        readonly events: readonly EventEnvelope<LuckyBreakEventName>[];
+    };
 }
 
 const DEFAULT_SEED = 1;
 const DEFAULT_ROUND = 1;
 const DEFAULT_DURATION_SEC = 180;
-const DEFAULT_BRICK_TOTAL = 18;
-const BRICK_TYPES = ['standard', 'multi-hit', 'power-up'] as const;
 
-const createSeededRandom = (seed: number): (() => number) => {
-    let state = (seed >>> 0) || 1;
-    return () => {
-        state = (state * 1664525 + 1013904223) >>> 0;
-        return state / 0x100000000;
-    };
-};
-
-const captureEvents = (eventNames: readonly LuckyBreakEventName[]) => {
-    const events: EventEnvelope<LuckyBreakEventName>[] = [];
-    return {
-        events,
-        attach(bus: LuckyBreakEventBus) {
-            for (const name of eventNames) {
-                bus.subscribe(name, (event) => {
-                    events.push(event);
-                });
-            }
-        },
-    };
-};
-
-const updateMetrics = (metrics: SimulationMetrics, velocity: number) => {
-    metrics.currentVolley += 1;
-    if (metrics.currentVolley > metrics.longestVolley) {
-        metrics.longestVolley = metrics.currentVolley;
+const resolveReplay = async (input: SimulationInput): Promise<ReplayRecording | undefined> => {
+    if (input.replay) {
+        return input.replay;
     }
-    metrics.speedTotal += velocity;
+
+    if (!input.replayPath) {
+        return undefined;
+    }
+
+    const filePath = resolvePath(process.cwd(), input.replayPath);
+    const raw = await readFile(filePath, 'utf8');
+    return JSON.parse(raw) as ReplayRecording;
 };
 
-const finalizeMetrics = (metrics: SimulationMetrics, brickCount: number) => {
-    const averageSpeed = brickCount > 0 ? metrics.speedTotal / brickCount : 0;
-    return {
-        longestVolley: metrics.longestVolley,
-        averageSpeed: Number(averageSpeed.toFixed(2)),
-    };
-};
+const mapResult = (
+    source: HeadlessSimulationResult,
+    telemetryRequested: boolean,
+): SimulationResult => ({
+    ok: true,
+    sessionId: source.sessionId,
+    seed: source.seed,
+    round: source.round,
+    score: source.score,
+    durationMs: source.durationMs,
+    frames: source.frames,
+    events: source.events.length,
+    metrics: source.metrics,
+    volleyStats: source.volley,
+    snapshot: source.snapshot,
+    telemetry: telemetryRequested
+        ? {
+            events: source.events,
+        }
+        : undefined,
+});
 
-export const runHeadlessSimulation = (input: SimulationInput): Promise<SimulationResult> => {
+export const runHeadlessSimulation = async (input: SimulationInput): Promise<SimulationResult> => {
     const seed = typeof input.seed === 'number' ? input.seed : DEFAULT_SEED;
     const round = typeof input.round === 'number' ? input.round : DEFAULT_ROUND;
     const durationSec = typeof input.durationSec === 'number' ? Math.max(1, input.durationSec) : DEFAULT_DURATION_SEC;
-    const sessionId = `sim-${seed}-r${round}`;
-    const rng = createSeededRandom(seed + round);
+    const telemetryRequested = input.options?.telemetry ?? false;
 
-    const breakableBricks = DEFAULT_BRICK_TOTAL + Math.floor(rng() * 12);
-    const durationMs = durationSec * 1000;
-    const stepMs = durationMs / Math.max(1, breakableBricks);
-
-    let currentTime = 0;
-    const bus = createEventBus();
-    const collector = captureEvents(['BrickBreak', 'RoundCompleted']);
-    collector.attach(bus);
-
-    const manager = createGameSessionManager({
-        sessionId,
-        now: () => currentTime,
-        eventBus: bus,
+    const replay = await resolveReplay(input).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to load replay: ${message}`);
     });
 
-    manager.startRound({ breakableBricks });
-
-    const metrics: SimulationMetrics = {
-        longestVolley: 0,
-        currentVolley: 0,
-        speedTotal: 0,
-    };
-
-    for (let index = 0; index < breakableBricks; index += 1) {
-        currentTime += stepMs;
-        const velocity = 6 + rng() * 6;
-        const points = 100 + Math.round(rng() * 200);
-        const row = Math.floor(rng() * 8);
-        const col = Math.floor(rng() * 12);
-        const brickType = BRICK_TYPES[Math.floor(rng() * BRICK_TYPES.length)];
-
-        manager.recordBrickBreak({
-            points,
-            event: {
-                row,
-                col,
-                velocity,
-                brickType,
-            },
-        });
-
-        updateMetrics(metrics, velocity);
-    }
-
-    currentTime = durationMs;
-    manager.completeRound();
-
-    const snapshot = manager.snapshot();
-    const volleyStats = finalizeMetrics(metrics, breakableBricks);
-
-    return Promise.resolve({
-        ok: true,
-        sessionId,
-        score: snapshot.score,
-        events: collector.events.length,
-        volleyStats,
-        durationMs,
+    const result = runHeadlessEngine({
+        seed,
+        round,
+        durationMs: durationSec * 1000,
+        telemetry: telemetryRequested,
+        replay,
     });
+
+    return mapResult(result, telemetryRequested);
 };
 
 const logToStderr = async (io: SimulateCommandIO, message: string) => {
@@ -182,12 +137,16 @@ export const createSimulateCommand = (io: SimulateCommandIO): SimulateCommand =>
             return 1;
         }
 
-        await logToStderr(io, `Running simulate command for session seed ${parsed.seed ?? DEFAULT_SEED}.`);
+        await logToStderr(io, `Running simulate command for seed ${parsed.seed ?? DEFAULT_SEED} round ${parsed.round ?? DEFAULT_ROUND}.`);
 
-        const result = await runHeadlessSimulation(parsed);
-        await io.writeStdout(JSON.stringify(result));
-
-        return 0;
+        try {
+            const result = await runHeadlessSimulation(parsed);
+            await io.writeStdout(JSON.stringify(result));
+            return 0;
+        } catch (error) {
+            await logToStderr(io, `Simulation failed: ${(error as Error).message}`);
+            return 1;
+        }
     };
 
     return {

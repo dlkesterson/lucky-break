@@ -2,6 +2,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
+import type { HighScoreEntry } from 'util/high-scores';
 import { GameTheme } from 'render/theme';
 
 export interface MainMenuSceneOptions {
@@ -9,6 +10,7 @@ export interface MainMenuSceneOptions {
     readonly prompt?: string;
     readonly helpText?: readonly string[];
     readonly onStart: () => void | Promise<void>;
+    readonly highScoresProvider?: () => readonly HighScoreEntry[];
 }
 
 const DEFAULT_TITLE = 'Lucky Break';
@@ -23,6 +25,7 @@ export const createMainMenuScene = (
     let container: Container | null = null;
     let promptLabel: Text | null = null;
     let helpLabel: Text | null = null;
+    let scoreboardLabel: Text | null = null;
     let elapsed = 0;
 
     const handleStart = () => {
@@ -72,7 +75,7 @@ export const createMainMenuScene = (
             overlay.eventMode = 'none';
 
             const panelWidth = Math.min(width * 0.72, 820);
-            const panelHeight = Math.min(height * 0.7, 520);
+            const panelHeight = Math.min(height * 0.7, 540);
             const panelX = (width - panelWidth) / 2;
             const panelY = (height - panelHeight) / 2;
 
@@ -109,7 +112,7 @@ export const createMainMenuScene = (
                 },
             });
             promptLabel.anchor.set(0.5);
-            promptLabel.position.set(width / 2, panelY + panelHeight * 0.58);
+            promptLabel.position.set(width / 2, panelY + panelHeight * 0.48);
 
             const helpLines = options.helpText ?? [
                 'Aim with the paddle to send the ball through the bricks.',
@@ -128,9 +131,39 @@ export const createMainMenuScene = (
                 },
             });
             helpLabel.anchor.set(0.5, 0);
-            helpLabel.position.set(width / 2, panelY + panelHeight * 0.66);
+            helpLabel.position.set(width / 2, panelY + panelHeight * 0.58);
 
-            container.addChild(overlay, panel, title, promptLabel, helpLabel);
+            const highScores = options.highScoresProvider?.() ?? [];
+            const topScores = highScores.slice(0, 5);
+            const scoreboardLines =
+                topScores.length === 0
+                    ? ['HIGH SCORES', 'No runs recorded yet']
+                    : [
+                        'HIGH SCORES',
+                        ...topScores.map((entry, index) => {
+                            const rank = `${index + 1}.`.padStart(2, ' ');
+                            const scoreText = entry.score.toLocaleString();
+                            const paddedScore = scoreText.padStart(7, ' ');
+                            const roundLabel = `R${entry.round}`;
+                            const name = entry.name;
+                            return `${rank} ${paddedScore} — ${roundLabel} ${name}`;
+                        }),
+                    ];
+
+            scoreboardLabel = new Text({
+                text: scoreboardLines.join('\n'),
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 20,
+                    align: 'center',
+                    lineHeight: 28,
+                },
+            });
+            scoreboardLabel.anchor.set(0.5, 0);
+            scoreboardLabel.position.set(width / 2, panelY + panelHeight * 0.7);
+
+            container.addChild(overlay, panel, title, promptLabel, helpLabel, scoreboardLabel);
             context.addToLayer('hud', container);
             context.renderStageSoon();
             pushIdleAudioState();
@@ -155,6 +188,7 @@ export const createMainMenuScene = (
             container = null;
             promptLabel = null;
             helpLabel = null;
+            scoreboardLabel = null;
             pushIdleAudioState();
             emitSceneEvent('exit');
             context.renderStageSoon();

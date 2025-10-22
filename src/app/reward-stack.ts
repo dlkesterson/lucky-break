@@ -15,11 +15,14 @@ interface MultiBallRewardResolution {
 interface SlowTimeRewardContext {
     readonly reward: SlowTimeReward;
     readonly maxDuration: number;
+    readonly activeRemaining?: number;
+    readonly activeScale?: number;
 }
 
 interface SlowTimeRewardResolution {
     readonly duration: number;
     readonly scale: number;
+    readonly extended: boolean;
 }
 
 const clampDuration = (duration: number): number => {
@@ -67,13 +70,27 @@ export const resolveMultiBallReward = ({
 export const resolveSlowTimeReward = ({
     reward,
     maxDuration,
+    activeRemaining,
+    activeScale,
 }: SlowTimeRewardContext): SlowTimeRewardResolution => {
+    const previousDuration = Math.min(maxDuration, clampDuration(activeRemaining ?? 0));
+    const hasActiveSlowTime = previousDuration > 0;
+
     const safeDuration = clampDuration(reward.duration);
     const boundedDuration = Math.min(maxDuration, safeDuration);
-    const scale = clampSlowTimeScale(reward.timeScale);
+    const safeTargetScale = clampSlowTimeScale(reward.timeScale);
+    const safePreviousScale = hasActiveSlowTime ? clampSlowTimeScale(activeScale ?? 1) : 1;
+
+    const combinedDuration = hasActiveSlowTime
+        ? Math.min(maxDuration, previousDuration + boundedDuration)
+        : boundedDuration;
+
+    const nextScale = hasActiveSlowTime ? safePreviousScale : safeTargetScale;
+    const extended = hasActiveSlowTime && combinedDuration > previousDuration;
 
     return {
-        duration: boundedDuration,
-        scale,
+        duration: combinedDuration,
+        scale: combinedDuration > 0 ? nextScale : 1,
+        extended,
     };
 };

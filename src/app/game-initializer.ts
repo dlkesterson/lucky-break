@@ -139,7 +139,19 @@ export const createGameInitializer = async ({
 
     const bus = createEventBus();
     const scheduler = createToneScheduler({ lookAheadMs: 120 });
-    const audioState$ = createSubject<ReactiveAudioGameState>();
+    const summarizeAudioState = (state: ReactiveAudioGameState) => ({
+        combo: state.combo,
+        powerUps: state.activePowerUps.map((entry) => entry.type),
+        lookAheadMs: state.lookAheadMs,
+    });
+
+    const audioState$ = createSubject<ReactiveAudioGameState>({
+        debug: {
+            label: 'audio-state',
+            serialize: summarizeAudioState,
+            logOnNext: 'distinct',
+        },
+    });
     const reactiveAudioLayer = createReactiveAudioLayer(audioState$, Transport, {
         lookAheadMs: scheduler.lookAheadMs,
         onFill: (event) => {

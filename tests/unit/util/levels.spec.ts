@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { gameConfig } from 'config/game';
 import {
     generateLevelLayout,
     getLevelDifficultyMultiplier,
     getLevelSpec,
     getPresetLevelCount,
     getLevelDebugInfo,
+    getLoopScalingInfo,
     isLoopedLevel,
     remixLevel,
 } from 'util/levels';
+import { mulberry32 } from 'util/random';
 
 describe('remixLevel', () => {
     it('returns the original spec when loop count is zero or negative', () => {
@@ -19,6 +22,7 @@ describe('remixLevel', () => {
     it('remixes hit points and scales power-up multipliers for looped levels', () => {
         const base = getLevelSpec(1);
         const remixed = remixLevel(base, 1);
+        const scaling = getLoopScalingInfo(1);
 
         expect(remixed).not.toBe(base);
 
@@ -27,11 +31,10 @@ describe('remixLevel', () => {
 
         expect(remixedHp).not.toEqual(baseHp);
 
-        const difficulty = getLevelDifficultyMultiplier(getPresetLevelCount());
         remixedHp.forEach((hp, index) => {
-            const scaledBase = Math.round(baseHp[index] * difficulty);
+            const scaledBase = Math.round(baseHp[index] * scaling.brickHpMultiplier + scaling.brickHpBonus);
+            expect(hp).toBeGreaterThanOrEqual(baseHp[index]);
             expect(Math.abs(hp - scaledBase)).toBeLessThanOrEqual(1);
-            expect(hp).toBeGreaterThanOrEqual(1);
         });
 
         const baseLayout = generateLevelLayout(base);
@@ -40,7 +43,11 @@ describe('remixLevel', () => {
 
         const baseMultiplier = base.powerUpChanceMultiplier ?? 1;
         const remixedMultiplier = remixed.powerUpChanceMultiplier ?? 1;
-        expect(remixedMultiplier).toBeGreaterThan(baseMultiplier);
+        expect(remixedMultiplier).toBeLessThan(baseMultiplier);
+
+        const baseGap = base.gap ?? gameConfig.levels.defaultGap;
+        const remixedGap = remixed.gap ?? baseGap;
+        expect(remixedGap).toBeLessThan(baseGap);
     });
 
     it('increases difficulty multiplier after each preset loop', () => {
@@ -52,6 +59,7 @@ describe('remixLevel', () => {
         const presetCount = getPresetLevelCount();
         const loopedIndex = presetCount + 2;
         const info = getLevelDebugInfo(loopedIndex);
+        const scaling = getLoopScalingInfo(1);
 
         expect(info.levelIndex).toBe(loopedIndex);
         expect(info.presetIndex).toBe(loopedIndex % presetCount);
@@ -59,11 +67,52 @@ describe('remixLevel', () => {
         expect(info.loopCount).toBe(1);
         expect(info.difficultyMultiplier).toBeCloseTo(getLevelDifficultyMultiplier(loopedIndex));
         expect(info.spec).toEqual(getLevelSpec(loopedIndex));
+        expect(info.scaling).toEqual({ ...scaling, loopCount: info.loopCount });
     });
 
     it('identifies looped levels based on preset count', () => {
         const presetCount = getPresetLevelCount();
         expect(isLoopedLevel(presetCount - 1)).toBe(false);
         expect(isLoopedLevel(presetCount)).toBe(true);
+    });
+});
+
+describe('generateLevelLayout', () => {
+    it('applies deterministic procedural variations based on seeded randomness', () => {
+        const config = gameConfig;
+        const baseSpec = remixLevel(getLevelSpec(2), 2);
+        const randomSeed = 12345;
+
+        const layoutA = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: mulberry32(randomSeed),
+                fortifiedChance: 1,
+                voidColumnChance: 1,
+                centerFortifiedBias: 0.5,
+            },
+        );
+
+        const layoutB = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: mulberry32(randomSeed),
+                fortifiedChance: 1,
+                voidColumnChance: 1,
+                centerFortifiedBias: 0.5,
+            },
+        );
+
+        expect(layoutB.bricks).toEqual(layoutA.bricks);
+        const totalSlots = baseSpec.rows * baseSpec.cols;
+        expect(layoutA.bricks.length).toBeLessThan(totalSlots);
+        const fortifiedCount = layoutA.bricks.filter((brick) => brick.traits?.includes('fortified')).length;
+        expect(fortifiedCount).toBeGreaterThan(0);
     });
 });

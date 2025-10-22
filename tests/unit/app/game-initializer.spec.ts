@@ -221,6 +221,7 @@ describe('createGameInitializer', () => {
     let boostComboMock: ReturnType<typeof vi.fn>;
     let boostPowerUpMock: ReturnType<typeof vi.fn>;
     let capturedReactiveOptions: Record<string, unknown> | undefined;
+    let capturedSubjectOptions: unknown;
 
     const soundbankEntries = {
         calm: { id: 'calm', url: 'calm.wav', category: 'music', gain: 0.45 },
@@ -291,7 +292,11 @@ describe('createGameInitializer', () => {
         createMusicDirectorMock.mockReturnValue(musicDirectorStub);
 
         subjectStub = createSubjectStub();
-        createSubjectMock.mockReturnValue(subjectStub);
+        capturedSubjectOptions = undefined;
+        createSubjectMock.mockImplementation((options?: unknown) => {
+            capturedSubjectOptions = options;
+            return subjectStub;
+        });
 
         loadSoundbankMock.mockResolvedValue({});
         requireSoundbankEntryMock.mockImplementation((_, id: string) => {
@@ -344,6 +349,18 @@ describe('createGameInitializer', () => {
 
         expect(createStageMock).toHaveBeenCalledTimes(1);
         expect(createStageMock).toHaveBeenCalledWith({ parent: container, theme: GameTheme });
+
+        expect(createSubjectMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                debug: expect.objectContaining({
+                    label: 'audio-state',
+                    logOnNext: 'distinct',
+                }),
+            }),
+        );
+
+        const subjectOptions = capturedSubjectOptions as { debug?: { serialize?: unknown } } | undefined;
+        expect(subjectOptions?.debug?.serialize).toBeTypeOf('function');
 
         expect(stageStub.layers.playfield.sortableChildren).toBe(true);
         expect(stageStub.layers.effects.sortableChildren).toBe(true);

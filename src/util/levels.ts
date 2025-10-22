@@ -6,6 +6,7 @@
  */
 
 import { gameConfig } from 'config/game';
+import type { RandomSource } from 'util/random';
 
 const config = gameConfig;
 const DEFAULT_BRICK_WIDTH = config.bricks.size.width;
@@ -13,8 +14,30 @@ const DEFAULT_BRICK_HEIGHT = config.bricks.size.height;
 const DEFAULT_FIELD_WIDTH = config.playfield.width;
 const DEFAULT_GAP = config.levels.defaultGap;
 const DEFAULT_START_Y = config.levels.defaultStartY;
-const LOOP_DIFFICULTY_INCREMENT = config.levels.loopDifficultyIncrement;
-const POWER_UP_CHANCE_LOOP_INCREMENT = config.levels.powerUpChanceLoopIncrement;
+const MIN_GAP = config.levels.minGap;
+const MAX_VOID_COLUMNS = config.levels.maxVoidColumns;
+const LOOP_PROGRESSIONS = config.levels.loopProgression;
+const LOOP_FALLBACK = config.levels.loopFallback;
+
+export interface LoopScalingInfo {
+    readonly loopCount: number;
+    readonly speedMultiplier: number;
+    readonly brickHpMultiplier: number;
+    readonly brickHpBonus: number;
+    readonly powerUpChanceMultiplier: number;
+    readonly gapScale: number;
+    readonly fortifiedChance: number;
+    readonly voidColumnChance: number;
+    readonly centerFortifiedBias: number;
+}
+
+export interface LevelGenerationOptions {
+    readonly random?: RandomSource;
+    readonly fortifiedChance?: number;
+    readonly voidColumnChance?: number;
+    readonly maxVoidColumns?: number;
+    readonly centerFortifiedBias?: number;
+}
 
 export interface LevelSpec {
     /** Number of brick rows */
@@ -51,6 +74,8 @@ export interface BrickSpec {
     readonly y: number;
     /** Hit points (how many hits to break) */
     readonly hp: number;
+    /** Optional brick traits applied during procedural remix */
+    readonly traits?: readonly ('fortified')[];
 }
 
 /** Default level presets with progressive difficulty */
@@ -122,11 +147,23 @@ export function getLevelSpec(levelIndex: number): LevelSpec {
  */
 export function generateLevelLayout(
     spec: LevelSpec,
-    brickWidth = DEFAULT_BRICK_WIDTH,
-    brickHeight = DEFAULT_BRICK_HEIGHT,
-    fieldWidth = DEFAULT_FIELD_WIDTH,
+    brickWidth: number = DEFAULT_BRICK_WIDTH,
+    brickHeight: number = DEFAULT_BRICK_HEIGHT,
+    fieldWidth: number = DEFAULT_FIELD_WIDTH,
+    options: LevelGenerationOptions = {},
 ): LevelLayout {
-    const gap = spec.gap ?? DEFAULT_GAP;
+    const {
+        random,
+        fortifiedChance = 0,
+        voidColumnChance = 0,
+        maxVoidColumns = MAX_VOID_COLUMNS,
+        centerFortifiedBias = 0,
+    } = options;
+
+    const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
+
+    const gapBase = spec.gap ?? DEFAULT_GAP;
+    const gap = Math.max(MIN_GAP, gapBase);
     const startY = spec.startY ?? DEFAULT_START_Y;
 
     // Calculate centering offset
@@ -134,20 +171,66 @@ export function generateLevelLayout(
     const startX = (fieldWidth - totalWidth) / 2 + brickWidth / 2;
 
     const bricks: BrickSpec[] = [];
+    const voidColumns = new Set<number>();
+
+    if (random && voidColumnChance > 0 && spec.cols > 1) {
+        const limit = Math.min(spec.cols - 1, Math.max(0, Math.floor(maxVoidColumns)));
+        if (limit > 0) {
+            const chance = clampUnit(voidColumnChance);
+            for (let col = 0; col < spec.cols; col++) {
+                if (voidColumns.size >= limit) {
+                    break;
+                }
+                if (random() < chance) {
+                    voidColumns.add(col);
+                }
+            }
+            if (voidColumns.size >= spec.cols) {
+                // Always leave at least one column intact
+                const [first] = voidColumns;
+                if (first !== undefined) {
+                    voidColumns.delete(first);
+                }
+            }
+        }
+    }
+
+    const fortifiedBaseChance = clampUnit(fortifiedChance);
+    const biasFactor = Math.max(0, centerFortifiedBias);
+    const midColumn = (spec.cols - 1) / 2;
 
     for (let row = 0; row < spec.rows; row++) {
         const hp = spec.hpPerRow ? spec.hpPerRow(row) : 1;
 
         for (let col = 0; col < spec.cols; col++) {
+            if (voidColumns.has(col)) {
+                continue;
+            }
+
             const x = startX + col * (brickWidth + gap);
             const y = startY + row * (brickHeight + gap);
+
+            let brickHp = hp;
+            const traits: ('fortified')[] = [];
+
+            if (random && fortifiedBaseChance > 0) {
+                const normalizedDistance = spec.cols <= 1 ? 0 : Math.abs(col - midColumn) / Math.max(1, midColumn);
+                const biasBonus = biasFactor * (1 - normalizedDistance);
+                const fortifiedChanceAdjusted = clampUnit(fortifiedBaseChance * (1 + biasBonus));
+                if (random() < fortifiedChanceAdjusted) {
+                    const fortifiedStep = Math.max(1, Math.round(Math.max(0, hp) * 0.35));
+                    brickHp += fortifiedStep;
+                    traits.push('fortified');
+                }
+            }
 
             bricks.push({
                 row,
                 col,
                 x,
                 y,
-                hp,
+                hp: Math.max(1, Math.round(brickHp)),
+                traits: traits.length > 0 ? traits : undefined,
             });
         }
     }
@@ -187,7 +270,8 @@ export function isLoopedLevel(levelIndex: number): boolean {
  */
 export function getLevelDifficultyMultiplier(levelIndex: number): number {
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
-    return 1.0 + loopCount * LOOP_DIFFICULTY_INCREMENT;
+    const scaling = getLoopScalingInfo(loopCount);
+    return scaling.speedMultiplier;
 }
 
 const clampHp = (value: number): number => Math.max(1, Math.round(value));
@@ -202,28 +286,134 @@ export function remixLevel(spec: LevelSpec, loopCount: number): LevelSpec {
         return spec;
     }
 
-    const difficultyMultiplier = getLevelDifficultyMultiplier(loopCount * LEVEL_PRESETS.length);
+    const scaling = getLoopScalingInfo(loopCount);
     const hpPerRowValues = Array.from({ length: spec.rows }, (_unused, row) => {
         const baseHp = spec.hpPerRow ? spec.hpPerRow(row) : 1;
         const jitter = computeRowJitter(row, loopCount);
-        const scaledBase = baseHp * difficultyMultiplier;
+        const scaledBase = baseHp * scaling.brickHpMultiplier + scaling.brickHpBonus;
         const remixed = clampHp(scaledBase + jitter);
         return remixed;
     });
 
     const powerUpMultiplierBase = spec.powerUpChanceMultiplier ?? 1;
-    const remixedPowerUpMultiplier = Number(
-        (powerUpMultiplierBase * (1 + loopCount * POWER_UP_CHANCE_LOOP_INCREMENT)).toFixed(2),
-    );
+    const remixedPowerUpMultiplier = Number((powerUpMultiplierBase * scaling.powerUpChanceMultiplier).toFixed(3));
+
+    const baseGap = spec.gap ?? DEFAULT_GAP;
+    const scaledGap = Math.max(MIN_GAP, Number((baseGap * scaling.gapScale).toFixed(2)));
 
     return {
         ...spec,
-        powerUpChanceMultiplier: remixedPowerUpMultiplier,
+        gap: scaledGap,
+        powerUpChanceMultiplier: Math.max(0.05, remixedPowerUpMultiplier),
         hpPerRow: (row: number) => {
             const index = Math.max(0, Math.min(hpPerRowValues.length - 1, row));
             return hpPerRowValues[index];
         },
     };
+}
+
+const BASE_SCALING: LoopScalingInfo = {
+    loopCount: 0,
+    speedMultiplier: 1,
+    brickHpMultiplier: 1,
+    brickHpBonus: 0,
+    powerUpChanceMultiplier: 1,
+    gapScale: 1,
+    fortifiedChance: 0,
+    voidColumnChance: 0,
+    centerFortifiedBias: 0,
+};
+
+const createBaselineStep = (): LoopScalingInfo => ({ ...BASE_SCALING });
+
+const clampValue = (value: number, min: number, max: number): number => {
+    if (!Number.isFinite(value)) {
+        return min;
+    }
+    if (value < min) {
+        return min;
+    }
+    if (value > max) {
+        return max;
+    }
+    return value;
+};
+
+export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
+    if (loopCount <= 0) {
+        return BASE_SCALING;
+    }
+
+    const resolvedLoop = Math.floor(loopCount);
+    const definedIndex = resolvedLoop - 1;
+
+    if (definedIndex >= 0 && definedIndex < LOOP_PROGRESSIONS.length) {
+        const descriptor = LOOP_PROGRESSIONS[definedIndex];
+        return {
+            loopCount: resolvedLoop,
+            speedMultiplier: descriptor.speedMultiplier,
+            brickHpMultiplier: descriptor.brickHpMultiplier,
+            brickHpBonus: descriptor.brickHpBonus,
+            powerUpChanceMultiplier: descriptor.powerUpChanceMultiplier,
+            gapScale: descriptor.gapScale,
+            fortifiedChance: descriptor.fortifiedChance,
+            voidColumnChance: descriptor.voidColumnChance,
+            centerFortifiedBias: descriptor.centerFortifiedBias,
+        } satisfies LoopScalingInfo;
+    }
+
+    const initialDescriptor = (() => {
+        const lastDefined = LOOP_PROGRESSIONS[LOOP_PROGRESSIONS.length - 1];
+        if (!lastDefined) {
+            return createBaselineStep();
+        }
+        return {
+            loopCount: resolvedLoop,
+            speedMultiplier: lastDefined.speedMultiplier,
+            brickHpMultiplier: lastDefined.brickHpMultiplier,
+            brickHpBonus: lastDefined.brickHpBonus,
+            powerUpChanceMultiplier: lastDefined.powerUpChanceMultiplier,
+            gapScale: lastDefined.gapScale,
+            fortifiedChance: lastDefined.fortifiedChance,
+            voidColumnChance: lastDefined.voidColumnChance,
+            centerFortifiedBias: lastDefined.centerFortifiedBias,
+        } satisfies LoopScalingInfo;
+    })();
+
+    const extraLoops = Math.max(0, resolvedLoop - LOOP_PROGRESSIONS.length);
+    const fallback = LOOP_FALLBACK;
+
+    let speed = initialDescriptor.speedMultiplier;
+    let brickHpMultiplier = initialDescriptor.brickHpMultiplier;
+    let brickHpBonus = initialDescriptor.brickHpBonus;
+    let powerUpChance = initialDescriptor.powerUpChanceMultiplier;
+    let gapScale = initialDescriptor.gapScale;
+    let fortifiedChance = initialDescriptor.fortifiedChance;
+    let voidColumnChance = initialDescriptor.voidColumnChance;
+    let centerBias = initialDescriptor.centerFortifiedBias;
+
+    for (let index = 0; index < extraLoops; index++) {
+        speed = clampValue(speed + fallback.speedMultiplierIncrement, 1, fallback.maxSpeedMultiplier);
+        brickHpMultiplier += fallback.brickHpMultiplierIncrement;
+        brickHpBonus += fallback.brickHpBonusIncrement;
+        powerUpChance = clampValue(powerUpChance + fallback.powerUpChanceMultiplierStep, fallback.minPowerUpChanceMultiplier, 2);
+        gapScale = clampValue(gapScale + fallback.gapScaleStep, fallback.minGapScale, 2);
+        fortifiedChance = clampValue(fortifiedChance + fallback.fortifiedChanceIncrement, 0, fallback.maxFortifiedChance);
+        voidColumnChance = clampValue(voidColumnChance + fallback.voidColumnChanceIncrement, 0, fallback.maxVoidColumnChance);
+        centerBias = clampValue(centerBias + fallback.centerFortifiedBiasIncrement, 0, fallback.maxCenterFortifiedBias);
+    }
+
+    return {
+        loopCount: resolvedLoop,
+        speedMultiplier: speed,
+        brickHpMultiplier,
+        brickHpBonus,
+        powerUpChanceMultiplier: powerUpChance,
+        gapScale,
+        fortifiedChance,
+        voidColumnChance,
+        centerFortifiedBias: centerBias,
+    } satisfies LoopScalingInfo;
 }
 
 /**
@@ -239,16 +429,19 @@ export function getLevelDebugInfo(levelIndex: number): {
     loopCount: number;
     difficultyMultiplier: number;
     spec: LevelSpec;
+    scaling: LoopScalingInfo;
 } {
     const presetIndex = levelIndex % LEVEL_PRESETS.length;
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
+    const scaling = getLoopScalingInfo(loopCount);
 
     return {
         levelIndex,
         presetIndex,
         isLooped: isLoopedLevel(levelIndex),
         loopCount,
-        difficultyMultiplier: getLevelDifficultyMultiplier(levelIndex),
+        difficultyMultiplier: scaling.speedMultiplier,
         spec: getLevelSpec(levelIndex),
+        scaling,
     };
 }

@@ -127,6 +127,17 @@ const levelMocks = vi.hoisted(() => ({
     getLevelSpecMock: vi.fn(),
     getPresetLevelCountMock: vi.fn(),
     getLevelDifficultyMultiplierMock: vi.fn(),
+    getLoopScalingInfoMock: vi.fn(() => ({
+        loopCount: 0,
+        speedMultiplier: 1,
+        brickHpMultiplier: 1,
+        brickHpBonus: 0,
+        powerUpChanceMultiplier: 1,
+        gapScale: 1,
+        fortifiedChance: 0,
+        voidColumnChance: 0,
+        centerFortifiedBias: 0,
+    })),
     remixLevelMock: vi.fn((spec: unknown, loopCount: number) => {
         void loopCount;
         return spec;
@@ -138,6 +149,7 @@ vi.mock('util/levels', () => ({
     getLevelSpec: levelMocks.getLevelSpecMock,
     getPresetLevelCount: levelMocks.getPresetLevelCountMock,
     getLevelDifficultyMultiplier: levelMocks.getLevelDifficultyMultiplierMock,
+    getLoopScalingInfo: levelMocks.getLoopScalingInfoMock,
     remixLevel: levelMocks.remixLevelMock,
 }));
 

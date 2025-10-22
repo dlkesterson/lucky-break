@@ -34,9 +34,10 @@ interface SoundbankProgressEvent {
 
 const SOUND_ASSET_PREFIX = '../../assets/samples/';
 
-const SOUND_ASSET_URLS = import.meta.glob('../../assets/samples/*', {
+const SOUND_ASSET_URLS: Record<string, string> = import.meta.glob('../../assets/samples/*', {
     eager: true,
-    as: 'url',
+    query: '?url',
+    import: 'default',
 });
 
 let cachedSoundbank: Promise<Soundbank> | null = null;

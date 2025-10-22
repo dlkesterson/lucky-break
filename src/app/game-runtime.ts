@@ -8,6 +8,7 @@ import {
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
+import { createAchievementManager, type AchievementUnlock } from './achievements';
 import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createSpeedRing } from 'render/effects/speed-ring';
@@ -62,7 +63,7 @@ import {
 } from 'matter-js';
 import { Transport, getContext } from 'tone';
 import type { MusicState } from 'audio/music-director';
-import type { RandomManager } from 'util/random';
+import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
@@ -70,6 +71,7 @@ import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
+import { getHighScores, recordHighScore } from 'util/high-scores';
 import type { GameSceneServices } from './scene-services';
 import { resolveMultiBallReward, resolveSlowTimeReward } from './reward-stack';
 
@@ -145,7 +147,7 @@ const config: GameConfig = gameConfig;
 const PLAYFIELD_DEFAULT = config.playfield;
 const BRICK_LIGHT_RADIUS = config.bricks.lighting.radius;
 const BRICK_REST_ALPHA = config.bricks.lighting.restAlpha;
-const COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
+const BASE_COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
 const HUD_SCALE = config.hud.scale;
 const HUD_MARGIN = config.hud.margin;
 const MIN_HUD_SCALE = config.hud.minScale;
@@ -169,6 +171,32 @@ const COIN_FALL_SPEED = config.coins.fallSpeed;
 const COIN_BASE_VALUE = config.coins.baseValue;
 const COIN_MIN_VALUE = config.coins.min;
 const COIN_MAX_VALUE = config.coins.max;
+const BASE_LIVES = 3;
+const LAYOUT_SEED_SALT = 0x9e3779b1;
+
+const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
+    const normalizedIndex = levelIndex + 1;
+    const hashed = (baseSeed ^ Math.imul(normalizedIndex, LAYOUT_SEED_SALT)) >>> 0;
+    return hashed === 0 ? 1 : hashed;
+};
+
+const achievements = createAchievementManager();
+
+let upgradeSnapshot = achievements.getUpgradeSnapshot();
+let comboDecayWindow = BASE_COMBO_DECAY_WINDOW * upgradeSnapshot.comboDecayMultiplier;
+
+const refreshAchievementUpgrades = () => {
+    upgradeSnapshot = achievements.getUpgradeSnapshot();
+    const candidate = BASE_COMBO_DECAY_WINDOW * upgradeSnapshot.comboDecayMultiplier;
+    comboDecayWindow = Number.isFinite(candidate) && candidate > 0 ? candidate : BASE_COMBO_DECAY_WINDOW;
+    return upgradeSnapshot;
+};
+
+if (!Number.isFinite(comboDecayWindow) || comboDecayWindow <= 0) {
+    refreshAchievementUpgrades();
+}
+
+const resolveInitialLives = () => Math.max(1, BASE_LIVES + upgradeSnapshot.bonusLives);
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -284,7 +312,7 @@ export const createGameRuntime = async ({
     const createSession = () =>
         createGameSessionManager({
             sessionId: 'game-session',
-            initialLives: 3,
+            initialLives: resolveInitialLives(),
             eventBus: bus,
             random: random.random,
             now: sessionNow,
@@ -316,8 +344,23 @@ export const createGameRuntime = async ({
 
     let session = createSession();
     let scoringState = createScoring();
-    pushMusicState({ lives: 3, combo: 0 });
+    pushMusicState({ lives: toMusicLives(resolveInitialLives()), combo: 0 });
     const powerUpManager = new PowerUpManager();
+    let runHighestCombo = 0;
+    let levelBricksBroken = 0;
+    let roundHighestCombo = 0;
+    let roundScoreBaseline = 0;
+    let roundCoinBaseline = 0;
+    const pendingAchievementNotifications: AchievementUnlock[] = [];
+
+    const consumeAchievementNotifications = (): readonly AchievementUnlock[] => {
+        if (pendingAchievementNotifications.length === 0) {
+            return [];
+        }
+        const notifications = pendingAchievementNotifications.slice();
+        pendingAchievementNotifications.length = 0;
+        return notifications;
+    };
     let currentLevelIndex = 0;
     let loop: ReturnType<typeof createGameLoop> | null = null;
     let isPaused = false;
@@ -371,6 +414,7 @@ export const createGameRuntime = async ({
         rowColors,
         powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
         coin: { radius: COIN_RADIUS, fallSpeed: COIN_FALL_SPEED },
+        getLayoutRandom: (levelIndex) => mulberry32(deriveLayoutSeed(random.seed(), levelIndex)),
     });
 
     const brickHealth = levelRuntime.brickHealth;
@@ -929,6 +973,7 @@ export const createGameRuntime = async ({
     };
 
     const activateReward = (reward: Reward | null) => {
+        const existingSlowTime = slowTimeTimer > 0 ? { remaining: slowTimeTimer, scale: slowTimeScale } : null;
         activeReward = reward;
 
         doublePointsMultiplier = 1;
@@ -984,12 +1029,17 @@ export const createGameRuntime = async ({
                     const resolution = resolveSlowTimeReward({
                         reward,
                         maxDuration: SLOW_TIME_MAX_DURATION,
+                        activeRemaining: existingSlowTime?.remaining,
+                        activeScale: existingSlowTime?.scale,
                     });
                     slowTimeTimer = resolution.duration;
-                    slowTimeScale = resolution.scale;
+                    slowTimeScale = resolution.duration > 0 ? resolution.scale : 1;
                     runtimeLogger.info('Slow-time reward applied', {
                         duration: resolution.duration,
                         targetScale: resolution.scale,
+                        extended: resolution.extended,
+                        previousDuration: existingSlowTime?.remaining ?? 0,
+                        previousScale: existingSlowTime?.scale ?? 1,
                     });
                 }
                 break;
@@ -1014,8 +1064,13 @@ export const createGameRuntime = async ({
         lastRecordedInputTarget = null;
         replayBuffer.begin(activeSeed);
 
+        refreshAchievementUpgrades();
+        pendingAchievementNotifications.length = 0;
+
         session = createSession();
-        pushMusicState({ lives: 3, combo: 0 });
+        runHighestCombo = 0;
+        levelBricksBroken = 0;
+        pushMusicState({ lives: toMusicLives(resolveInitialLives()), combo: 0 });
         currentLevelIndex = 0;
         pendingReward = null;
         activateReward(null);
@@ -1037,6 +1092,11 @@ export const createGameRuntime = async ({
             resetCombo(scoringState);
         }
 
+        levelBricksBroken = 0;
+        roundHighestCombo = scoringState.combo;
+        roundScoreBaseline = scoringState.score;
+        roundCoinBaseline = session.snapshot().coins;
+
         powerUpManager.clearAll();
         clearExtraBalls();
         loadLevel(levelIndex);
@@ -1055,6 +1115,44 @@ export const createGameRuntime = async ({
         isPaused = false;
         loop?.stop();
         pendingReward = spinWheel(random.random);
+
+        const roundUnlocks = achievements.recordRoundComplete({ bricksBroken: levelBricksBroken });
+        if (roundUnlocks.length > 0) {
+            pendingAchievementNotifications.push(...roundUnlocks);
+            refreshAchievementUpgrades();
+        }
+
+        const achievementsToShow = consumeAchievementNotifications();
+        const sessionSnapshot = session.snapshot();
+        const hudSnapshot = sessionSnapshot.hud;
+
+        const bricksBroken = Math.max(0, hudSnapshot.brickTotal - hudSnapshot.brickRemaining);
+        const roundScoreGain = Math.max(0, scoringState.score - roundScoreBaseline);
+        const coinsCollected = Math.max(0, sessionSnapshot.coins - roundCoinBaseline);
+        const durationMs = sessionSnapshot.lastOutcome?.durationMs ?? 0;
+        const volleyLength = hudSnapshot.momentum.volleyLength;
+        const speedPressure = hudSnapshot.momentum.speedPressure;
+
+        const milestones: string[] = [];
+        if (roundScoreGain > 0) {
+            milestones.push(`+${roundScoreGain.toLocaleString()} points`);
+        }
+        if (roundHighestCombo > 0) {
+            milestones.push(`Combo x${roundHighestCombo}`);
+        }
+        if (coinsCollected > 0) {
+            milestones.push(`${coinsCollected.toLocaleString()} coins banked`);
+        }
+        if (hudSnapshot.brickTotal > 0 && bricksBroken === hudSnapshot.brickTotal) {
+            milestones.push('Perfect Clear');
+        }
+        if (volleyLength >= 25) {
+            milestones.push(`Volley ${volleyLength}`);
+        }
+
+        roundScoreBaseline = scoringState.score;
+        roundCoinBaseline = sessionSnapshot.coins;
+        roundHighestCombo = scoringState.combo;
 
         const completedLevel = currentLevelIndex + 1;
         let handled = false;
@@ -1076,6 +1174,19 @@ export const createGameRuntime = async ({
             level: completedLevel,
             score: scoringState.score,
             reward: pendingReward ?? undefined,
+            achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,
+            recap: {
+                roundScore: roundScoreGain,
+                totalScore: scoringState.score,
+                bricksBroken,
+                brickTotal: hudSnapshot.brickTotal,
+                bestCombo: roundHighestCombo,
+                volleyLength,
+                speedPressure,
+                coinsCollected,
+                durationMs,
+            },
+            milestones: milestones.length > 0 ? milestones : undefined,
             onContinue: continueToNextLevel,
         })
             .then(() => {
@@ -1095,7 +1206,23 @@ export const createGameRuntime = async ({
         activateReward(null);
         musicDirector.setEnabled(false);
 
-        void stage.push('game-over', { score: scoringState.score })
+        const sessionUnlocks = achievements.recordSessionSummary({ highestCombo: runHighestCombo });
+        if (sessionUnlocks.length > 0) {
+            pendingAchievementNotifications.push(...sessionUnlocks);
+            refreshAchievementUpgrades();
+        }
+
+        const achievementsToShow = consumeAchievementNotifications();
+        recordHighScore(scoringState.score, {
+            round: currentLevelIndex + 1,
+            achievedAt: Date.now(),
+            minScore: 1,
+        });
+
+        void stage.push('game-over', {
+            score: scoringState.score,
+            achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,
+        })
             .then(() => {
                 renderStageSoon();
             })
@@ -1167,7 +1294,7 @@ export const createGameRuntime = async ({
                     // Provide brick context so scoring momentum metrics mirror what the HUD will show.
                     const basePoints = awardBrickPoints(
                         scoringState,
-                        undefined,
+                        { comboDecayTime: comboDecayWindow },
                         {
                             bricksRemaining: bricksRemainingAfter,
                             brickTotal: bricksTotal,
@@ -1180,6 +1307,25 @@ export const createGameRuntime = async ({
                         const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
                         points += bonus;
                         scoringState.score += bonus;
+                    }
+
+                    levelBricksBroken += 1;
+                    if (scoringState.combo > runHighestCombo) {
+                        runHighestCombo = scoringState.combo;
+                    }
+                    if (scoringState.combo > roundHighestCombo) {
+                        roundHighestCombo = scoringState.combo;
+                    }
+
+                    const achievementUnlocks = achievements.recordBrickBreak({ combo: scoringState.combo });
+                    if (achievementUnlocks.length > 0) {
+                        pendingAchievementNotifications.push(...achievementUnlocks);
+                        refreshAchievementUpgrades();
+                        const nextDecay = comboDecayWindow;
+                        if (Number.isFinite(nextDecay) && nextDecay > 0) {
+                            scoringState.comboTimer = Math.max(scoringState.comboTimer, nextDecay);
+                            scoringState.momentum.comboTimer = scoringState.comboTimer;
+                        }
                     }
 
                     publishComboMilestoneIfNeeded({
@@ -1608,7 +1754,8 @@ export const createGameRuntime = async ({
 
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
-        const comboTimerFactor = comboActive ? clampUnit(scoringState.comboTimer / COMBO_DECAY_WINDOW) : 0;
+        const decayWindow = comboDecayWindow > 0 ? comboDecayWindow : BASE_COMBO_DECAY_WINDOW;
+        const comboTimerFactor = comboActive ? clampUnit(scoringState.comboTimer / decayWindow) : 0;
         const comboEnergy = Math.min(1.15, comboRingPulse * 0.85 + comboIntensity * 0.6 + comboTimerFactor * 0.45);
         if (comboEnergy > 0) {
             const comboPhaseSpeed = 2.4 + comboIntensity * 3 + comboRingPulse * 2.5;
@@ -1688,6 +1835,7 @@ export const createGameRuntime = async ({
             onStart: () => {
                 void beginNewSession();
             },
+            highScoresProvider: getHighScores,
         }),
         { provideContext: provideSceneServices },
     );

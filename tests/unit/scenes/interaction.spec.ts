@@ -307,6 +307,17 @@ describe('scene interaction lifecycles', () => {
             level: 1,
             score: 1000,
             onContinue: vi.fn(),
+            recap: {
+                roundScore: 500,
+                totalScore: 1000,
+                bricksBroken: 30,
+                brickTotal: 30,
+                bestCombo: 12,
+                volleyLength: 18,
+                speedPressure: 0.6,
+                coinsCollected: 12,
+                durationMs: 90000,
+            },
         });
 
         const container = getLastAdded();

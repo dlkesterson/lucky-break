@@ -9,8 +9,6 @@ describe('simulate CLI command', () => {
             round: 2,
             durationSec: 90,
             options: {
-                audio: false,
-                visual: false,
                 telemetry: true,
             },
         };
@@ -30,8 +28,6 @@ describe('simulate CLI command', () => {
             round: 1,
             durationSec: 120,
             options: {
-                audio: false,
-                visual: false,
                 telemetry: true,
             },
         };
@@ -59,12 +55,23 @@ describe('simulate CLI command', () => {
             sessionId: 'sim-7-r1',
             events: expect.any(Number),
             score: expect.any(Number),
+            durationMs: expect.any(Number),
+            frames: expect.any(Number),
+            metrics: {
+                bricksBroken: expect.any(Number),
+                averageFps: expect.any(Number),
+            },
             volleyStats: {
                 longestVolley: expect.any(Number),
-                averageSpeed: expect.any(Number),
+                averageImpactSpeed: expect.any(Number),
+            },
+            telemetry: {
+                events: expect.any(Array),
             },
         });
         expect(output).toEqual(baseline);
+        expect(output.telemetry?.events).toBeDefined();
+        expect(output.telemetry?.events).toHaveLength(output.events);
     });
 
     it('returns non-zero exit code and logs an error for invalid input', async () => {

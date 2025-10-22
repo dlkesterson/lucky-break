@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSubject } from 'util/observable';
+import type { Logger } from 'util/log';
 
 describe('createSubject', () => {
     it('broadcasts values to subscribers until unsubscribe', () => {
@@ -55,5 +56,69 @@ describe('createSubject', () => {
         subject.next(99);
 
         expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('logs lifecycle events when debug options are provided', () => {
+        const createLoggerStub = () => {
+            const debug = vi.fn();
+            const info = vi.fn();
+            const warn = vi.fn();
+            const error = vi.fn();
+            const child = vi.fn<[string], Logger>();
+
+            const logger: Logger = {
+                debug,
+                info,
+                warn,
+                error,
+                child: (suffix: string) => child(suffix),
+            };
+
+            child.mockReturnValue(logger);
+
+            return {
+                logger,
+                debug,
+                info,
+                warn,
+                error,
+                child,
+            };
+        };
+
+        const childLoggerStub = createLoggerStub();
+        const baseLoggerStub = createLoggerStub();
+        baseLoggerStub.child.mockReturnValue(childLoggerStub.logger);
+
+        const subject = createSubject<number>({
+            debug: {
+                label: 'test-stream',
+                logger: baseLoggerStub.logger,
+                serialize: (value) => value,
+                logOnNext: 'distinct',
+            },
+        });
+
+        const subscription = subject.subscribe(() => {
+            /* noop observer */
+        });
+
+        subject.next(1);
+        subject.next(1);
+        subject.next(2);
+        subscription.unsubscribe();
+        subject.complete();
+
+        expect(baseLoggerStub.child).toHaveBeenCalledWith('observable:test-stream');
+
+        const debugCalls = childLoggerStub.debug.mock.calls as [string, Record<string, unknown>?][];
+        expect(debugCalls).toContainEqual(['subscribe', { observers: 1 }]);
+        expect(debugCalls).toContainEqual(['unsubscribe', { observers: 0 }]);
+        expect(debugCalls).toContainEqual(['complete', { observers: 0 }]);
+
+        const nextCalls = debugCalls.filter(([event]) => event === 'next');
+        expect(nextCalls).toHaveLength(2);
+        expect(nextCalls[0][1]).toEqual({ observers: 1, value: 1 });
+        expect(nextCalls[1][1]).toEqual({ observers: 1, value: 2 });
     });
 });

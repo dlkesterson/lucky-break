@@ -1,11 +1,13 @@
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
+import type { AchievementUnlock } from 'app/achievements';
 import type { UiSceneTransitionAction } from 'app/events';
 import { GameTheme } from 'render/theme';
 
 export interface GameOverPayload {
     readonly score: number;
+    readonly achievements?: readonly AchievementUnlock[];
 }
 
 export interface GameOverSceneOptions {
@@ -117,6 +119,46 @@ export const createGameOverScene = (
             scoreLabel.anchor.set(0.5);
             scoreLabel.position.set(width / 2, panelY + panelHeight * 0.48);
 
+            let contentY = scoreLabel.position.y + 48;
+            const achievements = effectivePayload.achievements ?? [];
+            if (!container) {
+                throw new Error('GameOverScene container not initialized');
+            }
+            const host = container;
+            if (achievements.length > 0) {
+                const heading = new Text({
+                    text: 'Achievements Unlocked',
+                    style: {
+                        fill: hexToNumber(GameTheme.accents.combo),
+                        fontFamily: GameTheme.font,
+                        fontSize: 38,
+                        fontWeight: '700',
+                        align: 'center',
+                        letterSpacing: 1,
+                    },
+                });
+                heading.anchor.set(0.5);
+                heading.position.set(width / 2, contentY);
+                host.addChild(heading);
+                contentY += 34;
+
+                achievements.forEach((achievement) => {
+                    const detail = new Text({
+                        text: `${achievement.title} — ${achievement.description}`,
+                        style: {
+                            fill: hexToNumber(GameTheme.hud.textSecondary),
+                            fontFamily: GameTheme.monoFont,
+                            fontSize: 24,
+                            align: 'center',
+                        },
+                    });
+                    detail.anchor.set(0.5);
+                    detail.position.set(width / 2, contentY);
+                    host.addChild(detail);
+                    contentY += 28;
+                });
+            }
+
             promptLabel = new Text({
                 text: (options.prompt ?? DEFAULT_PROMPT).toUpperCase(),
                 style: {
@@ -128,7 +170,8 @@ export const createGameOverScene = (
                 },
             });
             promptLabel.anchor.set(0.5);
-            promptLabel.position.set(width / 2, panelY + panelHeight * 0.7);
+            const promptBaseline = panelY + panelHeight * 0.78;
+            promptLabel.position.set(width / 2, Math.min(promptBaseline, contentY + 48));
 
             container.addChild(overlay, panel, title, scoreLabel, promptLabel);
             context.addToLayer('hud', container);

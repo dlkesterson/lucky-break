@@ -510,6 +510,18 @@ const createMockScene = () => ({
     init: vi.fn(),
 });
 
+const highScoreModule = vi.hoisted(() => ({
+    getHighScores: vi.fn<[], { score: number; name: string; round: number; achievedAt: number }[]>(
+        () => [],
+    ),
+    recordHighScore: vi.fn<
+        [number, { round?: number; minScore?: number; achievedAt?: number; name?: string }?],
+        { accepted: boolean; position: number | null; entries: unknown[] }
+    >(() => ({ accepted: false, position: null, entries: [] })),
+}));
+
+vi.mock('util/high-scores', () => highScoreModule);
+
 vi.mock('scenes/main-menu', () => ({
     createMainMenuScene: vi.fn(() => createMockScene()),
 }));
@@ -897,9 +909,13 @@ vi.mock('@pixi/filter-glow', () => ({
     },
 }));
 
+const matterEventsState = vi.hoisted(() => ({
+    on: vi.fn(),
+}));
+
 vi.mock('matter-js', () => ({
     Events: {
-        on: vi.fn(),
+        on: matterEventsState.on,
     },
     Body: {
         setVelocity: vi.fn((body: any, velocity: { x: number; y: number }) => {
@@ -990,6 +1006,7 @@ vi.mock('util/log', () => ({
 
 import { createGameRuntime } from 'app/game-runtime';
 import { createGameplayScene } from 'scenes/gameplay';
+import { createMainMenuScene } from 'scenes/main-menu';
 
 describe('createGameRuntime', () => {
     const makeRandomManager = () => ({
@@ -1048,6 +1065,11 @@ describe('createGameRuntime', () => {
         createGameSessionManagerMock.mockClear();
         multiBallControllerMockFactory.mockReset();
         multiBallControllerMockFactory.mockImplementation(createMultiBallControllerStub);
+        highScoreModule.getHighScores.mockClear();
+        highScoreModule.getHighScores.mockReturnValue([]);
+        highScoreModule.recordHighScore.mockClear();
+        highScoreModule.recordHighScore.mockReturnValue({ accepted: false, position: null, entries: [] });
+        matterEventsState.on.mockClear();
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {
@@ -1343,5 +1365,84 @@ describe('createGameRuntime', () => {
         expect(inputManager!.resetLaunchTrigger.mock.calls.length).toBe(resetCallsBefore + 1);
 
         handle.dispose();
+    });
+
+    it('provides high score data to the main menu scene factory', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        const stageInstance = initializerState.instances[0]?.stage;
+        expect(stageInstance).toBeDefined();
+        const registerCalls = stageInstance!.register.mock.calls as [
+            string,
+            (context: unknown) => unknown,
+            unknown?,
+        ][];
+        const mainMenuRegistration = registerCalls.find(([name]) => name === 'main-menu');
+        expect(mainMenuRegistration).toBeDefined();
+        const factory = mainMenuRegistration?.[1];
+        expect(factory).toBeInstanceOf(Function);
+        factory?.({} as never);
+
+        const mainMenuOptions = vi.mocked(createMainMenuScene).mock.calls.at(-1)?.[1] as {
+            highScoresProvider?: () => unknown;
+        } | undefined;
+        expect(mainMenuOptions?.highScoresProvider).toBeInstanceOf(Function);
+
+        const sampleScores = [
+            { name: 'ACE', score: 12345, round: 4, achievedAt: 111 },
+            { name: 'BEE', score: 8900, round: 3, achievedAt: 222 },
+        ];
+        highScoreModule.getHighScores.mockReturnValue(sampleScores);
+
+        const provided = mainMenuOptions?.highScoresProvider?.();
+        expect(highScoreModule.getHighScores).toHaveBeenCalledTimes(1);
+        expect(provided).toEqual(sampleScores);
+    });
+
+    it('records a high score submission when the game ends', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        const collisionRegistration = matterEventsState.on.mock.calls.find((call) => call[1] === 'collisionStart');
+        expect(collisionRegistration).toBeDefined();
+        interface CollisionPair {
+            bodyA: { label: string; velocity: { x: number; y: number }; position: { x: number; y: number } };
+            bodyB: { label: string; velocity: { x: number; y: number }; position: { x: number; y: number } };
+        }
+
+        interface CollisionEvent {
+            pairs: CollisionPair[];
+        }
+
+        const collisionHandler = collisionRegistration?.[2] as ((this: void, event: CollisionEvent) => void) | undefined;
+        expect(collisionHandler).toBeInstanceOf(Function);
+
+        const ballBody = { label: 'ball', velocity: { x: 0, y: 10 }, position: { x: 0, y: 0 } };
+        const wallBody = { label: 'wall-bottom', velocity: { x: 0, y: 0 }, position: { x: 0, y: 0 } };
+
+        for (let i = 0; i < 3; i += 1) {
+            collisionHandler?.call(undefined, { pairs: [{ bodyA: ballBody, bodyB: wallBody }] });
+        }
+
+        expect(highScoreModule.recordHighScore).toHaveBeenCalled();
+        const recordCall = highScoreModule.recordHighScore.mock.calls.at(-1);
+        expect(recordCall).toBeDefined();
+        const [scoreArg, recordOptions] = recordCall!;
+        expect(typeof scoreArg).toBe('number');
+        expect(recordOptions?.round).toBeGreaterThanOrEqual(1);
+        expect(recordOptions?.minScore).toBe(1);
     });
 });

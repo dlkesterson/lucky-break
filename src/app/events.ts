@@ -179,6 +179,32 @@ const toEnvelope = <EventName extends LuckyBreakEventName>(
     timestamp,
 });
 
+interface E2EHarness {
+    readonly onEvent?: (event: EventEnvelope<LuckyBreakEventName>) => void;
+}
+
+const readE2EHarness = (): E2EHarness | null => {
+    const candidate = globalThis as { __LB_E2E_HOOKS__?: unknown };
+    const harness = candidate.__LB_E2E_HOOKS__;
+    if (!harness || typeof harness !== 'object') {
+        return null;
+    }
+    return harness as E2EHarness;
+};
+
+const notifyE2EHarness = (event: EventEnvelope<LuckyBreakEventName>): void => {
+    const harness = readE2EHarness();
+    if (!harness?.onEvent) {
+        return;
+    }
+
+    try {
+        harness.onEvent(event);
+    } catch {
+        /* ignore errors from test harness observers */
+    }
+};
+
 export interface EventBusOptions {
     readonly now?: () => number;
 }
@@ -188,12 +214,14 @@ export const createEventBus = (options: EventBusOptions = {}): LuckyBreakEventBu
     const resolveNow = options.now ?? Date.now;
 
     const publish: LuckyBreakEventBus['publish'] = (type, payload, timestamp = resolveNow()) => {
+        const envelope = toEnvelope(type, payload, timestamp);
+        notifyE2EHarness(envelope as EventEnvelope<LuckyBreakEventName>);
+
         const listeners = registry.get(type);
         if (!listeners || listeners.size === 0) {
             return;
         }
 
-        const envelope = toEnvelope(type, payload, timestamp);
         for (const listener of listeners) {
             listener(envelope);
         }
