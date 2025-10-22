@@ -6,6 +6,23 @@
  */
 import { gameConfig, type GameConfig } from 'config/game';
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+export interface MomentumMetrics {
+    /** Running count of successive brick breaks without a combo reset */
+    volleyLength: number;
+    /** Normalized pressure based on recent impact speed */
+    speedPressure: number;
+    /** Remaining bricks over total bricks in the round (0-1) */
+    brickDensity: number;
+    /** Normalized combo heat based on current combo vs threshold */
+    comboHeat: number;
+    /** Mirror of comboTimer for HUD consumers */
+    comboTimer: number;
+}
+
+export type MomentumSnapshot = MomentumMetrics;
+
 export interface ScoreState {
     /** Current total score */
     score: number;
@@ -15,6 +32,8 @@ export interface ScoreState {
     comboTimer: number;
     /** Callback to update HUD/UI */
     updateHUD?: () => void;
+    /** Momentum metrics surfaced to HUD/analytics */
+    momentum: MomentumMetrics;
 }
 
 export interface ScoringConfig {
@@ -28,11 +47,23 @@ export interface ScoringConfig {
     readonly comboDecayTime?: number;
 }
 
+export interface BrickImpactContext {
+    /** Bricks remaining after this break */
+    readonly bricksRemaining?: number;
+    /** Total breakable bricks for the round */
+    readonly brickTotal?: number;
+    /** Impact speed for the ball (units per step) */
+    readonly impactSpeed?: number;
+    /** Optional override for maximum expected speed */
+    readonly maxSpeed?: number;
+}
+
 const config: GameConfig = gameConfig;
 const DEFAULT_BASE_POINTS = config.scoring.basePoints;
 const DEFAULT_MULTIPLIER_THRESHOLD = config.scoring.multiplierThreshold;
 const DEFAULT_MULTIPLIER_PER_THRESHOLD = config.scoring.multiplierPerThreshold;
 const DEFAULT_COMBO_DECAY_TIME = config.scoring.comboDecayTime;
+const DEFAULT_MAX_SPEED = config.ball.maxSpeed;
 
 /**
  * Create a new scoring state
@@ -46,6 +77,13 @@ export function createScoring(updateHUD?: () => void): ScoreState {
         combo: 0,
         comboTimer: 0,
         updateHUD,
+        momentum: {
+            volleyLength: 0,
+            speedPressure: 0,
+            brickDensity: 1,
+            comboHeat: 0,
+            comboTimer: 0,
+        },
     };
 }
 
@@ -56,7 +94,11 @@ export function createScoring(updateHUD?: () => void): ScoreState {
  * @param config - Scoring configuration
  * @returns Points awarded
  */
-export function awardBrickPoints(state: ScoreState, config: ScoringConfig = {}): number {
+export function awardBrickPoints(
+    state: ScoreState,
+    config: ScoringConfig = {},
+    context: BrickImpactContext = {},
+): number {
     const basePoints = config.basePoints ?? DEFAULT_BASE_POINTS;
     const threshold = config.multiplierThreshold ?? DEFAULT_MULTIPLIER_THRESHOLD;
     const multiplierPer = config.multiplierPerThreshold ?? DEFAULT_MULTIPLIER_PER_THRESHOLD;
@@ -70,6 +112,29 @@ export function awardBrickPoints(state: ScoreState, config: ScoringConfig = {}):
     state.score += points;
     state.combo += 1;
     state.comboTimer = decayTime; // Reset decay timer
+    const momentum = state.momentum;
+    momentum.volleyLength += 1;
+    const { bricksRemaining, brickTotal, impactSpeed, maxSpeed } = context;
+    if (
+        brickTotal !== undefined &&
+        brickTotal > 0 &&
+        bricksRemaining !== undefined &&
+        Number.isFinite(bricksRemaining)
+    ) {
+        momentum.brickDensity = clamp01(bricksRemaining / brickTotal);
+    }
+
+    const speedCap = maxSpeed ?? DEFAULT_MAX_SPEED;
+    if (speedCap > 0 && impactSpeed !== undefined && Number.isFinite(impactSpeed)) {
+        const normalizedSpeed = clamp01(Math.abs(impactSpeed) / speedCap);
+        momentum.speedPressure = Math.max(momentum.speedPressure * 0.65, normalizedSpeed);
+    } else {
+        momentum.speedPressure *= 0.85;
+    }
+
+    const comboHeat = threshold > 0 ? clamp01(state.combo / threshold) : 0;
+    momentum.comboHeat = Math.max(momentum.comboHeat, comboHeat);
+    momentum.comboTimer = state.comboTimer;
 
     // Trigger HUD update if callback provided
     state.updateHUD?.();
@@ -92,6 +157,21 @@ export function decayCombo(state: ScoreState, deltaSeconds: number): void {
             state.updateHUD?.();
         }
     }
+
+    const momentum = state.momentum;
+    const SPEED_PRESSURE_DECAY_PER_SECOND = 0.9;
+    if (momentum.speedPressure > 0 && Number.isFinite(deltaSeconds) && deltaSeconds > 0) {
+        momentum.speedPressure = Math.max(
+            0,
+            momentum.speedPressure - deltaSeconds * SPEED_PRESSURE_DECAY_PER_SECOND,
+        );
+    }
+
+    momentum.comboTimer = Math.max(0, state.comboTimer);
+    if (state.comboTimer <= 0) {
+        momentum.comboHeat = 0;
+        momentum.volleyLength = 0;
+    }
 }
 
 /**
@@ -102,6 +182,11 @@ export function decayCombo(state: ScoreState, deltaSeconds: number): void {
 export function resetCombo(state: ScoreState): void {
     state.combo = 0;
     state.comboTimer = 0;
+    const momentum = state.momentum;
+    momentum.comboHeat = 0;
+    momentum.volleyLength = 0;
+    momentum.speedPressure = 0;
+    momentum.comboTimer = 0;
     state.updateHUD?.();
 }
 
@@ -143,6 +228,7 @@ export function getScoringDebugInfo(state: ScoreState, config: ScoringConfig = {
     multiplier: number;
     nextMilestone: number;
     comboActive: boolean;
+    momentum: MomentumSnapshot;
 } {
     const threshold = config.multiplierThreshold ?? DEFAULT_MULTIPLIER_THRESHOLD;
     const multiplier = getComboMultiplier(state.combo, config);
@@ -155,5 +241,10 @@ export function getScoringDebugInfo(state: ScoreState, config: ScoringConfig = {
         multiplier,
         nextMilestone,
         comboActive: state.comboTimer > 0,
+        momentum: { ...state.momentum },
     };
 }
+
+export const getMomentumMetrics = (state: ScoreState): MomentumSnapshot => ({
+    ...state.momentum,
+});

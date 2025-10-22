@@ -679,6 +679,10 @@ vi.mock('util/power-ups', () => {
             const remainingTime = options.defaultDuration ?? 0;
             this.#effects.set(type, { type, remainingTime });
         }
+        refresh(type: string, options: { defaultDuration?: number }) {
+            const remainingTime = options.defaultDuration ?? 0;
+            this.#effects.set(type, { type, remainingTime });
+        }
         clearAll() {
             this.#effects.clear();
         }
@@ -913,15 +917,20 @@ vi.mock('matter-js', () => ({
     },
 }));
 
+const createMultiBallControllerStub = () => ({
+    promoteExtraBallToPrimary: vi.fn(() => false),
+    removeExtraBallByBody: vi.fn(),
+    clear: vi.fn(),
+    spawnExtraBalls: vi.fn(),
+    count: vi.fn(() => 0),
+    isExtraBallBody: vi.fn(() => false),
+    applyTheme: vi.fn(),
+});
+
+const multiBallControllerMockFactory = vi.fn(createMultiBallControllerStub);
+
 vi.mock('./multi-ball-controller', () => ({
-    createMultiBallController: vi.fn(() => ({
-        promoteExtraBallToPrimary: vi.fn(() => false),
-        removeExtraBallByBody: vi.fn(),
-        clear: vi.fn(),
-        spawnExtraBalls: vi.fn(),
-        count: vi.fn(() => 0),
-        isExtraBallBody: vi.fn(() => false),
-    })),
+    createMultiBallController: multiBallControllerMockFactory,
 }));
 
 vi.mock('./level-runtime', () => ({
@@ -1037,6 +1046,8 @@ describe('createGameRuntime', () => {
         sessionManagerState.instances.length = 0;
         sessionManagerState.options.length = 0;
         createGameSessionManagerMock.mockClear();
+        multiBallControllerMockFactory.mockReset();
+        multiBallControllerMockFactory.mockImplementation(createMultiBallControllerStub);
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {

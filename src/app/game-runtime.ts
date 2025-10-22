@@ -10,6 +10,7 @@ import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
 import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
+import { createSpeedRing } from 'render/effects/speed-ring';
 import { createHudDisplay, type HudPowerUpView, type HudRewardView } from 'render/hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
@@ -23,7 +24,7 @@ import { GameInputManager } from 'input/input-manager';
 import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { reflectOffPaddle, calculateReflectionData } from 'util/paddle-reflection';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
-import { createScoring, awardBrickPoints, decayCombo, resetCombo } from 'util/scoring';
+import { createScoring, awardBrickPoints, decayCombo, resetCombo, getMomentumMetrics } from 'util/scoring';
 import { publishComboMilestoneIfNeeded } from './combo-milestones';
 import {
     PowerUpManager,
@@ -48,7 +49,7 @@ import {
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createComboRing } from 'render/combo-ring';
-import { InputDebugOverlay } from 'render/debug-overlay';
+import { InputDebugOverlay, PhysicsDebugOverlay, type PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { Sprite, Container, Graphics, ColorMatrixFilter, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import {
@@ -70,6 +71,12 @@ import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
 import type { GameSceneServices } from './scene-services';
+import { resolveMultiBallReward, resolveSlowTimeReward } from './reward-stack';
+
+interface VisibleOverlayMap {
+    inputDebug: boolean;
+    physicsDebug: boolean;
+}
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
 const runtimeLogger = rootLogger.child('game-runtime');
@@ -146,6 +153,9 @@ const BALL_BASE_SPEED = config.ball.baseSpeed;
 const BALL_MAX_SPEED = config.ball.maxSpeed;
 const BALL_LAUNCH_SPEED = config.ball.launchSpeed;
 const MULTI_BALL_MULTIPLIER = config.multiBall.spawnMultiplier;
+const MULTI_BALL_CAPACITY = config.multiBall.maxExtraBalls;
+const SLOW_TIME_MAX_DURATION = config.rewards.stackLimits.slowTimeMaxDuration;
+const MULTI_BALL_MAX_DURATION = config.rewards.stackLimits.multiBallMaxDuration;
 const DEFAULT_PADDLE_WIDTH_MULTIPLIER = config.paddle.expandedWidthMultiplier;
 const BRICK_WIDTH = config.bricks.size.width;
 const BRICK_HEIGHT = config.bricks.size.height;
@@ -229,8 +239,11 @@ export const createGameRuntime = async ({
 
     let ballLight: ReturnType<typeof createDynamicLight> | null = null;
     let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
+    let ballSpeedRing: ReturnType<typeof createSpeedRing> | null = null;
     let inputDebugOverlay: InputDebugOverlay | null = null;
-    let inputDebugOverlayVisible = false;
+    let physicsDebugOverlay: PhysicsDebugOverlay | null = null;
+    const overlayVisibility: VisibleOverlayMap = { inputDebug: false, physicsDebug: false };
+    let lastPhysicsDebugState: PhysicsDebugOverlayState | null = null;
     let unsubscribeTheme: (() => void) | null = null;
 
     const {
@@ -481,6 +494,19 @@ export const createGameRuntime = async ({
         drawBallVisual(graphics, radius, ballVisualDefaults, palette);
     };
 
+    ballSpeedRing = createSpeedRing({
+        minRadius: ball.radius + 6,
+        maxRadius: ball.radius + 28,
+        haloRadiusOffset: 14,
+        ringThickness: 3,
+        palette: {
+            ringColor: themeBallColors.highlight,
+            haloColor: themeBallColors.aura,
+        },
+    });
+    ballSpeedRing.container.zIndex = 49;
+    gameContainer.addChild(ballSpeedRing.container);
+
     const ballGraphics = new Graphics();
     drawBallSprite(ballGraphics, ball.radius);
     ballGraphics.eventMode = 'none';
@@ -507,6 +533,7 @@ export const createGameRuntime = async ({
         drawBallVisual: drawBallSprite,
         colors: themeBallColors,
         multiplier: MULTI_BALL_MULTIPLIER,
+        maxExtraBalls: MULTI_BALL_CAPACITY,
     });
 
     const paddleGraphics = new Graphics();
@@ -527,6 +554,10 @@ export const createGameRuntime = async ({
         stage,
     });
     stage.layers.hud.addChild(inputDebugOverlay.getContainer());
+
+    physicsDebugOverlay = new PhysicsDebugOverlay();
+    stage.layers.hud.addChild(physicsDebugOverlay.getContainer());
+    physicsDebugOverlay.setVisible(false);
 
     let previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
     let lastRecordedInputTarget: Vector2 | null = null;
@@ -551,6 +582,7 @@ export const createGameRuntime = async ({
         const center = paddleController.getPaddleCenter(paddle);
         previousPaddlePosition = { x: center.x, y: center.y };
         inputManager.syncPaddlePosition(center);
+        ballSpeedRing?.reset();
     };
 
     const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
@@ -568,8 +600,8 @@ export const createGameRuntime = async ({
         multiBallController.clear();
     };
 
-    const spawnExtraBalls = () => {
-        multiBallController.spawnExtraBalls({ currentLaunchSpeed });
+    const spawnExtraBalls = (requestedCount?: number) => {
+        multiBallController.spawnExtraBalls({ currentLaunchSpeed, requestedCount });
     };
 
     const handlePowerUpActivation = (type: PowerUpType): void => {
@@ -745,6 +777,10 @@ export const createGameRuntime = async ({
         };
 
         ballGlowFilter.color = themeBallColors.highlight;
+        ballSpeedRing?.setPalette({
+            ringColor: themeBallColors.highlight,
+            haloColor: themeBallColors.aura,
+        });
         drawBallSprite(ballGraphics, ball.radius);
         drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
 
@@ -910,7 +946,7 @@ export const createGameRuntime = async ({
 
         switch (reward.type) {
             case 'sticky-paddle':
-                powerUpManager.activate('sticky-paddle', { defaultDuration: reward.duration });
+                powerUpManager.refresh('sticky-paddle', { defaultDuration: reward.duration });
                 break;
             case 'double-points':
                 doublePointsMultiplier = reward.multiplier;
@@ -920,16 +956,46 @@ export const createGameRuntime = async ({
                 applyGhostBrickReward(reward.duration, reward.ghostCount);
                 break;
             case 'multi-ball':
-                multiBallRewardTimer = Math.max(0, reward.duration);
-                spawnExtraBalls();
+                {
+                    const currentExtras = multiBallController.count();
+                    const resolution = resolveMultiBallReward({
+                        reward,
+                        currentExtraCount: currentExtras,
+                        capacity: MULTI_BALL_CAPACITY,
+                        maxDuration: MULTI_BALL_MAX_DURATION,
+                    });
+                    multiBallRewardTimer = resolution.duration;
+                    if (resolution.extrasToSpawn > 0) {
+                        spawnExtraBalls(resolution.extrasToSpawn);
+                    }
+                    const afterCount = multiBallController.count();
+                    runtimeLogger.info('Multi-ball reward applied', {
+                        duration: resolution.duration,
+                        previousExtras: currentExtras,
+                        afterCount,
+                        capacity: MULTI_BALL_CAPACITY,
+                        requestedExtras: reward.extraBalls,
+                        spawnedExtras: resolution.extrasToSpawn,
+                    });
+                }
                 break;
             case 'slow-time':
-                slowTimeTimer = Math.max(0, reward.duration);
-                slowTimeScale = Math.min(1, Math.max(0.1, reward.timeScale));
+                {
+                    const resolution = resolveSlowTimeReward({
+                        reward,
+                        maxDuration: SLOW_TIME_MAX_DURATION,
+                    });
+                    slowTimeTimer = resolution.duration;
+                    slowTimeScale = resolution.scale;
+                    runtimeLogger.info('Slow-time reward applied', {
+                        duration: resolution.duration,
+                        targetScale: resolution.scale,
+                    });
+                }
                 break;
             case 'wide-paddle':
                 rewardPaddleWidthMultiplier = Math.max(1, reward.widthMultiplier);
-                powerUpManager.activate('paddle-width', { defaultDuration: reward.duration });
+                powerUpManager.refresh('paddle-width', { defaultDuration: reward.duration });
                 widePaddleRewardActive = true;
                 break;
         }
@@ -1045,7 +1111,9 @@ export const createGameRuntime = async ({
     Events.on(physics.engine, 'collisionStart', (event: IEventCollision<Engine>) => {
         event.pairs.forEach((pair) => {
             const { bodyA, bodyB } = pair;
-            const sessionId = session.snapshot().sessionId;
+            // Capture session state once per collision; keeps brick counts consistent with HUD updates.
+            const sessionSnapshot = session.snapshot();
+            const sessionId = sessionSnapshot.sessionId;
 
             if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
                 const brick = bodyA.label === 'brick' ? bodyA : bodyB;
@@ -1092,8 +1160,21 @@ export const createGameRuntime = async ({
                         initialHp,
                     }, frameTimestampMs);
 
+                    const bricksRemainingBefore = sessionSnapshot.brickRemaining;
+                    const bricksTotal = sessionSnapshot.brickTotal;
                     const previousCombo = scoringState.combo;
-                    const basePoints = awardBrickPoints(scoringState);
+                    const bricksRemainingAfter = Math.max(0, bricksRemainingBefore - 1);
+                    // Provide brick context so scoring momentum metrics mirror what the HUD will show.
+                    const basePoints = awardBrickPoints(
+                        scoringState,
+                        undefined,
+                        {
+                            bricksRemaining: bricksRemainingAfter,
+                            brickTotal: bricksTotal,
+                            impactSpeed: impactVelocity,
+                            maxSpeed: currentMaxSpeed,
+                        },
+                    );
                     let points = basePoints;
                     if (doublePointsMultiplier > 1) {
                         const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
@@ -1120,6 +1201,7 @@ export const createGameRuntime = async ({
                             initialHp,
                             comboHeat: scoringState.combo,
                         },
+                        momentum: getMomentumMetrics(scoringState),
                     });
 
                     const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
@@ -1462,10 +1544,35 @@ export const createGameRuntime = async ({
             inputManager.resetLaunchTrigger();
         }
 
+        const speedBeforeRegulation = MatterVector.magnitude(ball.physicsBody.velocity);
+
         regulateSpeed(ball.physicsBody, {
             baseSpeed: currentBaseSpeed,
             maxSpeed: currentMaxSpeed,
         });
+
+        const speedAfterRegulation = MatterVector.magnitude(ball.physicsBody.velocity);
+        const speedDelta = speedAfterRegulation - speedBeforeRegulation;
+        const regulationInfo = Math.abs(speedDelta) > 0.01
+            ? {
+                direction: speedDelta >= 0 ? ('boost' as const) : ('clamp' as const),
+                delta: speedDelta,
+            }
+            : null;
+
+        const physicsOverlayState: PhysicsDebugOverlayState = {
+            currentSpeed: speedAfterRegulation,
+            baseSpeed: currentBaseSpeed,
+            maxSpeed: currentMaxSpeed,
+            timeScale,
+            slowTimeScale,
+            slowTimeRemaining: slowTimeTimer,
+            regulation: regulationInfo,
+            extraBalls: multiBallController.count(),
+            extraBallCapacity: MULTI_BALL_CAPACITY,
+        };
+
+        lastPhysicsDebugState = physicsOverlayState;
 
         if (movementDelta > 0) {
             physics.step(movementDelta * 1000);
@@ -1482,6 +1589,20 @@ export const createGameRuntime = async ({
         ballLight?.update({
             position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
             speed: MatterVector.magnitude(ball.physicsBody.velocity),
+            deltaSeconds: movementDelta,
+        });
+
+        ballSpeedRing?.update({
+            position: { x: ball.physicsBody.position.x, y: ball.physicsBody.position.y },
+            speed: speedAfterRegulation,
+            baseSpeed: currentBaseSpeed,
+            maxSpeed: currentMaxSpeed,
+            deltaSeconds: movementDelta,
+        });
+
+        multiBallController.updateSpeedIndicators({
+            baseSpeed: currentBaseSpeed,
+            maxSpeed: currentMaxSpeed,
             deltaSeconds: movementDelta,
         });
 
@@ -1539,8 +1660,11 @@ export const createGameRuntime = async ({
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);
         comboRingPulse = Math.max(0, comboRingPulse - deltaSeconds * 1.05);
 
-        if (inputDebugOverlay?.isVisible()) {
+        if (overlayVisibility.inputDebug && inputDebugOverlay) {
             inputDebugOverlay.update();
+        }
+        if (overlayVisibility.physicsDebug && physicsDebugOverlay && lastPhysicsDebugState) {
+            physicsDebugOverlay.update(lastPhysicsDebugState);
         }
     };
 
@@ -1708,11 +1832,21 @@ export const createGameRuntime = async ({
             setActiveTheme(nextTheme);
         } else if (event.code === 'F2') {
             event.preventDefault();
-            inputDebugOverlayVisible = !inputDebugOverlayVisible;
+            overlayVisibility.inputDebug = !overlayVisibility.inputDebug;
             if (inputDebugOverlay) {
-                inputDebugOverlay.setVisible(inputDebugOverlayVisible);
-                if (inputDebugOverlayVisible) {
+                inputDebugOverlay.setVisible(overlayVisibility.inputDebug);
+                if (overlayVisibility.inputDebug) {
                     inputDebugOverlay.update();
+                }
+            }
+            renderStageSoon();
+        } else if (event.code === 'F3') {
+            event.preventDefault();
+            overlayVisibility.physicsDebug = !overlayVisibility.physicsDebug;
+            if (physicsDebugOverlay) {
+                physicsDebugOverlay.setVisible(overlayVisibility.physicsDebug);
+                if (overlayVisibility.physicsDebug && lastPhysicsDebugState) {
+                    physicsDebugOverlay.update(lastPhysicsDebugState);
                 }
             }
             renderStageSoon();
@@ -1724,13 +1858,22 @@ export const createGameRuntime = async ({
     const cleanupVisuals = () => {
         unsubscribeTheme?.();
         unsubscribeTheme = null;
+        if (ballSpeedRing) {
+            ballSpeedRing.container.removeFromParent();
+            ballSpeedRing.destroy();
+            ballSpeedRing = null;
+        }
         ballLight?.destroy();
         paddleLight?.destroy();
         ballLight = null;
         paddleLight = null;
         inputDebugOverlay?.destroy();
         inputDebugOverlay = null;
-        inputDebugOverlayVisible = false;
+        physicsDebugOverlay?.destroy();
+        physicsDebugOverlay = null;
+        overlayVisibility.inputDebug = false;
+        overlayVisibility.physicsDebug = false;
+        lastPhysicsDebugState = null;
         comboRing.container.removeFromParent();
         comboRing.dispose();
         document.removeEventListener('keydown', handleGlobalKeyDown);

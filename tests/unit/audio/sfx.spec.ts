@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createEventBus } from 'app/events';
+import { createEventBus, type LuckyBreakEventMap } from 'app/events';
 import { installToneMock, type ToneMockContext } from './mocks';
 
 interface RecordedTrigger {
@@ -143,6 +143,59 @@ describe('createSfxRouter', () => {
         expect(hitTrigger.detune).toBeGreaterThan(0);
         expect(hitTrigger.source.previousHp).toBe(3);
         expect(hitTrigger.source.remainingHp).toBe(2);
+
+        router.dispose();
+    });
+
+    it('applies deterministic micro-variations to brick break descriptors', () => {
+        const bus = createEventBus();
+        const triggers: RecordedTrigger[] = [];
+
+        let nextHandle = 0;
+        const scheduler = {
+            lookAheadMs: 0,
+            context: {} as AudioContext,
+            schedule: (callback: (time: number) => void) => {
+                callback(0.2);
+                nextHandle += 1;
+                return { id: nextHandle, time: 0.2 };
+            },
+            cancel: () => {
+                /* no-op */
+            },
+            dispose: () => {
+                /* no-op */
+            },
+        } satisfies ReturnType<typeof createToneScheduler>;
+
+        const router = createSfxRouter({
+            bus,
+            scheduler,
+            brickSampleIds: ['low', 'mid', 'high'],
+            trigger: (descriptor: RecordedTrigger) => {
+                triggers.push(descriptor);
+            },
+        });
+
+        const basePayload: LuckyBreakEventMap['BrickBreak'] = {
+            sessionId: 'session-004',
+            row: 2,
+            col: 3,
+            impactVelocity: 9.6,
+            brickType: 'standard' as const,
+            comboHeat: 8,
+            initialHp: 2,
+        };
+
+        bus.publish('BrickBreak', basePayload);
+        bus.publish('BrickBreak', { ...basePayload, col: basePayload.col + 1 });
+        bus.publish('BrickBreak', { ...basePayload });
+
+        expect(triggers).toHaveLength(3);
+        const [first, second, third] = triggers;
+        expect(first.detune).not.toBe(second.detune);
+        expect(first.detune).toBe(third.detune);
+        expect(first.gain).toBeCloseTo(third.gain, 5);
 
         router.dispose();
     });

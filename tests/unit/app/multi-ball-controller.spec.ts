@@ -23,6 +23,8 @@ vi.mock('pixi.js', () => {
         public x = 0;
         public y = 0;
         public rotation = 0;
+        public zIndex = 0;
+        public destroyed = false;
 
         addChild<T>(...items: T[]): T {
             this.children.push(...items);
@@ -50,6 +52,13 @@ vi.mock('pixi.js', () => {
             });
             this.children = [];
         }
+
+        destroy(options?: { children?: boolean }): void {
+            this.destroyed = true;
+            if (options?.children) {
+                this.children = [];
+            }
+        }
     }
 
     class Graphics extends MockContainer {
@@ -57,6 +66,10 @@ vi.mock('pixi.js', () => {
         public destroy = vi.fn(() => {
             this.destroyed = true;
         });
+        public circle = vi.fn(() => this);
+        public fill = vi.fn(() => this);
+        public stroke = vi.fn(() => this);
+        public clear = vi.fn(() => this);
     }
 
     return {
@@ -125,6 +138,7 @@ describe('createMultiBallController', () => {
     let drawBallVisual: ReturnType<typeof vi.fn>;
     let colors: any;
     let multiplier: number;
+    let maxExtraBalls: number;
 
     beforeEach(async () => {
         const pixi = await import('pixi.js');
@@ -160,6 +174,7 @@ describe('createMultiBallController', () => {
         drawBallVisual = vi.fn();
         colors = { core: 0x112233, aura: 0x445566, highlight: 0x778899 };
         multiplier = 3;
+        maxExtraBalls = 4;
         matterBodyMock.setVelocity.mockClear();
         matterMocks.setVelocity.mockClear();
     });
@@ -175,6 +190,7 @@ describe('createMultiBallController', () => {
             drawBallVisual,
             colors,
             multiplier,
+            maxExtraBalls,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
@@ -183,7 +199,7 @@ describe('createMultiBallController', () => {
         expect(physics.add).toHaveBeenCalledTimes(2);
         expect(matterBodyMock.setVelocity).toHaveBeenCalledTimes(2);
         expect(drawBallVisual).toHaveBeenCalledTimes(2);
-        expect(gameContainer.children).toHaveLength(2);
+        expect(gameContainer.children).toHaveLength(controller.count() * 2);
         expect(controller.count()).toBe(2);
 
         const expectedBaseColor = mixColors(colors.core, 0xffc94c, 0.5);
@@ -217,13 +233,13 @@ describe('createMultiBallController', () => {
             drawBallVisual,
             colors,
             multiplier,
+            maxExtraBalls,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
         expect(controller.count()).toBeGreaterThan(0);
 
         drawBallVisual.mockClear();
-
         const nextColors = { core: 0x998877, aura: 0x556677, highlight: 0xaabbcc };
         controller.applyTheme(nextColors);
 
@@ -234,6 +250,49 @@ describe('createMultiBallController', () => {
             rimColor: nextColors.highlight,
             innerColor: nextColors.aura,
         });
+    });
+
+    it('respects an explicit requested extra ball count', () => {
+        const controller = createMultiBallController({
+            physics,
+            ball,
+            paddle,
+            ballGraphics,
+            gameContainer,
+            visualBodies,
+            drawBallVisual,
+            colors,
+            multiplier,
+            maxExtraBalls,
+        });
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9, requestedCount: 1 });
+
+        expect(controller.count()).toBe(1);
+        expect(physics.factory.ball).toHaveBeenCalledTimes(1);
+        expect(drawBallVisual).toHaveBeenCalledTimes(1);
+    });
+
+    it('clamps requested extra balls to the remaining capacity', () => {
+        maxExtraBalls = 3;
+        const controller = createMultiBallController({
+            physics,
+            ball,
+            paddle,
+            ballGraphics,
+            gameContainer,
+            visualBodies,
+            drawBallVisual,
+            colors,
+            multiplier,
+            maxExtraBalls,
+        });
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9, requestedCount: 2 });
+        expect(controller.count()).toBeLessThanOrEqual(2);
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9, requestedCount: 3 });
+        expect(controller.count()).toBe(maxExtraBalls);
     });
 
     it('promotes the earliest extra ball to become primary', () => {
@@ -247,6 +306,7 @@ describe('createMultiBallController', () => {
             drawBallVisual,
             colors,
             multiplier,
+            maxExtraBalls,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 10 });
@@ -278,6 +338,7 @@ describe('createMultiBallController', () => {
             drawBallVisual,
             colors,
             multiplier: 1,
+            maxExtraBalls,
         });
 
         physics.factory.ball.mockClear();
@@ -299,6 +360,7 @@ describe('createMultiBallController', () => {
             drawBallVisual,
             colors,
             multiplier,
+            maxExtraBalls,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 8 });
@@ -317,5 +379,70 @@ describe('createMultiBallController', () => {
         expect(controller.isExtraBallBody(secondExtra)).toBe(false);
         expect(visualBodies.size).toBe(0);
         expect(gameContainer.children).toHaveLength(0);
+    });
+
+    it('updates speed indicators to follow extra ball positions', () => {
+        const controller = createMultiBallController({
+            physics,
+            ball,
+            paddle,
+            ballGraphics,
+            gameContainer,
+            visualBodies,
+            drawBallVisual,
+            colors,
+            multiplier,
+            maxExtraBalls,
+        });
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 12 });
+
+        const bodies = Array.from(visualBodies.keys());
+        expect(bodies).not.toHaveLength(0);
+
+        bodies.forEach((body, index) => {
+            const mutableBody = body as unknown as {
+                position: { x: number; y: number };
+                velocity: { x: number; y: number };
+            };
+            mutableBody.position.x = 100 + index * 15;
+            mutableBody.position.y = 200 + index * 10;
+            mutableBody.velocity.x = 6 + index;
+            mutableBody.velocity.y = 3 + index * 0.5;
+        });
+
+        controller.updateSpeedIndicators({ baseSpeed: 6, maxSpeed: 18, deltaSeconds: 0.25 });
+
+        const ringContainers = gameContainer.children.filter((_child: unknown, index: number) => index % 2 === 0) as unknown as {
+            position: { x: number; y: number };
+        }[];
+
+        ringContainers.forEach((ring, index) => {
+            expect(ring.position.x).toBeCloseTo(bodies[index].position.x, 6);
+            expect(ring.position.y).toBeCloseTo(bodies[index].position.y, 6);
+        });
+    });
+
+    it('never exceeds the configured extra ball capacity', () => {
+        maxExtraBalls = 2;
+        const controller = createMultiBallController({
+            physics,
+            ball,
+            paddle,
+            ballGraphics,
+            gameContainer,
+            visualBodies,
+            drawBallVisual,
+            colors,
+            multiplier,
+            maxExtraBalls,
+        });
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
+        expect(controller.count()).toBeLessThanOrEqual(maxExtraBalls);
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
+        expect(controller.count()).toBeLessThanOrEqual(maxExtraBalls);
+        expect(Array.from(visualBodies.keys())).toHaveLength(controller.count());
     });
 });

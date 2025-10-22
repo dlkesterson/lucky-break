@@ -5,6 +5,7 @@ import {
     createScoringEventEmitter,
 } from './events';
 import type { RandomSource } from 'util/random';
+import type { MomentumSnapshot } from 'util/scoring';
 
 export type GameStatus = 'pending' | 'active' | 'paused' | 'completed' | 'failed';
 
@@ -139,6 +140,7 @@ interface BrickBreakDetails {
         readonly initialHp: number;
         readonly comboHeat?: number;
     };
+    readonly momentum?: MomentumSnapshot;
 }
 
 export interface GameSessionManager {
@@ -497,7 +499,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         emitEntropyEvent({ type: 'round-start' });
     };
 
-    const recordBrickBreak: GameSessionManager['recordBrickBreak'] = ({ points, event }) => {
+    const recordBrickBreak: GameSessionManager['recordBrickBreak'] = ({ points, event, momentum: snapshot }) => {
         if (status !== 'active') {
             return;
         }
@@ -508,10 +510,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             brickRemaining = Math.max(0, brickRemaining - 1);
         }
 
-        momentum.volleyLength += 1;
-        momentum.comboHeat = Math.min(99, momentum.comboHeat + 1);
-        momentum.speedPressure = clamp01(momentum.speedPressure + 0.08);
-        momentum.brickDensity = brickTotal === 0 ? 0 : brickRemaining / brickTotal;
+        if (snapshot) {
+            momentum.volleyLength = snapshot.volleyLength;
+            momentum.speedPressure = clamp01(snapshot.speedPressure);
+            momentum.brickDensity = clamp01(snapshot.brickDensity);
+            momentum.comboHeat = clamp01(snapshot.comboHeat);
+            momentum.comboTimer = Math.max(0, snapshot.comboTimer);
+        } else {
+            momentum.volleyLength += 1;
+            momentum.comboHeat = Math.min(99, momentum.comboHeat + 1);
+            momentum.speedPressure = clamp01(momentum.speedPressure + 0.08);
+            momentum.brickDensity = brickTotal === 0 ? 0 : brickRemaining / brickTotal;
+        }
         momentum.updatedAt = timestamp;
 
         const comboHeat = event?.comboHeat ?? momentum.comboHeat;

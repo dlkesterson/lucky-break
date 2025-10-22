@@ -81,6 +81,7 @@ export interface GameConfig {
     };
     readonly multiBall: {
         readonly spawnMultiplier: number;
+        readonly maxExtraBalls: number;
     };
     readonly paddle: {
         readonly expandedWidthMultiplier: number;
@@ -126,6 +127,10 @@ export interface GameConfig {
             readonly type: RewardKey;
             readonly duration: number;
         };
+        readonly stackLimits: {
+            readonly slowTimeMaxDuration: number;
+            readonly multiBallMaxDuration: number;
+        };
     };
 }
 
@@ -159,7 +164,7 @@ export const gameConfig = {
         lighting: { radius: 180, restAlpha: 0.9 },
     },
     ball: { baseSpeed: 8, maxSpeed: 14, launchSpeed: 9 },
-    multiBall: { spawnMultiplier: 3 },
+    multiBall: { spawnMultiplier: 3, maxExtraBalls: 9 },
     paddle: {
         expandedWidthMultiplier: 1.5,
         control: { smoothResponsiveness: 16, snapThreshold: 0.75 },
@@ -194,6 +199,10 @@ export const gameConfig = {
         definitions: rewardDefinitions,
         wheelSegments: rewardWheelSegments,
         fallback: { type: 'sticky-paddle', duration: 10 },
+        stackLimits: {
+            slowTimeMaxDuration: 12,
+            multiBallMaxDuration: 16,
+        },
     },
 } as const satisfies GameConfig;
 

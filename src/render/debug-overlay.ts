@@ -171,3 +171,107 @@ export class InputDebugOverlay {
         this.pointer.stroke({ color, width: 1.5, alpha: 0.85 });
     }
 }
+
+export type RegulationDirection = 'boost' | 'clamp';
+
+export interface PhysicsDebugOverlayState {
+    readonly currentSpeed: number;
+    readonly baseSpeed: number;
+    readonly maxSpeed: number;
+    readonly timeScale: number;
+    readonly slowTimeScale: number;
+    readonly slowTimeRemaining: number;
+    readonly regulation?: {
+        readonly delta: number;
+        readonly direction: RegulationDirection;
+    } | null;
+    readonly extraBalls: number;
+    readonly extraBallCapacity: number;
+}
+
+export class PhysicsDebugOverlay {
+    private readonly container: Container;
+    private readonly panel: Container;
+    private readonly background: Graphics;
+    private readonly text: Text;
+
+    constructor() {
+        this.container = new Container();
+        this.container.label = 'physics-debug-overlay';
+        this.container.eventMode = 'none';
+        this.container.visible = false;
+        this.container.zIndex = 1_010;
+
+        this.panel = new Container();
+        this.panel.eventMode = 'none';
+        this.panel.position.set(PANEL_MARGIN, PANEL_MARGIN);
+
+        this.background = new Graphics();
+        this.background.eventMode = 'none';
+
+        this.text = new Text('', createTextStyle());
+        this.text.eventMode = 'none';
+        this.text.position.set(PANEL_PADDING_X, PANEL_PADDING_Y);
+
+        this.panel.addChild(this.background, this.text);
+        this.container.addChild(this.panel);
+    }
+
+    getContainer(): Container {
+        return this.container;
+    }
+
+    isVisible(): boolean {
+        return this.container.visible;
+    }
+
+    setVisible(visible: boolean): void {
+        this.container.visible = visible;
+    }
+
+    toggle(): boolean {
+        this.setVisible(!this.container.visible);
+        return this.container.visible;
+    }
+
+    update(state: PhysicsDebugOverlayState): void {
+        const formatSpeed = (value: number) => value.toFixed(2).padStart(5, ' ');
+        const hasSlowTime = state.slowTimeRemaining > 0 && state.slowTimeScale < 0.999;
+        const regulationLine = (() => {
+            if (!state.regulation || Math.abs(state.regulation.delta) < 0.01) {
+                return 'Regulation: —';
+            }
+            const symbol = state.regulation.direction === 'boost' ? '+' : '-';
+            const magnitude = Math.abs(state.regulation.delta).toFixed(2);
+            return `Regulation: ${state.regulation.direction} ${symbol}${magnitude}`;
+        })();
+
+        const timeScaleLabel = hasSlowTime
+            ? `Time Scale: ×${state.timeScale.toFixed(2)} (slow ×${state.slowTimeScale.toFixed(2)} | ${state.slowTimeRemaining.toFixed(1)}s)`
+            : `Time Scale: ×${state.timeScale.toFixed(2)}`;
+
+        const lines: string[] = [
+            `Speed: ${formatSpeed(state.currentSpeed)} | base ${state.baseSpeed.toFixed(2)} | max ${state.maxSpeed.toFixed(2)}`,
+            timeScaleLabel,
+            regulationLine,
+            `Multi-Ball: ${Math.min(state.extraBalls, state.extraBallCapacity)}/${state.extraBallCapacity}`,
+        ];
+
+        this.text.text = lines.join('\n');
+
+        const panelWidth = Math.max(PANEL_MIN_WIDTH, Math.ceil(this.text.width + PANEL_PADDING_X * 2));
+        const panelHeight = Math.ceil(this.text.height + PANEL_PADDING_Y * 2);
+
+        this.background.clear();
+        this.background.roundRect(0, 0, panelWidth, panelHeight, PANEL_CORNER_RADIUS);
+        this.background.fill({ color: 0x000000, alpha: 0.68 });
+        this.background.stroke({ color: 0xffffff, width: 1, alpha: 0.2 });
+    }
+
+    destroy(): void {
+        this.text.destroy();
+        this.background.destroy();
+        this.panel.destroy();
+        this.container.destroy();
+    }
+}

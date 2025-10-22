@@ -75,7 +75,7 @@ vi.mock('pixi.js', () => {
 });
 
 import { Container, Graphics, Text } from 'pixi.js';
-import { InputDebugOverlay } from 'render/debug-overlay';
+import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
 import type { Paddle } from 'render/contracts';
 import type { Ball } from 'physics/contracts';
 import type { Body } from 'matter-js';
@@ -189,6 +189,71 @@ describe('InputDebugOverlay', () => {
         expect(pointerMock.destroy).toHaveBeenCalledTimes(1);
         expect(textMock.destroy).toHaveBeenCalledTimes(1);
         expect(backgroundMock.destroy).toHaveBeenCalledTimes(1);
+        expect(panelMock.destroy).toHaveBeenCalledTimes(1);
+        expect(containerMock.destroy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('PhysicsDebugOverlay', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    const createOverlay = () => new PhysicsDebugOverlay();
+
+    it('renders physics metrics and regulation info', () => {
+        const overlay = createOverlay();
+        const container = overlay.getContainer();
+        expect(container.children.length).toBe(1);
+
+        overlay.setVisible(true);
+        overlay.update({
+            currentSpeed: 9.42,
+            baseSpeed: 8,
+            maxSpeed: 14,
+            timeScale: 0.8,
+            slowTimeScale: 0.5,
+            slowTimeRemaining: 4.2,
+            regulation: { direction: 'boost', delta: 1.2 },
+            extraBalls: 2,
+            extraBallCapacity: 3,
+        });
+
+        const panel = container.children[0] as Container;
+        const background = panel.children[0] as Graphics;
+        const textNode = panel.children[1] as Text;
+
+        expect(textNode.text).toContain('Speed:');
+        expect(textNode.text).toContain('Time Scale:');
+        expect(textNode.text).toContain('Regulation: boost');
+        expect(textNode.text).toContain('Multi-Ball: 2/3');
+
+        const backgroundMock = background as unknown as {
+            roundRect: ReturnType<typeof vi.fn>;
+            fill: ReturnType<typeof vi.fn>;
+            stroke: ReturnType<typeof vi.fn>;
+        };
+        expect(backgroundMock.roundRect).toHaveBeenCalledWith(0, 0, expect.any(Number), expect.any(Number), expect.any(Number));
+        expect(backgroundMock.fill).toHaveBeenCalledWith({ color: 0x000000, alpha: 0.68 });
+        expect(backgroundMock.stroke).toHaveBeenCalledWith({ color: 0xffffff, width: 1, alpha: 0.2 });
+    });
+
+    it('destroys PIXI primitives cleanly', () => {
+        const overlay = createOverlay();
+        const container = overlay.getContainer();
+        const panel = container.children[0] as Container;
+        const background = panel.children[0] as Graphics;
+        const textNode = panel.children[1] as Text;
+
+        overlay.destroy();
+
+        const backgroundMock = background as unknown as { destroy: ReturnType<typeof vi.fn> };
+        const textMock = textNode as unknown as { destroy: ReturnType<typeof vi.fn> };
+        const panelMock = panel as unknown as { destroy: ReturnType<typeof vi.fn> };
+        const containerMock = container as unknown as { destroy: ReturnType<typeof vi.fn> };
+
+        expect(backgroundMock.destroy).toHaveBeenCalledTimes(1);
+        expect(textMock.destroy).toHaveBeenCalledTimes(1);
         expect(panelMock.destroy).toHaveBeenCalledTimes(1);
         expect(containerMock.destroy).toHaveBeenCalledTimes(1);
     });

@@ -5,6 +5,7 @@ import type { Ball } from 'physics/contracts';
 import type { Paddle } from 'render/contracts';
 import type { PhysicsWorldHandle } from 'physics/world';
 import { mixColors, type BallVisualPalette } from 'render/playfield-visuals';
+import { createSpeedRing } from 'render/effects/speed-ring';
 
 export interface MultiBallColors {
     readonly core: number;
@@ -22,21 +23,28 @@ export interface MultiBallControllerOptions {
     readonly drawBallVisual: (graphics: Graphics, radius: number, palette?: BallVisualPalette) => void;
     readonly colors: MultiBallColors;
     readonly multiplier: number;
+    readonly maxExtraBalls: number;
 }
 
 interface ExtraBallEntry {
     readonly body: Body;
     readonly visual: Graphics;
+    readonly ring: ReturnType<typeof createSpeedRing>;
 }
 
 export interface MultiBallController {
-    spawnExtraBalls(payload: { readonly currentLaunchSpeed: number }): void;
+    spawnExtraBalls(payload: { readonly currentLaunchSpeed: number; readonly requestedCount?: number }): void;
     promoteExtraBallToPrimary(expiredBody: Body): boolean;
     removeExtraBallByBody(body: Body): void;
     clear(): void;
     isExtraBallBody(body: Body): boolean;
     count(): number;
     applyTheme(colors: MultiBallColors): void;
+    updateSpeedIndicators(payload: {
+        readonly baseSpeed: number;
+        readonly maxSpeed: number;
+        readonly deltaSeconds: number;
+    }): void;
 }
 
 const createAngularOffsets = (count: number): number[] => {
@@ -59,6 +67,13 @@ const destroyVisual = (visual: Graphics): void => {
     visual.destroy();
 };
 
+const destroyRing = (ring: ReturnType<typeof createSpeedRing>): void => {
+    if (ring.container.parent) {
+        ring.container.parent.removeChild(ring.container);
+    }
+    ring.destroy();
+};
+
 export const createMultiBallController = ({
     physics,
     ball,
@@ -69,9 +84,27 @@ export const createMultiBallController = ({
     drawBallVisual,
     colors,
     multiplier,
+    maxExtraBalls,
 }: MultiBallControllerOptions): MultiBallController => {
     const extraBalls = new Map<number, ExtraBallEntry>();
     let palette: MultiBallColors = { ...colors };
+    const baseBallZ = typeof ballGraphics.zIndex === 'number' ? ballGraphics.zIndex : 0;
+
+    const buildSpeedRing = () => {
+        const ring = createSpeedRing({
+            minRadius: ball.radius + 6,
+            maxRadius: ball.radius + 28,
+            haloRadiusOffset: 14,
+            ringThickness: 3,
+            palette: {
+                ringColor: palette.highlight,
+                haloColor: palette.aura,
+            },
+        });
+        ring.container.eventMode = 'none';
+        ring.container.zIndex = baseBallZ - 1;
+        return ring;
+    };
 
     const collectBallBodies = (): Body[] => {
         return [
@@ -92,23 +125,52 @@ export const createMultiBallController = ({
         });
     };
 
-    const spawnExtraBalls: MultiBallController['spawnExtraBalls'] = ({ currentLaunchSpeed }) => {
-        const sourceBodies = collectBallBodies();
-        const clonesPerBall = Math.max(0, multiplier - 1);
-
-        if (clonesPerBall <= 0 || sourceBodies.length === 0) {
+    const spawnExtraBalls: MultiBallController['spawnExtraBalls'] = ({ currentLaunchSpeed, requestedCount }) => {
+        const capacity = Math.max(0, Math.floor(maxExtraBalls));
+        let slotsLeft = capacity - extraBalls.size;
+        if (slotsLeft <= 0) {
             return;
         }
 
+        const sourceBodies = collectBallBodies();
+        const clonesPerBall = Math.max(0, multiplier - 1);
+        if (sourceBodies.length === 0) {
+            return;
+        }
+
+        const hasExplicitRequest = typeof requestedCount === 'number' && Number.isFinite(requestedCount);
+        const desiredCount = hasExplicitRequest
+            ? Math.min(slotsLeft, Math.max(0, Math.floor(requestedCount)))
+            : slotsLeft;
+
+        if (desiredCount <= 0) {
+            return;
+        }
+
+        const offsets = clonesPerBall > 0
+            ? createAngularOffsets(clonesPerBall)
+            : hasExplicitRequest
+                ? [0]
+                : [];
+        if (offsets.length === 0) {
+            return;
+        }
+
+        let remaining = desiredCount;
         sourceBodies.forEach((sourceBody) => {
+            if (slotsLeft <= 0 || remaining <= 0) {
+                return;
+            }
             const baseSpeed = MatterVector.magnitude(sourceBody.velocity);
             const hasMotion = baseSpeed > 0.01;
             const direction = hasMotion ? MatterVector.normalise(sourceBody.velocity) : MatterVector.create(0, -1);
             const speed = hasMotion ? baseSpeed : currentLaunchSpeed;
             const effectiveSpeed = Math.max(currentLaunchSpeed, speed);
-            const offsets = createAngularOffsets(clonesPerBall);
 
             offsets.forEach((offset, index) => {
+                if (slotsLeft <= 0 || remaining <= 0) {
+                    return;
+                }
                 const rotated = MatterVector.rotate(MatterVector.clone(direction), offset);
                 const velocity = MatterVector.mult(rotated, effectiveSpeed);
                 const lateralNormal = { x: -rotated.y, y: rotated.x };
@@ -130,9 +192,16 @@ export const createMultiBallController = ({
                 const extraVisual = new Graphics();
                 drawExtraBall(extraVisual);
                 extraVisual.eventMode = 'none';
+                extraVisual.zIndex = baseBallZ;
+
+                const speedRing = buildSpeedRing();
+
+                gameContainer.addChild(speedRing.container);
                 gameContainer.addChild(extraVisual);
                 visualBodies.set(extraBody, extraVisual);
-                extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual });
+                extraBalls.set(extraBody.id, { body: extraBody, visual: extraVisual, ring: speedRing });
+                slotsLeft -= 1;
+                remaining -= 1;
             });
         });
     };
@@ -150,6 +219,7 @@ export const createMultiBallController = ({
         physics.remove(expiredBody);
 
         destroyVisual(extra.visual);
+        destroyRing(extra.ring);
 
         ball.physicsBody = extra.body;
         ball.isAttached = false;
@@ -173,6 +243,7 @@ export const createMultiBallController = ({
         physics.remove(entry.body);
         visualBodies.delete(entry.body);
         destroyVisual(entry.visual);
+        destroyRing(entry.ring);
     };
 
     const clear: MultiBallController['clear'] = () => {
@@ -180,6 +251,7 @@ export const createMultiBallController = ({
             physics.remove(entry.body);
             visualBodies.delete(entry.body);
             destroyVisual(entry.visual);
+            destroyRing(entry.ring);
         });
         extraBalls.clear();
     };
@@ -191,6 +263,22 @@ export const createMultiBallController = ({
         palette = { ...palette, ...nextColors };
         extraBalls.forEach((entry) => {
             drawExtraBall(entry.visual);
+            entry.ring.setPalette({
+                ringColor: palette.highlight,
+                haloColor: palette.aura,
+            });
+        });
+    };
+
+    const updateSpeedIndicators: MultiBallController['updateSpeedIndicators'] = ({ baseSpeed, maxSpeed, deltaSeconds }) => {
+        extraBalls.forEach((entry) => {
+            entry.ring.update({
+                position: { x: entry.body.position.x, y: entry.body.position.y },
+                speed: MatterVector.magnitude(entry.body.velocity),
+                baseSpeed,
+                maxSpeed,
+                deltaSeconds,
+            });
         });
     };
 
@@ -202,5 +290,6 @@ export const createMultiBallController = ({
         isExtraBallBody,
         count,
         applyTheme,
+        updateSpeedIndicators,
     };
 };

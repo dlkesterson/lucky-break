@@ -53,6 +53,7 @@ export type MusicLayerFactory = (
 interface TransportLike {
     scheduleOnce(callback: (time: number) => void, when: number | string): number;
     clear(id: number): void;
+    cancel?(time?: number): void;
     nextSubdivision?(subdivision: string): number;
 }
 
@@ -493,6 +494,11 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         disposed = true;
         cancelTransition('base');
         cancelTransition('melody');
+        try {
+            transport.cancel?.(now());
+        } catch {
+            // Best effort; ignore transport cancellation errors.
+        }
         melodyLayer.dispose();
         calmLayer.dispose();
         intenseLayer.dispose();

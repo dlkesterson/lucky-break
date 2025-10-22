@@ -50,6 +50,7 @@ const createTransportStub = (autoExecute: boolean) => {
     const pending = new Map<number, (time: number) => void>();
     const scheduledCalls: { readonly when: number | string }[] = [];
     const clearedHandles: number[] = [];
+    const cancelInvocations: number[] = [];
 
     const scheduleOnce = (callback: (time: number) => void, when: number | string): number => {
         const id = ++handle;
@@ -68,6 +69,11 @@ const createTransportStub = (autoExecute: boolean) => {
         pending.delete(id);
     };
 
+    const cancel = (time?: number): void => {
+        cancelInvocations.push(typeof time === 'number' ? time : Number.NaN);
+        pending.clear();
+    };
+
     const nextSubdivision = (): number => 64;
 
     const runPending = (time = 64): void => {
@@ -80,19 +86,25 @@ const createTransportStub = (autoExecute: boolean) => {
     const reset = (): void => {
         scheduledCalls.length = 0;
         clearedHandles.length = 0;
+        cancelInvocations.length = 0;
     };
 
     const getScheduleCount = (): number => scheduledCalls.length;
     const getClearedCount = (): number => clearedHandles.length;
+    const getCancelCount = (): number => cancelInvocations.length;
+    const getLastCancelTime = (): number | undefined => cancelInvocations[cancelInvocations.length - 1];
 
     return {
         scheduleOnce,
         clear,
+        cancel,
         nextSubdivision,
         runPending,
         reset,
         getScheduleCount,
         getClearedCount,
+        getCancelCount,
+        getLastCancelTime,
     };
 };
 
@@ -123,6 +135,7 @@ describe('createMusicDirector', () => {
         ]);
 
         director.dispose();
+        expect(transport.getCancelCount()).toBe(1);
     });
 
     it('crossfades to intense layer when lives drop', () => {
@@ -207,6 +220,7 @@ describe('createMusicDirector', () => {
 
         director.dispose();
         expect(transport.getClearedCount()).toBe(1);
+        expect(transport.getCancelCount()).toBe(1);
         expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(3);
     });
 
@@ -241,6 +255,7 @@ describe('createMusicDirector', () => {
         const transport = {
             scheduleOnce,
             clear,
+            cancel: vi.fn(),
             nextSubdivision: vi.fn(() => Number.NaN),
         };
 
@@ -295,5 +310,6 @@ describe('createMusicDirector', () => {
 
         director.dispose();
         expect(clear).toHaveBeenCalled();
+        expect(transport.cancel).toHaveBeenCalled();
     });
 });

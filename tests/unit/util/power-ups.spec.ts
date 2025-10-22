@@ -114,4 +114,19 @@ describe('PowerUpManager', () => {
         expect(effect?.remainingTime).toBeCloseTo(8, 5);
         expect(effect?.duration).toBeCloseTo(8, 5);
     });
+
+    it('refresh resets the remaining time instead of stacking', () => {
+        const manager = new PowerUpManager();
+        const now = vi.fn(() => 0);
+
+        manager.activate('paddle-width', { defaultDuration: 4 }, now);
+        manager.update(1.5);
+
+        now.mockReturnValue(2000);
+        manager.refresh('paddle-width', { defaultDuration: 4 }, now);
+
+        const effect = manager.getEffect('paddle-width');
+        expect(effect?.remainingTime).toBeCloseTo(4, 5);
+        expect(effect?.duration).toBeCloseTo(4, 5);
+    });
 });

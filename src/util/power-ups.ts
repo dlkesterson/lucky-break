@@ -204,6 +204,18 @@ export class PowerUpManager {
     }
 
     /**
+     * Refresh a power-up effect to a new duration without stacking remaining time
+     *
+     * @param type - Power-up type
+     * @param config - Power-up configuration
+     * @param now - Current timestamp function
+     */
+    refresh(type: PowerUpType, config: PowerUpConfig = {}, now: () => number = Date.now): void {
+        const effect = createPowerUpEffect(type, config, now);
+        this.effects.set(type, effect);
+    }
+
+    /**
      * Update all active power-ups
      *
      * @param deltaSeconds - Time elapsed since last update

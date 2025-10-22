@@ -41,6 +41,58 @@ export interface SfxRouter {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
+const FNV_OFFSET = 2166136261;
+const FNV_PRIME = 16777619;
+
+const mixHash = (seed: number, value: number): number => {
+    const mixed = Math.imul(seed ^ value, FNV_PRIME);
+    return mixed | 0;
+};
+
+const hashString = (value: string): number => {
+    let seed = FNV_OFFSET;
+    for (let index = 0; index < value.length; index += 1) {
+        seed = mixHash(seed, value.charCodeAt(index));
+    }
+    return seed;
+};
+
+const hashSequence = (...values: number[]): number => {
+    let seed = FNV_OFFSET;
+    for (const value of values) {
+        const safe = Number.isFinite(value) ? Math.trunc(value) : 0;
+        seed = mixHash(seed, safe);
+    }
+    return seed;
+};
+
+const createSeed = (sessionId: string, kind: number, ...values: number[]): number =>
+    hashSequence(hashString(sessionId), kind, ...values);
+
+const computeVariation = (seed: number, amplitude: number): number => {
+    if (!Number.isFinite(amplitude) || amplitude <= 0) {
+        return 0;
+    }
+    const normalized = Math.sin(seed) * 0.5 + 0.5;
+    return (normalized * 2 - 1) * amplitude;
+};
+
+const applyGainVariation = (
+    base: number,
+    seed: number,
+    amplitude: number,
+    min: number,
+    max: number,
+): number => {
+    const varied = clamp(base + computeVariation(seed, amplitude), min, max);
+    return Number(varied.toFixed(2));
+};
+
+const applyDetuneVariation = (base: number, seed: number, amplitude: number): number => {
+    const varied = base + computeVariation(seed, amplitude);
+    return Math.round(varied);
+};
+
 const defaultTrigger = (): void => {
     // Intentionally blank: production wiring occurs in audio bootstrap.
 };
@@ -116,49 +168,99 @@ const buildBrickBreakDescriptor = (
     samples: readonly string[],
     time: number,
     payload: BrickBreakPayload,
-): SfxTriggerDescriptor => ({
-    id: resolveBrickSample(samples, {
+): SfxTriggerDescriptor => {
+    const sampleId = resolveBrickSample(samples, {
         row: payload.row,
         col: payload.col,
         velocity: payload.impactVelocity,
-    }, payload.initialHp),
-    time,
-    gain: calculateGain(payload.impactVelocity),
-    detune: calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity),
-    pan: normalizeBrickPan(payload.col),
-    source: { event: 'BrickBreak', ...payload },
-});
+    }, payload.initialHp);
+    const seed = createSeed(
+        payload.sessionId,
+        1,
+        payload.row,
+        payload.col,
+        Math.round(payload.impactVelocity * 100),
+        payload.initialHp,
+    );
+    const gain = applyGainVariation(calculateGain(payload.impactVelocity), seed, 0.08, 0.4, 1);
+    const detune = applyDetuneVariation(
+        calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity),
+        seed ^ 0x9e3779b9,
+        18,
+    );
+
+    return {
+        id: sampleId,
+        time,
+        gain,
+        detune,
+        pan: normalizeBrickPan(payload.col),
+        source: { event: 'BrickBreak', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
 
 const buildBrickHitDescriptor = (
     samples: readonly string[],
     impactSampleId: string | undefined,
     time: number,
     payload: BrickHitPayload,
-): SfxTriggerDescriptor => ({
-    id: impactSampleId ?? resolveBrickSample(samples, {
+): SfxTriggerDescriptor => {
+    const resolvedId = impactSampleId ?? resolveBrickSample(samples, {
         row: payload.row,
         col: payload.col,
         velocity: payload.impactVelocity,
-    }, payload.previousHp),
-    time,
-    gain: clamp(calculateGain(payload.impactVelocity) * 0.8, 0.3, 0.9),
-    detune: Math.round(calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity) * 0.75),
-    pan: normalizeBrickPan(payload.col),
-    source: { event: 'BrickHit', ...payload },
-});
+    }, payload.previousHp);
+    const baseGain = clamp(calculateGain(payload.impactVelocity) * 0.8, 0.3, 0.9);
+    const seed = createSeed(
+        payload.sessionId,
+        2,
+        payload.row,
+        payload.col,
+        Math.round(payload.impactVelocity * 100),
+        payload.previousHp,
+        payload.remainingHp,
+    );
+    const gain = applyGainVariation(baseGain, seed, 0.06, 0.3, 0.9);
+    const detune = applyDetuneVariation(
+        Math.round(calculateDetune(payload.comboHeat, payload.row, payload.impactVelocity) * 0.75),
+        seed ^ 0x85ebca6b,
+        12,
+    );
+
+    return {
+        id: resolvedId,
+        time,
+        gain,
+        detune,
+        pan: normalizeBrickPan(payload.col),
+        source: { event: 'BrickHit', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
 
 const buildPaddleHitDescriptor = (
     sampleId: string,
     time: number,
     payload: PaddleHitPayload,
-): SfxTriggerDescriptor => ({
-    id: sampleId,
-    time,
-    gain: clamp(0.45 + payload.speed / 12, 0.35, 0.85),
-    detune: Math.round(payload.impactOffset * 120),
-    pan: clamp(Number(payload.impactOffset.toFixed(2)), -1, 1),
-    source: { event: 'PaddleHit', ...payload },
-});
+): SfxTriggerDescriptor => {
+    const baseGain = clamp(0.45 + payload.speed / 12, 0.35, 0.85);
+    const seed = createSeed(
+        payload.sessionId,
+        3,
+        Math.round(payload.speed * 100),
+        Math.round(payload.impactOffset * 1000),
+    );
+    const gain = applyGainVariation(baseGain, seed, 0.05, 0.35, 0.85);
+    const detune = applyDetuneVariation(Math.round(payload.impactOffset * 120), seed ^ 0xc2b2ae35, 10);
+
+    return {
+        id: sampleId,
+        time,
+        gain,
+        detune,
+        pan: clamp(Number(payload.impactOffset.toFixed(2)), -1, 1),
+        source: { event: 'PaddleHit', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
 
 const buildWallHitDescriptor = (
     sampleId: string,
@@ -183,11 +285,18 @@ const buildWallHitDescriptor = (
         }
     })();
 
+    const seed = createSeed(
+        payload.sessionId,
+        4,
+        hashString(payload.side),
+        Math.round(payload.speed * 100),
+    );
+
     return {
         id: sampleId,
         time,
-        gain: clamp(0.4 + payload.speed / 15, 0.3, 0.8),
-        detune,
+        gain: applyGainVariation(clamp(0.4 + payload.speed / 15, 0.3, 0.8), seed, 0.04, 0.3, 0.8),
+        detune: applyDetuneVariation(detune, seed ^ 0x27d4eb2f, 8),
         pan,
         source: { event: 'WallHit', ...payload },
     } satisfies SfxTriggerDescriptor;

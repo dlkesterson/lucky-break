@@ -12,6 +12,7 @@ import {
     getComboMultiplier,
     isComboMilestone,
     getScoringDebugInfo,
+    getMomentumMetrics,
 } from 'util/scoring';
 
 describe('scoring', () => {
@@ -41,6 +42,7 @@ describe('scoring', () => {
             expect(state.score).toBe(10);
             expect(state.combo).toBe(1);
             expect(state.comboTimer).toBeGreaterThan(0);
+            expect(state.momentum.volleyLength).toBe(1);
         });
 
         it('should apply multiplier at combo threshold', () => {
@@ -77,6 +79,27 @@ describe('scoring', () => {
             awardBrickPoints(state, { comboDecayTime: 2.0 });
 
             expect(state.comboTimer).toBe(2.0);
+            expect(state.momentum.comboTimer).toBeCloseTo(2.0, 5);
+        });
+
+        it('updates momentum metrics when context provided', () => {
+            const state = createScoring();
+
+            awardBrickPoints(
+                state,
+                { basePoints: 10, multiplierThreshold: 5 },
+                {
+                    bricksRemaining: 18,
+                    brickTotal: 20,
+                    impactSpeed: 12,
+                    maxSpeed: 24,
+                },
+            );
+
+            expect(state.momentum.volleyLength).toBe(1);
+            expect(state.momentum.brickDensity).toBeCloseTo(0.9, 5);
+            expect(state.momentum.speedPressure).toBeGreaterThan(0);
+            expect(state.momentum.comboHeat).toBeCloseTo(0.2, 5);
         });
     });
 
@@ -90,6 +113,7 @@ describe('scoring', () => {
 
             expect(state.comboTimer).toBeCloseTo(1.0, 1);
             expect(state.combo).toBe(5); // Combo still active
+            expect(state.momentum.comboTimer).toBeCloseTo(1.0, 1);
         });
 
         it('should reset combo when timer reaches zero', () => {
@@ -101,6 +125,8 @@ describe('scoring', () => {
 
             expect(state.comboTimer).toBe(0);
             expect(state.combo).toBe(0);
+            expect(state.momentum.comboHeat).toBe(0);
+            expect(state.momentum.volleyLength).toBe(0);
         });
 
         it('should not decay if timer is already zero', () => {
@@ -112,6 +138,16 @@ describe('scoring', () => {
 
             expect(state.comboTimer).toBe(0);
             expect(state.combo).toBe(0);
+            expect(state.momentum.comboTimer).toBe(0);
+        });
+
+        it('decays momentum speed pressure over time', () => {
+            const state = createScoring();
+            state.momentum.speedPressure = 0.9;
+
+            decayCombo(state, 0.5);
+
+            expect(state.momentum.speedPressure).toBeLessThan(0.9);
         });
     });
 
@@ -120,11 +156,17 @@ describe('scoring', () => {
             const state = createScoring();
             state.combo = 10;
             state.comboTimer = 1.5;
+            state.momentum.speedPressure = 0.75;
+            state.momentum.comboHeat = 0.6;
+            state.momentum.volleyLength = 8;
 
             resetCombo(state);
 
             expect(state.combo).toBe(0);
             expect(state.comboTimer).toBe(0);
+            expect(state.momentum.speedPressure).toBe(0);
+            expect(state.momentum.comboHeat).toBe(0);
+            expect(state.momentum.volleyLength).toBe(0);
         });
     });
 
@@ -179,6 +221,8 @@ describe('scoring', () => {
             state.score = 150;
             state.combo = 12;
             state.comboTimer = 1.2;
+            state.momentum.comboHeat = 0.6;
+            state.momentum.speedPressure = 0.4;
 
             const info = getScoringDebugInfo(state, { multiplierThreshold: 8 });
 
@@ -188,6 +232,21 @@ describe('scoring', () => {
             expect(info.multiplier).toBe(1.25); // floor(12/8) * 0.25 = 0.25, so 1.25
             expect(info.nextMilestone).toBe(16);
             expect(info.comboActive).toBe(true);
+            expect(info.momentum.comboHeat).toBeCloseTo(0.6, 5);
+            expect(info.momentum.speedPressure).toBeCloseTo(0.4, 5);
+        });
+    });
+
+    describe('getMomentumMetrics', () => {
+        it('returns a shallow copy of momentum state', () => {
+            const state = createScoring();
+            state.momentum.volleyLength = 4;
+
+            const snapshot = getMomentumMetrics(state);
+            expect(snapshot.volleyLength).toBe(4);
+
+            snapshot.volleyLength = 1;
+            expect(state.momentum.volleyLength).toBe(4);
         });
     });
 });
