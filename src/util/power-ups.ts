@@ -1,3 +1,4 @@
+import { gameConfig, type GameConfig } from 'config/game';
 import type { RandomSource } from './random';
 
 /**
@@ -31,10 +32,11 @@ export interface PowerUpConfig {
     readonly ballSpeedMultiplier?: number;
 }
 
-const DEFAULT_SPAWN_CHANCE = 0.25; // 25% chance
-const DEFAULT_DURATION = 2.5; // seconds
-const DEFAULT_PADDLE_WIDTH_MULTIPLIER = 1.5;
-const DEFAULT_BALL_SPEED_MULTIPLIER = 1.3;
+const config: GameConfig = gameConfig;
+const DEFAULT_SPAWN_CHANCE = config.powerUp.spawnChance;
+const DEFAULT_DURATION = config.powerUp.defaultDuration;
+const DEFAULT_PADDLE_WIDTH_MULTIPLIER = config.powerUp.paddleWidthMultiplier;
+const DEFAULT_BALL_SPEED_MULTIPLIER = config.powerUp.ballSpeedMultiplier;
 
 /**
  * Determine if power-up should spawn

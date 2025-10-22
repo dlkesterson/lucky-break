@@ -76,6 +76,94 @@ const launchControllerState = vi.hoisted(() => ({
     instances: [] as any[],
 }));
 
+const sessionManagerState = vi.hoisted(() => ({
+    instances: [] as any[],
+    options: [] as Record<string, unknown>[],
+}));
+
+const createGameSessionManagerMock = vi.hoisted(() =>
+    vi.fn((options: Record<string, unknown> = {}) => {
+        const state: any = {
+            sessionId: 'session-test',
+            livesRemaining: 3,
+            brickRemaining: 0,
+            brickTotal: 0,
+            round: 1,
+            status: 'active',
+            score: 0,
+            coins: 0,
+            entropy: {
+                charge: 0,
+                stored: 0,
+                trend: 'stable',
+                lastEvent: null,
+                updatedAt: Date.now(),
+            },
+        };
+
+        const handle = {
+            startRound: vi.fn((roundOptions: { breakableBricks: number }) => {
+                state.brickRemaining = roundOptions.breakableBricks;
+                state.brickTotal = roundOptions.breakableBricks;
+            }),
+            snapshot: vi.fn(() => ({
+                ...state,
+                hud: {
+                    score: state.score,
+                    coins: state.coins,
+                    lives: state.livesRemaining,
+                    round: state.round,
+                    brickRemaining: state.brickRemaining,
+                    brickTotal: state.brickTotal,
+                    momentum: {
+                        volleyLength: 0,
+                        speedPressure: 0,
+                        brickDensity: state.brickTotal === 0 ? 0 : state.brickRemaining / state.brickTotal,
+                        comboHeat: 0,
+                        comboTimer: 0,
+                    },
+                    entropy: {
+                        charge: state.entropy.charge,
+                        stored: state.entropy.stored,
+                        trend: state.entropy.trend,
+                    },
+                    audio: {
+                        scene: 'calm',
+                        nextScene: null,
+                        barCountdown: 0,
+                    },
+                    prompts: [],
+                    settings: {
+                        muted: false,
+                        masterVolume: 1,
+                        reducedMotion: false,
+                    },
+                },
+            })),
+            recordBrickBreak: vi.fn(),
+            recordLifeLost: vi.fn(() => {
+                state.livesRemaining = Math.max(0, state.livesRemaining - 1);
+            }),
+            completeRound: vi.fn(() => {
+                state.brickRemaining = 0;
+            }),
+            recordEntropyEvent: vi.fn((event: { type?: string }) => {
+                state.entropy.lastEvent = event?.type ?? null;
+            }),
+            collectCoins: vi.fn((amount: number) => {
+                const safeAmount = Math.max(0, Math.floor(amount));
+                state.coins += safeAmount;
+                state.score += safeAmount;
+            }),
+            getEntropyState: vi.fn(() => ({ ...state.entropy })),
+        };
+
+        sessionManagerState.instances.push(handle);
+        sessionManagerState.options.push(options);
+        return handle;
+    }),
+);
+
 const createGameInitializerMock = vi.hoisted(() =>
     vi.fn(async (options: unknown) => {
         const stage = createStageStub();
@@ -236,8 +324,26 @@ vi.mock('tone', () => {
     };
 });
 
-vi.mock('render/theme', () => ({
-    GameTheme: {
+vi.mock('render/theme', () => {
+    interface MockTheme {
+        brickColors: string[];
+        ball: { core: string; aura: string; highlight: string };
+        paddle: { gradient: string[]; glow: number };
+        accents: { combo: string; powerUp: string };
+        background: { from: number; to: number; starAlpha: number };
+        font: string;
+        monoFont: string;
+        hud: {
+            panelFill: string;
+            panelLine: string;
+            textPrimary: string;
+            textSecondary: string;
+            accent: string;
+            danger: string;
+        };
+    }
+
+    const defaultTheme: MockTheme = {
         brickColors: ['#ff0000', '#00ff00', '#0000ff'],
         ball: {
             core: '#cccccc',
@@ -255,9 +361,57 @@ vi.mock('render/theme', () => ({
         background: {
             from: 0x111111,
             to: 0x222222,
+            starAlpha: 0.2,
         },
-    },
-}));
+        font: 'Test Font',
+        monoFont: 'Test Mono',
+        hud: {
+            panelFill: '#101010',
+            panelLine: '#202020',
+            textPrimary: '#ffffff',
+            textSecondary: '#cccccc',
+            accent: '#ff8800',
+            danger: '#ff0000',
+        },
+    };
+
+    const highContrastTheme: MockTheme = {
+        ...defaultTheme,
+        brickColors: ['#123123', '#321321', '#654654'],
+        accents: {
+            combo: '#00ffaa',
+            powerUp: '#aa00ff',
+        },
+    };
+
+    let activeName: 'default' | 'colorBlind' = 'default';
+    let activeTheme: MockTheme = defaultTheme;
+    const listeners = new Set<(theme: MockTheme, name: 'default' | 'colorBlind') => void>();
+
+    const notify = () => {
+        listeners.forEach((listener) => listener(activeTheme, activeName));
+    };
+
+    const setActiveTheme = vi.fn((name: 'default' | 'colorBlind') => {
+        activeName = name;
+        activeTheme = name === 'colorBlind' ? highContrastTheme : defaultTheme;
+        notify();
+    });
+
+    const onThemeChange = (listener: (theme: MockTheme, name: 'default' | 'colorBlind') => void) => {
+        listeners.add(listener);
+        return () => {
+            listeners.delete(listener);
+        };
+    };
+
+    return {
+        GameTheme: defaultTheme,
+        onThemeChange,
+        setActiveTheme,
+        getActiveThemeName: vi.fn(() => activeName),
+    };
+});
 
 vi.mock('physics/world', () => ({
     createPhysicsWorld: vi.fn(() => {
@@ -296,81 +450,11 @@ vi.mock('./loop', () => ({
 }));
 
 vi.mock('./state', () => ({
-    createGameSessionManager: vi.fn(() => {
-        const state: any = {
-            sessionId: 'session-test',
-            livesRemaining: 3,
-            brickRemaining: 0,
-            brickTotal: 0,
-            round: 1,
-            status: 'active',
-            score: 0,
-            coins: 0,
-            entropy: {
-                charge: 0,
-                stored: 0,
-                trend: 'stable',
-                lastEvent: null,
-                updatedAt: Date.now(),
-            },
-        };
-        return {
-            startRound: vi.fn((options: { breakableBricks: number }) => {
-                state.brickRemaining = options.breakableBricks;
-                state.brickTotal = options.breakableBricks;
-            }),
-            snapshot: vi.fn(() => ({
-                ...state,
-                hud: {
-                    score: state.score,
-                    coins: state.coins,
-                    lives: state.livesRemaining,
-                    round: state.round,
-                    brickRemaining: state.brickRemaining,
-                    brickTotal: state.brickTotal,
-                    momentum: {
-                        volleyLength: 0,
-                        speedPressure: 0,
-                        brickDensity: state.brickTotal === 0 ? 0 : state.brickRemaining / state.brickTotal,
-                        comboHeat: 0,
-                        comboTimer: 0,
-                    },
-                    entropy: {
-                        charge: state.entropy.charge,
-                        stored: state.entropy.stored,
-                        trend: state.entropy.trend,
-                    },
-                    audio: {
-                        scene: 'calm',
-                        nextScene: null,
-                        barCountdown: 0,
-                    },
-                    prompts: [],
-                    settings: {
-                        muted: false,
-                        masterVolume: 1,
-                        reducedMotion: false,
-                    },
-                },
-            })),
-            recordBrickBreak: vi.fn(),
-            recordLifeLost: vi.fn(() => {
-                state.livesRemaining = Math.max(0, state.livesRemaining - 1);
-            }),
-            completeRound: vi.fn(() => {
-                state.brickRemaining = 0;
-            }),
-            recordEntropyEvent: vi.fn((event: { type?: string }) => {
-                state.entropy.lastEvent = event?.type ?? null;
-            }),
-            collectCoins: vi.fn((amount: number) => {
-                const safeAmount = Math.max(0, Math.floor(amount));
-                state.coins += safeAmount;
-                state.score += safeAmount;
-            }),
-            getEntropyState: vi.fn(() => ({ ...state.entropy })),
-        };
-    }),
+    createGameSessionManager: createGameSessionManagerMock,
+}));
+
+vi.mock('app/state', () => ({
+    createGameSessionManager: createGameSessionManagerMock,
 }));
 
 vi.mock('render/hud', () => ({
@@ -466,6 +550,12 @@ vi.mock('physics/ball-attachment', () => {
             return ball;
         }
         updateAttachment = vi.fn();
+        getDebugInfo = vi.fn(() => ({
+            isAttached: true,
+            position: { x: 0, y: 0 },
+            velocity: { x: 0, y: 0 },
+            attachmentOffset: { x: 0, y: 0 },
+        }));
     }
     return { BallAttachmentController };
 });
@@ -492,6 +582,22 @@ vi.mock('render/paddle-body', () => {
             x: paddle.physicsBody.position.x,
             y: paddle.physicsBody.position.y,
         }));
+        getDebugInfo = vi.fn(() => ({
+            position: { x: 0, y: 0 },
+            velocity: { x: 0, y: 0 },
+            bounds: { x: 0, y: 0, width: 0, height: 0 },
+            physicsBodyId: 0,
+            inputState: {
+                activeInputs: [],
+                primaryInput: null,
+                mousePosition: null,
+                touchPosition: null,
+                gamepadCursor: null,
+                keyboardPressed: [],
+                paddleTarget: null,
+                launchPending: false,
+            },
+        }));
     }
     return { PaddleBodyController };
 });
@@ -507,6 +613,16 @@ vi.mock('input/input-manager', () => {
         getPaddleTarget = vi.fn(() => null);
         shouldLaunch = vi.fn(() => false);
         consumeLaunchIntent = vi.fn(() => ({ direction: { x: 0, y: -1 } }));
+        getDebugState = vi.fn(() => ({
+            activeInputs: [],
+            primaryInput: null,
+            mousePosition: null,
+            touchPosition: null,
+            gamepadCursor: null,
+            keyboardPressed: [],
+            paddleTarget: null,
+            launchPending: false,
+        }));
     }
     return { GameInputManager };
 });
@@ -638,6 +754,7 @@ vi.mock('pixi.js', () => {
         rotation = 0;
         position = { set: vi.fn() };
         scale = { set: vi.fn() };
+        destroy = vi.fn();
         addChild(...children: any[]) {
             for (const child of children) {
                 if (!child) {
@@ -677,10 +794,43 @@ vi.mock('pixi.js', () => {
         clear = vi.fn();
         rect = vi.fn();
         fill = vi.fn();
+        roundRect = vi.fn();
+        stroke = vi.fn();
+        circle = vi.fn();
+        moveTo = vi.fn();
+        lineTo = vi.fn();
     }
     class MockSprite extends MockContainer { }
     class MockTexture {
         static WHITE = new MockTexture();
+    }
+
+    class MockTextStyle {
+        constructor(public options: unknown) {
+            void options;
+        }
+    }
+
+    class MockText extends MockContainer {
+        style: MockTextStyle;
+        private _text = '';
+        width = 0;
+        height = 0;
+        constructor(text: string, style: MockTextStyle) {
+            super();
+            this.style = style;
+            this.text = text;
+        }
+        get text(): string {
+            return this._text;
+        }
+        set text(value: string) {
+            this._text = value;
+            const lines = value.split('\n');
+            const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
+            this.width = maxLineLength * 8;
+            this.height = lines.length * 18;
+        }
     }
 
     class MockColorMatrixFilter {
@@ -721,6 +871,8 @@ vi.mock('pixi.js', () => {
         ColorMatrixFilter: MockColorMatrixFilter,
         Application: MockApplication,
         FillGradient: MockFillGradient,
+        Text: MockText,
+        TextStyle: MockTextStyle,
     };
 });
 
@@ -882,6 +1034,9 @@ describe('createGameRuntime', () => {
         ballState.instances.length = 0;
         physicsWorldState.instances.length = 0;
         launchControllerState.instances.length = 0;
+        sessionManagerState.instances.length = 0;
+        sessionManagerState.options.length = 0;
+        createGameSessionManagerMock.mockClear();
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {
@@ -1053,6 +1208,53 @@ describe('createGameRuntime', () => {
 
         handle.dispose();
         expect(disposeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('provides a deterministic session clock to the session manager', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        expect(createGameSessionManagerMock).toHaveBeenCalled();
+        const sessionOptions = createGameSessionManagerMock.mock.calls.at(-1)?.[0] as {
+            now?: () => number;
+        } | undefined;
+        expect(sessionOptions).toBeDefined();
+        const nowFn = sessionOptions?.now ?? null;
+        expect(typeof nowFn).toBe('function');
+        expect(nowFn?.()).toBe(0);
+
+        const stageInstance = initializerState.instances[0]?.stage;
+        expect(stageInstance).toBeDefined();
+        const registerCalls = stageInstance!.register.mock.calls as [
+            string,
+            (context: unknown) => unknown,
+            unknown?,
+        ][];
+        const gameplayRegistration = registerCalls.find(([name]) => name === 'gameplay');
+        expect(gameplayRegistration).toBeDefined();
+        const gameplayFactory = gameplayRegistration?.[1];
+        expect(gameplayFactory).toBeInstanceOf(Function);
+        gameplayFactory?.({} as never);
+
+        const gameplayOptions = vi.mocked(createGameplayScene).mock.calls.at(-1)?.[1] as {
+            onUpdate: (delta: number) => void;
+        } | undefined;
+        expect(gameplayOptions?.onUpdate).toBeDefined();
+        const onUpdate = gameplayOptions!.onUpdate;
+
+        const deltaSeconds = 1 / 60;
+        onUpdate(deltaSeconds);
+
+        const expectedMs = Math.floor(deltaSeconds * 1000);
+        expect(nowFn?.()).toBe(expectedMs);
+
+        handle.dispose();
     });
 
     it('executes gameplay update to advance physics, input, and replay state', async () => {

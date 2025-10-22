@@ -269,6 +269,10 @@ describe('Paddle Ball Flow Integration', () => {
             mockContainer.dispatchEvent(touchEvent);
 
             expect(inputManager.shouldLaunch()).toBe(true);
+
+            const debugState = inputManager.getDebugState();
+            expect(debugState.primaryInput).toBe('touch');
+            expect(debugState.touchPosition).toEqual({ x: 450, y: 375 });
         });
 
         it('should handle keyboard input', () => {
@@ -276,6 +280,7 @@ describe('Paddle Ball Flow Integration', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).toContain('ArrowLeft');
+            expect(debugState.primaryInput).toBe('keyboard');
         });
     });
 

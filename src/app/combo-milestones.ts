@@ -9,6 +9,7 @@ export interface PublishComboMilestoneOptions {
     readonly pointsAwarded: number;
     readonly totalScore: number;
     readonly config?: ScoringConfig;
+    readonly timestampMs?: number;
 }
 
 /**
@@ -33,13 +34,17 @@ export const publishComboMilestoneIfNeeded = (options: PublishComboMilestoneOpti
 
     const multiplier = getComboMultiplier(options.currentCombo, options.config);
 
-    options.bus.publish('ComboMilestoneReached', {
-        sessionId: options.sessionId,
-        combo: options.currentCombo,
-        multiplier,
-        pointsAwarded: options.pointsAwarded,
-        totalScore: options.totalScore,
-    });
+    options.bus.publish(
+        'ComboMilestoneReached',
+        {
+            sessionId: options.sessionId,
+            combo: options.currentCombo,
+            multiplier,
+            pointsAwarded: options.pointsAwarded,
+            totalScore: options.totalScore,
+        },
+        options.timestampMs,
+    );
 
     return true;
 };

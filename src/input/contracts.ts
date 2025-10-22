@@ -89,7 +89,10 @@ export interface InputManager {
 
 export interface InputDebugState {
     activeInputs: readonly InputType[];
+    primaryInput: InputType | null;
     mousePosition: Vector2 | null;
+    touchPosition: Vector2 | null;
+    gamepadCursor: Vector2 | null;
     keyboardPressed: readonly string[];
     paddleTarget: Vector2 | null;
     launchPending: boolean;

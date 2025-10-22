@@ -252,6 +252,7 @@ const createRuntime = (options: {
     });
 
     const powerUp = { radius: 16, fallSpeed: 6 } as const;
+    const coin = { radius: 8, fallSpeed: 5 } as const;
     const runtime = createLevelRuntime({
         physics: physics as unknown as PhysicsWorldHandle,
         stage: stage as any,
@@ -262,6 +263,7 @@ const createRuntime = (options: {
         brickLighting: { radius: 120, restAlpha: 0.55 },
         rowColors: [0xff6600, 0x3366ff, 0x11aa55],
         powerUp,
+        coin,
     });
 
     return {
@@ -328,6 +330,34 @@ describe('createLevelRuntime', () => {
             expect.objectContaining({ currentHp: 0, maxHp: 3 }),
         );
         expect(firstVisual.texture).toBe('texture-0');
+    });
+
+    it('refreshes brick textures when row colors change', () => {
+        const layout = {
+            bricks: [
+                { row: 0, col: 0, x: 150, y: 120, hp: 3 },
+                { row: 1, col: 1, x: 210, y: 180, hp: 2 },
+            ],
+            breakableCount: 2,
+            spec: { powerUpChanceMultiplier: 1.2 },
+        };
+
+        const { runtime, visualBodies } = createRuntime({ layout });
+        runtime.loadLevel(0);
+
+        const [firstBody, firstVisual] = Array.from(visualBodies.entries())[0];
+        expect(firstBody).toBeDefined();
+        expect(firstVisual).toBeDefined();
+
+        brickTextureGetMock.mockClear();
+        runtime.setRowColors([0x112233, 0x445566, 0x778899]);
+
+        expect(brickTextureGetMock).toHaveBeenCalledWith(
+            expect.objectContaining({ baseColor: 0x112233 }),
+        );
+        const state = runtime.brickVisualState.get(firstBody);
+        expect(state?.baseColor).toBe(0x112233);
+        expect(firstVisual.texture).toBe('texture-3');
     });
 
     it('applies power-up lifecycle helpers', () => {

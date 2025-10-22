@@ -158,6 +158,52 @@ describe('createGameLoop', () => {
         updates.forEach((dt) => expect(dt).toBeCloseTo(DEFAULT_FIXED_DELTA, 6));
     });
 
+    it('reports diagnostic information when frames are clamped or overflow the step budget', () => {
+        const clampSpy = vi.fn();
+        const overflowSpy = vi.fn();
+        const updateSpy = vi.fn();
+        let lastAlpha = 0;
+
+        const loop = createGameLoop(
+            (dt) => {
+                updateSpy(dt);
+            },
+            (alpha) => {
+                lastAlpha = alpha;
+            },
+            {
+                now: () => currentTime,
+                raf: fakeRaf.request,
+                cancelRaf: fakeRaf.cancel,
+                maxStepsPerFrame: 2,
+                maxFrameDeltaMs: DEFAULT_STEP_MS * 4,
+                onFrameClamp: clampSpy,
+                onStepOverflow: overflowSpy,
+            },
+        );
+
+        loop.start();
+        const requestedDelta = DEFAULT_STEP_MS * 6;
+        fakeRaf.flush(requestedDelta);
+
+        expect(updateSpy).toHaveBeenCalledTimes(2);
+        expect(clampSpy).toHaveBeenCalledTimes(1);
+        expect(clampSpy).toHaveBeenCalledWith({
+            requestedDeltaMs: requestedDelta,
+            clampedDeltaMs: DEFAULT_STEP_MS * 4,
+        });
+
+        expect(overflowSpy).toHaveBeenCalledTimes(1);
+        const overflowDetails = overflowSpy.mock.calls[0][0];
+        expect(overflowDetails.stepsExecuted).toBe(2);
+        expect(overflowDetails.pendingSteps).toBeCloseTo(2, 5);
+        expect(overflowDetails.remainingMs).toBeCloseTo(DEFAULT_STEP_MS * 2, 5);
+        expect(lastAlpha).toBeCloseTo(1, 5);
+
+        loop.stop();
+        expect(fakeRaf.pending()).toBe(0);
+    });
+
     it('falls back to setTimeout when requestAnimationFrame is unavailable', () => {
         vi.useFakeTimers();
         const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');

@@ -36,6 +36,7 @@ export class GameInputManager implements InputManager {
     private suppressMouseInput = false;
     private keyboardState = new Map<string, boolean>();
     private activeInputs = new Set<InputType>();
+    private primaryInput: InputType | null = null;
     private launchManager = new PaddleLaunchManager();
     private previousPaddlePosition: Vector2 | null = null;
     private hasReceivedInput = false; // Track if user has moved mouse/touch since initialization
@@ -78,6 +79,11 @@ export class GameInputManager implements InputManager {
         this.gamepadDisconnectedListener = this.handleGamepadDisconnected.bind(this);
     }
 
+    private markPrimaryInput(type: InputType): void {
+        this.activeInputs.add(type);
+        this.primaryInput = type;
+    }
+
     initialize(container: HTMLElement): void {
         this.teardownEventListeners();
 
@@ -93,6 +99,9 @@ export class GameInputManager implements InputManager {
         this.suppressMouseInput = false;
         this.hasReceivedInput = false;
         this.gamepadIndex = null;
+        this.primaryInput = null;
+        this.activeInputs.clear();
+        this.keyboardState.clear();
         const { width, height } = this.getCanvasSize();
         this.gamepadCursorX = width > 0 ? width / 2 : null;
         this.gamepadCursorY = height > 0 ? Math.max(0, height * 0.85) : null;
@@ -164,7 +173,7 @@ export class GameInputManager implements InputManager {
         if (this.suppressMouseInput) {
             return;
         }
-        this.activeInputs.add('mouse');
+        this.markPrimaryInput('mouse');
         this.hasReceivedInput = true; // User has interacted
 
         if (this.canvas) {
@@ -182,7 +191,7 @@ export class GameInputManager implements InputManager {
         if (this.suppressMouseInput) {
             return;
         }
-        this.activeInputs.add('mouse');
+        this.markPrimaryInput('mouse');
         this.hasReceivedInput = true; // User has moved mouse
 
         if (this.canvas) {
@@ -203,7 +212,7 @@ export class GameInputManager implements InputManager {
         if (event.cancelable) {
             event.preventDefault();
         }
-        this.activeInputs.add('touch');
+        this.markPrimaryInput('touch');
         this.hasReceivedInput = true; // User has touched
         this.suppressMouseInput = true;
         this.mousePosition = null;
@@ -228,7 +237,7 @@ export class GameInputManager implements InputManager {
         if (event.cancelable) {
             event.preventDefault();
         }
-        this.activeInputs.add('touch');
+        this.markPrimaryInput('touch');
         this.hasReceivedInput = true; // User has moved touch
 
         const activeTouch = this.getActiveTouch(event.touches);
@@ -276,6 +285,7 @@ export class GameInputManager implements InputManager {
                 this.activeTouchId = remaining.identifier;
                 const nextPosition = this.getTouchPosition(remaining);
                 this.touchPosition = nextPosition;
+                this.markPrimaryInput('touch');
                 this.touchStartPosition = cloneVector(nextPosition);
                 this.touchStartTimestampMs = this.getTimestamp();
                 this.longPressEligible = true;
@@ -295,7 +305,7 @@ export class GameInputManager implements InputManager {
     }
 
     private handleKeyDown(event: KeyboardEvent): void {
-        this.activeInputs.add('keyboard');
+        this.markPrimaryInput('keyboard');
         this.keyboardState.set(event.code, true);
     }
 
@@ -394,15 +404,29 @@ export class GameInputManager implements InputManager {
 
     getDebugState(): InputDebugState {
         this.updateGamepadState();
+        const paddleTarget = this.getPaddleTarget();
+        const activeKeys = Array.from(this.keyboardState.entries())
+            .filter(([, pressed]) => pressed)
+            .map(([key]) => key);
+
+        const { height } = this.getCanvasSize();
+        const gamepadCursor = this.gamepadCursorX !== null
+            ? {
+                x: this.gamepadCursorX,
+                y: this.gamepadCursorY ?? (height > 0 ? Math.max(0, height * 0.85) : 0),
+            }
+            : null;
+
         return {
             activeInputs: Array.from(this.activeInputs),
-            mousePosition: this.mousePosition,
-            keyboardPressed: Array.from(this.keyboardState.entries())
-                .filter(([, pressed]) => pressed)
-                .map(([key]) => key),
-            paddleTarget: this.getPaddleTarget(),
-            launchPending: this.shouldLaunch(),
-        };
+            primaryInput: this.primaryInput,
+            mousePosition: this.mousePosition ? { ...this.mousePosition } : null,
+            touchPosition: this.touchPosition ? { ...this.touchPosition } : null,
+            gamepadCursor,
+            keyboardPressed: activeKeys,
+            paddleTarget: paddleTarget ? { ...paddleTarget } : null,
+            launchPending: this.launchManager.isLaunchPending(),
+        } satisfies InputDebugState;
     }
 
     destroy(): void {
@@ -424,6 +448,7 @@ export class GameInputManager implements InputManager {
         this.gamepadCursorY = null;
         this.gamepadLastTimestampMs = null;
         this.gamepadLaunchHeld = false;
+        this.primaryInput = null;
     }
 
     private updateGamepadState(): void {
@@ -450,7 +475,7 @@ export class GameInputManager implements InputManager {
         const axisRaw = gamepad.axes[GAMEPAD_PRIMARY_AXIS_INDEX] ?? 0;
         const axisValue = this.applyGamepadDeadZone(axisRaw);
         if (axisValue !== 0) {
-            this.activeInputs.add('gamepad');
+            this.markPrimaryInput('gamepad');
             this.hasReceivedInput = true;
 
             if (deltaSeconds > 0 && width > 0 && this.gamepadCursorX !== null) {
@@ -461,7 +486,7 @@ export class GameInputManager implements InputManager {
 
         const launchPressed = this.isGamepadLaunchPressed(gamepad);
         if (launchPressed) {
-            this.activeInputs.add('gamepad');
+            this.markPrimaryInput('gamepad');
             this.hasReceivedInput = true;
         }
 

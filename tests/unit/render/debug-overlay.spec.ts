@@ -1,36 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('pixi.js', () => {
-    class Container {
-        children: any[] = [];
+    class BaseDisplayObject {
+        eventMode: string | undefined;
+        label: string | undefined;
+        visible = true;
+        zIndex = 0;
+        position = { set: vi.fn() };
         destroy = vi.fn();
+    }
+
+    class Container extends BaseDisplayObject {
+        children: any[] = [];
+        parent: Container | null = null;
+
         addChild(...nodes: any[]): void {
-            this.children.push(...nodes);
+            for (const node of nodes) {
+                if (!node) {
+                    continue;
+                }
+                node.parent = this;
+                this.children.push(node);
+            }
+        }
+
+        removeFromParent(): void {
+            if (this.parent) {
+                this.parent.children = this.parent.children.filter((child) => child !== this);
+                this.parent = null;
+            }
         }
     }
 
-    class Graphics {
+    class Graphics extends Container {
         clear = vi.fn();
-        setStrokeStyle = vi.fn();
-        rect = vi.fn();
-        stroke = vi.fn();
-        setFillStyle = vi.fn();
-        circle = vi.fn();
+        roundRect = vi.fn();
         fill = vi.fn();
+        stroke = vi.fn();
+        circle = vi.fn();
         moveTo = vi.fn();
         lineTo = vi.fn();
-        destroy = vi.fn();
     }
 
     class TextStyle {
         constructor(public options: unknown) { }
     }
 
-    class Text {
-        x = 0;
-        y = 0;
-        destroy = vi.fn();
-        constructor(public text: string, public style: TextStyle) { }
+    class Text extends BaseDisplayObject {
+        style: TextStyle;
+        private _text = '';
+        width = 0;
+        height = 0;
+
+        constructor(text: string, style: TextStyle) {
+            super();
+            this.style = style;
+            this.text = text;
+        }
+
+        get text(): string {
+            return this._text;
+        }
+
+        set text(value: string) {
+            this._text = value;
+            const lines = value.split('\n');
+            const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
+            this.width = maxLineLength * 8;
+            this.height = lines.length * 18;
+        }
     }
 
     return { Container, Graphics, Text, TextStyle };
@@ -44,8 +82,11 @@ import type { Body } from 'matter-js';
 
 describe('InputDebugOverlay', () => {
     const mockInputState = {
-        activeInputs: ['keyboard'],
+        activeInputs: ['mouse', 'keyboard'],
+        primaryInput: 'mouse' as const,
         mousePosition: { x: 320, y: 200 },
+        touchPosition: null,
+        gamepadCursor: { x: 640, y: 380 },
         keyboardPressed: ['ArrowLeft'],
         paddleTarget: { x: 200, y: 0 },
         launchPending: true,
@@ -63,6 +104,8 @@ describe('InputDebugOverlay', () => {
         velocity: { x: 2.3, y: -4.1 },
         attachmentOffset: { x: 10, y: -15 },
     };
+
+    type MockFn = ReturnType<typeof vi.fn>;
 
     const paddleStub: Paddle = {
         id: 'paddle-1',
@@ -96,45 +139,57 @@ describe('InputDebugOverlay', () => {
 
     it('initializes overlay content and updates drawing primitives', () => {
         const overlay = createOverlay();
-        const container = overlay.getContainer() as Container & { destroy: ReturnType<typeof vi.fn> };
-        expect(container).toBeInstanceOf(Container);
-        expect(container.children.length).toBeGreaterThanOrEqual(5);
+        const container = overlay.getContainer();
+        expect(container.children.length).toBe(2);
 
         overlay.update();
 
-        const overlayGraphics = container.children[0] as Graphics & {
-            rect: ReturnType<typeof vi.fn>;
-            circle: ReturnType<typeof vi.fn>;
-            destroy: ReturnType<typeof vi.fn>;
-        };
-        const rectMock = overlayGraphics.rect;
-        const circleMock = overlayGraphics.circle;
-        expect(rectMock).toHaveBeenCalledWith(100, 50, 200, 40);
-        expect(circleMock).toHaveBeenCalledWith(180.4, 65.2, 5);
+        const panel = container.children[0] as Container;
+        const pointer = container.children[1] as Graphics;
+        expect(panel.children.length).toBe(2);
 
-        const texts = container.children.filter((child): child is Text => child instanceof Text);
-        expect(texts[0].text).toContain('Input: keyboard');
-        expect(texts[1].text).toContain('(150.1, 71.0)');
+        const background = panel.children[0] as Graphics;
+        const backgroundMock = background as unknown as {
+            roundRect: MockFn;
+            fill: MockFn;
+            stroke: MockFn;
+        };
+        expect(backgroundMock.roundRect).toHaveBeenCalledWith(0, 0, expect.any(Number), expect.any(Number), expect.any(Number));
+        expect(backgroundMock.fill).toHaveBeenCalledWith({ color: 0x000000, alpha: 0.6 });
+        expect(backgroundMock.stroke).toHaveBeenCalledWith({ color: 0xffffff, width: 1, alpha: 0.18 });
+
+        const textNode = panel.children[1] as Text;
+        expect(textNode.text).toContain('Mode: mouse');
+        expect(textNode.text).toContain('Ball: attached');
+
+        const pointerMock = pointer as unknown as {
+            circle: MockFn;
+            stroke: MockFn;
+        };
+        expect(pointerMock.circle).toHaveBeenCalledWith(200, 0, 9);
+        expect(pointerMock.stroke).toHaveBeenCalledWith({ color: 0x4fd0ff, width: 1.5, alpha: 0.85 });
     });
 
     it('cleans up PIXI resources on destroy', () => {
         const overlay = createOverlay();
-        const container = overlay.getContainer() as Container & { destroy: ReturnType<typeof vi.fn> };
-        const overlayGraphics = container.children[0] as Graphics & {
-            destroy: ReturnType<typeof vi.fn>;
-        };
-        const texts = container.children.filter((child): child is Text => child instanceof Text) as (
-            Text & { destroy: ReturnType<typeof vi.fn> }
-        )[];
+        const container = overlay.getContainer();
+        const panel = container.children[0] as Container;
+        const pointer = container.children[1] as Graphics;
+        const background = panel.children[0] as Graphics;
+        const textNode = panel.children[1] as Text;
 
         overlay.destroy();
 
-        const destroyGraphics = overlayGraphics.destroy;
-        expect(destroyGraphics).toHaveBeenCalledTimes(1);
-        texts.forEach((text) => {
-            expect(text.destroy).toHaveBeenCalledTimes(1);
-        });
-        const destroyContainer = container.destroy;
-        expect(destroyContainer).toHaveBeenCalledTimes(1);
+        const pointerMock = pointer as unknown as { destroy: MockFn };
+        const textMock = textNode as unknown as { destroy: MockFn };
+        const backgroundMock = background as unknown as { destroy: MockFn };
+        const panelMock = panel as unknown as { destroy: MockFn };
+        const containerMock = container as unknown as { destroy: MockFn };
+
+        expect(pointerMock.destroy).toHaveBeenCalledTimes(1);
+        expect(textMock.destroy).toHaveBeenCalledTimes(1);
+        expect(backgroundMock.destroy).toHaveBeenCalledTimes(1);
+        expect(panelMock.destroy).toHaveBeenCalledTimes(1);
+        expect(containerMock.destroy).toHaveBeenCalledTimes(1);
     });
 });

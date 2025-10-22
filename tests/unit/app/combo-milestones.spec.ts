@@ -79,4 +79,25 @@ describe('publishComboMilestoneIfNeeded', () => {
         }
         expect(payload.multiplier).toBeCloseTo(1.5, 5);
     });
+
+    it('forwards provided timestamps to the event bus', () => {
+        const bus = createEventBus();
+        const observed: number[] = [];
+        bus.subscribe('ComboMilestoneReached', (event) => {
+            observed.push(event.timestamp);
+        });
+
+        const emitted = publishComboMilestoneIfNeeded({
+            bus,
+            sessionId: 'session-111',
+            previousCombo: 7,
+            currentCombo: 8,
+            pointsAwarded: 30,
+            totalScore: 640,
+            timestampMs: 12_345,
+        });
+
+        expect(emitted).toBe(true);
+        expect(observed).toEqual([12_345]);
+    });
 });

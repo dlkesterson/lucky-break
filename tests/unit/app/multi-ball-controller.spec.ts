@@ -206,6 +206,36 @@ describe('createMultiBallController', () => {
         });
     });
 
+    it('recolors existing extra balls when applying a new theme', () => {
+        const controller = createMultiBallController({
+            physics,
+            ball,
+            paddle,
+            ballGraphics,
+            gameContainer,
+            visualBodies,
+            drawBallVisual,
+            colors,
+            multiplier,
+        });
+
+        controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
+        expect(controller.count()).toBeGreaterThan(0);
+
+        drawBallVisual.mockClear();
+
+        const nextColors = { core: 0x998877, aura: 0x556677, highlight: 0xaabbcc };
+        controller.applyTheme(nextColors);
+
+        expect(drawBallVisual).toHaveBeenCalledTimes(controller.count());
+        const palette = drawBallVisual.mock.calls[0]?.[2];
+        expect(palette).toMatchObject({
+            baseColor: mixColors(nextColors.core, 0xffc94c, 0.5),
+            rimColor: nextColors.highlight,
+            innerColor: nextColors.aura,
+        });
+    });
+
     it('promotes the earliest extra ball to become primary', () => {
         const controller = createMultiBallController({
             physics,

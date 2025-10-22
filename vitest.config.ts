@@ -20,6 +20,7 @@ export default defineConfig({
             'types': resolveFromRoot('src/types'),
             'scenes': resolveFromRoot('src/scenes'),
             'game': resolveFromRoot('src/game'),
+            'config': resolveFromRoot('src/config'),
         },
     },
     test: {

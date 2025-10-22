@@ -24,7 +24,8 @@ export default defineConfig({
             "input": resolveFromRoot("./src/input"),
             "types": resolveFromRoot("./src/types"),
             "scenes": resolveFromRoot("./src/scenes"),
-            "game": resolveFromRoot("./src/game")
+            "game": resolveFromRoot("./src/game"),
+            "config": resolveFromRoot("./src/config")
         }
     },
     server: {

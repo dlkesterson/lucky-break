@@ -36,6 +36,7 @@ export interface MultiBallController {
     clear(): void;
     isExtraBallBody(body: Body): boolean;
     count(): number;
+    applyTheme(colors: MultiBallColors): void;
 }
 
 const createAngularOffsets = (count: number): number[] => {
@@ -70,12 +71,25 @@ export const createMultiBallController = ({
     multiplier,
 }: MultiBallControllerOptions): MultiBallController => {
     const extraBalls = new Map<number, ExtraBallEntry>();
+    let palette: MultiBallColors = { ...colors };
 
     const collectBallBodies = (): Body[] => {
         return [
             ball.physicsBody,
             ...Array.from(extraBalls.values()).map((entry) => entry.body),
         ];
+    };
+
+    const drawExtraBall = (visual: Graphics): void => {
+        drawBallVisual(visual, ball.radius, {
+            baseColor: mixColors(palette.core, 0xffc94c, 0.5),
+            baseAlpha: 0.8,
+            rimColor: palette.highlight,
+            rimAlpha: 0.5,
+            innerColor: palette.aura,
+            innerAlpha: 0.4,
+            innerScale: 0.5,
+        });
     };
 
     const spawnExtraBalls: MultiBallController['spawnExtraBalls'] = ({ currentLaunchSpeed }) => {
@@ -114,15 +128,7 @@ export const createMultiBallController = ({
                 physics.add(extraBody);
 
                 const extraVisual = new Graphics();
-                drawBallVisual(extraVisual, ball.radius, {
-                    baseColor: mixColors(colors.core, 0xffc94c, 0.5),
-                    baseAlpha: 0.8,
-                    rimColor: colors.highlight,
-                    rimAlpha: 0.5,
-                    innerColor: colors.aura,
-                    innerAlpha: 0.4,
-                    innerScale: 0.5,
-                });
+                drawExtraBall(extraVisual);
                 extraVisual.eventMode = 'none';
                 gameContainer.addChild(extraVisual);
                 visualBodies.set(extraBody, extraVisual);
@@ -181,6 +187,13 @@ export const createMultiBallController = ({
     const isExtraBallBody: MultiBallController['isExtraBallBody'] = (body) => extraBalls.has(body.id);
     const count: MultiBallController['count'] = () => extraBalls.size;
 
+    const applyTheme: MultiBallController['applyTheme'] = (nextColors) => {
+        palette = { ...palette, ...nextColors };
+        extraBalls.forEach((entry) => {
+            drawExtraBall(entry.visual);
+        });
+    };
+
     return {
         spawnExtraBalls,
         promoteExtraBallToPrimary,
@@ -188,5 +201,6 @@ export const createMultiBallController = ({
         clear,
         isExtraBallBody,
         count,
+        applyTheme,
     };
 };

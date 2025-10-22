@@ -72,6 +72,7 @@ export interface LevelRuntimeHandle {
     readonly brickMetadata: Map<Body, BrickSpec>;
     readonly brickVisualState: Map<Body, { baseColor: number; maxHp: number; currentHp: number }>;
     loadLevel(levelIndex: number): LevelLoadResult;
+    setRowColors(rowColors: readonly number[]): void;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
     updateBrickDamage(body: Body, currentHp: number): void;
     spawnPowerUp(type: PowerUpType, position: { readonly x: number; readonly y: number }): void;
@@ -110,6 +111,17 @@ export const createLevelRuntime = ({
     const activePowerUps: FallingPowerUp[] = [];
     const activeCoins: FallingCoin[] = [];
     const brickTextures = createBrickTextureCache(stage.app.renderer);
+    let paletteRowColors = rowColors.length > 0 ? [...rowColors] : [0xffffff];
+
+    const resolvePaletteColor = (rowIndex: number): number => {
+        const palette = paletteRowColors;
+        if (palette.length === 0) {
+            return 0xffffff;
+        }
+        const normalized = rowIndex % palette.length;
+        const safeIndex = normalized < 0 ? normalized + palette.length : normalized;
+        return palette[safeIndex];
+    };
 
     const updateBrickLighting: LevelRuntimeHandle['updateBrickLighting'] = (ballPosition) => {
         brickVisualState.forEach((state, body) => {
@@ -207,7 +219,7 @@ export const createLevelRuntime = ({
             });
             physics.add(brick);
 
-            const paletteColor = rowColors[brickSpec.row % rowColors.length];
+            const paletteColor = resolvePaletteColor(brickSpec.row);
             const maxHp = Math.max(1, brickSpec.hp);
             const texture = brickTextures.get({
                 baseColor: paletteColor,
@@ -246,6 +258,47 @@ export const createLevelRuntime = ({
                 maxY,
             },
         } satisfies LevelLoadResult;
+    };
+
+    const applyRowColors: LevelRuntimeHandle['setRowColors'] = (nextColors) => {
+        if (!Array.isArray(nextColors) || nextColors.length === 0) {
+            return;
+        }
+        const filteredColors: number[] = [];
+        nextColors.forEach((value) => {
+            if (Number.isFinite(value)) {
+                filteredColors.push(Number(value));
+            }
+        });
+        if (filteredColors.length === 0) {
+            return;
+        }
+        paletteRowColors = filteredColors;
+        brickVisualState.forEach((state, body) => {
+            const metadata = brickMetadata.get(body);
+            if (!metadata) {
+                return;
+            }
+            const nextBase = resolvePaletteColor(metadata.row);
+            if (nextBase === state.baseColor) {
+                return;
+            }
+            state.baseColor = nextBase;
+            const texture = brickTextures.get({
+                baseColor: nextBase,
+                maxHp: state.maxHp,
+                currentHp: state.currentHp,
+                width: brickSize.width,
+                height: brickSize.height,
+            });
+            const visual = visualBodies.get(body);
+            if (visual instanceof Sprite) {
+                visual.texture = texture;
+                visual.tint = 0xffffff;
+                visual.alpha = brickLighting.restAlpha;
+                visual.blendMode = 'normal';
+            }
+        });
     };
 
     const spawnPowerUp: LevelRuntimeHandle['spawnPowerUp'] = (type, position) => {
@@ -423,6 +476,7 @@ export const createLevelRuntime = ({
         brickMetadata,
         brickVisualState,
         loadLevel,
+        setRowColors: applyRowColors,
         updateBrickLighting,
         updateBrickDamage,
         spawnPowerUp,

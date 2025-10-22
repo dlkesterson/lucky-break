@@ -4,6 +4,7 @@
  * Adapted from Banana Music Game's scoring mechanics
  * Rewards chains with multipliers and decays over time
  */
+import { gameConfig, type GameConfig } from 'config/game';
 
 export interface ScoreState {
     /** Current total score */
@@ -27,10 +28,11 @@ export interface ScoringConfig {
     readonly comboDecayTime?: number;
 }
 
-const DEFAULT_BASE_POINTS = 10;
-const DEFAULT_MULTIPLIER_THRESHOLD = 8;
-const DEFAULT_MULTIPLIER_PER_THRESHOLD = 0.25;
-const DEFAULT_COMBO_DECAY_TIME = 1.6;
+const config: GameConfig = gameConfig;
+const DEFAULT_BASE_POINTS = config.scoring.basePoints;
+const DEFAULT_MULTIPLIER_THRESHOLD = config.scoring.multiplierThreshold;
+const DEFAULT_MULTIPLIER_PER_THRESHOLD = config.scoring.multiplierPerThreshold;
+const DEFAULT_COMBO_DECAY_TIME = config.scoring.comboDecayTime;
 
 /**
  * Create a new scoring state

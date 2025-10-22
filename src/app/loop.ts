@@ -70,6 +70,12 @@ export interface LoopOptions {
     readonly now?: () => number;
     readonly raf?: (callback: FrameRequestCallback) => number;
     readonly cancelRaf?: (handle: number) => void;
+    readonly onFrameClamp?: (details: { readonly requestedDeltaMs: number; readonly clampedDeltaMs: number }) => void;
+    readonly onStepOverflow?: (details: {
+        readonly stepsExecuted: number;
+        readonly pendingSteps: number;
+        readonly remainingMs: number;
+    }) => void;
 }
 
 export interface GameLoop {
@@ -96,6 +102,10 @@ export class FixedStepLoop implements GameLoop {
 
     private readonly cancelRaf: (handle: number) => void;
 
+    private readonly onFrameClamp?: LoopOptions['onFrameClamp'];
+
+    private readonly onStepOverflow?: LoopOptions['onStepOverflow'];
+
     private accumulatorMs = 0;
 
     private lastTime = 0;
@@ -121,6 +131,8 @@ export class FixedStepLoop implements GameLoop {
         this.now = options.now ?? resolveNow();
         this.raf = resolveRaf(options);
         this.cancelRaf = resolveCancelRaf(options);
+        this.onFrameClamp = options.onFrameClamp;
+        this.onStepOverflow = options.onStepOverflow;
     }
 
     start(): void {
@@ -160,7 +172,8 @@ export class FixedStepLoop implements GameLoop {
         }
 
         const currentTime = this.now();
-        let frameDeltaMs = currentTime - this.lastTime;
+        const rawDeltaMs = currentTime - this.lastTime;
+        let frameDeltaMs = rawDeltaMs;
         this.lastTime = currentTime;
 
         if (frameDeltaMs < 0) {
@@ -168,6 +181,7 @@ export class FixedStepLoop implements GameLoop {
         }
 
         if (frameDeltaMs > this.maxFrameDeltaMs) {
+            this.onFrameClamp?.({ requestedDeltaMs: rawDeltaMs, clampedDeltaMs: this.maxFrameDeltaMs });
             frameDeltaMs = this.maxFrameDeltaMs;
         }
 
@@ -185,6 +199,12 @@ export class FixedStepLoop implements GameLoop {
         }
 
         if (steps === this.maxStepsPerFrame && this.accumulatorMs > this.stepMs) {
+            const pendingSteps = this.accumulatorMs / this.stepMs;
+            this.onStepOverflow?.({
+                stepsExecuted: steps,
+                pendingSteps,
+                remainingMs: this.accumulatorMs,
+            });
             // Prevent runaway accumulation when hitting the step cap.
             this.accumulatorMs = this.stepMs;
         }

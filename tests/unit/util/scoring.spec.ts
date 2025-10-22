@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { gameConfig } from 'config/game';
 import {
     createScoring,
     awardBrickPoints,
@@ -24,6 +25,14 @@ describe('scoring', () => {
     });
 
     describe('awardBrickPoints', () => {
+        it('uses centralized defaults when config omitted', () => {
+            const state = createScoring();
+            const points = awardBrickPoints(state);
+
+            expect(points).toBe(gameConfig.scoring.basePoints);
+            expect(state.comboTimer).toBeCloseTo(gameConfig.scoring.comboDecayTime, 5);
+        });
+
         it('should award base points with no combo', () => {
             const state = createScoring();
             const points = awardBrickPoints(state, { basePoints: 10 });

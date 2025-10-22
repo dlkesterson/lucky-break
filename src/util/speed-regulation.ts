@@ -6,6 +6,7 @@
  */
 
 import { Vector, Body } from 'matter-js';
+import { gameConfig } from 'config/game';
 
 export interface AdaptiveSpeedConfig {
     /** Combo count increase required before applying the next speed step */
@@ -24,8 +25,8 @@ export interface SpeedRegulationConfig {
 }
 
 const EPSILON = 1e-6;
-const DEFAULT_COMBO_STEP = 8;
-const DEFAULT_MULTIPLIER_PER_STEP = 0.05;
+const DEFAULT_COMBO_STEP = gameConfig.speedRegulation.comboStep;
+const DEFAULT_MULTIPLIER_PER_STEP = gameConfig.speedRegulation.multiplierPerStep;
 
 /**
  * Regulate ball speed to stay within configured bounds

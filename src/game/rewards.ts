@@ -1,12 +1,7 @@
+import { gameConfig, type RewardKey } from 'config/game';
 import type { RandomSource } from 'util/random';
 
-export type RewardType =
-    | 'sticky-paddle'
-    | 'double-points'
-    | 'ghost-brick'
-    | 'multi-ball'
-    | 'slow-time'
-    | 'wide-paddle';
+export type RewardType = RewardKey;
 
 interface BaseReward {
     readonly type: RewardType;
@@ -50,11 +45,6 @@ export type Reward =
     | SlowTimeReward
     | WidePaddleReward;
 
-interface WheelSegment {
-    readonly weight: number;
-    readonly create: () => Reward;
-}
-
 const clamp01 = (value: number): number => {
     if (Number.isNaN(value)) {
         return 0;
@@ -62,71 +52,79 @@ const clamp01 = (value: number): number => {
     return Math.max(0, Math.min(0.999999, value));
 };
 
-const WHEEL_SEGMENTS: readonly WheelSegment[] = [
-    {
-        weight: 1,
-        create: () => ({
-            type: 'sticky-paddle',
-            duration: 12,
-        }),
-    },
-    {
-        weight: 0.9,
-        create: () => ({
-            type: 'double-points',
-            duration: 15,
-            multiplier: 2,
-        }),
-    },
-    {
-        weight: 0.85,
-        create: () => ({
-            type: 'wide-paddle',
-            duration: 18,
-            widthMultiplier: 1.85,
-        }),
-    },
-    {
-        weight: 0.78,
-        create: () => ({
-            type: 'multi-ball',
-            duration: 8,
-            extraBalls: 2,
-        }),
-    },
-    {
-        weight: 0.72,
-        create: () => ({
-            type: 'slow-time',
-            duration: 6,
-            timeScale: 0.5,
-        }),
-    },
-    {
-        weight: 0.65,
-        create: () => ({
-            type: 'ghost-brick',
-            duration: 10,
-            ghostCount: 4,
-        }),
-    },
-];
+const rewardSettings = gameConfig.rewards;
+const wheelSegments = rewardSettings.wheelSegments;
+const rewardDefinitions = rewardSettings.definitions;
+const fallback = rewardSettings.fallback;
 
-const TOTAL_WEIGHT = WHEEL_SEGMENTS.reduce((sum, segment) => sum + segment.weight, 0);
+const TOTAL_WEIGHT = wheelSegments.reduce((sum, segment) => sum + segment.weight, 0);
+
+const buildReward = (type: RewardType, overrideDuration?: number): Reward => {
+    switch (type) {
+        case 'sticky-paddle': {
+            const { duration } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+            };
+        }
+        case 'double-points': {
+            const { duration, multiplier } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                multiplier,
+            };
+        }
+        case 'ghost-brick': {
+            const { duration, ghostCount } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                ghostCount,
+            };
+        }
+        case 'multi-ball': {
+            const { duration, extraBalls } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                extraBalls,
+            };
+        }
+        case 'slow-time': {
+            const { duration, timeScale } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                timeScale,
+            };
+        }
+        case 'wide-paddle': {
+            const { duration, widthMultiplier } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                widthMultiplier,
+            };
+        }
+        default: {
+            const exhaustiveCheck: never = type;
+            throw new Error(`Unsupported reward type: ${String(exhaustiveCheck)}`);
+        }
+    }
+};
 
 export const spinWheel = (rng: RandomSource = Math.random): Reward => {
     const roll = clamp01(rng()) * TOTAL_WEIGHT;
 
     let accumulator = 0;
-    for (const segment of WHEEL_SEGMENTS) {
+    for (const segment of wheelSegments) {
         accumulator += segment.weight;
         if (roll <= accumulator) {
-            return segment.create();
+            return buildReward(segment.type);
         }
     }
 
-    return WHEEL_SEGMENTS[WHEEL_SEGMENTS.length - 1]?.create() ?? {
-        type: 'sticky-paddle',
-        duration: 10,
-    };
+    return buildReward(fallback.type, fallback.duration);
 };

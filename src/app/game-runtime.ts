@@ -1,4 +1,10 @@
-import { GameTheme } from 'render/theme';
+import {
+    GameTheme,
+    getActiveThemeName,
+    onThemeChange,
+    setActiveTheme,
+    type GameThemeDefinition,
+} from 'render/theme';
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from './loop';
 import { createGameSessionManager } from './state';
@@ -10,6 +16,7 @@ import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
 import { createGameOverScene } from 'scenes/game-over';
 import { createPauseScene } from 'scenes/pause';
+import { gameConfig, type GameConfig } from 'config/game';
 import { BallAttachmentController } from 'physics/ball-attachment';
 import { PaddleBodyController } from 'render/paddle-body';
 import { GameInputManager } from 'input/input-manager';
@@ -41,6 +48,7 @@ import {
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createComboRing } from 'render/combo-ring';
+import { InputDebugOverlay } from 'render/debug-overlay';
 import { Sprite, Container, Graphics, ColorMatrixFilter, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import {
@@ -56,7 +64,7 @@ import type { MusicState } from 'audio/music-director';
 import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
-import { createMultiBallController } from './multi-ball-controller';
+import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, type Reward } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
@@ -126,30 +134,31 @@ const ensureToneAudio = async (): Promise<void> => {
     }
 };
 
-const PLAYFIELD_DEFAULT = { width: 1280, height: 720 } as const;
-const BRICK_LIGHT_RADIUS = 180;
-const BRICK_REST_ALPHA = 0.9;
-const COMBO_DECAY_WINDOW = 1.6;
-const HUD_SCALE = 0.9;
-const HUD_MARGIN = 32;
-const MIN_HUD_SCALE = 0.55;
-const BALL_BASE_SPEED = 8;
-const BALL_MAX_SPEED = 14;
-const BALL_LAUNCH_SPEED = 9;
-const MULTI_BALL_MULTIPLIER = 3;
-const DEFAULT_PADDLE_WIDTH_MULTIPLIER = 1.5;
-const BRICK_WIDTH = 100;
-const BRICK_HEIGHT = 40;
-const POWER_UP_RADIUS = 16;
-const POWER_UP_FALL_SPEED = 6;
-const POWER_UP_DURATION = 6;
-const PADDLE_SMOOTH_RESPONSIVENESS = 16;
-const PADDLE_SNAP_THRESHOLD = 0.75;
-const COIN_RADIUS = 13;
-const COIN_FALL_SPEED = 5.8;
-const COIN_BASE_VALUE = 5;
-const COIN_MIN_VALUE = 3;
-const COIN_MAX_VALUE = 30;
+const config: GameConfig = gameConfig;
+const PLAYFIELD_DEFAULT = config.playfield;
+const BRICK_LIGHT_RADIUS = config.bricks.lighting.radius;
+const BRICK_REST_ALPHA = config.bricks.lighting.restAlpha;
+const COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
+const HUD_SCALE = config.hud.scale;
+const HUD_MARGIN = config.hud.margin;
+const MIN_HUD_SCALE = config.hud.minScale;
+const BALL_BASE_SPEED = config.ball.baseSpeed;
+const BALL_MAX_SPEED = config.ball.maxSpeed;
+const BALL_LAUNCH_SPEED = config.ball.launchSpeed;
+const MULTI_BALL_MULTIPLIER = config.multiBall.spawnMultiplier;
+const DEFAULT_PADDLE_WIDTH_MULTIPLIER = config.paddle.expandedWidthMultiplier;
+const BRICK_WIDTH = config.bricks.size.width;
+const BRICK_HEIGHT = config.bricks.size.height;
+const POWER_UP_RADIUS = config.powerUp.radius;
+const POWER_UP_FALL_SPEED = config.powerUp.fallSpeed;
+const POWER_UP_DURATION = config.powerUp.rewardDuration;
+const PADDLE_SMOOTH_RESPONSIVENESS = config.paddle.control.smoothResponsiveness;
+const PADDLE_SNAP_THRESHOLD = config.paddle.control.snapThreshold;
+const COIN_RADIUS = config.coins.radius;
+const COIN_FALL_SPEED = config.coins.fallSpeed;
+const COIN_BASE_VALUE = config.coins.baseValue;
+const COIN_MIN_VALUE = config.coins.min;
+const COIN_MAX_VALUE = config.coins.max;
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -186,19 +195,18 @@ export const createGameRuntime = async ({
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
 
-    const rowColors = GameTheme.brickColors.map(toColorNumber);
-    const themeBallColors = {
+    let rowColors = GameTheme.brickColors.map(toColorNumber);
+    let themeBallColors: MultiBallColors = {
         core: toColorNumber(GameTheme.ball.core),
         aura: toColorNumber(GameTheme.ball.aura),
         highlight: toColorNumber(GameTheme.ball.highlight),
-    } as const;
-    const themePaddleGradient = GameTheme.paddle.gradient.map(toColorNumber);
-    const themeAccents = {
+    };
+    let themeAccents = {
         combo: toColorNumber(GameTheme.accents.combo),
         powerUp: toColorNumber(GameTheme.accents.powerUp),
-    } as const;
+    };
 
-    const ballVisualDefaults: BallVisualDefaults = {
+    let ballVisualDefaults: BallVisualDefaults = {
         baseColor: themeBallColors.core,
         auraColor: themeBallColors.aura,
         highlightColor: themeBallColors.highlight,
@@ -208,8 +216,8 @@ export const createGameRuntime = async ({
         innerScale: 0.5,
     };
 
-    const paddleVisualDefaults: PaddleVisualDefaults = {
-        gradient: themePaddleGradient,
+    let paddleVisualDefaults: PaddleVisualDefaults = {
+        gradient: GameTheme.paddle.gradient.map(toColorNumber),
         accentColor: themeBallColors.aura,
     };
 
@@ -221,6 +229,9 @@ export const createGameRuntime = async ({
 
     let ballLight: ReturnType<typeof createDynamicLight> | null = null;
     let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
+    let inputDebugOverlay: InputDebugOverlay | null = null;
+    let inputDebugOverlayVisible = false;
+    let unsubscribeTheme: (() => void) | null = null;
 
     const {
         stage,
@@ -252,12 +263,18 @@ export const createGameRuntime = async ({
         gravity: 0,
     });
 
+    let sessionElapsedSeconds = 0;
+    let frameTimestampMs = 0;
+
+    const sessionNow = (): number => Math.max(0, Math.floor(sessionElapsedSeconds * 1000));
+
     const createSession = () =>
         createGameSessionManager({
             sessionId: 'game-session',
             initialLives: 3,
             eventBus: bus,
             random: random.random,
+            now: sessionNow,
         });
 
     const toMusicLives = (lives: number): 1 | 2 | 3 => {
@@ -408,21 +425,36 @@ export const createGameRuntime = async ({
     stage.addToLayer('effects', ballLightHandle.container);
     ballLight = ballLightHandle;
 
-    const paddleLightHandle = createDynamicLight({
-        color: themeAccents.powerUp,
-        minRadius: 140,
-        maxRadius: 140,
-        baseRadius: 140,
-        minIntensity: 0,
-        maxIntensity: 0,
-        speedForMaxIntensity: Number.POSITIVE_INFINITY,
-        radiusLerpSpeed: 6,
-        intensityLerpSpeed: 5,
-    });
-    paddleLightHandle.container.zIndex = 4;
-    paddleLightHandle.container.alpha = 0.9;
-    stage.addToLayer('effects', paddleLightHandle.container);
-    paddleLight = paddleLightHandle;
+    const buildPaddleLight = (color: number) => {
+        const handle = createDynamicLight({
+            color,
+            minRadius: 140,
+            maxRadius: 140,
+            baseRadius: 140,
+            minIntensity: 0,
+            maxIntensity: 0,
+            speedForMaxIntensity: Number.POSITIVE_INFINITY,
+            radiusLerpSpeed: 6,
+            intensityLerpSpeed: 5,
+        });
+        handle.container.zIndex = 4;
+        handle.container.alpha = 0.9;
+        stage.addToLayer('effects', handle.container);
+        return handle;
+    };
+
+    const replacePaddleLight = (color: number) => {
+        if (paddleLight) {
+            const parent = paddleLight.container.parent;
+            if (parent) {
+                parent.removeChild(paddleLight.container);
+            }
+            paddleLight.destroy();
+        }
+        paddleLight = buildPaddleLight(color);
+    };
+
+    replacePaddleLight(themeAccents.powerUp);
 
     const ballController = new BallAttachmentController();
     const paddleController = new PaddleBodyController();
@@ -486,8 +518,17 @@ export const createGameRuntime = async ({
 
     inputManager.initialize(container);
 
+    inputDebugOverlay = new InputDebugOverlay({
+        inputManager,
+        paddleController,
+        ballController,
+        paddle,
+        ball,
+        stage,
+    });
+    stage.layers.hud.addChild(inputDebugOverlay.getContainer());
+
     let previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
-    let sessionElapsedSeconds = 0;
     let lastRecordedInputTarget: Vector2 | null = null;
     let currentBaseSpeed = BALL_BASE_SPEED;
     let currentMaxSpeed = BALL_MAX_SPEED;
@@ -673,8 +714,56 @@ export const createGameRuntime = async ({
         place(chosen.x, chosen.y, chosen.scale);
     };
 
+    const applyRuntimeTheme = (theme: GameThemeDefinition) => {
+        rowColors = theme.brickColors.map(toColorNumber);
+        levelRuntime.setRowColors(rowColors);
+
+        themeBallColors = {
+            core: toColorNumber(theme.ball.core),
+            aura: toColorNumber(theme.ball.aura),
+            highlight: toColorNumber(theme.ball.highlight),
+        };
+
+        ballVisualDefaults = {
+            baseColor: themeBallColors.core,
+            auraColor: themeBallColors.aura,
+            highlightColor: themeBallColors.highlight,
+            baseAlpha: 0.78,
+            rimAlpha: 0.38,
+            innerAlpha: 0.32,
+            innerScale: 0.5,
+        } satisfies BallVisualDefaults;
+
+        paddleVisualDefaults = {
+            gradient: theme.paddle.gradient.map(toColorNumber),
+            accentColor: themeBallColors.aura,
+        } satisfies PaddleVisualDefaults;
+
+        themeAccents = {
+            combo: toColorNumber(theme.accents.combo),
+            powerUp: toColorNumber(theme.accents.powerUp),
+        };
+
+        ballGlowFilter.color = themeBallColors.highlight;
+        drawBallSprite(ballGraphics, ball.radius);
+        drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
+
+        multiBallController.applyTheme(themeBallColors);
+
+        hudDisplay.setTheme(theme);
+        stage.applyTheme(theme);
+        replacePaddleLight(themeAccents.powerUp);
+
+        renderStageSoon();
+    };
+
     positionHud();
     window.addEventListener('resize', positionHud);
+
+    unsubscribeTheme = onThemeChange((theme, name) => {
+        runtimeLogger.info('Applied theme change', { theme: name });
+        applyRuntimeTheme(theme);
+    });
 
     const pauseLegendLines = [
         'Cyan Paddle Width - Widens your paddle for extra coverage.',
@@ -855,6 +944,7 @@ export const createGameRuntime = async ({
         random.reset();
         const activeSeed = random.seed();
         sessionElapsedSeconds = 0;
+        frameTimestampMs = 0;
         lastRecordedInputTarget = null;
         replayBuffer.begin(activeSeed);
 
@@ -983,7 +1073,7 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         previousHp: currentHp,
                         remainingHp: nextHp,
-                    });
+                    }, frameTimestampMs);
 
                     session.recordEntropyEvent({
                         type: 'brick-hit',
@@ -1000,7 +1090,7 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         brickType: 'standard',
                         initialHp,
-                    });
+                    }, frameTimestampMs);
 
                     const previousCombo = scoringState.combo;
                     const basePoints = awardBrickPoints(scoringState);
@@ -1018,6 +1108,7 @@ export const createGameRuntime = async ({
                         currentCombo: scoringState.combo,
                         pointsAwarded: points,
                         totalScore: scoringState.score,
+                        timestampMs: frameTimestampMs,
                     });
                     session.recordBrickBreak({
                         points,
@@ -1102,7 +1193,7 @@ export const createGameRuntime = async ({
                     angle: reflectionData.angle,
                     speed: impactSpeed,
                     impactOffset: reflectionData.impactOffset,
-                });
+                }, frameTimestampMs);
 
                 session.recordEntropyEvent({
                     type: 'paddle-hit',
@@ -1127,7 +1218,7 @@ export const createGameRuntime = async ({
                         sessionId,
                         side,
                         speed: wallSpeed,
-                    });
+                    }, frameTimestampMs);
 
                     session.recordEntropyEvent({
                         type: 'wall-hit',
@@ -1207,6 +1298,7 @@ export const createGameRuntime = async ({
     const runGameplayUpdate = (deltaSeconds: number): void => {
         sessionElapsedSeconds += deltaSeconds;
         replayBuffer.markTime(sessionElapsedSeconds);
+        frameTimestampMs = sessionNow();
 
         powerUpManager.update(deltaSeconds);
 
@@ -1446,6 +1538,10 @@ export const createGameRuntime = async ({
         ballGlowPulse = Math.max(0, ballGlowPulse - deltaSeconds * 1.6);
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);
         comboRingPulse = Math.max(0, comboRingPulse - deltaSeconds * 1.05);
+
+        if (inputDebugOverlay?.isVisible()) {
+            inputDebugOverlay.update();
+        }
     };
 
     loop = createGameLoop(
@@ -1605,16 +1701,36 @@ export const createGameRuntime = async ({
         } else if (event.code === 'KeyQ' && isPaused) {
             event.preventDefault();
             void quitToMenu();
+        } else if (event.code === 'KeyC' && event.shiftKey) {
+            event.preventDefault();
+            const currentTheme = getActiveThemeName();
+            const nextTheme = currentTheme === 'default' ? 'colorBlind' : 'default';
+            setActiveTheme(nextTheme);
+        } else if (event.code === 'F2') {
+            event.preventDefault();
+            inputDebugOverlayVisible = !inputDebugOverlayVisible;
+            if (inputDebugOverlay) {
+                inputDebugOverlay.setVisible(inputDebugOverlayVisible);
+                if (inputDebugOverlayVisible) {
+                    inputDebugOverlay.update();
+                }
+            }
+            renderStageSoon();
         }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
 
     const cleanupVisuals = () => {
+        unsubscribeTheme?.();
+        unsubscribeTheme = null;
         ballLight?.destroy();
         paddleLight?.destroy();
         ballLight = null;
         paddleLight = null;
+        inputDebugOverlay?.destroy();
+        inputDebugOverlay = null;
+        inputDebugOverlayVisible = false;
         comboRing.container.removeFromParent();
         comboRing.dispose();
         document.removeEventListener('keydown', handleGlobalKeyDown);

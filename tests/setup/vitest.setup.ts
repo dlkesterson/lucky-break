@@ -90,3 +90,23 @@ if (typeof globalThis.Touch === 'undefined') {
         }
     } as any;
 }
+
+const originalFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined;
+
+vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+            ? input.href
+            : input.url;
+
+    if (typeof url === 'string' && (url.startsWith('/assets/') || url.startsWith('assets/'))) {
+        return new Response(null);
+    }
+
+    if (originalFetch) {
+        return originalFetch(input as RequestInfo, init);
+    }
+
+    throw new TypeError('Fetch is not available in this test environment.');
+});

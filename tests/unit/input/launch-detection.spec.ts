@@ -223,6 +223,7 @@ describe('Launch Trigger Detection', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.activeInputs).toContain('mouse');
+            expect(debugState.primaryInput).toBe('mouse');
         });
 
         it('should identify touch input for launch', () => {
@@ -233,6 +234,7 @@ describe('Launch Trigger Detection', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.activeInputs).toContain('touch');
+            expect(debugState.primaryInput).toBe('touch');
         });
     });
 

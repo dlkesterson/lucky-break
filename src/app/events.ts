@@ -179,10 +179,15 @@ const toEnvelope = <EventName extends LuckyBreakEventName>(
     timestamp,
 });
 
-export const createEventBus = (): LuckyBreakEventBus => {
-    const registry: ListenerRegistry = new Map();
+export interface EventBusOptions {
+    readonly now?: () => number;
+}
 
-    const publish: LuckyBreakEventBus['publish'] = (type, payload, timestamp = Date.now()) => {
+export const createEventBus = (options: EventBusOptions = {}): LuckyBreakEventBus => {
+    const registry: ListenerRegistry = new Map();
+    const resolveNow = options.now ?? Date.now;
+
+    const publish: LuckyBreakEventBus['publish'] = (type, payload, timestamp = resolveNow()) => {
         const listeners = registry.get(type);
         if (!listeners || listeners.size === 0) {
             return;

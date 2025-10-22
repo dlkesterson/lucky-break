@@ -218,6 +218,27 @@ describe('createGameSessionManager', () => {
         });
     });
 
+    it('uses the provided clock for life lost event timestamps', () => {
+        const bus = createEventBus();
+        const timestamps: number[] = [];
+        bus.subscribe('LifeLost', (event) => {
+            timestamps.push(event.timestamp);
+        });
+
+        const clock = createFakeClock(400);
+        const manager = createGameSessionManager({
+            sessionId: 'session-clock',
+            now: clock.now,
+            eventBus: bus,
+        });
+
+        manager.startRound({ breakableBricks: 2 });
+        clock.tick(275);
+        manager.recordLifeLost('ball-drop');
+
+        expect(timestamps).toEqual([675]);
+    });
+
     it('emits life lost events with remaining lives', () => {
         const bus = createEventBus();
         const lifeLostEvents: unknown[] = [];

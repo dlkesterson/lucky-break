@@ -77,6 +77,8 @@ describe('Input Normalization', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.activeInputs).toContain('mouse');
+            expect(debugState.primaryInput).toBe('mouse');
+            expect(debugState.mousePosition).toEqual({ x: 400, y: 350 });
         });
     });
 
@@ -98,6 +100,10 @@ describe('Input Normalization', () => {
 
             const target = inputManager.getPaddleTarget();
             expect(target).toEqual({ x: 450, y: 375 });
+
+            const debugState = inputManager.getDebugState();
+            expect(debugState.primaryInput).toBe('touch');
+            expect(debugState.touchPosition).toEqual({ x: 450, y: 375 });
         });
 
         it('should handle multiple touch points (use first touch)', () => {
@@ -305,6 +311,7 @@ describe('Input Normalization', () => {
 
             let debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).toContain('ArrowLeft');
+            expect(debugState.primaryInput).toBe('keyboard');
 
             // Press right arrow
             document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight' }));
@@ -312,6 +319,7 @@ describe('Input Normalization', () => {
             debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).toContain('ArrowLeft');
             expect(debugState.keyboardPressed).toContain('ArrowRight');
+            expect(debugState.primaryInput).toBe('keyboard');
 
             // Release left arrow
             document.dispatchEvent(new KeyboardEvent('keyup', { code: 'ArrowLeft' }));
@@ -319,6 +327,7 @@ describe('Input Normalization', () => {
             debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).not.toContain('ArrowLeft');
             expect(debugState.keyboardPressed).toContain('ArrowRight');
+            expect(debugState.primaryInput).toBe('keyboard');
         });
 
         it('should track keyboard state for WASD keys', () => {
@@ -327,6 +336,7 @@ describe('Input Normalization', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).toContain('KeyA');
+            expect(debugState.primaryInput).toBe('keyboard');
         });
 
         it('should track keyboard as active input type', () => {
@@ -334,6 +344,7 @@ describe('Input Normalization', () => {
 
             const debugState = inputManager.getDebugState();
             expect(debugState.activeInputs).toContain('keyboard');
+            expect(debugState.primaryInput).toBe('keyboard');
         });
     });
 
@@ -354,6 +365,9 @@ describe('Input Normalization', () => {
 
             const target = inputManager.getPaddleTarget();
             expect(target).toEqual({ x: 500, y: 400 }); // Mouse takes priority
+
+            const debugState = inputManager.getDebugState();
+            expect(debugState.primaryInput).toBe('mouse');
         });
 
         it('should return null when no input is active', () => {
@@ -375,14 +389,20 @@ describe('Input Normalization', () => {
             const debugState = inputManager.getDebugState();
 
             expect(debugState).toHaveProperty('activeInputs');
+            expect(debugState).toHaveProperty('primaryInput');
             expect(debugState).toHaveProperty('mousePosition');
+            expect(debugState).toHaveProperty('touchPosition');
+            expect(debugState).toHaveProperty('gamepadCursor');
             expect(debugState).toHaveProperty('keyboardPressed');
             expect(debugState).toHaveProperty('paddleTarget');
             expect(debugState).toHaveProperty('launchPending');
 
             expect(debugState.activeInputs).toContain('mouse');
             expect(debugState.activeInputs).toContain('keyboard');
+            expect(debugState.primaryInput).toBe('keyboard');
             expect(debugState.mousePosition).toEqual({ x: 400, y: 350 });
+            expect(debugState.touchPosition).toBeNull();
+            expect(debugState.gamepadCursor).toEqual({ x: 400, y: 510 });
             expect(debugState.keyboardPressed).toContain('ArrowLeft');
             expect(debugState.paddleTarget).toEqual({ x: 400, y: 350 });
         });

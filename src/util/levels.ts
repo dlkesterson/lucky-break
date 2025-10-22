@@ -5,6 +5,17 @@
  * Defines preset layouts with increasing difficulty
  */
 
+import { gameConfig } from 'config/game';
+
+const config = gameConfig;
+const DEFAULT_BRICK_WIDTH = config.bricks.size.width;
+const DEFAULT_BRICK_HEIGHT = config.bricks.size.height;
+const DEFAULT_FIELD_WIDTH = config.playfield.width;
+const DEFAULT_GAP = config.levels.defaultGap;
+const DEFAULT_START_Y = config.levels.defaultStartY;
+const LOOP_DIFFICULTY_INCREMENT = config.levels.loopDifficultyIncrement;
+const POWER_UP_CHANCE_LOOP_INCREMENT = config.levels.powerUpChanceLoopIncrement;
+
 export interface LevelSpec {
     /** Number of brick rows */
     readonly rows: number;
@@ -111,12 +122,12 @@ export function getLevelSpec(levelIndex: number): LevelSpec {
  */
 export function generateLevelLayout(
     spec: LevelSpec,
-    brickWidth = 100,
-    brickHeight = 40,
-    fieldWidth = 1280,
+    brickWidth = DEFAULT_BRICK_WIDTH,
+    brickHeight = DEFAULT_BRICK_HEIGHT,
+    fieldWidth = DEFAULT_FIELD_WIDTH,
 ): LevelLayout {
-    const gap = spec.gap ?? 20;
-    const startY = spec.startY ?? 100;
+    const gap = spec.gap ?? DEFAULT_GAP;
+    const startY = spec.startY ?? DEFAULT_START_Y;
 
     // Calculate centering offset
     const totalWidth = spec.cols * brickWidth + (spec.cols - 1) * gap;
@@ -176,7 +187,7 @@ export function isLoopedLevel(levelIndex: number): boolean {
  */
 export function getLevelDifficultyMultiplier(levelIndex: number): number {
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
-    return 1.0 + loopCount * 0.2; // +20% difficulty per loop
+    return 1.0 + loopCount * LOOP_DIFFICULTY_INCREMENT;
 }
 
 const clampHp = (value: number): number => Math.max(1, Math.round(value));
@@ -201,7 +212,9 @@ export function remixLevel(spec: LevelSpec, loopCount: number): LevelSpec {
     });
 
     const powerUpMultiplierBase = spec.powerUpChanceMultiplier ?? 1;
-    const remixedPowerUpMultiplier = Number((powerUpMultiplierBase * (1 + loopCount * 0.1)).toFixed(2));
+    const remixedPowerUpMultiplier = Number(
+        (powerUpMultiplierBase * (1 + loopCount * POWER_UP_CHANCE_LOOP_INCREMENT)).toFixed(2),
+    );
 
     return {
         ...spec,

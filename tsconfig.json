@@ -25,7 +25,8 @@
       "input/*": ["src/input/*"],
       "types/*": ["src/types/*"],
       "scenes/*": ["src/scenes/*"],
-      "game/*": ["src/game/*"]
+      "game/*": ["src/game/*"],
+      "config/*": ["src/config/*"]
     }
   },
   "include": [

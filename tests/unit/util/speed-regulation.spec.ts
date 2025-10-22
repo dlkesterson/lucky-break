@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo, getAdaptiveBaseSpeed } from 'util/speed-regulation';
+import { gameConfig } from 'config/game';
 import { Bodies, Body, Vector } from 'matter-js';
 
 describe('speed-regulation', () => {
@@ -138,18 +139,48 @@ describe('speed-regulation', () => {
 
     describe('getAdaptiveBaseSpeed', () => {
         it('should return base speed when combo below first step', () => {
-            const result = getAdaptiveBaseSpeed(8, 14, 7);
-            expect(result).toBe(8);
+            const baseSpeed = gameConfig.ball.baseSpeed;
+            const maxSpeed = gameConfig.ball.maxSpeed;
+            const combo = gameConfig.speedRegulation.comboStep - 1;
+
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo);
+            expect(result).toBe(baseSpeed);
         });
 
         it('should increase base speed by 5 percent per combo step', () => {
-            const result = getAdaptiveBaseSpeed(8, 14, 16); // two steps at default config
-            expect(result).toBeCloseTo(8 * 1.1, 5);
+            const baseSpeed = gameConfig.ball.baseSpeed;
+            const maxSpeed = gameConfig.ball.maxSpeed;
+            const comboStep = gameConfig.speedRegulation.comboStep;
+            const multiplierPerStep = gameConfig.speedRegulation.multiplierPerStep;
+            const combo = comboStep * 2;
+
+            const expectedMultiplier = 1 + Math.floor(combo / comboStep) * multiplierPerStep;
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo);
+            expect(result).toBeCloseTo(Math.min(baseSpeed * expectedMultiplier, maxSpeed), 5);
         });
 
         it('should clamp adaptive speed to max speed', () => {
-            const result = getAdaptiveBaseSpeed(10, 12, 64); // large combo should cap at 12
-            expect(result).toBe(12);
+            const baseSpeed = gameConfig.ball.baseSpeed + 2; // elevate base to approach cap
+            const maxSpeed = baseSpeed + 2;
+            const combo = gameConfig.speedRegulation.comboStep * 8;
+
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo);
+            expect(result).toBe(maxSpeed);
+        });
+
+        it('uses config-defined thresholds when parameters omitted', () => {
+            const baseSpeed = gameConfig.ball.baseSpeed;
+            const maxSpeed = gameConfig.ball.maxSpeed;
+            const comboStep = gameConfig.speedRegulation.comboStep;
+            const multiplierPerStep = gameConfig.speedRegulation.multiplierPerStep;
+            const combo = comboStep * 3 + Math.floor(comboStep / 2);
+
+            const expectedSteps = Math.floor(combo / comboStep);
+            const expectedMultiplier = 1 + expectedSteps * multiplierPerStep;
+            const expected = Math.min(baseSpeed * expectedMultiplier, maxSpeed);
+
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo);
+            expect(result).toBeCloseTo(expected, 5);
         });
     });
 });
