@@ -68,6 +68,7 @@ import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
+import { getPresetLevelCount, setLevelPresetOffset } from 'util/levels';
 import { spinWheel, createReward, type Reward, type RewardType } from 'game/rewards';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { smoothTowards } from 'util/input-helpers';
@@ -193,6 +194,7 @@ const GAMBLE_TINT_ARMED = config.levels.gamble.tintArmed;
 const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
 const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
+const PRESET_OFFSET_SALT = 0x1f123bb5;
 
 const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     const normalizedIndex = levelIndex + 1;
@@ -221,6 +223,7 @@ const resolveInitialLives = () => Math.max(1, BASE_LIVES + upgradeSnapshot.bonus
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
     readonly playfieldDimensions?: { readonly width: number; readonly height: number };
+    readonly layoutOrientation?: 'portrait' | 'landscape';
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
     readonly onAudioBlocked?: (error: unknown) => void;
@@ -237,6 +240,7 @@ type BallState = Ball;
 export const createGameRuntime = async ({
     container,
     playfieldDimensions = PLAYFIELD_DEFAULT,
+    layoutOrientation,
     random,
     replayBuffer,
     onAudioBlocked,
@@ -251,6 +255,7 @@ export const createGameRuntime = async ({
 
     const PLAYFIELD_WIDTH = playfieldDimensions.width;
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
+    const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
 
     let rowColors = GameTheme.brickColors.map(toColorNumber);
@@ -466,6 +471,15 @@ export const createGameRuntime = async ({
         gambleManager.unregister(body);
     };
 
+    const presetCount = getPresetLevelCount();
+    if (presetCount > 0) {
+        const offsetSource = mulberry32((random.seed() ^ PRESET_OFFSET_SALT) >>> 0);
+        const offset = Math.floor(offsetSource() * presetCount);
+        setLevelPresetOffset(offset);
+    } else {
+        setLevelPresetOffset(0);
+    }
+
     const levelRuntime = createLevelRuntime({
         physics,
         stage,
@@ -477,6 +491,7 @@ export const createGameRuntime = async ({
         rowColors,
         powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
         coin: { radius: COIN_RADIUS, fallSpeed: COIN_FALL_SPEED },
+        layoutOrientation: sessionOrientation,
         getLayoutRandom: (levelIndex) => mulberry32(deriveLayoutSeed(random.seed(), levelIndex)),
     });
 

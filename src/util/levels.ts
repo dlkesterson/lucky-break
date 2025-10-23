@@ -84,6 +84,25 @@ export interface BrickSpec {
     readonly traits?: readonly BrickTrait[];
 }
 
+let levelPresetOffset = 0;
+
+export const setLevelPresetOffset = (offset: number): void => {
+    const presetCount = LEVEL_PRESETS.length;
+    if (presetCount <= 0) {
+        levelPresetOffset = 0;
+        return;
+    }
+    if (!Number.isFinite(offset)) {
+        levelPresetOffset = 0;
+        return;
+    }
+    const rounded = Math.round(offset);
+    const modulo = ((rounded % presetCount) + presetCount) % presetCount;
+    levelPresetOffset = modulo;
+};
+
+export const getLevelPresetOffset = (): number => levelPresetOffset;
+
 /** Default level presets with progressive difficulty */
 const LEVEL_PRESETS: readonly LevelSpec[] = [
     // Level 1: Simple 3x6 grid, all 1 HP
@@ -139,7 +158,13 @@ const LEVEL_PRESETS: readonly LevelSpec[] = [
  */
 export function getLevelSpec(levelIndex: number): LevelSpec {
     const index = Math.max(0, levelIndex);
-    return LEVEL_PRESETS[index % LEVEL_PRESETS.length];
+    const presetCount = LEVEL_PRESETS.length;
+    if (presetCount === 0) {
+        throw new Error('No level presets defined.');
+    }
+    const normalizedIndex = index % presetCount;
+    const effectiveIndex = (normalizedIndex + levelPresetOffset) % presetCount;
+    return LEVEL_PRESETS[effectiveIndex];
 }
 
 /**
@@ -347,8 +372,8 @@ const BASE_SCALING: LoopScalingInfo = {
     brickHpBonus: 0,
     powerUpChanceMultiplier: 1,
     gapScale: 1,
-    fortifiedChance: 0,
-    voidColumnChance: 0,
+    fortifiedChance: 0.1,
+    voidColumnChance: 0.06,
     centerFortifiedBias: 0,
     maxVoidColumns: MAX_VOID_COLUMNS,
 };
@@ -480,7 +505,9 @@ export function getLevelDebugInfo(levelIndex: number): {
     spec: LevelSpec;
     scaling: LoopScalingInfo;
 } {
-    const presetIndex = levelIndex % LEVEL_PRESETS.length;
+    const presetCount = LEVEL_PRESETS.length;
+    const rawIndex = presetCount === 0 ? 0 : levelIndex % presetCount;
+    const presetIndex = presetCount === 0 ? 0 : (rawIndex + levelPresetOffset) % presetCount;
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
     const scaling = getLoopScalingInfo(loopCount);
 

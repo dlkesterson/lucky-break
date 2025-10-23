@@ -12,6 +12,7 @@ import {
     remixLevel,
     getLoopScalingInfo,
     type BrickSpec,
+    type LevelSpec,
 } from 'util/levels';
 import { mixColors } from 'render/playfield-visuals';
 import { createBrickTextureCache } from 'render/brick-texture-cache';
@@ -68,6 +69,7 @@ export interface LevelRuntimeOptions {
     readonly rowColors: readonly number[];
     readonly powerUp: { readonly radius: number; readonly fallSpeed: number };
     readonly coin: { readonly radius: number; readonly fallSpeed: number };
+    readonly layoutOrientation?: 'portrait' | 'landscape';
     readonly getLayoutRandom?: (levelIndex: number) => RandomSource;
 }
 
@@ -105,6 +107,7 @@ export const createLevelRuntime = ({
     rowColors,
     powerUp,
     coin,
+    layoutOrientation,
     getLayoutRandom,
 }: LevelRuntimeOptions): LevelRuntimeHandle => {
     const levelConfig = gameConfig.levels;
@@ -191,14 +194,64 @@ export const createLevelRuntime = ({
         brickVisualState.clear();
     };
 
+    const orientation = layoutOrientation ?? 'portrait';
+
+    const remapHpForSwappedRows = (
+        hpResolver: LevelSpec['hpPerRow'],
+        originalRowCount: number,
+        targetRowCount: number,
+    ): LevelSpec['hpPerRow'] => {
+        if (!hpResolver) {
+            return undefined;
+        }
+        if (originalRowCount <= 0) {
+            return () => 1;
+        }
+        const resolver = hpResolver;
+        const maxOriginalIndex = Math.max(0, originalRowCount - 1);
+        if (targetRowCount <= 1) {
+            return (row: number) => resolver(Math.min(maxOriginalIndex, row));
+        }
+        return (row: number) => {
+            const clampedRow = Math.max(0, Math.min(targetRowCount - 1, row));
+            const ratio = clampedRow / (targetRowCount - 1);
+            const mapped = Math.round(ratio * maxOriginalIndex);
+            return resolver(Math.max(0, Math.min(maxOriginalIndex, mapped)));
+        };
+    };
+
+    const toOrientationSpec = (spec: LevelSpec): LevelSpec => {
+        if (orientation !== 'landscape') {
+            return spec;
+        }
+        if (spec.rows >= spec.cols) {
+            return spec;
+        }
+        const swappedRows = spec.cols;
+        const swappedCols = spec.rows;
+        const hpPerRow = remapHpForSwappedRows(spec.hpPerRow, spec.rows, swappedRows);
+        return {
+            ...spec,
+            rows: swappedRows,
+            cols: swappedCols,
+            hpPerRow,
+        };
+    };
+
     const loadLevel: LevelRuntimeHandle['loadLevel'] = (levelIndex) => {
         resetGhostBricks();
         clearBricks();
         clearActivePowerUps();
         clearActiveCoins();
 
-        const baseSpec = getLevelSpec(levelIndex);
+        let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
         const loopCount = Math.floor(levelIndex / presetLevelCount);
+        if (loopCount === 0) {
+            baseSpec = {
+                ...baseSpec,
+                hpPerRow: () => 1,
+            };
+        }
         const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
         const scaling = getLoopScalingInfo(loopCount);
         const layoutRandom = typeof getLayoutRandom === 'function' ? getLayoutRandom(levelIndex) : undefined;
@@ -209,7 +262,7 @@ export const createLevelRuntime = ({
         const maxGambleBricks = Math.max(0, Math.round(levelConfig.gamble.maxPerLevel));
         const layout = generateLevelLayout(effectiveSpec, brickSize.width, brickSize.height, playfieldWidth, {
             random: layoutRandom,
-            fortifiedChance: scaling.fortifiedChance,
+            fortifiedChance: loopCount === 0 ? 0 : scaling.fortifiedChance,
             voidColumnChance: scaling.voidColumnChance,
             centerFortifiedBias: scaling.centerFortifiedBias,
             maxVoidColumns: scaling.maxVoidColumns,

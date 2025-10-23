@@ -349,7 +349,10 @@ describe('createGameInitializer', () => {
         });
 
         expect(createStageMock).toHaveBeenCalledTimes(1);
-        expect(createStageMock).toHaveBeenCalledWith({ parent: container, theme: GameTheme });
+        expect(createStageMock).toHaveBeenCalledWith(
+            expect.objectContaining({ parent: container, width: 800, height: 600 }),
+        );
+        expect(createStageMock.mock.calls[0]?.[0]?.theme).toBe(GameTheme);
 
         expect(createSubjectMock).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -462,10 +465,9 @@ describe('createGameInitializer', () => {
 
         await Promise.resolve();
 
-        expect(addSpy).toHaveBeenCalledWith('resize', expect.any(Function));
-        expect(addSpy).toHaveBeenCalledWith('orientationchange', expect.any(Function));
-        expect(resizeObserverInstances).toHaveLength(1);
-        expect(resizeObserverInstances[0]?.observe).toHaveBeenCalledWith(container);
+        expect(addSpy).not.toHaveBeenCalledWith('resize', expect.any(Function));
+        expect(addSpy).not.toHaveBeenCalledWith('orientationchange', expect.any(Function));
+        expect(resizeObserverInstances).toHaveLength(0);
 
         result.dispose();
 
@@ -479,9 +481,8 @@ describe('createGameInitializer', () => {
         expect(pannerInstances[0]?.dispose).toHaveBeenCalled();
         expect(playersInstances[0]?.dispose).toHaveBeenCalled();
 
-        expect(resizeObserverInstances[0]?.disconnect).toHaveBeenCalled();
-        expect(removeSpy).toHaveBeenCalledWith('resize', expect.any(Function));
-        expect(removeSpy).toHaveBeenCalledWith('orientationchange', expect.any(Function));
+        expect(removeSpy).not.toHaveBeenCalledWith('resize', expect.any(Function));
+        expect(removeSpy).not.toHaveBeenCalledWith('orientationchange', expect.any(Function));
 
         addSpy.mockRestore();
         removeSpy.mockRestore();

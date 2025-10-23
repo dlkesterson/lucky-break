@@ -136,7 +136,12 @@ export const createGameInitializer = async ({
 
     const soundbank = await loadSoundbank();
 
-    const stage = await createStage({ parent: container, theme: GameTheme });
+    const stage = await createStage({
+        parent: container,
+        theme: GameTheme,
+        width: playfieldSize.width,
+        height: playfieldSize.height,
+    });
     stage.layers.playfield.sortableChildren = true;
     stage.layers.effects.sortableChildren = true;
 
@@ -400,29 +405,12 @@ export const createGameInitializer = async ({
         });
     };
 
-    const handleResize = () => {
+    const applyInitialViewport = () => {
         const size = resolveViewportDimensions();
         stage.resize(size);
     };
 
-    let resizeObserver: ResizeObserver | null = null;
-    const windowResizeHandler = () => {
-        handleResize();
-    };
-
-    if (typeof ResizeObserver === 'function') {
-        resizeObserver = new ResizeObserver(() => {
-            handleResize();
-        });
-        resizeObserver.observe(container);
-    }
-
-    if (typeof window !== 'undefined') {
-        window.addEventListener('resize', windowResizeHandler);
-        window.addEventListener('orientationchange', windowResizeHandler);
-    }
-
-    handleResize();
+    applyInitialViewport();
 
     const dispose = () => {
         router.dispose();
@@ -439,11 +427,6 @@ export const createGameInitializer = async ({
         audioState$.complete();
         musicDirector.dispose();
         cleanupAudioUnlock();
-        resizeObserver?.disconnect();
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('resize', windowResizeHandler);
-            window.removeEventListener('orientationchange', windowResizeHandler);
-        }
         brickPlayers?.dispose();
         brickPlayers = null;
         brickPlayersPromise = null;

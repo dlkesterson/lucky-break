@@ -48,6 +48,31 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
     const replayBuffer = createReplayBuffer();
     replayBuffer.begin(random.seed());
 
+    const resolveInitialLayout = () => {
+        if (typeof window === 'undefined') {
+            return {
+                orientation: 'landscape' as const,
+                dimensions: { width: 1280, height: 720 },
+            };
+        }
+
+        const isMobile = typeof navigator !== 'undefined' && /Mobi|Android/i.test(navigator.userAgent);
+        const prefersPortrait = window.innerHeight > window.innerWidth;
+        const usePortraitLayout = isMobile || prefersPortrait;
+
+        return usePortraitLayout
+            ? {
+                orientation: 'portrait' as const,
+                dimensions: { width: 720, height: 1280 },
+            }
+            : {
+                orientation: 'landscape' as const,
+                dimensions: { width: 1280, height: 720 },
+            };
+    };
+
+    const initialLayout = resolveInitialLayout();
+
     let runtime: GameRuntimeHandle | null = null;
 
     const primaryFont = parsePrimaryFontFamily(GameTheme.font);
@@ -121,7 +146,8 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
         onStart: async () => {
             runtime = await createGameRuntime({
                 container,
-                playfieldDimensions: { width: 1280, height: 720 },
+                playfieldDimensions: initialLayout.dimensions,
+                layoutOrientation: initialLayout.orientation,
                 random,
                 replayBuffer,
                 onAudioBlocked: (error) => {

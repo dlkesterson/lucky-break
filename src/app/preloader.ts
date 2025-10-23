@@ -1,5 +1,85 @@
 export type PreloaderStatus = 'idle' | 'loading' | 'awaiting-interaction' | 'completed' | 'failed';
 
+const PRELOADER_STYLE_ID = 'lb-preloader-styles';
+
+const ensurePreloaderStyles = (documentRef: Document): void => {
+    if (documentRef.getElementById(PRELOADER_STYLE_ID)) {
+        return;
+    }
+
+    const style = documentRef.createElement('style');
+    style.id = PRELOADER_STYLE_ID;
+    style.textContent = `
+        .lb-preloader {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(140% 140% at 50% 15%, rgba(255, 211, 115, 0.22), rgba(22, 11, 39, 0.95)),
+                linear-gradient(180deg, #120720 0%, #261043 100%);
+            color: #ffe9c6;
+            font-family: 'Luckiest Guy', 'Overpass', sans-serif;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            overflow: hidden;
+        }
+
+        .lb-preloader::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(45% 60% at 50% 50%, rgba(255, 255, 255, 0.12), transparent 70%);
+            pointer-events: none;
+        }
+
+        .lb-preloader__progress {
+            position: relative;
+            font-size: clamp(2.5rem, 6vw, 5rem);
+            text-align: center;
+            line-height: 1;
+            text-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            transition: opacity 200ms ease-out;
+        }
+
+        .lb-preloader[data-state='loading'] .lb-preloader__progress,
+        .lb-preloader[data-state='awaiting-interaction'] .lb-preloader__progress {
+            opacity: 1;
+        }
+
+        .lb-preloader__prompt {
+            margin-top: 1.75rem;
+            padding: 0.85rem 2.4rem;
+            border-radius: 999px;
+            border: 2px solid rgba(255, 223, 136, 0.85);
+            background: rgba(16, 6, 30, 0.78);
+            color: #ffe9c6;
+            font-family: 'Luckiest Guy', 'Overpass', sans-serif;
+            font-size: clamp(1rem, 2.4vw, 1.5rem);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 140ms ease-out, box-shadow 180ms ease-out;
+            backdrop-filter: blur(6px);
+        }
+
+        .lb-preloader__prompt:hover,
+        .lb-preloader__prompt:focus-visible {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+        }
+
+        .lb-preloader__prompt:active {
+            transform: translateY(1px);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+        }
+    `;
+
+    (documentRef.head ?? documentRef.documentElement).appendChild(style);
+};
+
 export interface PreloaderProgress {
     readonly loaded: number;
     readonly total: number;
@@ -65,6 +145,8 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
     const autoStart = options.autoStart ?? false;
     let autoStartEnabled = autoStart;
 
+    ensurePreloaderStyles(documentRef);
+
     const root = documentRef.createElement('div');
     root.className = 'lb-preloader';
     root.dataset.state = 'idle';
@@ -100,6 +182,21 @@ export const createPreloader = (options: PreloaderOptions): PreloaderHandle => {
         progressBar.dataset.progress = ratio.toFixed(2);
         progressBar.style.setProperty('--progress', ratio.toString());
         progressBar.textContent = `${Math.round(ratio * 100)}%`;
+
+        if (typeof progressBar.animate === 'function') {
+            try {
+                progressBar.animate(
+                    [
+                        { transform: 'translateY(0) scale(1)' },
+                        { transform: 'translateY(-6px) scale(1.06)' },
+                        { transform: 'translateY(0) scale(1)' },
+                    ],
+                    { duration: 260, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
+                );
+            } catch {
+                /* ignore animation fallback */
+            }
+        }
     };
 
     const removePrompt = () => {
