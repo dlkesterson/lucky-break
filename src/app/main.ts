@@ -1,4 +1,5 @@
 import { loadSoundbank, prefetchSoundbankAssets, countSoundbankAssets } from 'audio/soundbank';
+import { listAllStaticAssets, verifyAssetManifest } from 'config/assets';
 import { GameTheme } from 'render/theme';
 import { createRandomManager } from 'util/random';
 
@@ -65,7 +66,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
         loadAssets: async (reportProgress) => {
             const soundbank = await loadSoundbank();
             const audioAssetCount = countSoundbankAssets(soundbank);
-            const totalSteps = fontDescriptors.length + audioAssetCount;
+            const manifestReport = verifyAssetManifest();
+            if (manifestReport.missing.length > 0) {
+                throw new Error(`Missing static assets: ${manifestReport.missing.join(', ')}`);
+            }
+            const staticAssets = listAllStaticAssets();
+            const totalSteps = fontDescriptors.length + audioAssetCount + staticAssets.length;
 
             let completed = 0;
             const pushProgress = () => reportProgress({ loaded: completed, total: totalSteps });
@@ -97,6 +103,17 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                     advance(delta);
                 }
             });
+
+            for (const asset of staticAssets) {
+                await fetch(asset.url, { cache: 'force-cache' });
+                advance(1);
+            }
+
+            if (import.meta.env.DEV) {
+                console.info('[assets] verified static asset manifest', {
+                    total: manifestReport.total,
+                });
+            }
 
         },
         onStart: async () => {

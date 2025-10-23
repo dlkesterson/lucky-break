@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { spinWheel, type Reward } from 'game/rewards';
+import { afterEach, describe, expect, it } from 'vitest';
+import { spinWheel, createReward, setRewardOverride, getRewardOverride, type Reward } from 'game/rewards';
 
 describe('spinWheel', () => {
     const select = (value: number): Reward => spinWheel(() => value);
+
+    afterEach(() => {
+        setRewardOverride(null);
+    });
 
     it('returns a sticky paddle reward for low rolls', () => {
         const reward = select(0.05);
@@ -56,5 +60,31 @@ describe('spinWheel', () => {
     it('never produces NaN durations when RNG returns invalid values', () => {
         const reward = spinWheel(() => NaN);
         expect(Number.isNaN(reward.duration)).toBe(false);
+    });
+
+    it('uses reward override when provided for a single spin', () => {
+        setRewardOverride({ type: 'multi-ball' });
+        const reward = spinWheel(() => 0.1);
+        expect(reward.type).toBe('multi-ball');
+        const fallbackReward = spinWheel(() => 0.05);
+        expect(fallbackReward.type).toBe('sticky-paddle');
+        expect(getRewardOverride()).toBeNull();
+    });
+
+    it('persists reward override when marked as persistent', () => {
+        setRewardOverride({ type: 'slow-time', persist: true });
+        const first = spinWheel(() => 0.1);
+        const second = spinWheel(() => 0.2);
+        expect(first.type).toBe('slow-time');
+        expect(second.type).toBe('slow-time');
+        setRewardOverride(null);
+    });
+
+    it('creates reward instances with createReward helper', () => {
+        const reward = createReward('double-points');
+        expect(reward.type).toBe('double-points');
+        if (reward.type === 'double-points') {
+            expect(reward.multiplier).toBeGreaterThan(1);
+        }
     });
 });

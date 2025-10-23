@@ -45,6 +45,12 @@ export type Reward =
     | SlowTimeReward
     | WidePaddleReward;
 
+export interface RewardOverride {
+    readonly type: RewardType;
+    readonly duration?: number;
+    readonly persist?: boolean;
+}
+
 const clamp01 = (value: number): number => {
     if (Number.isNaN(value)) {
         return 0;
@@ -58,6 +64,19 @@ const rewardDefinitions = rewardSettings.definitions;
 const fallback = rewardSettings.fallback;
 
 const TOTAL_WEIGHT = wheelSegments.reduce((sum, segment) => sum + segment.weight, 0);
+
+let rewardOverride: RewardOverride | null = null;
+
+const cloneRewardOverride = (override: RewardOverride | null): RewardOverride | null => {
+    if (!override) {
+        return null;
+    }
+    return {
+        type: override.type,
+        duration: override.duration,
+        persist: override.persist,
+    } satisfies RewardOverride;
+};
 
 const buildReward = (type: RewardType, overrideDuration?: number): Reward => {
     switch (type) {
@@ -115,7 +134,33 @@ const buildReward = (type: RewardType, overrideDuration?: number): Reward => {
     }
 };
 
+const consumeOverride = (): RewardOverride | null => {
+    if (!rewardOverride) {
+        return null;
+    }
+    const current = rewardOverride;
+    if (!current.persist) {
+        rewardOverride = null;
+    }
+    return current;
+};
+
+export const createReward = (type: RewardType, options?: { readonly duration?: number }): Reward => {
+    return buildReward(type, options?.duration);
+};
+
+export const setRewardOverride = (override: RewardOverride | null): void => {
+    rewardOverride = cloneRewardOverride(override);
+};
+
+export const getRewardOverride = (): RewardOverride | null => cloneRewardOverride(rewardOverride);
+
 export const spinWheel = (rng: RandomSource = Math.random): Reward => {
+    const override = consumeOverride();
+    if (override) {
+        return buildReward(override.type, override.duration);
+    }
+
     const roll = clamp01(rng()) * TOTAL_WEIGHT;
 
     let accumulator = 0;

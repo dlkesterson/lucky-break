@@ -14,10 +14,12 @@ export type NowFn = () => number;
 const toIsoTimestamp = (timestamp: number): string => new Date(timestamp).toISOString();
 
 const bindConsole = <Key extends LogLevel>(method: Key): ((...parts: unknown[]) => void) => {
-    const { console } = globalThis;
-    const fallback = console.log.bind(console);
-    const candidate = console[method]?.bind(console);
-    return (candidate ?? fallback) as (...parts: unknown[]) => void;
+    return (...parts: unknown[]) => {
+        const { console } = globalThis;
+        const fallback = console.log.bind(console);
+        const candidate = console[method]?.bind(console);
+        (candidate ?? fallback)(...parts);
+    };
 };
 
 const consoleSinks: Record<LogLevel, (...parts: unknown[]) => void> = {

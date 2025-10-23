@@ -1,4 +1,4 @@
-![Lucky Break banner](assets/banner.png)
+![Lucky Break banner](assets/ui/banner.png)
 
 # Lucky Break
 

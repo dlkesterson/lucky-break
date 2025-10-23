@@ -12,6 +12,8 @@ import { createAchievementManager, type AchievementUnlock } from './achievements
 import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createSpeedRing } from 'render/effects/speed-ring';
+import { createBrickParticleSystem, type BrickParticleSystem } from 'render/effects/brick-particles';
+import { createVignettePulse, type VignettePulse } from 'render/effects/vignette-pulse';
 import { createHudDisplay, type HudPowerUpView, type HudRewardView } from 'render/hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
@@ -68,12 +70,13 @@ import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
-import { spinWheel, type Reward } from 'game/rewards';
+import { spinWheel, createReward, type Reward, type RewardType } from 'game/rewards';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
 import { getHighScores, recordHighScore } from 'util/high-scores';
 import type { GameSceneServices } from './scene-services';
 import { resolveMultiBallReward, resolveSlowTimeReward } from './reward-stack';
+import { developerCheats } from './developer-cheats';
 
 interface VisibleOverlayMap {
     inputDebug: boolean;
@@ -267,12 +270,22 @@ export const createGameRuntime = async ({
 
     let ballLight: ReturnType<typeof createDynamicLight> | null = null;
     let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
+    let brickParticles: BrickParticleSystem | null = null;
+    let beatVignette: VignettePulse | null = null;
     let ballSpeedRing: ReturnType<typeof createSpeedRing> | null = null;
     let inputDebugOverlay: InputDebugOverlay | null = null;
     let physicsDebugOverlay: PhysicsDebugOverlay | null = null;
     const overlayVisibility: VisibleOverlayMap = { inputDebug: false, physicsDebug: false };
+    const cheatPowerUpBindings: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
+        { code: 'Digit1', type: 'paddle-width' },
+        { code: 'Digit2', type: 'ball-speed' },
+        { code: 'Digit3', type: 'multi-ball' },
+        { code: 'Digit4', type: 'sticky-paddle' },
+    ];
     let lastPhysicsDebugState: PhysicsDebugOverlayState | null = null;
     let unsubscribeTheme: (() => void) | null = null;
+
+    let renderStageSoonRef: () => void = () => undefined;
 
     const {
         stage,
@@ -295,9 +308,23 @@ export const createGameRuntime = async ({
                 paddleGlowPulse = Math.min(1, paddleGlowPulse + paddle);
                 paddleLight?.flash(0.5);
             },
+            beatPulse: ({ intensity }: { intensity: number; step: number }) => {
+                const candidate = Number.isFinite(intensity) ? intensity : 0;
+                const strength = clampUnit(candidate);
+                if (strength <= 0) {
+                    return;
+                }
+                const overlay = beatVignette;
+                if (overlay) {
+                    overlay.pulse(strength);
+                    renderStageSoonRef();
+                }
+            },
         },
         onAudioBlocked,
     });
+
+    renderStageSoonRef = renderStageSoon;
 
     const physics = createPhysicsWorld({
         dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
@@ -462,9 +489,29 @@ export const createGameRuntime = async ({
         levelDifficultyMultiplier = result.difficultyMultiplier;
         brickLayoutBounds = result.layoutBounds;
         session.startRound({ breakableBricks: result.breakableBricks });
+        brickParticles?.reset();
     };
 
     stage.addToLayer('playfield', createPlayfieldBackgroundLayer(playfieldDimensions).container);
+
+    brickParticles = createBrickParticleSystem({
+        random: random.random,
+    });
+    brickParticles.container.zIndex = 42;
+    stage.addToLayer('effects', brickParticles.container);
+
+    beatVignette = createVignettePulse({
+        width: PLAYFIELD_WIDTH,
+        height: PLAYFIELD_HEIGHT,
+        color: mixColors(0x040a18, themeAccents.combo, 0.3),
+        maxAlpha: 0.52,
+        baseAlpha: 0.22,
+        decayPerSecond: 2.85,
+        layerCount: 5,
+    });
+    beatVignette.container.zIndex = 980;
+    stage.addToLayer('effects', beatVignette.container);
+    beatVignette.container.visible = false;
 
     const gameContainer = new Container();
     gameContainer.zIndex = 10;
@@ -649,8 +696,22 @@ export const createGameRuntime = async ({
     };
 
     const handlePowerUpActivation = (type: PowerUpType): void => {
-        ballLight?.flash(0.5);
-        paddleLight?.flash(0.45);
+        const lightBoost = (() => {
+            switch (type) {
+                case 'multi-ball':
+                    return 0.9;
+                case 'ball-speed':
+                    return 0.7;
+                case 'paddle-width':
+                    return 0.55;
+                case 'sticky-paddle':
+                    return 0.5;
+                default:
+                    return 0.6;
+            }
+        })();
+        ballLight?.flash(lightBoost);
+        paddleLight?.flash(Math.min(0.8, lightBoost * 0.75 + 0.25));
         if (type === 'multi-ball') {
             spawnExtraBalls();
         }
@@ -819,6 +880,9 @@ export const createGameRuntime = async ({
             combo: toColorNumber(theme.accents.combo),
             powerUp: toColorNumber(theme.accents.powerUp),
         };
+
+        const vignetteColor = mixColors(0x040a18, themeAccents.combo, 0.3);
+        beatVignette?.setColor(vignetteColor);
 
         ballGlowFilter.color = themeBallColors.highlight;
         ballSpeedRing?.setPalette({
@@ -1350,6 +1414,21 @@ export const createGameRuntime = async ({
                         momentum: getMomentumMetrics(scoringState),
                     });
 
+                    const visualState = brickVisualState.get(brick);
+                    if (brickParticles && visualState) {
+                        const comboIntensity = clampUnit(
+                            scoringState.combo / Math.max(1, config.scoring.multiplierThreshold * 2),
+                        );
+                        const speedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
+                        const burstStrength = Math.max(0.3, Math.min(1, comboIntensity * 0.5 + speedIntensity * 0.7));
+                        brickParticles.emit({
+                            position: { x: brick.position.x, y: brick.position.y },
+                            baseColor: visualState.baseColor,
+                            intensity: burstStrength,
+                            impactSpeed: impactVelocity,
+                        });
+                    }
+
                     const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
                     if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
                         const powerUpType = selectRandomPowerUpType(random.random);
@@ -1752,6 +1831,9 @@ export const createGameRuntime = async ({
             deltaSeconds: movementDelta,
         });
 
+        brickParticles?.update(deltaSeconds);
+        beatVignette?.update(deltaSeconds);
+
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
         const decayWindow = comboDecayWindow > 0 ? comboDecayWindow : BASE_COMBO_DECAY_WINDOW;
@@ -1961,7 +2043,103 @@ export const createGameRuntime = async ({
             });
     };
 
+    const spawnCheatPowerUp = (type: PowerUpType) => {
+        if (stage.getCurrentScene() !== 'gameplay') {
+            runtimeLogger.warn('Developer cheat ignored: spawn power-up outside gameplay scene', { type });
+            return;
+        }
+        const spawnX = paddle.physicsBody.position.x;
+        const spawnY = Math.max(POWER_UP_RADIUS, paddle.physicsBody.position.y - 120);
+        levelRuntime.spawnPowerUp(type, { x: spawnX, y: spawnY });
+        runtimeLogger.info('Developer cheat spawned power-up', { type, position: { x: spawnX, y: spawnY } });
+        renderStageSoon();
+    };
+
+    const applyCheatReward = (rewardType: RewardType) => {
+        if (stage.getCurrentScene() !== 'gameplay') {
+            runtimeLogger.warn('Developer cheat ignored: reward activation outside gameplay', { rewardType });
+            return;
+        }
+        const reward = createReward(rewardType);
+        pendingReward = null;
+        activateReward(reward);
+        refreshHud();
+        runtimeLogger.info('Developer cheat activated reward', { rewardType });
+        renderStageSoon();
+    };
+
+    const skipToNextLevelCheat = () => {
+        if (stage.getCurrentScene() !== 'gameplay') {
+            runtimeLogger.warn('Developer cheat ignored: skip level outside gameplay');
+            return;
+        }
+        runtimeLogger.info('Developer cheat skipping current level', { level: currentLevelIndex + 1 });
+        session.completeRound();
+        handleLevelComplete();
+        renderStageSoon();
+    };
+
+    const handleCheatKeyDown = (event: KeyboardEvent): boolean => {
+        if (event.code === 'F10' && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            const nextState = developerCheats.toggleEnabled();
+            runtimeLogger.info('Developer cheats toggled', {
+                enabled: nextState.enabled,
+                forcedReward: nextState.forcedReward,
+            });
+            return true;
+        }
+
+        if (!developerCheats.isEnabled()) {
+            return false;
+        }
+
+        if (event.code === 'KeyN' && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            skipToNextLevelCheat();
+            return true;
+        }
+
+        if (event.code === 'KeyR' && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            const direction: 1 | -1 = event.altKey ? -1 : 1;
+            const nextState = developerCheats.cycleForcedReward(direction);
+            runtimeLogger.info('Developer forced reward updated', { forcedReward: nextState.forcedReward });
+            return true;
+        }
+
+        if (event.code === 'Digit0' && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            const nextState = developerCheats.clearForcedReward();
+            runtimeLogger.info('Developer forced reward cleared', { forcedReward: nextState.forcedReward });
+            return true;
+        }
+
+        if (event.code === 'KeyF' && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            const forcedReward = developerCheats.getState().forcedReward;
+            if (forcedReward) {
+                applyCheatReward(forcedReward);
+            } else {
+                runtimeLogger.info('Developer cheat ignored: no forced reward selected');
+            }
+            return true;
+        }
+
+        const powerUpBinding = cheatPowerUpBindings.find((binding) => binding.code === event.code);
+        if (powerUpBinding && event.ctrlKey && event.shiftKey) {
+            event.preventDefault();
+            spawnCheatPowerUp(powerUpBinding.type);
+            return true;
+        }
+
+        return false;
+    };
+
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
+        if (handleCheatKeyDown(event)) {
+            return;
+        }
         if (event.code === 'KeyP' || event.code === 'Escape') {
             if (isPaused) {
                 event.preventDefault();
@@ -2022,6 +2200,16 @@ export const createGameRuntime = async ({
         overlayVisibility.inputDebug = false;
         overlayVisibility.physicsDebug = false;
         lastPhysicsDebugState = null;
+        if (brickParticles) {
+            brickParticles.container.removeFromParent();
+            brickParticles.destroy();
+            brickParticles = null;
+        }
+        if (beatVignette) {
+            beatVignette.container.removeFromParent();
+            beatVignette.destroy();
+            beatVignette = null;
+        }
         comboRing.container.removeFromParent();
         comboRing.dispose();
         document.removeEventListener('keydown', handleGlobalKeyDown);

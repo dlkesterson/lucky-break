@@ -80,6 +80,7 @@ const ensureToneAudio = async (): Promise<void> => {
 export interface PulseControls {
     boostCombo(payload: { ring: number; ball: number }): void;
     boostPowerUp(payload: { paddle: number }): void;
+    beatPulse?(payload: { intensity: number; step: number }): void;
 }
 
 export interface GameInitializerOptions {
@@ -183,6 +184,18 @@ export const createGameInitializer = async ({
         },
     });
     musicDirector.setState({ lives: 3, combo: 0 });
+
+    let beatHandle: number | null = null;
+    let beatStep = 0;
+    if (typeof Transport.scheduleRepeat === 'function' && typeof pulseControls.beatPulse === 'function') {
+        beatHandle = Transport.scheduleRepeat(() => {
+            const currentStep = beatStep;
+            beatStep = (beatStep + 1) % 1024;
+            const downbeat = currentStep % 4 === 0;
+            const intensity = downbeat ? 0.85 : 0.45;
+            pulseControls.beatPulse?.({ intensity, step: currentStep });
+        }, '4n');
+    }
 
     const toDecibels = (gain: number): number => {
         if (gain <= 0) {
@@ -398,6 +411,14 @@ export const createGameInitializer = async ({
         router.dispose();
         scheduler.dispose();
         reactiveAudioLayer.dispose();
+        if (beatHandle !== null) {
+            try {
+                Transport.clear(beatHandle);
+            } catch {
+                // Best-effort cleanup; ignore failures from the transport implementation.
+            }
+            beatHandle = null;
+        }
         audioState$.complete();
         musicDirector.dispose();
         cleanupAudioUnlock();

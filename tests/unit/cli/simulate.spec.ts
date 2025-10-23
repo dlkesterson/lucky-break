@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createSimulateCommand, runHeadlessSimulation } from 'cli/simulate';
+import { getRewardOverride, setRewardOverride } from 'game/rewards';
 
 describe('simulate CLI command', () => {
+    afterEach(() => {
+        setRewardOverride(null);
+    });
+
     it('produces deterministic results for the same seed', async () => {
         const input = {
             mode: 'simulate' as const,
@@ -72,6 +77,22 @@ describe('simulate CLI command', () => {
         expect(output).toEqual(baseline);
         expect(output.telemetry?.events).toBeDefined();
         expect(output.telemetry?.events).toHaveLength(output.events);
+    });
+
+    it('restores reward overrides after forced reward simulations', async () => {
+        setRewardOverride({ type: 'ghost-brick', persist: true });
+        const result = await runHeadlessSimulation({
+            mode: 'simulate',
+            seed: 5,
+            round: 1,
+            durationSec: 30,
+            cheats: { forceReward: 'multi-ball' },
+        });
+
+        expect(result.cheats?.forceReward).toBe('multi-ball');
+        const override = getRewardOverride();
+        expect(override?.type).toBe('ghost-brick');
+        expect(override?.persist).toBe(true);
     });
 
     it('returns non-zero exit code and logs an error for invalid input', async () => {

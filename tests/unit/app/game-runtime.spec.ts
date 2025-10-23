@@ -983,13 +983,37 @@ vi.mock('./level-runtime', () => ({
     }),
 }));
 
-vi.mock('game/rewards', () => ({
-    spinWheel: vi.fn(() => ({
-        type: 'double-points',
-        duration: 5,
-        multiplier: 2,
-    })),
-}));
+vi.mock('game/rewards', () => {
+    let override: unknown = null;
+
+    const buildReward = (type: string) => {
+        switch (type) {
+            case 'sticky-paddle':
+                return { type: 'sticky-paddle', duration: 5 } as const;
+            case 'double-points':
+                return { type: 'double-points', duration: 5, multiplier: 2 } as const;
+            case 'ghost-brick':
+                return { type: 'ghost-brick', duration: 5, ghostCount: 3 } as const;
+            case 'multi-ball':
+                return { type: 'multi-ball', duration: 5, extraBalls: 2 } as const;
+            case 'slow-time':
+                return { type: 'slow-time', duration: 5, timeScale: 0.5 } as const;
+            case 'wide-paddle':
+                return { type: 'wide-paddle', duration: 5, widthMultiplier: 2 } as const;
+            default:
+                return { type: 'sticky-paddle', duration: 5 } as const;
+        }
+    };
+
+    return {
+        spinWheel: vi.fn(() => buildReward('double-points')),
+        createReward: vi.fn((type: string) => buildReward(type)),
+        setRewardOverride: vi.fn((value: unknown) => {
+            override = value;
+        }),
+        getRewardOverride: vi.fn(() => override),
+    };
+});
 
 vi.mock('util/input-helpers', () => ({
     smoothTowards: vi.fn((_current: number, target: number) => target),

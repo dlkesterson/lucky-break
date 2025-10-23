@@ -1,10 +1,13 @@
 import { Bodies, Body, Composite, Engine, World, type Vector } from 'matter-js';
+import { rootLogger } from 'util/log';
 import type { Vector2, BallAttachment } from '../types';
 
 const DEFAULT_TIMESTEP_MS = 1000 / 120;
 const DEFAULT_WIDTH = 800;
 const DEFAULT_HEIGHT = 600;
 const DEFAULT_WALL_THICKNESS = 32;
+
+const physicsLogger = rootLogger.child('physics:world');
 
 export interface PhysicsWorldDimensions {
     readonly width: number;
@@ -182,8 +185,11 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
     // Ball attachment tracking
     const ballAttachments = new Map<number, BallAttachment>();
+    const orphanedAttachmentWarnings = new Set<number>();
 
     const attachBallToPaddle: PhysicsWorldHandle['attachBallToPaddle'] = (ball, paddle, offset = { x: 0, y: -ball.circleRadius! - paddle.circleRadius! }) => {
+        orphanedAttachmentWarnings.delete(ball.id);
+
         ballAttachments.set(ball.id, {
             isAttached: true,
             attachmentOffset: offset,
@@ -200,6 +206,7 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
     const detachBallFromPaddle: PhysicsWorldHandle['detachBallFromPaddle'] = (ball) => {
         ballAttachments.delete(ball.id);
+        orphanedAttachmentWarnings.delete(ball.id);
     };
 
     const updateBallAttachment: PhysicsWorldHandle['updateBallAttachment'] = (ball, paddlePosition) => {
@@ -237,24 +244,46 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
     const step: PhysicsWorldHandle['step'] = (deltaMs = timeStep) => {
         // Update ball attachments before stepping physics
+        const orphanedBallIds: number[] = [];
+
         ballAttachments.forEach((attachment, ballId) => {
             if (attachment.isAttached) {
                 const ball = Composite.get(engine.world, ballId, 'body') as Body;
-                if (ball) {
-                    Body.setPosition(ball, {
-                        x: attachment.paddlePosition.x + attachment.attachmentOffset.x,
-                        y: attachment.paddlePosition.y + attachment.attachmentOffset.y,
-                    });
-                    Body.setVelocity(ball, { x: 0, y: 0 });
-                    // Clear any forces that may have been applied
-                    Body.setVelocity(ball, { x: 0, y: 0 });
-                    if (ball.force) {
-                        ball.force.x = 0;
-                        ball.force.y = 0;
+                if (!ball) {
+                    if (!orphanedAttachmentWarnings.has(ballId)) {
+                        orphanedAttachmentWarnings.add(ballId);
+                        physicsLogger.warn('Orphaned ball attachment removed after missing physics body', {
+                            ballId,
+                        });
                     }
+                    orphanedBallIds.push(ballId);
+                    return;
+                }
+
+                if (orphanedAttachmentWarnings.has(ballId)) {
+                    orphanedAttachmentWarnings.delete(ballId);
+                }
+
+                Body.setPosition(ball, {
+                    x: attachment.paddlePosition.x + attachment.attachmentOffset.x,
+                    y: attachment.paddlePosition.y + attachment.attachmentOffset.y,
+                });
+                Body.setVelocity(ball, { x: 0, y: 0 });
+                // Clear any forces that may have been applied
+                Body.setVelocity(ball, { x: 0, y: 0 });
+                if (ball.force) {
+                    ball.force.x = 0;
+                    ball.force.y = 0;
                 }
             }
         });
+
+        if (orphanedBallIds.length > 0) {
+            orphanedBallIds.forEach((ballId) => {
+                ballAttachments.delete(ballId);
+                orphanedAttachmentWarnings.delete(ballId);
+            });
+        }
 
         Engine.update(engine, deltaMs);
     };
@@ -262,6 +291,8 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
     const dispose: PhysicsWorldHandle['dispose'] = () => {
         Composite.clear(engine.world, false);
         Engine.clear(engine);
+        ballAttachments.clear();
+        orphanedAttachmentWarnings.clear();
     };
 
     return {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Body } from 'matter-js';
 import { createPhysicsWorld } from 'physics/world';
 
@@ -58,5 +58,37 @@ describe('createPhysicsWorld', () => {
         expect(brick.isStatic).toBe(true);
 
         handle.dispose();
+    });
+
+    it('logs and prunes attachments when physics bodies disappear', () => {
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
+            /* swallow logs */
+        });
+
+        const handle = createPhysicsWorld({ gravity: 0 });
+        try {
+            const paddle = handle.factory.paddle({
+                size: { width: 140, height: 18 },
+                position: { x: 200, y: 500 },
+            });
+            const ball = handle.factory.ball({
+                radius: 12,
+                position: { x: 200, y: 470 },
+            });
+
+            handle.add([paddle, ball]);
+            handle.attachBallToPaddle(ball, paddle, { x: 0, y: -24 });
+
+            handle.remove(ball);
+            handle.step();
+
+            expect(handle.isBallAttached(ball)).toBe(false);
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            const [message] = warnSpy.mock.calls[0];
+            expect(String(message)).toContain('[WARN][app:physics:world]');
+        } finally {
+            handle.dispose();
+            warnSpy.mockRestore();
+        }
     });
 });

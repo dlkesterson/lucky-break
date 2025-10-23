@@ -3,6 +3,7 @@ import { resolve as resolvePath } from 'node:path';
 import type { ReplayRecording } from 'app/replay-buffer';
 import { runHeadlessEngine, type HeadlessSimulationResult } from './headless-engine';
 import type { EventEnvelope, LuckyBreakEventName } from 'app/events';
+import { getRewardOverride, setRewardOverride, type RewardType } from 'game/rewards';
 
 export interface SimulateCommandIO {
     readonly readStdin: () => Promise<string>;
@@ -16,6 +17,10 @@ export interface SimulationOptions {
     readonly telemetry?: boolean;
 }
 
+export interface SimulationCheatOptions {
+    readonly forceReward?: RewardType;
+}
+
 export interface SimulationInput {
     readonly mode: 'simulate';
     readonly seed?: number;
@@ -24,6 +29,7 @@ export interface SimulationInput {
     readonly options?: SimulationOptions;
     readonly replayPath?: string;
     readonly replay?: ReplayRecording;
+    readonly cheats?: SimulationCheatOptions;
 }
 
 export interface SimulationResult {
@@ -40,6 +46,9 @@ export interface SimulationResult {
     readonly snapshot: HeadlessSimulationResult['snapshot'];
     readonly telemetry?: {
         readonly events: readonly EventEnvelope<LuckyBreakEventName>[];
+    };
+    readonly cheats?: {
+        readonly forceReward?: RewardType | null;
     };
 }
 
@@ -64,6 +73,7 @@ const resolveReplay = async (input: SimulationInput): Promise<ReplayRecording | 
 const mapResult = (
     source: HeadlessSimulationResult,
     telemetryRequested: boolean,
+    cheats?: SimulationCheatOptions,
 ): SimulationResult => ({
     ok: true,
     sessionId: source.sessionId,
@@ -81,6 +91,7 @@ const mapResult = (
             events: source.events,
         }
         : undefined,
+    cheats: cheats?.forceReward ? { forceReward: cheats.forceReward } : undefined,
 });
 
 export const runHeadlessSimulation = async (input: SimulationInput): Promise<SimulationResult> => {
@@ -88,21 +99,34 @@ export const runHeadlessSimulation = async (input: SimulationInput): Promise<Sim
     const round = typeof input.round === 'number' ? input.round : DEFAULT_ROUND;
     const durationSec = typeof input.durationSec === 'number' ? Math.max(1, input.durationSec) : DEFAULT_DURATION_SEC;
     const telemetryRequested = input.options?.telemetry ?? false;
+    const cheatOptions = input.cheats;
+    const forcedReward = cheatOptions?.forceReward;
+    const previousOverride = forcedReward ? getRewardOverride() : null;
 
     const replay = await resolveReplay(input).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : 'Unknown error';
         throw new Error(`Failed to load replay: ${message}`);
     });
 
-    const result = runHeadlessEngine({
-        seed,
-        round,
-        durationMs: durationSec * 1000,
-        telemetry: telemetryRequested,
-        replay,
-    });
+    if (forcedReward) {
+        setRewardOverride({ type: forcedReward, persist: true });
+    }
 
-    return mapResult(result, telemetryRequested);
+    try {
+        const result = runHeadlessEngine({
+            seed,
+            round,
+            durationMs: durationSec * 1000,
+            telemetry: telemetryRequested,
+            replay,
+        });
+
+        return mapResult(result, telemetryRequested, cheatOptions);
+    } finally {
+        if (forcedReward) {
+            setRewardOverride(previousOverride);
+        }
+    }
 };
 
 const logToStderr = async (io: SimulateCommandIO, message: string) => {
