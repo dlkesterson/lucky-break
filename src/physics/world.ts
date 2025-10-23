@@ -1,4 +1,5 @@
 import { Bodies, Body, Composite, Engine, World, type Vector } from 'matter-js';
+import type { BrickForm } from 'util/levels';
 import { rootLogger } from 'util/log';
 import type { Vector2, BallAttachment } from '../types';
 
@@ -41,6 +42,7 @@ export interface BrickFactoryOptions {
     readonly position: Vector;
     readonly label?: string;
     readonly isSensor?: boolean;
+    readonly shape?: BrickForm;
 }
 
 export interface PhysicsFactories {
@@ -117,15 +119,51 @@ const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): Phy
         return body;
     };
 
-    const brick: PhysicsFactories['brick'] = (options) =>
-        Bodies.rectangle(options.position.x, options.position.y, options.size.width, options.size.height, {
+    const brick: PhysicsFactories['brick'] = (options) => {
+        const baseOptions = {
             label: options.label ?? 'brick',
             restitution: 1,
             friction: 0,
             frictionStatic: 0,
             isStatic: true,
             isSensor: options.isSensor ?? false,
-        });
+        } as const;
+
+        const shape: BrickForm = options.shape ?? 'rectangle';
+        const { width, height } = options.size;
+        const { x, y } = options.position;
+
+        if (shape === 'circle') {
+            const radius = Math.max(4, Math.min(width, height) / 2);
+            return Bodies.circle(x, y, radius, baseOptions);
+        }
+
+        if (shape === 'diamond') {
+            const halfWidth = Math.max(4, width / 2);
+            const halfHeight = Math.max(4, height / 2);
+            const vertices = [
+                { x: 0, y: -halfHeight },
+                { x: halfWidth, y: 0 },
+                { x: 0, y: halfHeight },
+                { x: -halfWidth, y: 0 },
+            ];
+
+            const body = Bodies.fromVertices(x, y, [vertices], baseOptions, true) as Body | Body[] | undefined;
+            if (!body) {
+                throw new Error('Failed to create diamond brick body.');
+            }
+            if (Array.isArray(body)) {
+                const primary = body[0];
+                if (!primary) {
+                    throw new Error('Diamond brick body array was empty.');
+                }
+                return primary;
+            }
+            return body;
+        }
+
+        return Bodies.rectangle(x, y, width, height, baseOptions);
+    };
 
     const bounds: PhysicsFactories['bounds'] = () => {
         const horizontalWidth = dimensions.width + wallThickness * 2;

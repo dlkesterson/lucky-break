@@ -1103,9 +1103,104 @@ vi.mock('util/log', () => ({
     },
 }));
 
-import { createGameRuntime } from 'app/game-runtime';
+import { createGameRuntime, __internalGameRuntimeTesting } from 'app/game-runtime';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createMainMenuScene } from 'scenes/main-menu';
+
+const internalHelpers = __internalGameRuntimeTesting;
+
+describe('game-runtime internal helpers', () => {
+    beforeEach(() => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+        toneState.resumeImpl = () => {
+            toneState.contextState = 'running';
+            return Promise.resolve();
+        };
+        toneState.startImpl = () => {
+            toneState.transportState = 'started';
+            return Promise.resolve();
+        };
+        toneState.resumeMock.mockClear();
+        toneState.transportStartMock.mockClear();
+    });
+
+    it('identifies promise-like values correctly', () => {
+        expect(internalHelpers.isPromiseLike({ then: () => undefined })).toBe(true);
+        expect(internalHelpers.isPromiseLike(Promise.resolve('value'))).toBe(true);
+    });
+
+    it('rejects non promise-like values', () => {
+        expect(internalHelpers.isPromiseLike(null)).toBe(false);
+        expect(internalHelpers.isPromiseLike({})).toBe(false);
+        expect(internalHelpers.isPromiseLike({ then: 42 })).toBe(false);
+    });
+
+    it('waits for promises that settle before the timeout', async () => {
+        await expect(internalHelpers.waitForPromise(Promise.resolve('ok'), 10)).resolves.toBeUndefined();
+    });
+
+    it('times out safely when the promise never settles', async () => {
+        vi.useFakeTimers();
+        try {
+            const pending = new Promise<void>(() => undefined);
+            const waitTask = internalHelpers.waitForPromise(pending, 5);
+            await vi.advanceTimersByTimeAsync(6);
+            await expect(waitTask).resolves.toBeUndefined();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('detects autoplay blocking errors', () => {
+        const named = new Error('blocked');
+        named.name = 'NotAllowedError';
+        expect(internalHelpers.isAutoplayBlockedError(named)).toBe(true);
+
+        const messageMatch = new Error('Audio playback was not allowed to start');
+        expect(internalHelpers.isAutoplayBlockedError(messageMatch)).toBe(true);
+
+        expect(internalHelpers.isAutoplayBlockedError(new Error('Other failure'))).toBe(false);
+        expect(internalHelpers.isAutoplayBlockedError('not an error')).toBe(false);
+    });
+
+    it('uses Tone transport when available and falls back on failure', async () => {
+        const toneModule = await import('tone');
+        expect(internalHelpers.resolveToneTransport()).toBe(toneModule.getTransport());
+
+        const originalGetTransport = toneModule.getTransport;
+        (toneModule as { getTransport: () => unknown }).getTransport = () => {
+            throw new Error('unavailable');
+        };
+        try {
+            expect(internalHelpers.resolveToneTransport()).toBe(toneModule.Transport);
+        } finally {
+            (toneModule as { getTransport: () => unknown }).getTransport = originalGetTransport;
+        }
+    });
+
+    it('resumes audio context and starts transport when needed', async () => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+
+        await internalHelpers.ensureToneAudio();
+
+        expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
+        expect(toneState.transportStartMock).toHaveBeenCalledTimes(1);
+        expect(toneState.contextState).toBe('running');
+        expect(toneState.transportState).toBe('started');
+    });
+
+    it('skips resume and start when audio is already active', async () => {
+        toneState.contextState = 'running';
+        toneState.transportState = 'started';
+
+        await internalHelpers.ensureToneAudio();
+
+        expect(toneState.resumeMock).not.toHaveBeenCalled();
+        expect(toneState.transportStartMock).not.toHaveBeenCalled();
+    });
+});
 
 describe('createGameRuntime', () => {
     const makeRandomManager = () => ({

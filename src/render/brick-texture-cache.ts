@@ -1,4 +1,5 @@
 import { Graphics, Texture } from 'pixi.js';
+import type { BrickForm } from 'util/levels';
 import { computeBrickFillColor, paintBrickVisual } from './playfield-visuals';
 
 export interface BrickTextureRequest {
@@ -7,6 +8,7 @@ export interface BrickTextureRequest {
     readonly currentHp: number;
     readonly width: number;
     readonly height: number;
+    readonly form?: BrickForm;
 }
 
 interface TextureRenderer {
@@ -29,10 +31,11 @@ const clamp = (value: number, min: number, max: number): number => {
     return value;
 };
 
-const createCacheKey = ({ baseColor, maxHp, currentHp, width, height }: BrickTextureRequest): string => {
+const createCacheKey = ({ baseColor, maxHp, currentHp, width, height, form }: BrickTextureRequest): string => {
     const safeMaxHp = Math.max(1, Math.round(maxHp));
     const safeCurrentHp = clamp(Math.round(currentHp), 0, safeMaxHp);
-    return [baseColor, safeMaxHp, safeCurrentHp, width, height].join(':');
+    const resolvedForm: BrickForm = form ?? 'rectangle';
+    return [baseColor, safeMaxHp, safeCurrentHp, width, height, resolvedForm].join(':');
 };
 
 export const createBrickTextureCache = (renderer: TextureRenderer): BrickTextureCache => {
@@ -52,7 +55,8 @@ export const createBrickTextureCache = (renderer: TextureRenderer): BrickTexture
 
         const graphics = new Graphics();
         graphics.eventMode = 'none';
-        paintBrickVisual(graphics, request.width, request.height, fillColor, damageLevel, 1);
+        const resolvedForm: BrickForm = request.form ?? 'rectangle';
+        paintBrickVisual(graphics, request.width, request.height, fillColor, damageLevel, 1, resolvedForm);
 
         const texture = renderer.generateTexture(graphics);
         graphics.destroy();

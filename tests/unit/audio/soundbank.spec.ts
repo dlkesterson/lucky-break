@@ -4,6 +4,7 @@ import {
     countSoundbankAssets,
     prefetchSoundbankAssets,
     requireSoundbankEntry,
+    findSoundbankEntry,
 } from 'audio/soundbank';
 
 const createFetchMock = () => vi.fn(async () => new Response(null));
@@ -32,5 +33,25 @@ describe('audio/soundbank', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(totalAssets);
         expect(progressCalls.at(-1)).toBe(totalAssets);
+    });
+
+    it('trims ids for lookup and errors on missing entries', async () => {
+        const soundbank = await loadSoundbank();
+
+        const trimmed = requireSoundbankEntry(soundbank, '  calm  ');
+        expect(trimmed.id).toBe('calm');
+
+        expect(findSoundbankEntry(soundbank, 'missing')).toBeUndefined();
+        expect(() => requireSoundbankEntry(soundbank, 'missing')).toThrowError(/Soundbank entry not found/);
+    });
+
+    it('skips prefetch when the soundbank is empty', async () => {
+        const fetchMock = createFetchMock();
+        const progressMock = vi.fn();
+
+        await prefetchSoundbankAssets({ loops: [], sfx: [] }, progressMock, fetchMock);
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(progressMock).not.toHaveBeenCalled();
     });
 });

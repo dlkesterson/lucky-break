@@ -32,6 +32,10 @@ interface SoundbankProgressEvent {
     readonly total: number;
 }
 
+interface SoundbankModule {
+    readonly default?: RawSoundbank;
+}
+
 const SOUND_ASSET_PREFIX = '../../assets/samples/';
 
 const SOUND_ASSET_URLS: Record<string, string> = import.meta.glob('../../assets/samples/*', {
@@ -41,9 +45,14 @@ const SOUND_ASSET_URLS: Record<string, string> = import.meta.glob('../../assets/
 });
 
 let cachedSoundbank: Promise<Soundbank> | null = null;
+let loadRawSoundbankOverride: (() => Promise<RawSoundbank>) | null = null;
+const defaultImportSoundbankModule = async (): Promise<SoundbankModule> =>
+    (await import('../../assets/samples/soundbank.json')) as SoundbankModule;
+
+let importSoundbankModule: () => Promise<SoundbankModule> = defaultImportSoundbankModule;
 
 const loadRawSoundbank = async (): Promise<RawSoundbank> => {
-    const module = (await import('../../assets/samples/soundbank.json')) as { default?: RawSoundbank };
+    const module = await importSoundbankModule();
     const data = module.default;
     if (!data || typeof data !== 'object') {
         throw new TypeError('Soundbank JSON payload is malformed.');
@@ -105,8 +114,21 @@ const listAllEntries = (soundbank: Soundbank): readonly SoundbankEntry[] => [
 ];
 
 export const loadSoundbank = async (): Promise<Soundbank> => {
-    cachedSoundbank ??= loadRawSoundbank().then(normalizeSoundbank);
+    const loader = loadRawSoundbankOverride ?? loadRawSoundbank;
+    cachedSoundbank ??= loader().then(normalizeSoundbank);
     return cachedSoundbank;
+};
+
+export const __setSoundbankLoaderForTesting = (override?: (() => Promise<RawSoundbank>) | null): void => {
+    loadRawSoundbankOverride = override ?? null;
+    cachedSoundbank = null;
+};
+
+export const __loadRawSoundbankForTesting = loadRawSoundbank;
+
+export const __setSoundbankImporterForTesting = (importer?: (() => Promise<SoundbankModule>) | null): void => {
+    importSoundbankModule = importer ?? defaultImportSoundbankModule;
+    cachedSoundbank = null;
 };
 
 export const countSoundbankAssets = (soundbank: Soundbank): number => listAllEntries(soundbank).length;

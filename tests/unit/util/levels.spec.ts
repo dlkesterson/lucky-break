@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { gameConfig } from 'config/game';
 import {
     generateLevelLayout,
@@ -9,8 +9,14 @@ import {
     getLoopScalingInfo,
     isLoopedLevel,
     remixLevel,
+    setLevelPresetOffset,
+    getLevelPresetOffset,
 } from 'util/levels';
 import { mulberry32 } from 'util/random';
+
+afterEach(() => {
+    setLevelPresetOffset(0);
+});
 
 describe('remixLevel', () => {
     it('returns the original spec when loop count is zero or negative', () => {
@@ -77,6 +83,48 @@ describe('remixLevel', () => {
     });
 });
 
+describe('level preset offset', () => {
+    it('wraps rounded offsets within preset count', () => {
+        const presetCount = getPresetLevelCount();
+        const offset = presetCount * 2 + 1.7;
+
+        setLevelPresetOffset(offset);
+
+        const expected = ((Math.round(offset) % presetCount) + presetCount) % presetCount;
+        expect(getLevelPresetOffset()).toBe(expected);
+    });
+
+    it('handles negative and non-finite offsets gracefully', () => {
+        const presetCount = getPresetLevelCount();
+        const negativeOffset = -presetCount - 2.4;
+
+        setLevelPresetOffset(negativeOffset);
+
+        const expectedNegative = ((Math.round(negativeOffset) % presetCount) + presetCount) % presetCount;
+        expect(getLevelPresetOffset()).toBe(expectedNegative);
+
+        setLevelPresetOffset(Number.POSITIVE_INFINITY);
+        expect(getLevelPresetOffset()).toBe(0);
+
+        setLevelPresetOffset(Number.NaN);
+        expect(getLevelPresetOffset()).toBe(0);
+    });
+
+    it('shifts preset selection when applied', () => {
+        const presetCount = getPresetLevelCount();
+        const baselineSpec = getLevelSpec(0);
+        const nextSpec = getLevelSpec(1);
+
+        setLevelPresetOffset(1);
+        const shiftedSpec = getLevelSpec(0);
+
+        if (presetCount > 1) {
+            expect(shiftedSpec).toBe(nextSpec);
+        }
+        expect(shiftedSpec).not.toBe(baselineSpec);
+    });
+});
+
 describe('loop scaling info', () => {
     it('expands void column allowance on later loops', () => {
         const base = getLoopScalingInfo(0);
@@ -93,6 +141,23 @@ describe('loop scaling info', () => {
 });
 
 describe('generateLevelLayout', () => {
+    it('returns empty layouts when bricks cannot be placed', () => {
+        const specA = { rows: 2, cols: 3 } as const;
+
+        const zeroWidthLayout = generateLevelLayout(specA, 0, 20, 200);
+        expect(zeroWidthLayout.bricks).toHaveLength(0);
+
+        const negativeFieldLayout = generateLevelLayout(specA, 30, 20, -10);
+        expect(negativeFieldLayout.bricks).toHaveLength(0);
+
+        const singleBrickTooWide = generateLevelLayout(specA, 100, 20, 40);
+        expect(singleBrickTooWide.bricks).toHaveLength(0);
+
+        const zeroColumnSpec = { rows: 3, cols: 0 } as const;
+        const zeroColumnLayout = generateLevelLayout(zeroColumnSpec, 30, 20, 300);
+        expect(zeroColumnLayout.bricks).toHaveLength(0);
+    });
+
     it('applies deterministic procedural variations based on seeded randomness', () => {
         const config = gameConfig;
         const baseSpec = remixLevel(getLevelSpec(2), 2);
@@ -204,5 +269,125 @@ describe('generateLevelLayout', () => {
 
         expect(uniqueColumnCount(layoutLimited)).toBe(baseSpec.cols - 1);
         expect(uniqueColumnCount(layoutExpanded)).toBe(baseSpec.cols - 3);
+    });
+
+    it('omits bricks that would overflow a narrow playfield while keeping survivors centered', () => {
+        const config = gameConfig;
+        const baseSpec = getLevelSpec(0);
+        const brickWidth = config.bricks.size.width;
+        const brickHeight = config.bricks.size.height;
+        const narrowFieldWidth = brickWidth * 3 + config.levels.minGap * 2 - 12;
+
+        const layout = generateLevelLayout(baseSpec, brickWidth, brickHeight, narrowFieldWidth);
+
+        expect(layout.bricks.length).toBeGreaterThan(0);
+
+        const uniqueColumns = new Set(layout.bricks.map((brick) => brick.col));
+        expect(uniqueColumns.size).toBeLessThan(baseSpec.cols);
+
+        const halfWidth = brickWidth / 2;
+        layout.bricks.forEach((brick) => {
+            expect(brick.x - halfWidth).toBeGreaterThanOrEqual(0);
+            expect(brick.x + halfWidth).toBeLessThanOrEqual(narrowFieldWidth);
+        });
+
+        const minColumn = Math.min(...uniqueColumns);
+        const maxColumn = Math.max(...uniqueColumns);
+        expect(maxColumn - minColumn + 1).toBe(uniqueColumns.size);
+
+        [minColumn, maxColumn].forEach((edgeColumn) => {
+            const edgeBricks = layout.bricks.filter((brick) => brick.col === edgeColumn);
+            expect(edgeBricks.length).toBeGreaterThan(0);
+            edgeBricks.forEach((brick) => {
+                expect(brick.breakable).toBe(false);
+                expect(brick.form).toBe('diamond');
+                expect(brick.traits?.includes('wall')).toBe(true);
+                expect(brick.hp).toBeGreaterThan(1000);
+            });
+        });
+    });
+
+    it('allows decorators to change brick forms, traits, and breakable flags', () => {
+        const config = gameConfig;
+        const baseSpec = getLevelSpec(0);
+
+        const layout = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                decorateBrick: ({ col }) => {
+                    if (col % 3 === 0) {
+                        return { form: 'diamond' };
+                    }
+                    if (col % 3 === 1) {
+                        return { form: 'circle', breakable: false, traits: ['wall'] };
+                    }
+                    return undefined;
+                },
+            },
+        );
+
+        expect(layout.bricks.some((brick) => brick.form === 'diamond')).toBe(true);
+        expect(layout.bricks.some((brick) => brick.form === 'circle')).toBe(true);
+        expect(layout.bricks.some((brick) => brick.traits?.includes('wall'))).toBe(true);
+        expect(layout.breakableCount).toBeLessThan(layout.bricks.length);
+    });
+
+    it('normalizes decorated hit points and wall traits for extreme decorator outputs', () => {
+        const config = gameConfig;
+        const spec = { rows: 1, cols: 4, hpPerRow: () => 2 } as const;
+
+        const layout = generateLevelLayout(
+            spec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: () => 0.25,
+                fortifiedChance: 0,
+                gambleChance: 1,
+                maxGambleBricks: 0,
+                decorateBrick: ({ slotIndex }) => {
+                    if (slotIndex === 0) {
+                        return { hp: Number.NaN };
+                    }
+                    if (slotIndex === 1) {
+                        return { hp: Number.POSITIVE_INFINITY };
+                    }
+                    if (slotIndex === 2) {
+                        return { hp: Number.NEGATIVE_INFINITY };
+                    }
+                    if (slotIndex === 3) {
+                        return { breakable: false, hp: 5 };
+                    }
+                    return undefined;
+                },
+            },
+        );
+
+        expect(layout.bricks).toHaveLength(4);
+
+        const ordered = [...layout.bricks].sort((a, b) => a.col - b.col);
+        const [first, second, third, fourth] = ordered;
+
+        expect(first.hp).toBe(2);
+        expect(first.breakable).toBe(true);
+
+        expect(second.hp).toBe(Number.POSITIVE_INFINITY);
+        expect(second.breakable).toBe(true);
+
+        expect(third.hp).toBe(1);
+        expect(third.breakable).toBe(true);
+
+        expect(fourth.breakable).toBe(false);
+        expect(fourth.hp).toBe(5);
+        expect(fourth.form).toBe('diamond');
+        const fourthTraits = fourth.traits ?? [];
+        expect(fourthTraits).toContain('wall');
+
+        expect(layout.breakableCount).toBe(3);
+        expect(layout.bricks.some((brick) => brick.traits?.includes('gamble'))).toBe(false);
     });
 });

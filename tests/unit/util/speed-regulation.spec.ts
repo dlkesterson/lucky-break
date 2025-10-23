@@ -147,6 +147,11 @@ describe('speed-regulation', () => {
             expect(result).toBe(baseSpeed);
         });
 
+        it('returns zero when base speed is non-positive', () => {
+            expect(getAdaptiveBaseSpeed(0, 12, 10)).toBe(0);
+            expect(getAdaptiveBaseSpeed(-3, 12, 10)).toBe(0);
+        });
+
         it('should increase base speed by 5 percent per combo step', () => {
             const baseSpeed = gameConfig.ball.baseSpeed;
             const maxSpeed = gameConfig.ball.maxSpeed;
@@ -168,6 +173,18 @@ describe('speed-regulation', () => {
             expect(result).toBe(maxSpeed);
         });
 
+        it('returns base speed when multiplier per step is non-positive', () => {
+            const baseSpeed = 6;
+            const maxSpeed = 12;
+            const combo = 10;
+
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo, {
+                multiplierPerStep: 0,
+            });
+
+            expect(result).toBe(baseSpeed);
+        });
+
         it('uses config-defined thresholds when parameters omitted', () => {
             const baseSpeed = gameConfig.ball.baseSpeed;
             const maxSpeed = gameConfig.ball.maxSpeed;
@@ -181,6 +198,28 @@ describe('speed-regulation', () => {
 
             const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, combo);
             expect(result).toBeCloseTo(expected, 5);
+        });
+
+        it('clamps combo step and max multiplier to safe bounds', () => {
+            const baseSpeed = 5;
+            const maxSpeed = 20;
+
+            const result = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, 6, {
+                comboStep: 0,
+                multiplierPerStep: 0.5,
+                maxMultiplier: 0.8,
+            });
+
+            // comboStep defaults to 1, maxMultiplier clamps to 1
+            expect(result).toBe(baseSpeed);
+
+            const bounded = getAdaptiveBaseSpeed(baseSpeed, maxSpeed, 6, {
+                comboStep: 0,
+                multiplierPerStep: 0.5,
+                maxMultiplier: 1.2,
+            });
+
+            expect(bounded).toBeCloseTo(Math.min(baseSpeed * 1.2, maxSpeed), 5);
         });
     });
 });

@@ -39,6 +39,11 @@ vi.mock('pixi.js', () => {
             return this;
         }
 
+        ellipse(x: number, y: number, width: number, height: number): this {
+            this.commands.push({ type: 'ellipse', payload: { x, y, width, height } });
+            return this;
+        }
+
         fill(style: unknown): this {
             this.commands.push({ type: 'fill', payload: style });
             return this;
@@ -66,6 +71,11 @@ vi.mock('pixi.js', () => {
 
         lineTo(x: number, y: number): this {
             this.commands.push({ type: 'lineTo', payload: { x, y } });
+            return this;
+        }
+
+        closePath(): this {
+            this.commands.push({ type: 'closePath' });
             return this;
         }
     }
@@ -186,6 +196,44 @@ describe('render/playfield-visuals', () => {
         expect(commands.filter((command) => command.type === 'rect')).toHaveLength(2);
     });
 
+    it('applies motion glow overlays and fallback gradients when needed', () => {
+        const defaults = {
+            gradient: [0x112233, 0x445566],
+            accentColor: 0x225588,
+        } as const;
+        const motionGlow = 0.5;
+        const gfx = new Graphics();
+
+        drawPaddleVisual(
+            gfx,
+            90,
+            24,
+            defaults,
+            {
+                gradient: [],
+                motionGlow,
+                pulseStrength: 0.2,
+            },
+        );
+
+        const commands = getCommands(gfx);
+        const gradientFill = commands.find((command) => command.type === 'fill' && command.payload instanceof FillGradient)?.payload;
+        expect(gradientFill).toBeDefined();
+
+        const gradientStops: { color: number }[] =
+            (gradientFill as unknown as { stops: { color: number }[] } | undefined)?.stops ?? [];
+        const expectedStart = mixColors(defaults.gradient[0], 0xffffff, 0.45 * motionGlow);
+        const expectedEnd = mixColors(defaults.gradient[1], 0xffffff, 0.45 * motionGlow);
+        expect(gradientStops[0]?.color).toBe(expectedStart);
+        expect(gradientStops.at(-1)?.color).toBe(expectedEnd);
+
+        const expectedGlowAlpha = 0.08 + motionGlow * 0.18;
+        const glowFill = commands.find(
+            (command) => command.type === 'fill' && typeof command.payload?.alpha === 'number' && Math.abs(command.payload.alpha - expectedGlowAlpha) < 1e-6,
+        );
+        expect(glowFill).toBeDefined();
+    });
+
     it('computes brick fill colors based on remaining health', () => {
         const base = 0x336699;
         const full = computeBrickFillColor(base, 4, 4);
@@ -196,6 +244,12 @@ describe('render/playfield-visuals', () => {
         expect(empty).not.toBe(base);
     });
 
+    it('returns the base color when max health is one', () => {
+        const base = 0xabcdef;
+        expect(computeBrickFillColor(base, 0, 1)).toBe(base);
+        expect(computeBrickFillColor(base, 1, 1)).toBe(base);
+    });
+
     it('creates playfield background layer with tiling sprite and overlay', () => {
         const texture = new Texture('stars' as unknown as any);
         const layer = createPlayfieldBackgroundLayer({ width: 400, height: 200 }, texture);
@@ -204,6 +258,13 @@ describe('render/playfield-visuals', () => {
         expect(tiling).toBeInstanceOf(TilingSprite);
         expect(tiling.alpha).toBeCloseTo(0.78, 2);
         expect(getCommands(overlay).some((command) => command.type === 'rect')).toBe(true);
+    });
+
+    it('creates playfield background layers without textures when none provided', () => {
+        const layer = createPlayfieldBackgroundLayer({ width: 320, height: 180 }, null);
+        expect(layer.tilingSprite).toBeNull();
+        expect(layer.container.children).toHaveLength(1);
+        expect(layer.container.children[0]).toBeInstanceOf(Graphics);
     });
 
     it('paints brick visuals with highlight and shadow layers', () => {
@@ -219,5 +280,43 @@ describe('render/playfield-visuals', () => {
         expect(fills.length).toBeGreaterThan(1);
         expect(crackStrokes.length).toBeGreaterThan(0);
         expect(lines.length).toBeGreaterThan(0);
+    });
+
+    it('supports circular brick forms with radial highlights', () => {
+        const gfx = new Graphics();
+        paintBrickVisual(gfx, 48, 48, 0x44ccff, 0.25, 0.85, 'circle');
+
+        const commands = getCommands(gfx);
+        expect(commands.some((command) => command.type === 'circle')).toBe(true);
+        expect(commands.some((command) => command.type === 'ellipse')).toBe(true);
+        expect(commands.filter((command) => command.type === 'stroke')).not.toHaveLength(0);
+    });
+
+    it('supports diamond brick forms with angled crack strokes', () => {
+        const gfx = new Graphics();
+        paintBrickVisual(gfx, 80, 36, 0xff7755, 0.6, 0.95, 'diamond');
+
+        const commands = getCommands(gfx);
+        const closePaths = commands.filter((command) => command.type === 'closePath');
+        expect(closePaths.length).toBeGreaterThanOrEqual(3);
+        expect(commands.filter((command) => command.type === 'moveTo').length).toBeGreaterThan(0);
+        expect(commands.filter((command) => command.type === 'stroke').length).toBeGreaterThan(1);
+    });
+
+    it('omits crack strokes when damage is negligible across forms', () => {
+        const strokeCountBelow = (commands: { type: string; payload?: any }[]) =>
+            commands.filter((command) => command.type === 'stroke' && typeof command.payload?.width === 'number' && command.payload.width < 1.5).length;
+
+        const baseRect = new Graphics();
+        paintBrickVisual(baseRect, 50, 24, 0x8899aa, 0.001, 0.85, 'rectangle');
+        expect(strokeCountBelow(getCommands(baseRect))).toBe(0);
+
+        const baseCircle = new Graphics();
+        paintBrickVisual(baseCircle, 40, 40, 0x55ffaa, 0.005, 0.9, 'circle');
+        expect(strokeCountBelow(getCommands(baseCircle))).toBe(0);
+
+        const baseDiamond = new Graphics();
+        paintBrickVisual(baseDiamond, 60, 30, 0xaa55ff, 0.004, 0.92, 'diamond');
+        expect(strokeCountBelow(getCommands(baseDiamond))).toBe(0);
     });
 });

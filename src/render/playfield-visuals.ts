@@ -1,4 +1,5 @@
 import { Container, FillGradient, Graphics, Texture, TilingSprite } from 'pixi.js';
+import type { BrickForm } from 'util/levels';
 
 export const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -232,11 +233,10 @@ export const paintBrickVisual = (
     color: number,
     damageLevel: number,
     restAlpha: number,
+    form: BrickForm = 'rectangle',
 ): void => {
     const halfWidth = width / 2;
     const halfHeight = height / 2;
-    const cornerRadius = Math.min(halfHeight, 12);
-
     const damage = clampUnit(damageLevel);
     const highlightColor = mixColors(color, 0xffffff, 0.45 + damage * 0.35);
     const shadowColor = mixColors(color, 0x001020, 0.55 + damage * 0.15);
@@ -246,29 +246,102 @@ export const paintBrickVisual = (
     gradient.addColorStop(1, shadowColor);
 
     graphics.clear();
-    graphics.roundRect(-halfWidth, -halfHeight, width, height, cornerRadius);
-    graphics.fill(gradient);
-    graphics.stroke({ color: highlightColor, width: 2, alignment: 0.5, alpha: 0.45 + damage * 0.2 });
 
-    const innerHighlightHeight = height * 0.32;
-    graphics.roundRect(-halfWidth + 3, -halfHeight + 3, width - 6, innerHighlightHeight, cornerRadius * 0.6);
-    graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+    const strokeOptions = { color: highlightColor, width: 2, alignment: 0.5, alpha: 0.45 + damage * 0.2 } as const;
 
-    graphics.roundRect(-halfWidth + 4, halfHeight - innerHighlightHeight + 2, width - 8, innerHighlightHeight, cornerRadius * 0.6);
-    graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+    if (form === 'circle') {
+        const radius = Math.max(4, Math.min(halfWidth, halfHeight));
+        graphics.circle(0, 0, radius);
+        graphics.fill(gradient);
+        graphics.stroke(strokeOptions);
 
-    if (damage > 0.01) {
-        const crackAlpha = 0.12 + damage * 0.32;
-        graphics.moveTo(-halfWidth + 6, -halfHeight + 10);
-        graphics.lineTo(-halfWidth * 0.2, -halfHeight * 0.1);
-        graphics.lineTo(halfWidth * 0.1, halfHeight * 0.25);
-        graphics.lineTo(halfWidth - 12, halfHeight - 8);
-        graphics.stroke({ color: 0xffffff, width: 1.4, alpha: crackAlpha });
+        const highlightRadius = radius * 0.65;
+        graphics.ellipse(0, -radius * 0.25, highlightRadius, highlightRadius * 0.45);
+        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
 
-        graphics.moveTo(-halfWidth + 18, halfHeight - 10);
-        graphics.lineTo(-halfWidth * 0.05, halfHeight * 0.1);
+        const shadowRadius = radius * 0.75;
+        graphics.ellipse(0, radius * 0.3, shadowRadius, shadowRadius * 0.45);
+        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+
+        if (damage > 0.01) {
+            const crackAlpha = 0.12 + damage * 0.32;
+            graphics.moveTo(-radius * 0.6, -radius * 0.2);
+            graphics.lineTo(-radius * 0.15, radius * 0.05);
+            graphics.lineTo(radius * 0.1, radius * 0.45);
+            graphics.stroke({ color: 0xffffff, width: 1.2, alpha: crackAlpha });
+
+            graphics.moveTo(-radius * 0.3, radius * 0.55);
+            graphics.lineTo(radius * 0.05, radius * 0.1);
+            graphics.lineTo(radius * 0.55, -radius * 0.15);
+            graphics.stroke({ color: 0x010a16, width: 1.1, alpha: crackAlpha * 0.6 });
+        }
+    } else if (form === 'diamond') {
+        const vertices = [
+            { x: 0, y: -halfHeight },
+            { x: halfWidth, y: 0 },
+            { x: 0, y: halfHeight },
+            { x: -halfWidth, y: 0 },
+        ];
+        graphics.moveTo(vertices[0].x, vertices[0].y);
+        for (let index = 1; index < vertices.length; index++) {
+            graphics.lineTo(vertices[index].x, vertices[index].y);
+        }
+        graphics.closePath();
+        graphics.fill(gradient);
+        graphics.stroke(strokeOptions);
+
+        graphics.moveTo(0, -halfHeight * 0.6);
         graphics.lineTo(halfWidth * 0.45, -halfHeight * 0.05);
-        graphics.stroke({ color: 0x010a16, width: 1.2, alpha: crackAlpha * 0.6 });
+        graphics.lineTo(0, -halfHeight * 0.1);
+        graphics.lineTo(-halfWidth * 0.45, -halfHeight * 0.05);
+        graphics.closePath();
+        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+
+        graphics.moveTo(0, halfHeight * 0.75);
+        graphics.lineTo(halfWidth * 0.6, halfHeight * 0.1);
+        graphics.lineTo(0, halfHeight * 0.2);
+        graphics.lineTo(-halfWidth * 0.6, halfHeight * 0.1);
+        graphics.closePath();
+        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+
+        if (damage > 0.01) {
+            const crackAlpha = 0.12 + damage * 0.32;
+            graphics.moveTo(-halfWidth * 0.35, -halfHeight * 0.45);
+            graphics.lineTo(-halfWidth * 0.1, -halfHeight * 0.05);
+            graphics.lineTo(halfWidth * 0.25, halfHeight * 0.45);
+            graphics.stroke({ color: 0xffffff, width: 1.2, alpha: crackAlpha });
+
+            graphics.moveTo(-halfWidth * 0.1, halfHeight * 0.55);
+            graphics.lineTo(halfWidth * 0.35, 0);
+            graphics.lineTo(halfWidth * 0.6, -halfHeight * 0.35);
+            graphics.stroke({ color: 0x010a16, width: 1.1, alpha: crackAlpha * 0.6 });
+        }
+    } else {
+        const cornerRadius = Math.min(halfHeight, 12);
+        graphics.roundRect(-halfWidth, -halfHeight, width, height, cornerRadius);
+        graphics.fill(gradient);
+        graphics.stroke(strokeOptions);
+
+        const innerHighlightHeight = height * 0.32;
+        graphics.roundRect(-halfWidth + 3, -halfHeight + 3, width - 6, innerHighlightHeight, cornerRadius * 0.6);
+        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+
+        graphics.roundRect(-halfWidth + 4, halfHeight - innerHighlightHeight + 2, width - 8, innerHighlightHeight, cornerRadius * 0.6);
+        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+
+        if (damage > 0.01) {
+            const crackAlpha = 0.12 + damage * 0.32;
+            graphics.moveTo(-halfWidth + 6, -halfHeight + 10);
+            graphics.lineTo(-halfWidth * 0.2, -halfHeight * 0.1);
+            graphics.lineTo(halfWidth * 0.1, halfHeight * 0.25);
+            graphics.lineTo(halfWidth - 12, halfHeight - 8);
+            graphics.stroke({ color: 0xffffff, width: 1.4, alpha: crackAlpha });
+
+            graphics.moveTo(-halfWidth + 18, halfHeight - 10);
+            graphics.lineTo(-halfWidth * 0.05, halfHeight * 0.1);
+            graphics.lineTo(halfWidth * 0.45, -halfHeight * 0.05);
+            graphics.stroke({ color: 0x010a16, width: 1.2, alpha: crackAlpha * 0.6 });
+        }
     }
 
     graphics.alpha = restAlpha;

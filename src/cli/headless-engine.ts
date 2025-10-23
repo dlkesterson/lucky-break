@@ -202,10 +202,13 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
     const bricks = new Map<number, BrickState>();
 
     layout.bricks.forEach((brickSpec) => {
+        const brickForm = brickSpec.form ?? 'rectangle';
         const body = physics.factory.brick({
             position: { x: brickSpec.x, y: brickSpec.y },
             size: { width: config.bricks.size.width, height: config.bricks.size.height },
             label: 'brick',
+            isSensor: brickSpec.isSensor ?? false,
+            shape: brickForm,
         });
         physics.add(body);
         bricks.set(body.id, {

@@ -47,4 +47,45 @@ describe('high score utilities', () => {
         expect(result.accepted).toBe(false);
         expect(getHighScores()).toHaveLength(0);
     });
+
+    it('normalizes player names and round metadata', () => {
+        const longName = 'ABCDEFGHIJKLMNOPQR';
+        const result = recordHighScore(1_500, {
+            name: `${longName}   `,
+            round: 6.7,
+            achievedAt: 1234.56,
+        });
+
+        expect(result.accepted).toBe(true);
+        const [entry] = result.entries;
+        expect(entry?.name).toBe('ABCDEFGHIJKLMNOP');
+        expect(entry?.round).toBe(6);
+        expect(entry?.achievedAt).toBe(1234);
+    });
+
+    it('falls back to default player name when blank', () => {
+        const result = recordHighScore(900, { name: '   ' });
+        expect(result.accepted).toBe(true);
+        expect(result.entries[0]?.name).toBe('PLAYER');
+    });
+
+    it('rejects non-finite scores and preserves existing entries', () => {
+        recordHighScore(1_000);
+        const before = getHighScores();
+
+        const result = recordHighScore(Number.NaN);
+
+        expect(result.accepted).toBe(false);
+        expect(result.entries).toEqual(before);
+    });
+
+    it('recovers when stored high scores are corrupted', () => {
+        window.localStorage.setItem('lucky-break::high-scores::v1', 'not-json');
+
+        const result = recordHighScore(2_000, { name: 'ZZZ' });
+
+        expect(result.accepted).toBe(true);
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0]?.name).toBe('ZZZ');
+    });
 });

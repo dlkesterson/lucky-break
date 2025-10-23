@@ -19,6 +19,7 @@ const MAX_VOID_COLUMNS = config.levels.maxVoidColumns;
 const LOOP_PROGRESSIONS = config.levels.loopProgression;
 const LOOP_FALLBACK = config.levels.loopFallback;
 const GAMBLE_CONFIG = config.levels.gamble;
+const WALL_BRICK_HP = 9999;
 
 export interface LoopScalingInfo {
     readonly loopCount: number;
@@ -41,6 +42,7 @@ export interface LevelGenerationOptions {
     readonly centerFortifiedBias?: number;
     readonly gambleChance?: number;
     readonly maxGambleBricks?: number;
+    readonly decorateBrick?: (context: BrickDecorationContext) => BrickDecorationResult | void;
 }
 
 export interface LevelSpec {
@@ -67,7 +69,27 @@ export interface LevelLayout {
     readonly spec: LevelSpec;
 }
 
-export type BrickTrait = 'fortified' | 'gamble';
+export type BrickTrait = 'fortified' | 'gamble' | 'wall';
+
+export type BrickForm = 'rectangle' | 'diamond' | 'circle';
+
+export interface BrickDecorationContext {
+    readonly row: number;
+    readonly col: number;
+    readonly slotIndex: number;
+    readonly slotCount: number;
+    readonly spec: LevelSpec;
+    readonly traits: readonly BrickTrait[];
+    readonly random?: RandomSource;
+}
+
+export interface BrickDecorationResult {
+    readonly form?: BrickForm;
+    readonly traits?: readonly BrickTrait[];
+    readonly breakable?: boolean;
+    readonly isSensor?: boolean;
+    readonly hp?: number;
+}
 
 export interface BrickSpec {
     /** Grid row index */
@@ -82,6 +104,12 @@ export interface BrickSpec {
     readonly hp: number;
     /** Optional brick traits applied during procedural remix */
     readonly traits?: readonly BrickTrait[];
+    /** Visual and physics form */
+    readonly form?: BrickForm;
+    /** Whether this brick counts toward level completion */
+    readonly breakable?: boolean;
+    /** Whether the physics body should behave as a sensor */
+    readonly isSensor?: boolean;
 }
 
 let levelPresetOffset = 0;
@@ -191,16 +219,83 @@ export function generateLevelLayout(
         centerFortifiedBias = 0,
         gambleChance = 0,
         maxGambleBricks = Number.POSITIVE_INFINITY,
+        decorateBrick,
     } = options;
 
     const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
 
+    if (fieldWidth <= 0 || brickWidth <= 0) {
+        return { bricks: [], breakableCount: 0, spec };
+    }
+
     const gapBase = spec.gap ?? DEFAULT_GAP;
-    const gap = Math.max(MIN_GAP, gapBase);
+    const desiredGap = Math.max(MIN_GAP, gapBase);
     const startY = spec.startY ?? DEFAULT_START_Y;
 
-    // Calculate centering offset
-    const totalWidth = spec.cols * brickWidth + (spec.cols - 1) * gap;
+    const widthForColumns = (columnCount: number, gapSize: number): number => {
+        if (columnCount <= 0) {
+            return 0;
+        }
+        if (columnCount === 1) {
+            return brickWidth;
+        }
+        return columnCount * brickWidth + (columnCount - 1) * gapSize;
+    };
+
+    const computeGapFor = (columnCount: number): number => {
+        if (columnCount <= 1) {
+            return 0;
+        }
+        const maxGapToFit = (fieldWidth - columnCount * brickWidth) / (columnCount - 1);
+        if (!Number.isFinite(maxGapToFit)) {
+            return desiredGap;
+        }
+        const cappedGap = Math.min(desiredGap, maxGapToFit);
+        if (!Number.isFinite(cappedGap)) {
+            return desiredGap;
+        }
+        return Math.max(MIN_GAP, cappedGap);
+    };
+
+    if (widthForColumns(1, 0) > fieldWidth) {
+        return { bricks: [], breakableCount: 0, spec };
+    }
+
+    const requestedColumns = Math.max(0, Math.floor(spec.cols));
+    let columnsToPlace = requestedColumns;
+    if (columnsToPlace <= 0) {
+        return { bricks: [], breakableCount: 0, spec };
+    }
+
+    let gap = computeGapFor(columnsToPlace);
+    let totalWidth = widthForColumns(columnsToPlace, gap);
+    const widthTolerance = 0.5;
+
+    while (columnsToPlace > 1 && totalWidth - fieldWidth > widthTolerance) {
+        columnsToPlace -= 1;
+        gap = computeGapFor(columnsToPlace);
+        totalWidth = widthForColumns(columnsToPlace, gap);
+    }
+
+    if (columnsToPlace === 0) {
+        return { bricks: [], breakableCount: 0, spec };
+    }
+
+    // Final pass: if a single column still overflows, bail out.
+    if (columnsToPlace === 1 && totalWidth - fieldWidth > widthTolerance) {
+        return { bricks: [], breakableCount: 0, spec };
+    }
+
+    const trimmedForWidth = columnsToPlace < requestedColumns;
+
+    const remainingColumns = Math.max(0, requestedColumns - columnsToPlace);
+    let firstColumnIndex = Math.floor(remainingColumns / 2);
+    const maxFirstColumn = Math.max(0, requestedColumns - columnsToPlace);
+    if (firstColumnIndex > maxFirstColumn) {
+        firstColumnIndex = maxFirstColumn;
+    }
+
+    const visibleColumns = Array.from({ length: columnsToPlace }, (_unused, index) => index + firstColumnIndex);
     const startX = (fieldWidth - totalWidth) / 2 + brickWidth / 2;
 
     const bricks: BrickSpec[] = [];
@@ -210,19 +305,25 @@ export function generateLevelLayout(
     const gambleLimit = Math.max(0, Math.floor(maxGambleBricks));
     let gambleCount = 0;
 
-    if (random && voidColumnChance > 0 && spec.cols > 1) {
-        const limit = Math.min(spec.cols - 1, Math.max(0, Math.floor(maxVoidColumns)));
+    const slotCount = visibleColumns.length;
+
+    if (random && voidColumnChance > 0 && slotCount > 1) {
+        const limit = Math.min(slotCount - 1, Math.max(0, Math.floor(maxVoidColumns)));
         if (limit > 0) {
             const chance = clampUnit(voidColumnChance);
-            for (let col = 0; col < spec.cols; col++) {
+            for (let index = 0; index < slotCount; index++) {
                 if (voidColumns.size >= limit) {
                     break;
                 }
+                const originalColumn = visibleColumns[index];
+                if (originalColumn === undefined) {
+                    continue;
+                }
                 if (random() < chance) {
-                    voidColumns.add(col);
+                    voidColumns.add(originalColumn);
                 }
             }
-            if (voidColumns.size >= spec.cols) {
+            if (voidColumns.size >= slotCount) {
                 // Always leave at least one column intact
                 const [first] = voidColumns;
                 if (first !== undefined) {
@@ -234,30 +335,31 @@ export function generateLevelLayout(
 
     const fortifiedBaseChance = clampUnit(fortifiedChance);
     const biasFactor = Math.max(0, centerFortifiedBias);
-    const midColumn = (spec.cols - 1) / 2;
+    const midSlot = (slotCount - 1) / 2;
 
     for (let row = 0; row < spec.rows; row++) {
         const hp = spec.hpPerRow ? spec.hpPerRow(row) : 1;
 
-        for (let col = 0; col < spec.cols; col++) {
-            if (voidColumns.has(col)) {
+        for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            const originalColumn = visibleColumns[slotIndex];
+            if (originalColumn === undefined || voidColumns.has(originalColumn)) {
                 continue;
             }
 
-            const x = startX + col * (brickWidth + gap);
+            const x = startX + slotIndex * (brickWidth + gap);
             const y = startY + row * (brickHeight + gap);
 
             let brickHp = hp;
-            const traits: BrickTrait[] = [];
+            const baseTraits: BrickTrait[] = [];
 
             if (random && fortifiedBaseChance > 0) {
-                const normalizedDistance = spec.cols <= 1 ? 0 : Math.abs(col - midColumn) / Math.max(1, midColumn);
+                const normalizedDistance = slotCount <= 1 ? 0 : Math.abs(slotIndex - midSlot) / Math.max(1, midSlot);
                 const biasBonus = biasFactor * (1 - normalizedDistance);
                 const fortifiedChanceAdjusted = clampUnit(fortifiedBaseChance * (1 + biasBonus));
                 if (random() < fortifiedChanceAdjusted) {
                     const fortifiedStep = Math.max(1, Math.round(Math.max(0, hp) * 0.35));
                     brickHp += fortifiedStep;
-                    traits.push('fortified');
+                    baseTraits.push('fortified');
                 }
             }
 
@@ -265,32 +367,88 @@ export function generateLevelLayout(
                 random !== undefined &&
                 normalizedGambleChance > 0 &&
                 gambleCount < gambleLimit &&
-                !traits.includes('fortified');
+                !baseTraits.includes('fortified');
 
             if (canAssignGamble) {
                 const perRowAssigned = gambleAssignments.get(row) ?? 0;
                 if (perRowAssigned < 1 && random() < normalizedGambleChance) {
-                    traits.push('gamble');
+                    baseTraits.push('gamble');
                     gambleAssignments.set(row, perRowAssigned + 1);
                     gambleCount += 1;
                     brickHp = Math.max(1, Math.round(GAMBLE_CONFIG.primeResetHp));
                 }
             }
 
+            const decoration = decorateBrick?.({
+                row,
+                col: originalColumn,
+                slotIndex,
+                slotCount,
+                spec,
+                traits: Object.freeze([...baseTraits]),
+                random,
+            }) ?? {};
+
+            const mergedTraits = [...baseTraits];
+            if (decoration.traits && decoration.traits.length > 0) {
+                decoration.traits.forEach((trait) => {
+                    if (!mergedTraits.includes(trait)) {
+                        mergedTraits.push(trait);
+                    }
+                });
+            }
+
+            const decoratedHp = decoration.hp;
+            let finalHp: number;
+            if (decoratedHp === undefined || Number.isNaN(decoratedHp)) {
+                finalHp = Math.max(1, Math.round(brickHp));
+            } else if (!Number.isFinite(decoratedHp)) {
+                finalHp = decoratedHp > 0 ? decoratedHp : 1;
+            } else {
+                finalHp = Math.max(1, Math.round(decoratedHp));
+            }
+
+            let finalForm = decoration.form ?? 'rectangle';
+            let finalBreakable = decoration.breakable ?? true;
+            const finalSensor = decoration.isSensor ?? false;
+
+            if (trimmedForWidth && (slotIndex === 0 || slotIndex === slotCount - 1) && decoration.breakable === undefined) {
+                finalBreakable = false;
+            }
+
+            if (!finalBreakable && decoration.form === undefined) {
+                finalForm = 'diamond';
+            }
+
+            if (!finalBreakable && !mergedTraits.includes('wall')) {
+                mergedTraits.push('wall');
+            }
+
+            if (!finalBreakable && decoratedHp === undefined) {
+                finalHp = WALL_BRICK_HP;
+            }
+
+            const resolvedTraits = mergedTraits.length > 0 ? mergedTraits : undefined;
+
             bricks.push({
                 row,
-                col,
+                col: originalColumn,
                 x,
                 y,
-                hp: Math.max(1, Math.round(brickHp)),
-                traits: traits.length > 0 ? traits : undefined,
+                hp: finalHp,
+                traits: resolvedTraits,
+                form: finalForm,
+                breakable: finalBreakable,
+                isSensor: finalSensor,
             });
         }
     }
 
+    const breakableCount = bricks.reduce((count, brick) => (brick.breakable === false ? count : count + 1), 0);
+
     return {
         bricks,
-        breakableCount: bricks.length,
+        breakableCount,
         spec,
     };
 }

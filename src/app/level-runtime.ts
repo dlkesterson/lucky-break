@@ -12,7 +12,9 @@ import {
     remixLevel,
     getLoopScalingInfo,
     type BrickSpec,
+    type BrickForm,
     type LevelSpec,
+    type LevelGenerationOptions,
 } from 'util/levels';
 import { mixColors } from 'render/playfield-visuals';
 import { createBrickTextureCache } from 'render/brick-texture-cache';
@@ -71,12 +73,13 @@ export interface LevelRuntimeOptions {
     readonly coin: { readonly radius: number; readonly fallSpeed: number };
     readonly layoutOrientation?: 'portrait' | 'landscape';
     readonly getLayoutRandom?: (levelIndex: number) => RandomSource;
+    readonly decorateBrick?: LevelGenerationOptions['decorateBrick'];
 }
 
 export interface LevelRuntimeHandle {
     readonly brickHealth: Map<Body, number>;
     readonly brickMetadata: Map<Body, BrickSpec>;
-    readonly brickVisualState: Map<Body, { baseColor: number; maxHp: number; currentHp: number }>;
+    readonly brickVisualState: Map<Body, { baseColor: number; maxHp: number; currentHp: number; form: BrickForm }>;
     loadLevel(levelIndex: number): LevelLoadResult;
     setRowColors(rowColors: readonly number[]): void;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
@@ -109,13 +112,14 @@ export const createLevelRuntime = ({
     coin,
     layoutOrientation,
     getLayoutRandom,
+    decorateBrick,
 }: LevelRuntimeOptions): LevelRuntimeHandle => {
     const levelConfig = gameConfig.levels;
     const presetLevelCount = getPresetLevelCount();
 
     const brickHealth = new Map<Body, number>();
     const brickMetadata = new Map<Body, BrickSpec>();
-    const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number }>();
+    const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number; form: BrickForm }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
     const activeCoins: FallingCoin[] = [];
@@ -175,6 +179,7 @@ export const createLevelRuntime = ({
             currentHp: safeHp,
             width: brickSize.width,
             height: brickSize.height,
+            form: state.form,
         });
 
         visual.texture = texture;
@@ -268,6 +273,7 @@ export const createLevelRuntime = ({
             maxVoidColumns: scaling.maxVoidColumns,
             gambleChance,
             maxGambleBricks,
+            decorateBrick,
         });
         const difficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
         const chanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;
@@ -287,9 +293,12 @@ export const createLevelRuntime = ({
         let maxY = Number.NEGATIVE_INFINITY;
 
         layout.bricks.forEach((brickSpec) => {
+            const brickForm = brickSpec.form ?? 'rectangle';
             const brick = physics.factory.brick({
                 size: { width: brickSize.width, height: brickSize.height },
                 position: { x: brickSpec.x, y: brickSpec.y },
+                isSensor: brickSpec.isSensor ?? false,
+                shape: brickForm,
             });
             physics.add(brick);
 
@@ -301,6 +310,7 @@ export const createLevelRuntime = ({
                 currentHp: maxHp,
                 width: brickSize.width,
                 height: brickSize.height,
+                form: brickForm,
             });
             const brickVisual = new Sprite(texture);
             brickVisual.anchor.set(0.5);
@@ -313,7 +323,7 @@ export const createLevelRuntime = ({
 
             brickHealth.set(brick, maxHp);
             brickMetadata.set(brick, brickSpec);
-            brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp });
+            brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp, form: brickForm });
 
             minX = Math.min(minX, brickSpec.x - brickSize.width / 2);
             maxX = Math.max(maxX, brickSpec.x + brickSize.width / 2);
@@ -364,6 +374,7 @@ export const createLevelRuntime = ({
                 currentHp: state.currentHp,
                 width: brickSize.width,
                 height: brickSize.height,
+                form: state.form,
             });
             const visual = visualBodies.get(body);
             if (visual instanceof Sprite) {

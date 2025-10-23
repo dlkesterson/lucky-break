@@ -68,6 +68,7 @@ import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
+import { createBrickDecorator } from './brick-layout-decorator';
 import { getPresetLevelCount, setLevelPresetOffset } from 'util/levels';
 import { spinWheel, createReward, type Reward, type RewardType } from 'game/rewards';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
@@ -257,6 +258,7 @@ export const createGameRuntime = async ({
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
+    const layoutDecorator = createBrickDecorator(sessionOrientation);
 
     let rowColors = GameTheme.brickColors.map(toColorNumber);
     let themeBallColors: MultiBallColors = {
@@ -493,6 +495,7 @@ export const createGameRuntime = async ({
         coin: { radius: COIN_RADIUS, fallSpeed: COIN_FALL_SPEED },
         layoutOrientation: sessionOrientation,
         getLayoutRandom: (levelIndex) => mulberry32(deriveLayoutSeed(random.seed(), levelIndex)),
+        decorateBrick: layoutDecorator,
     });
 
     const brickHealth = levelRuntime.brickHealth;
@@ -2400,4 +2403,12 @@ export const createGameRuntime = async ({
         getSessionElapsedSeconds: () => sessionElapsedSeconds,
         dispose,
     } satisfies GameRuntimeHandle;
+};
+
+export const __internalGameRuntimeTesting = {
+    isPromiseLike,
+    waitForPromise,
+    isAutoplayBlockedError,
+    resolveToneTransport,
+    ensureToneAudio,
 };
