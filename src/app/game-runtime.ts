@@ -12,8 +12,8 @@ import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createSpeedRing } from 'render/effects/speed-ring';
 import { createBrickParticleSystem, type BrickParticleSystem } from 'render/effects/brick-particles';
-import { createVignettePulse, type VignettePulse } from 'render/effects/vignette-pulse';
 import { createHudDisplay, type HudPowerUpView, type HudRewardView } from 'render/hud-display';
+import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
@@ -69,7 +69,7 @@ import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { createBrickDecorator } from './brick-layout-decorator';
-import { getPresetLevelCount, setLevelPresetOffset } from 'util/levels';
+import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
 import { spinWheel, createReward, type Reward, type RewardType } from 'game/rewards';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { smoothTowards } from 'util/input-helpers';
@@ -167,6 +167,9 @@ const BASE_COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
 const HUD_SCALE = config.hud.scale;
 const HUD_MARGIN = config.hud.margin;
 const MIN_HUD_SCALE = config.hud.minScale;
+const MOBILE_HUD_MARGIN = Math.max(16, Math.round(HUD_MARGIN * 0.6));
+const MOBILE_HUD_MAX_SCALE = 1;
+const MOBILE_HUD_MIN_SCALE = 0.7;
 const BALL_BASE_SPEED = config.ball.baseSpeed;
 const BALL_MAX_SPEED = config.ball.maxSpeed;
 const BALL_LAUNCH_SPEED = config.ball.launchSpeed;
@@ -225,6 +228,7 @@ export interface GameRuntimeOptions {
     readonly container: HTMLElement;
     readonly playfieldDimensions?: { readonly width: number; readonly height: number };
     readonly layoutOrientation?: 'portrait' | 'landscape';
+    readonly uiProfile?: 'desktop' | 'mobile';
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
     readonly onAudioBlocked?: (error: unknown) => void;
@@ -242,6 +246,7 @@ export const createGameRuntime = async ({
     container,
     playfieldDimensions = PLAYFIELD_DEFAULT,
     layoutOrientation,
+    uiProfile,
     random,
     replayBuffer,
     onAudioBlocked,
@@ -257,6 +262,7 @@ export const createGameRuntime = async ({
     const PLAYFIELD_WIDTH = playfieldDimensions.width;
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
+    const hudProfile: 'desktop' | 'mobile' = uiProfile === 'mobile' ? 'mobile' : 'desktop';
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const layoutDecorator = createBrickDecorator(sessionOrientation);
 
@@ -309,7 +315,6 @@ export const createGameRuntime = async ({
     let ballLight: ReturnType<typeof createDynamicLight> | null = null;
     let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
     let brickParticles: BrickParticleSystem | null = null;
-    let beatVignette: VignettePulse | null = null;
     let ballSpeedRing: ReturnType<typeof createSpeedRing> | null = null;
     let inputDebugOverlay: InputDebugOverlay | null = null;
     let physicsDebugOverlay: PhysicsDebugOverlay | null = null;
@@ -322,8 +327,6 @@ export const createGameRuntime = async ({
     ];
     let lastPhysicsDebugState: PhysicsDebugOverlayState | null = null;
     let unsubscribeTheme: (() => void) | null = null;
-
-    let renderStageSoonRef: () => void = () => undefined;
 
     const {
         stage,
@@ -346,23 +349,9 @@ export const createGameRuntime = async ({
                 paddleGlowPulse = Math.min(1, paddleGlowPulse + paddle);
                 paddleLight?.flash(0.5);
             },
-            beatPulse: ({ intensity }: { intensity: number; step: number }) => {
-                const candidate = Number.isFinite(intensity) ? intensity : 0;
-                const strength = clampUnit(candidate);
-                if (strength <= 0) {
-                    return;
-                }
-                const overlay = beatVignette;
-                if (overlay) {
-                    overlay.pulse(strength);
-                    renderStageSoonRef();
-                }
-            },
         },
         onAudioBlocked,
     });
-
-    renderStageSoonRef = renderStageSoon;
 
     const physics = createPhysicsWorld({
         dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
@@ -537,12 +526,17 @@ export const createGameRuntime = async ({
             return;
         }
         const normalizedPenalty = Math.max(1, Math.round(penaltyHp));
-        brickHealth.set(brick, normalizedPenalty);
+        const clampedPenalty = Math.min(MAX_LEVEL_BRICK_HP, normalizedPenalty);
+        brickHealth.set(brick, clampedPenalty);
         const state = brickVisualState.get(brick);
         if (state) {
-            state.maxHp = Math.max(state.maxHp, normalizedPenalty);
+            const nextMax = state.isBreakable
+                ? Math.min(MAX_LEVEL_BRICK_HP, Math.max(state.maxHp, clampedPenalty))
+                : Math.max(state.maxHp, clampedPenalty);
+            state.maxHp = nextMax;
+            state.hasHpLabel = state.isBreakable && state.maxHp > 1;
         }
-        levelRuntime.updateBrickDamage(brick, normalizedPenalty);
+        levelRuntime.updateBrickDamage(brick, clampedPenalty);
         applyGambleAppearance(brick);
     };
 
@@ -609,19 +603,6 @@ export const createGameRuntime = async ({
     });
     brickParticles.container.zIndex = 42;
     stage.addToLayer('effects', brickParticles.container);
-
-    beatVignette = createVignettePulse({
-        width: PLAYFIELD_WIDTH,
-        height: PLAYFIELD_HEIGHT,
-        color: mixColors(0x040a18, themeAccents.combo, 0.3),
-        maxAlpha: 0.52,
-        baseAlpha: 0.22,
-        decayPerSecond: 2.85,
-        layerCount: 5,
-    });
-    beatVignette.container.zIndex = 980;
-    stage.addToLayer('effects', beatVignette.container);
-    beatVignette.container.visible = false;
 
     const gameContainer = new Container();
     gameContainer.zIndex = 10;
@@ -828,14 +809,18 @@ export const createGameRuntime = async ({
     hudContainer.visible = false;
     stage.layers.hud.addChild(hudContainer);
 
-    const hudDisplay = createHudDisplay(GameTheme);
+    const hudDisplay = hudProfile === 'mobile'
+        ? createMobileHudDisplay(GameTheme)
+        : createHudDisplay(GameTheme);
     hudContainer.addChild(hudDisplay.container);
 
     const positionHud = () => {
-        const margin = HUD_MARGIN;
+        const margin = hudProfile === 'mobile' ? MOBILE_HUD_MARGIN : HUD_MARGIN;
+        const maxScale = hudProfile === 'mobile' ? MOBILE_HUD_MAX_SCALE : HUD_SCALE;
+        const minScale = hudProfile === 'mobile' ? MOBILE_HUD_MIN_SCALE : MIN_HUD_SCALE;
         const hudWidth = hudDisplay.width;
         const hudHeight = hudDisplay.getHeight();
-        const clampScale = (value: number) => Math.max(MIN_HUD_SCALE, Math.min(HUD_SCALE, value));
+        const clampScale = (value: number) => Math.max(minScale, Math.min(maxScale, value));
 
         const place = (x: number, y: number, scale: number) => {
             hudDisplay.container.scale.set(scale);
@@ -843,13 +828,13 @@ export const createGameRuntime = async ({
         };
 
         if (!brickLayoutBounds) {
-            place(margin, margin, HUD_SCALE);
+            place(margin, margin, maxScale);
             return;
         }
 
         const fullWidthLimit = (PLAYFIELD_WIDTH - margin * 2) / hudWidth;
         const fullHeightLimit = (PLAYFIELD_HEIGHT - margin * 2) / hudHeight;
-        const globalScaleLimit = Math.max(MIN_HUD_SCALE, Math.min(HUD_SCALE, fullWidthLimit, fullHeightLimit));
+        const globalScaleLimit = Math.max(minScale, Math.min(maxScale, fullWidthLimit, fullHeightLimit));
 
         const placements: { priority: number; scale: number; x: number; y: number }[] = [];
         const { minX, maxX, minY, maxY } = brickLayoutBounds;
@@ -860,14 +845,14 @@ export const createGameRuntime = async ({
                 return;
             }
             let scale = clampScale(Math.min(globalScaleLimit, availableHeight / hudHeight));
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const width = hudWidth * scale;
             if (width > PLAYFIELD_WIDTH - margin * 2) {
                 scale = clampScale((PLAYFIELD_WIDTH - margin * 2) / hudWidth);
             }
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             placements.push({ priority: 0, scale, x: margin, y: margin });
@@ -879,14 +864,14 @@ export const createGameRuntime = async ({
                 return;
             }
             let scale = clampScale(Math.min(globalScaleLimit, availableWidth / hudWidth));
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const height = hudHeight * scale;
             if (height > PLAYFIELD_HEIGHT - margin * 2) {
                 scale = clampScale((PLAYFIELD_HEIGHT - margin * 2) / hudHeight);
             }
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const width = hudWidth * scale;
@@ -900,14 +885,14 @@ export const createGameRuntime = async ({
                 return;
             }
             let scale = clampScale(Math.min(globalScaleLimit, availableWidth / hudWidth));
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const height = hudHeight * scale;
             if (height > PLAYFIELD_HEIGHT - margin * 2) {
                 scale = clampScale((PLAYFIELD_HEIGHT - margin * 2) / hudHeight);
             }
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const y = Math.max(margin, Math.min(PLAYFIELD_HEIGHT - hudHeight * scale - margin, minY));
@@ -920,14 +905,14 @@ export const createGameRuntime = async ({
                 return;
             }
             let scale = clampScale(Math.min(globalScaleLimit, availableHeight / hudHeight));
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const width = hudWidth * scale;
             if (width > PLAYFIELD_WIDTH - margin * 2) {
                 scale = clampScale((PLAYFIELD_WIDTH - margin * 2) / hudWidth);
             }
-            if (scale < MIN_HUD_SCALE) {
+            if (scale < minScale) {
                 return;
             }
             const height = hudHeight * scale;
@@ -987,9 +972,6 @@ export const createGameRuntime = async ({
             combo: toColorNumber(theme.accents.combo),
             powerUp: toColorNumber(theme.accents.powerUp),
         };
-
-        const vignetteColor = mixColors(0x040a18, themeAccents.combo, 0.3);
-        beatVignette?.setColor(vignetteColor);
 
         visualFactory.ball.setDefaults(ballVisualDefaults);
         visualFactory.paddle.setDefaults(paddleVisualDefaults);
@@ -1465,12 +1447,17 @@ export const createGameRuntime = async ({
                     const gambleHitResult = gambleManager.onHit(brick);
                     if (gambleHitResult.type === 'prime') {
                         const resetHp = Math.max(1, Math.round(gambleHitResult.resetHp));
-                        brickHealth.set(brick, resetHp);
+                        const clampedReset = Math.min(MAX_LEVEL_BRICK_HP, resetHp);
+                        brickHealth.set(brick, clampedReset);
                         const visualState = brickVisualState.get(brick);
                         if (visualState) {
-                            visualState.maxHp = Math.max(visualState.maxHp, resetHp);
+                            const nextMax = visualState.isBreakable
+                                ? Math.min(MAX_LEVEL_BRICK_HP, Math.max(visualState.maxHp, clampedReset))
+                                : Math.max(visualState.maxHp, clampedReset);
+                            visualState.maxHp = nextMax;
+                            visualState.hasHpLabel = visualState.isBreakable && visualState.maxHp > 1;
                         }
-                        levelRuntime.updateBrickDamage(brick, resetHp);
+                        levelRuntime.updateBrickDamage(brick, clampedReset);
                         applyGambleAppearance(brick);
 
                         bus.publish('BrickHit', {
@@ -1481,7 +1468,7 @@ export const createGameRuntime = async ({
                             brickType: 'gamble',
                             comboHeat: scoringState.combo,
                             previousHp: currentHp,
-                            remainingHp: resetHp,
+                            remainingHp: clampedReset,
                         }, frameTimestampMs);
 
                         session.recordEntropyEvent({
@@ -2005,7 +1992,6 @@ export const createGameRuntime = async ({
         });
 
         brickParticles?.update(deltaSeconds);
-        beatVignette?.update(deltaSeconds);
 
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
@@ -2375,11 +2361,6 @@ export const createGameRuntime = async ({
             brickParticles.container.removeFromParent();
             brickParticles.destroy();
             brickParticles = null;
-        }
-        if (beatVignette) {
-            beatVignette.container.removeFromParent();
-            beatVignette.destroy();
-            beatVignette = null;
         }
         comboRing.container.removeFromParent();
         comboRing.dispose();

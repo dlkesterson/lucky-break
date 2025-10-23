@@ -152,6 +152,7 @@ vi.mock('util/levels', () => ({
     getLevelDifficultyMultiplier: levelMocks.getLevelDifficultyMultiplierMock,
     getLoopScalingInfo: levelMocks.getLoopScalingInfoMock,
     remixLevel: levelMocks.remixLevelMock,
+    MAX_LEVEL_BRICK_HP: 3,
 }));
 
 const {

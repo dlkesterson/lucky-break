@@ -1,4 +1,5 @@
 import { Graphics, Container, Sprite } from 'pixi.js';
+import * as PixiJS from 'pixi.js';
 import { gameConfig } from 'config/game';
 import { Body as MatterBody, Bodies } from 'matter-js';
 import type { Body } from 'matter-js';
@@ -11,6 +12,7 @@ import {
     getLevelDifficultyMultiplier,
     remixLevel,
     getLoopScalingInfo,
+    MAX_LEVEL_BRICK_HP,
     type BrickSpec,
     type BrickForm,
     type LevelSpec,
@@ -21,6 +23,8 @@ import { createBrickTextureCache } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
 import type { RandomSource } from 'util/random';
+
+type BrickHpLabel = Container & { text?: string };
 
 export interface BrickLayoutBounds {
     readonly minX: number;
@@ -79,7 +83,15 @@ export interface LevelRuntimeOptions {
 export interface LevelRuntimeHandle {
     readonly brickHealth: Map<Body, number>;
     readonly brickMetadata: Map<Body, BrickSpec>;
-    readonly brickVisualState: Map<Body, { baseColor: number; maxHp: number; currentHp: number; form: BrickForm }>;
+    readonly brickVisualState: Map<Body, {
+        baseColor: number;
+        maxHp: number;
+        currentHp: number;
+        form: BrickForm;
+        hasHpLabel: boolean;
+        hpLabel?: BrickHpLabel | null;
+        isBreakable: boolean;
+    }>;
     loadLevel(levelIndex: number): LevelLoadResult;
     setRowColors(rowColors: readonly number[]): void;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
@@ -119,11 +131,91 @@ export const createLevelRuntime = ({
 
     const brickHealth = new Map<Body, number>();
     const brickMetadata = new Map<Body, BrickSpec>();
-    const brickVisualState = new Map<Body, { baseColor: number; maxHp: number; currentHp: number; form: BrickForm }>();
+    const brickVisualState = new Map<Body, {
+        baseColor: number;
+        maxHp: number;
+        currentHp: number;
+        form: BrickForm;
+        hasHpLabel: boolean;
+        hpLabel?: BrickHpLabel | null;
+        isBreakable: boolean;
+    }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
     const activeCoins: FallingCoin[] = [];
     const brickTextures = createBrickTextureCache(stage.app.renderer);
+    const ensureHpLabel = (
+        visual: Sprite,
+        existing: BrickHpLabel | null | undefined,
+        value: string,
+    ): BrickHpLabel => {
+        if (existing) {
+            if ('text' in existing && typeof existing.text === 'string') {
+                existing.text = value;
+            }
+            existing.visible = value.length > 0;
+            return existing;
+        }
+        let label: BrickHpLabel;
+        const hasTextCtor = typeof PixiJS === 'object' && PixiJS !== null && Object.prototype.hasOwnProperty.call(PixiJS, 'Text');
+        const TextCtor = hasTextCtor
+            ? (PixiJS as { Text: new (...args: any[]) => Container & { text?: string } }).Text
+            : null;
+        if (typeof TextCtor === 'function') {
+            const fontSize = Math.max(12, Math.round(brickSize.height * 0.55));
+            const strokeWidth = Math.max(2, Math.round(fontSize * 0.18));
+            label = new TextCtor(value, {
+                fontSize,
+                fontWeight: 'bold',
+                fontFamily: 'Luckiest Guy, Overpass, sans-serif',
+                fill: 0xffffff,
+                stroke: { color: 0x000000, width: strokeWidth, join: 'round' },
+                align: 'center',
+                letterSpacing: 1,
+            }) as BrickHpLabel;
+        } else {
+            const placeholder = new Container() as BrickHpLabel;
+            placeholder.text = value;
+            placeholder.alpha = 0;
+            label = placeholder;
+        }
+
+        const anchorCandidate = (label as unknown as { anchor?: { set?: (x: number, y?: number) => void } }).anchor;
+        if (anchorCandidate && typeof anchorCandidate.set === 'function') {
+            anchorCandidate.set(0.5);
+        } else {
+            const pivotCandidate = (label as unknown as { pivot?: { set?: (x: number, y?: number) => void } }).pivot;
+            if (pivotCandidate && typeof pivotCandidate.set === 'function') {
+                pivotCandidate.set(brickSize.width * 0.5, brickSize.height * 0.5);
+            }
+        }
+
+        if ('text' in label && typeof label.text === 'string') {
+            label.text = value;
+        }
+
+        label.position.set(0, 0);
+        label.eventMode = 'none';
+        label.alpha = typeof TextCtor === 'function' ? 0.96 : 0;
+        label.zIndex = 10;
+        label.visible = value.length > 0;
+        visual.sortableChildren = true;
+        visual.addChild(label);
+        return label;
+    };
+
+    const removeHpLabel = (visual: Sprite, label: BrickHpLabel | null | undefined): void => {
+        if (!label) {
+            return;
+        }
+        if (label.parent === visual) {
+            visual.removeChild(label);
+        } else if (label.parent) {
+            label.parent.removeChild(label);
+        }
+        label.visible = false;
+        label.destroy();
+    };
     let paletteRowColors = rowColors.length > 0 ? [...rowColors] : [0xffffff];
 
     const resolvePaletteColor = (rowIndex: number): number => {
@@ -170,7 +262,12 @@ export const createLevelRuntime = ({
             return;
         }
 
-        const safeHp = Math.max(0, Math.min(state.maxHp, Math.round(currentHp)));
+        const rawCurrentHp = Math.round(currentHp);
+        const nextMaxHp = state.isBreakable
+            ? Math.min(MAX_LEVEL_BRICK_HP, Math.max(state.maxHp, rawCurrentHp))
+            : Math.max(state.maxHp, rawCurrentHp);
+        state.maxHp = nextMaxHp;
+        const safeHp = Math.max(0, Math.min(nextMaxHp, rawCurrentHp));
         state.currentHp = safeHp;
 
         const texture = brickTextures.get({
@@ -186,6 +283,17 @@ export const createLevelRuntime = ({
         visual.alpha = brickLighting.restAlpha;
         visual.tint = 0xffffff;
         visual.blendMode = 'normal';
+
+        if (state.isBreakable && state.maxHp > 1) {
+            const label = ensureHpLabel(visual, state.hpLabel, `${Math.max(0, safeHp)}`);
+            label.visible = safeHp > 0;
+            state.hpLabel = label;
+            state.hasHpLabel = true;
+        } else if (state.hasHpLabel) {
+            removeHpLabel(visual, state.hpLabel);
+            state.hpLabel = null;
+            state.hasHpLabel = false;
+        }
     };
 
     const clearBricks = () => {
@@ -199,7 +307,7 @@ export const createLevelRuntime = ({
         brickVisualState.clear();
     };
 
-    const orientation = layoutOrientation ?? 'portrait';
+    const orientation = layoutOrientation ?? 'landscape';
 
     const remapHpForSwappedRows = (
         hpResolver: LevelSpec['hpPerRow'],
@@ -226,7 +334,7 @@ export const createLevelRuntime = ({
     };
 
     const toOrientationSpec = (spec: LevelSpec): LevelSpec => {
-        if (orientation !== 'landscape') {
+        if (orientation !== 'portrait') {
             return spec;
         }
         if (spec.rows >= spec.cols) {
@@ -303,7 +411,9 @@ export const createLevelRuntime = ({
             physics.add(brick);
 
             const paletteColor = resolvePaletteColor(brickSpec.row);
-            const maxHp = Math.max(1, brickSpec.hp);
+            const isBreakable = brickSpec.breakable !== false;
+            const rawHp = Math.max(1, brickSpec.hp);
+            const maxHp = isBreakable ? Math.min(MAX_LEVEL_BRICK_HP, rawHp) : rawHp;
             const texture = brickTextures.get({
                 baseColor: paletteColor,
                 maxHp,
@@ -314,6 +424,7 @@ export const createLevelRuntime = ({
             });
             const brickVisual = new Sprite(texture);
             brickVisual.anchor.set(0.5);
+            brickVisual.sortableChildren = true;
             brickVisual.position.set(brickSpec.x, brickSpec.y);
             brickVisual.zIndex = 5;
             brickVisual.alpha = brickLighting.restAlpha;
@@ -321,9 +432,23 @@ export const createLevelRuntime = ({
             visualBodies.set(brick, brickVisual);
             stage.layers.playfield.addChild(brickVisual);
 
+            const hasHpLabel = isBreakable && maxHp > 1;
+            let hpLabel: BrickHpLabel | null = null;
+            if (hasHpLabel) {
+                hpLabel = ensureHpLabel(brickVisual, null, `${maxHp}`);
+            }
+
             brickHealth.set(brick, maxHp);
             brickMetadata.set(brick, brickSpec);
-            brickVisualState.set(brick, { baseColor: paletteColor, maxHp, currentHp: maxHp, form: brickForm });
+            brickVisualState.set(brick, {
+                baseColor: paletteColor,
+                maxHp,
+                currentHp: maxHp,
+                form: brickForm,
+                hasHpLabel,
+                hpLabel,
+                isBreakable,
+            });
 
             minX = Math.min(minX, brickSpec.x - brickSize.width / 2);
             maxX = Math.max(maxX, brickSpec.x + brickSize.width / 2);

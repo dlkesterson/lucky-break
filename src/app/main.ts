@@ -53,6 +53,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             return {
                 orientation: 'landscape' as const,
                 dimensions: { width: 1280, height: 720 },
+                isMobile: false,
             };
         }
 
@@ -64,10 +65,12 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
             ? {
                 orientation: 'portrait' as const,
                 dimensions: { width: 720, height: 1280 },
+                isMobile,
             }
             : {
                 orientation: 'landscape' as const,
                 dimensions: { width: 1280, height: 720 },
+                isMobile,
             };
     };
 
@@ -148,6 +151,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 container,
                 playfieldDimensions: initialLayout.dimensions,
                 layoutOrientation: initialLayout.orientation,
+                uiProfile: initialLayout.isMobile ? 'mobile' : 'desktop',
                 random,
                 replayBuffer,
                 onAudioBlocked: (error) => {

@@ -20,6 +20,7 @@ const LOOP_PROGRESSIONS = config.levels.loopProgression;
 const LOOP_FALLBACK = config.levels.loopFallback;
 const GAMBLE_CONFIG = config.levels.gamble;
 const WALL_BRICK_HP = 9999;
+export const MAX_LEVEL_BRICK_HP = 3;
 
 export interface LoopScalingInfo {
     readonly loopCount: number;
@@ -426,6 +427,10 @@ export function generateLevelLayout(
 
             if (!finalBreakable && decoratedHp === undefined) {
                 finalHp = WALL_BRICK_HP;
+            }
+
+            if (finalBreakable) {
+                finalHp = Math.min(MAX_LEVEL_BRICK_HP, finalHp);
             }
 
             const resolvedTraits = mergedTraits.length > 0 ? mergedTraits : undefined;

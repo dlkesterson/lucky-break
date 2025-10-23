@@ -11,6 +11,7 @@ import {
     remixLevel,
     setLevelPresetOffset,
     getLevelPresetOffset,
+    MAX_LEVEL_BRICK_HP,
 } from 'util/levels';
 import { mulberry32 } from 'util/random';
 
@@ -375,7 +376,7 @@ describe('generateLevelLayout', () => {
         expect(first.hp).toBe(2);
         expect(first.breakable).toBe(true);
 
-        expect(second.hp).toBe(Number.POSITIVE_INFINITY);
+        expect(second.hp).toBe(MAX_LEVEL_BRICK_HP);
         expect(second.breakable).toBe(true);
 
         expect(third.hp).toBe(1);
