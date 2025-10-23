@@ -46,9 +46,17 @@ describe('Input Contracts', () => {
         it('should define debug state properties', () => {
             const debugState: InputDebugState = {
                 activeInputs: ['mouse', 'keyboard'] as readonly InputType[],
+                primaryInput: 'mouse',
                 mousePosition: { x: 100, y: 200 },
+                touchPosition: null,
+                gamepadCursor: { x: 150, y: 250 },
+                gamepadAxisRaw: 0.5,
+                gamepadAxisNormalized: 0.35,
+                gamepadButtonsPressed: [0, 1],
+                gamepadLaunchHeld: false,
                 keyboardPressed: ['ArrowLeft', 'Space'] as readonly string[],
                 paddleTarget: { x: 300, y: 400 },
+                aimDirection: { x: 0, y: -1 },
                 launchPending: true,
             };
 
@@ -57,14 +65,26 @@ describe('Input Contracts', () => {
             expect(debugState.keyboardPressed).toEqual(['ArrowLeft', 'Space']);
             expect(debugState.paddleTarget).toEqual({ x: 300, y: 400 });
             expect(debugState.launchPending).toBe(true);
+            expect(debugState.gamepadAxisRaw).toBeCloseTo(0.5);
+            expect(debugState.gamepadAxisNormalized).toBeCloseTo(0.35);
+            expect(debugState.gamepadButtonsPressed).toEqual([0, 1]);
+            expect(debugState.aimDirection).toEqual({ x: 0, y: -1 });
         });
 
         it('should allow null values for optional properties', () => {
             const debugState: InputDebugState = {
                 activeInputs: [] as readonly InputType[],
+                primaryInput: null,
                 mousePosition: null,
+                touchPosition: null,
+                gamepadCursor: null,
+                gamepadAxisRaw: null,
+                gamepadAxisNormalized: null,
+                gamepadButtonsPressed: [],
+                gamepadLaunchHeld: false,
                 keyboardPressed: [] as readonly string[],
                 paddleTarget: null,
+                aimDirection: null,
                 launchPending: false,
             };
 

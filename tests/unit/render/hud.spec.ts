@@ -18,7 +18,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
             volleyLength: 9,
             speedPressure: 0.62,
             brickDensity: 32 / 96,
-            comboHeat: 7,
+            comboHeat: 0.7,
             comboTimer: 1.2,
             updatedAt: 120_000,
         },
@@ -54,7 +54,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
                 volleyLength: 9,
                 speedPressure: 0.62,
                 brickDensity: 32 / 96,
-                comboHeat: 7,
+                comboHeat: 0.7,
                 comboTimer: 1.2,
             },
             entropy: {
@@ -96,7 +96,11 @@ describe('buildHudScoreboard', () => {
         expect(view.entries).toContainEqual({ id: 'score', label: 'Score', value: '4,250' });
         expect(view.entries).toContainEqual({ id: 'lives', label: 'Lives', value: '❤❤' });
         expect(view.entries).toContainEqual({ id: 'bricks', label: 'Bricks', value: '32 / 96 (67%)' });
-        expect(view.entries).toContainEqual({ id: 'momentum', label: 'Momentum', value: 'Heat 7 · Volley 9' });
+        expect(view.entries).toContainEqual({
+            id: 'momentum',
+            label: 'Momentum',
+            value: 'Heat 70% · Volley 9 · Speed 62% · Field 33%',
+        });
     });
 
     it('surfaces completed status and prompts when the round ends', () => {
@@ -128,7 +132,7 @@ describe('buildHudScoreboard', () => {
                     volleyLength: 12,
                     speedPressure: 0.85,
                     brickDensity: 0,
-                    comboHeat: 12,
+                    comboHeat: 0.95,
                     comboTimer: 1.4,
                 },
                 entropy: {
@@ -199,7 +203,7 @@ describe('buildHudScoreboard', () => {
                     volleyLength: 3,
                     speedPressure: 0.2,
                     brickDensity: 0.125,
-                    comboHeat: 1,
+                    comboHeat: 0.1,
                     comboTimer: 0.4,
                 },
                 entropy: {

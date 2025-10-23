@@ -137,6 +137,33 @@ describe('createGameSessionManager', () => {
         });
     });
 
+    it('allows direct momentum updates between brick breaks', () => {
+        const { manager, clock } = createSnapshot();
+
+        manager.startRound({ breakableBricks: 10 });
+        clock.tick(320);
+
+        manager.updateMomentum({
+            volleyLength: 3,
+            speedPressure: 0.58,
+            brickDensity: 0.75,
+            comboHeat: 0.42,
+            comboTimer: 0.9,
+        });
+
+        const snapshot = manager.snapshot();
+        expect(snapshot.momentum).toMatchObject({
+            volleyLength: 3,
+            speedPressure: 0.58,
+            brickDensity: 0.75,
+            comboHeat: 0.42,
+            comboTimer: 0.9,
+        });
+        expect(snapshot.momentum.updatedAt).toBe(320);
+        expect(snapshot.hud.momentum.comboHeat).toBeCloseTo(0.42, 5);
+        expect(snapshot.hud.momentum.comboTimer).toBeCloseTo(0.9, 5);
+    });
+
     it('collects coin pickups and increases the score', () => {
         const { manager } = createSnapshot();
 

@@ -107,14 +107,33 @@ export class InputDebugOverlay {
         const paddleDebug = this.options.paddleController.getDebugInfo(this.options.paddle);
         const ballDebug = this.options.ballController.getDebugInfo(this.options.ball);
 
+        const activeInputs = inputState.activeInputs.length > 0
+            ? inputState.activeInputs.join(', ')
+            : '—';
+        const keyboardPressed = inputState.keyboardPressed.length > 0
+            ? inputState.keyboardPressed.join(', ')
+            : '—';
+        const gamepadButtons = (inputState.gamepadButtonsPressed?.length ?? 0) > 0
+            ? inputState.gamepadButtonsPressed.join(', ')
+            : '—';
+        const axisRaw = this.formatNumber(inputState.gamepadAxisRaw);
+        const axisFiltered = this.formatNumber(inputState.gamepadAxisNormalized);
+        const aimVector = this.formatVector(inputState.aimDirection);
+        const launchState = inputState.launchPending ? 'pending' : 'ready';
+        const launchExtras = inputState.gamepadLaunchHeld ? ' | trigger held' : '';
+
         const lines: string[] = [
             `Mode: ${inputState.primaryInput ?? 'none'}`,
-            `Active: ${inputState.activeInputs.length > 0 ? inputState.activeInputs.join(', ') : '—'}`,
+            `Active: ${activeInputs}`,
             `Mouse: ${this.formatVector(inputState.mousePosition)}`,
             `Touch: ${this.formatVector(inputState.touchPosition)}`,
             `Gamepad: ${this.formatVector(inputState.gamepadCursor)}`,
+            `Axis: raw ${axisRaw} | filtered ${axisFiltered}`,
+            `Buttons: ${gamepadButtons}`,
+            `Keyboard: ${keyboardPressed}`,
+            `Aim: ${aimVector}`,
             `Target: ${this.formatVector(inputState.paddleTarget)}`,
-            `Launch: ${inputState.launchPending ? 'pending' : 'ready'}`,
+            `Launch: ${launchState}${launchExtras}`,
             `Paddle: ${this.formatVector(paddleDebug.position)} | w ${paddleDebug.bounds.width.toFixed(1)}`,
             `Ball: ${ballDebug.isAttached ? 'attached' : 'free'} | pos ${this.formatVector(ballDebug.position)} | vel ${this.formatVector(ballDebug.velocity)}`,
         ];
@@ -145,6 +164,13 @@ export class InputDebugOverlay {
             return '—';
         }
         return `${value.x.toFixed(1)}, ${value.y.toFixed(1)}`;
+    }
+
+    private formatNumber(value: number | null | undefined): string {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return '—';
+        }
+        return value.toFixed(2);
     }
 
     private resolvePointerColor(primary: InputType | null): number {

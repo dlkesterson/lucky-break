@@ -195,6 +195,7 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
             fortifiedChance: scaling.fortifiedChance,
             voidColumnChance: scaling.voidColumnChance,
             centerFortifiedBias: scaling.centerFortifiedBias,
+            maxVoidColumns: scaling.maxVoidColumns,
         },
     );
 
@@ -278,6 +279,7 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
     session.startRound({ breakableBricks: total });
 
     const scoring = createScoring();
+    session.updateMomentum(getMomentumMetrics(scoring));
     const metrics: HeadlessMetrics = {
         frames: 0,
         durationMs: 0,
@@ -488,6 +490,7 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
             session.recordLifeLost('ball-drop');
             const comboBeforeReset = scoring.combo;
             resetCombo(scoring);
+            session.updateMomentum(getMomentumMetrics(scoring));
             if (comboBeforeReset > 0) {
                 session.recordEntropyEvent({
                     type: 'combo-reset',
@@ -501,6 +504,7 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         }
 
         decayCombo(scoring, STEP_SECONDS);
+        session.updateMomentum(getMomentumMetrics(scoring));
         elapsedMs += STEP_MS;
         metrics.frames += 1;
         metrics.durationMs = elapsedMs;

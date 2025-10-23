@@ -36,6 +36,15 @@ export interface ScoreState {
     momentum: MomentumMetrics;
 }
 
+export interface ScoringMomentumConfig {
+    /** Scales existing pressure when a new impact arrives (0-1 keeps value bounded) */
+    readonly speedPressureImpactRetention?: number;
+    /** Passive decay applied when no impact data is provided (0-1 multiplier) */
+    readonly speedPressureAmbientDecay?: number;
+    /** Linear decay applied per second when combo is ticking down */
+    readonly speedPressureDecayPerSecond?: number;
+}
+
 export interface ScoringConfig {
     /** Base points per brick break */
     readonly basePoints?: number;
@@ -45,6 +54,8 @@ export interface ScoringConfig {
     readonly multiplierPerThreshold?: number;
     /** Combo decay timer duration in seconds (default: 1.6) */
     readonly comboDecayTime?: number;
+    /** Optional overrides for momentum tuning */
+    readonly momentum?: ScoringMomentumConfig;
 }
 
 export interface BrickImpactContext {
@@ -64,6 +75,42 @@ const DEFAULT_MULTIPLIER_THRESHOLD = config.scoring.multiplierThreshold;
 const DEFAULT_MULTIPLIER_PER_THRESHOLD = config.scoring.multiplierPerThreshold;
 const DEFAULT_COMBO_DECAY_TIME = config.scoring.comboDecayTime;
 const DEFAULT_MAX_SPEED = config.ball.maxSpeed;
+
+interface MomentumTuningDefaults {
+    speedPressureImpactRetention: number;
+    speedPressureAmbientDecay: number;
+    speedPressureDecayPerSecond: number;
+}
+
+const DEFAULT_MOMENTUM_TUNING: MomentumTuningDefaults = {
+    speedPressureImpactRetention: config.scoring.momentum.speedPressureImpactRetention,
+    speedPressureAmbientDecay: config.scoring.momentum.speedPressureAmbientDecay,
+    speedPressureDecayPerSecond: config.scoring.momentum.speedPressureDecayPerSecond,
+};
+
+interface ResolvedMomentumConfig {
+    impactRetention: number;
+    ambientDecay: number;
+    decayPerSecond: number;
+}
+
+const coerceNumber = (value: number | undefined, fallback: number): number =>
+    value !== undefined && Number.isFinite(value) ? value : fallback;
+
+const resolveMomentumConfig = (override?: ScoringMomentumConfig): ResolvedMomentumConfig => {
+    const impactRetention = clamp01(
+        coerceNumber(override?.speedPressureImpactRetention, DEFAULT_MOMENTUM_TUNING.speedPressureImpactRetention),
+    );
+    const ambientDecay = clamp01(
+        coerceNumber(override?.speedPressureAmbientDecay, DEFAULT_MOMENTUM_TUNING.speedPressureAmbientDecay),
+    );
+    const decayPerSecond = Math.max(
+        0,
+        coerceNumber(override?.speedPressureDecayPerSecond, DEFAULT_MOMENTUM_TUNING.speedPressureDecayPerSecond),
+    );
+
+    return { impactRetention, ambientDecay, decayPerSecond };
+};
 
 /**
  * Create a new scoring state
@@ -124,12 +171,16 @@ export function awardBrickPoints(
         momentum.brickDensity = clamp01(bricksRemaining / brickTotal);
     }
 
+    const momentumConfig = resolveMomentumConfig(config.momentum);
     const speedCap = maxSpeed ?? DEFAULT_MAX_SPEED;
     if (speedCap > 0 && impactSpeed !== undefined && Number.isFinite(impactSpeed)) {
         const normalizedSpeed = clamp01(Math.abs(impactSpeed) / speedCap);
-        momentum.speedPressure = Math.max(momentum.speedPressure * 0.65, normalizedSpeed);
+        const retained = momentum.speedPressure * momentumConfig.impactRetention;
+        const updated = Math.max(retained, normalizedSpeed);
+        momentum.speedPressure = clamp01(updated);
     } else {
-        momentum.speedPressure *= 0.85;
+        const decayed = momentum.speedPressure * momentumConfig.ambientDecay;
+        momentum.speedPressure = clamp01(decayed);
     }
 
     const comboHeat = threshold > 0 ? clamp01(state.combo / threshold) : 0;
@@ -148,7 +199,7 @@ export function awardBrickPoints(
  * @param state - Score state to update (mutates in place)
  * @param deltaSeconds - Time elapsed since last update (in seconds)
  */
-export function decayCombo(state: ScoreState, deltaSeconds: number): void {
+export function decayCombo(state: ScoreState, deltaSeconds: number, config: ScoringConfig = {}): void {
     if (state.comboTimer > 0) {
         state.comboTimer -= deltaSeconds;
         if (state.comboTimer <= 0) {
@@ -159,12 +210,15 @@ export function decayCombo(state: ScoreState, deltaSeconds: number): void {
     }
 
     const momentum = state.momentum;
-    const SPEED_PRESSURE_DECAY_PER_SECOND = 0.9;
-    if (momentum.speedPressure > 0 && Number.isFinite(deltaSeconds) && deltaSeconds > 0) {
-        momentum.speedPressure = Math.max(
-            0,
-            momentum.speedPressure - deltaSeconds * SPEED_PRESSURE_DECAY_PER_SECOND,
-        );
+    const momentumConfig = resolveMomentumConfig(config.momentum);
+    if (
+        momentum.speedPressure > 0 &&
+        Number.isFinite(deltaSeconds) &&
+        deltaSeconds > 0 &&
+        momentumConfig.decayPerSecond > 0
+    ) {
+        const decayed = momentum.speedPressure - deltaSeconds * momentumConfig.decayPerSecond;
+        momentum.speedPressure = clamp01(Math.max(0, decayed));
     }
 
     momentum.comboTimer = Math.max(0, state.comboTimer);

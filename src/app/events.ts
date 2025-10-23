@@ -1,4 +1,4 @@
-export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up';
+export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up' | 'gamble';
 export type WallHitSide = 'top' | 'left' | 'right' | 'bottom';
 export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
 export interface VectorLike {

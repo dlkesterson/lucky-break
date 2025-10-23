@@ -137,6 +137,7 @@ const levelMocks = vi.hoisted(() => ({
         fortifiedChance: 0,
         voidColumnChance: 0,
         centerFortifiedBias: 0,
+        maxVoidColumns: 2,
     })),
     remixLevelMock: vi.fn((spec: unknown, loopCount: number) => {
         void loopCount;

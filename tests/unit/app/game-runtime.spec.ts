@@ -93,6 +93,14 @@ const createGameSessionManagerMock = vi.hoisted(() =>
             status: 'active',
             score: 0,
             coins: 0,
+            momentum: {
+                volleyLength: 0,
+                speedPressure: 0,
+                brickDensity: 1,
+                comboHeat: 0,
+                comboTimer: 0,
+                updatedAt: Date.now(),
+            },
             entropy: {
                 charge: 0,
                 stored: 0,
@@ -117,11 +125,11 @@ const createGameSessionManagerMock = vi.hoisted(() =>
                     brickRemaining: state.brickRemaining,
                     brickTotal: state.brickTotal,
                     momentum: {
-                        volleyLength: 0,
-                        speedPressure: 0,
-                        brickDensity: state.brickTotal === 0 ? 0 : state.brickRemaining / state.brickTotal,
-                        comboHeat: 0,
-                        comboTimer: 0,
+                        volleyLength: state.momentum.volleyLength,
+                        speedPressure: state.momentum.speedPressure,
+                        brickDensity: state.momentum.brickDensity,
+                        comboHeat: state.momentum.comboHeat,
+                        comboTimer: state.momentum.comboTimer,
                     },
                     entropy: {
                         charge: state.entropy.charge,
@@ -157,6 +165,16 @@ const createGameSessionManagerMock = vi.hoisted(() =>
                 state.score += safeAmount;
             }),
             getEntropyState: vi.fn(() => ({ ...state.entropy })),
+            updateMomentum: vi.fn((snapshot: Partial<Record<string, number>>) => {
+                state.momentum = {
+                    volleyLength: Math.max(0, Math.round(snapshot?.volleyLength ?? 0)),
+                    speedPressure: Math.max(0, Math.min(1, snapshot?.speedPressure ?? 0)),
+                    brickDensity: Math.max(0, Math.min(1, snapshot?.brickDensity ?? state.momentum.brickDensity ?? 0)),
+                    comboHeat: Math.max(0, Math.min(1, snapshot?.comboHeat ?? 0)),
+                    comboTimer: Math.max(0, snapshot?.comboTimer ?? 0),
+                    updatedAt: Date.now(),
+                };
+            }),
         };
 
         sessionManagerState.instances.push(handle);
@@ -638,8 +656,13 @@ vi.mock('render/paddle-body', () => {
                 mousePosition: null,
                 touchPosition: null,
                 gamepadCursor: null,
+                gamepadAxisRaw: null,
+                gamepadAxisNormalized: null,
+                gamepadButtonsPressed: [],
+                gamepadLaunchHeld: false,
                 keyboardPressed: [],
                 paddleTarget: null,
+                aimDirection: null,
                 launchPending: false,
             },
         }));
@@ -664,8 +687,13 @@ vi.mock('input/input-manager', () => {
             mousePosition: null,
             touchPosition: null,
             gamepadCursor: null,
+            gamepadAxisRaw: null,
+            gamepadAxisNormalized: null,
+            gamepadButtonsPressed: [],
+            gamepadLaunchHeld: false,
             keyboardPressed: [],
             paddleTarget: null,
+            aimDirection: null,
             launchPending: false,
         }));
     }
@@ -699,6 +727,13 @@ vi.mock('util/scoring', () => ({
         score: 0,
         combo: 0,
         comboTimer: 0,
+        momentum: {
+            volleyLength: 0,
+            speedPressure: 0,
+            brickDensity: 1,
+            comboHeat: 0,
+            comboTimer: 0,
+        },
     })),
     awardBrickPoints: vi.fn(() => 100),
     decayCombo: vi.fn((state: { comboTimer: number }, delta: number) => {
@@ -708,6 +743,13 @@ vi.mock('util/scoring', () => ({
         state.combo = 0;
         state.comboTimer = 0;
     }),
+    getMomentumMetrics: vi.fn((state: { momentum?: Record<string, number> }) => ({
+        volleyLength: state.momentum?.volleyLength ?? 0,
+        speedPressure: state.momentum?.speedPressure ?? 0,
+        brickDensity: state.momentum?.brickDensity ?? 0,
+        comboHeat: state.momentum?.comboHeat ?? 0,
+        comboTimer: state.momentum?.comboTimer ?? 0,
+    })),
 }));
 
 vi.mock('./combo-milestones', () => ({

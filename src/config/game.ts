@@ -12,6 +12,7 @@ interface LevelLoopProgressionStep {
     readonly fortifiedChance: number;
     readonly voidColumnChance: number;
     readonly centerFortifiedBias: number;
+    readonly maxVoidColumns?: number;
 }
 
 interface LevelLoopProgressionFallback {
@@ -29,6 +30,21 @@ interface LevelLoopProgressionFallback {
     readonly maxFortifiedChance: number;
     readonly maxVoidColumnChance: number;
     readonly maxCenterFortifiedBias: number;
+    readonly maxVoidColumnsIncrement: number;
+    readonly maxVoidColumnsCap: number;
+}
+
+interface GambleBrickConfig {
+    readonly baseChance: number;
+    readonly loopBonus: number;
+    readonly maxChance: number;
+    readonly maxPerLevel: number;
+    readonly timerSeconds: number;
+    readonly rewardMultiplier: number;
+    readonly primeResetHp: number;
+    readonly failPenaltyHp: number;
+    readonly tintArmed: string;
+    readonly tintPrimed: string;
 }
 
 export type RewardKey =
@@ -137,6 +153,11 @@ export interface GameConfig {
         readonly multiplierThreshold: number;
         readonly multiplierPerThreshold: number;
         readonly comboDecayTime: number;
+        readonly momentum: {
+            readonly speedPressureImpactRetention: number;
+            readonly speedPressureAmbientDecay: number;
+            readonly speedPressureDecayPerSecond: number;
+        };
     };
     readonly speedRegulation: {
         readonly comboStep: number;
@@ -149,6 +170,7 @@ export interface GameConfig {
         readonly maxVoidColumns: number;
         readonly loopProgression: readonly LevelLoopProgressionStep[];
         readonly loopFallback: LevelLoopProgressionFallback;
+        readonly gamble: GambleBrickConfig;
     };
     readonly rewards: {
         readonly definitions: RewardDefinitionMap;
@@ -214,6 +236,11 @@ export const gameConfig = {
         multiplierThreshold: 8,
         multiplierPerThreshold: 0.25,
         comboDecayTime: 1.6,
+        momentum: {
+            speedPressureImpactRetention: 0.65,
+            speedPressureAmbientDecay: 0.85,
+            speedPressureDecayPerSecond: 0.9,
+        },
     },
     speedRegulation: {
         comboStep: 8,
@@ -234,6 +261,7 @@ export const gameConfig = {
                 fortifiedChance: 0.12,
                 voidColumnChance: 0.05,
                 centerFortifiedBias: 0.35,
+                maxVoidColumns: 2,
             },
             {
                 speedMultiplier: 1.16,
@@ -244,6 +272,7 @@ export const gameConfig = {
                 fortifiedChance: 0.2,
                 voidColumnChance: 0.08,
                 centerFortifiedBias: 0.45,
+                maxVoidColumns: 3,
             },
             {
                 speedMultiplier: 1.24,
@@ -254,6 +283,7 @@ export const gameConfig = {
                 fortifiedChance: 0.28,
                 voidColumnChance: 0.12,
                 centerFortifiedBias: 0.5,
+                maxVoidColumns: 3,
             },
         ],
         loopFallback: {
@@ -271,6 +301,20 @@ export const gameConfig = {
             maxFortifiedChance: 0.6,
             maxVoidColumnChance: 0.25,
             maxCenterFortifiedBias: 0.8,
+            maxVoidColumnsIncrement: 1,
+            maxVoidColumnsCap: 5,
+        },
+        gamble: {
+            baseChance: 0.08,
+            loopBonus: 0.025,
+            maxChance: 0.22,
+            maxPerLevel: 3,
+            timerSeconds: 3.5,
+            rewardMultiplier: 4,
+            primeResetHp: 1,
+            failPenaltyHp: 3,
+            tintArmed: '#4DD8A6',
+            tintPrimed: '#FFD166',
         },
     },
     rewards: {

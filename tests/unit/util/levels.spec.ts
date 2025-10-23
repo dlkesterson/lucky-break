@@ -77,6 +77,21 @@ describe('remixLevel', () => {
     });
 });
 
+describe('loop scaling info', () => {
+    it('expands void column allowance on later loops', () => {
+        const base = getLoopScalingInfo(0);
+        const secondLoop = getLoopScalingInfo(2);
+
+        expect(secondLoop.maxVoidColumns).toBeGreaterThan(base.maxVoidColumns);
+    });
+
+    it('caps void column allowance using fallback configuration', () => {
+        const progressionLength = gameConfig.levels.loopProgression.length;
+        const farLoopInfo = getLoopScalingInfo(progressionLength + 7);
+        expect(farLoopInfo.maxVoidColumns).toBeLessThanOrEqual(gameConfig.levels.loopFallback.maxVoidColumnsCap);
+    });
+});
+
 describe('generateLevelLayout', () => {
     it('applies deterministic procedural variations based on seeded randomness', () => {
         const config = gameConfig;
@@ -114,5 +129,80 @@ describe('generateLevelLayout', () => {
         expect(layoutA.bricks.length).toBeLessThan(totalSlots);
         const fortifiedCount = layoutA.bricks.filter((brick) => brick.traits?.includes('fortified')).length;
         expect(fortifiedCount).toBeGreaterThan(0);
+    });
+
+    it('assigns gamble bricks within configured limits deterministically', () => {
+        const config = gameConfig;
+        const baseSpec = getLevelSpec(0);
+        const chance = 1;
+        const maxGamble = 2;
+        const seed = 20251023;
+
+        const layoutA = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: mulberry32(seed),
+                gambleChance: chance,
+                maxGambleBricks: maxGamble,
+            },
+        );
+
+        const layoutB = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: mulberry32(seed),
+                gambleChance: chance,
+                maxGambleBricks: maxGamble,
+            },
+        );
+
+        expect(layoutB.bricks).toEqual(layoutA.bricks);
+        const gambleBricks = layoutA.bricks.filter((brick) => brick.traits?.includes('gamble'));
+        expect(gambleBricks.length).toBeLessThanOrEqual(maxGamble);
+        gambleBricks.forEach((brick) => {
+            expect(brick.hp).toBe(1);
+        });
+    });
+
+    it('respects the maxVoidColumns option when carving gaps', () => {
+        const config = gameConfig;
+        const baseSpec = getLevelSpec(0);
+        const randomAlwaysVoid = () => 0;
+
+        const layoutLimited = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: randomAlwaysVoid,
+                voidColumnChance: 1,
+                maxVoidColumns: 1,
+            },
+        );
+
+        const layoutExpanded = generateLevelLayout(
+            baseSpec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            {
+                random: randomAlwaysVoid,
+                voidColumnChance: 1,
+                maxVoidColumns: 3,
+            },
+        );
+
+        const uniqueColumnCount = (layout: ReturnType<typeof generateLevelLayout>) =>
+            new Set(layout.bricks.map((brick) => brick.col)).size;
+
+        expect(uniqueColumnCount(layoutLimited)).toBe(baseSpec.cols - 1);
+        expect(uniqueColumnCount(layoutExpanded)).toBe(baseSpec.cols - 3);
     });
 });

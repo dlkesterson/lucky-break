@@ -50,6 +50,9 @@ export class GameInputManager implements InputManager {
     private gamepadCursorY: number | null = null;
     private gamepadLastTimestampMs: number | null = null;
     private gamepadLaunchHeld = false;
+    private gamepadAxisRaw: number | null = null;
+    private gamepadAxisNormalized: number | null = null;
+    private gamepadPressedButtons: number[] = [];
     private readonly nonPassiveTouchOptions: AddEventListenerOptions = { passive: false };
     private readonly mouseDownListener: (event: MouseEvent) => void;
     private readonly mouseMoveListener: (event: MouseEvent) => void;
@@ -107,6 +110,9 @@ export class GameInputManager implements InputManager {
         this.gamepadCursorY = height > 0 ? Math.max(0, height * 0.85) : null;
         this.gamepadLastTimestampMs = null;
         this.gamepadLaunchHeld = false;
+        this.gamepadAxisRaw = null;
+        this.gamepadAxisNormalized = null;
+        this.gamepadPressedButtons = [];
 
         this.setupEventListeners();
     }
@@ -408,6 +414,11 @@ export class GameInputManager implements InputManager {
         const activeKeys = Array.from(this.keyboardState.entries())
             .filter(([, pressed]) => pressed)
             .map(([key]) => key);
+        const aimDirection = this.currentAimDirection
+            ? cloneVector(this.currentAimDirection)
+            : this.longPressReady
+                ? cloneVector(DEFAULT_DIRECTION)
+                : null;
 
         const { height } = this.getCanvasSize();
         const gamepadCursor = this.gamepadCursorX !== null
@@ -423,8 +434,13 @@ export class GameInputManager implements InputManager {
             mousePosition: this.mousePosition ? { ...this.mousePosition } : null,
             touchPosition: this.touchPosition ? { ...this.touchPosition } : null,
             gamepadCursor,
+            gamepadAxisRaw: this.gamepadAxisRaw,
+            gamepadAxisNormalized: this.gamepadAxisNormalized,
+            gamepadButtonsPressed: [...this.gamepadPressedButtons],
+            gamepadLaunchHeld: this.gamepadLaunchHeld,
             keyboardPressed: activeKeys,
             paddleTarget: paddleTarget ? { ...paddleTarget } : null,
+            aimDirection,
             launchPending: this.launchManager.isLaunchPending(),
         } satisfies InputDebugState;
     }
@@ -448,6 +464,9 @@ export class GameInputManager implements InputManager {
         this.gamepadCursorY = null;
         this.gamepadLastTimestampMs = null;
         this.gamepadLaunchHeld = false;
+        this.gamepadAxisRaw = null;
+        this.gamepadAxisNormalized = null;
+        this.gamepadPressedButtons = [];
         this.primaryInput = null;
     }
 
@@ -456,6 +475,9 @@ export class GameInputManager implements InputManager {
         if (!gamepad) {
             this.gamepadLastTimestampMs = null;
             this.gamepadLaunchHeld = false;
+            this.gamepadAxisRaw = null;
+            this.gamepadAxisNormalized = null;
+            this.gamepadPressedButtons = [];
             return;
         }
 
@@ -472,8 +494,12 @@ export class GameInputManager implements InputManager {
             this.gamepadCursorY = Math.max(0, height * 0.85);
         }
 
-        const axisRaw = gamepad.axes[GAMEPAD_PRIMARY_AXIS_INDEX] ?? 0;
+        const axisRaw = Number.isFinite(gamepad.axes[GAMEPAD_PRIMARY_AXIS_INDEX])
+            ? gamepad.axes[GAMEPAD_PRIMARY_AXIS_INDEX] ?? 0
+            : 0;
         const axisValue = this.applyGamepadDeadZone(axisRaw);
+        this.gamepadAxisRaw = axisRaw;
+        this.gamepadAxisNormalized = axisValue;
         if (axisValue !== 0) {
             this.markPrimaryInput('gamepad');
             this.hasReceivedInput = true;
@@ -483,6 +509,15 @@ export class GameInputManager implements InputManager {
                 this.gamepadCursorX = clamp(this.gamepadCursorX + deltaPixels, 0, width);
             }
         }
+
+        const pressedButtons: number[] = [];
+        for (let index = 0; index < gamepad.buttons.length; index++) {
+            const button = gamepad.buttons[index];
+            if (button?.pressed) {
+                pressedButtons.push(index);
+            }
+        }
+        this.gamepadPressedButtons = pressedButtons;
 
         const launchPressed = this.isGamepadLaunchPressed(gamepad);
         if (launchPressed) {

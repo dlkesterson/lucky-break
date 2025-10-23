@@ -93,8 +93,13 @@ export interface InputDebugState {
     mousePosition: Vector2 | null;
     touchPosition: Vector2 | null;
     gamepadCursor: Vector2 | null;
+    gamepadAxisRaw: number | null;
+    gamepadAxisNormalized: number | null;
+    gamepadButtonsPressed: readonly number[];
+    gamepadLaunchHeld: boolean;
     keyboardPressed: readonly string[];
     paddleTarget: Vector2 | null;
+    aimDirection: Vector2 | null;
     launchPending: boolean;
 }
 

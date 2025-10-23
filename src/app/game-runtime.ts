@@ -69,6 +69,7 @@ import { createGameInitializer } from './game-initializer';
 import { createMultiBallController, type MultiBallColors } from './multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from './level-runtime';
 import { spinWheel, createReward, type Reward, type RewardType } from 'game/rewards';
+import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { smoothTowards } from 'util/input-helpers';
 import { rootLogger } from 'util/log';
 import { getHighScores, recordHighScore } from 'util/high-scores';
@@ -184,6 +185,12 @@ const COIN_FALL_SPEED = config.coins.fallSpeed;
 const COIN_BASE_VALUE = config.coins.baseValue;
 const COIN_MIN_VALUE = config.coins.min;
 const COIN_MAX_VALUE = config.coins.max;
+const GAMBLE_TIMER_SECONDS = config.levels.gamble.timerSeconds;
+const GAMBLE_REWARD_MULTIPLIER = config.levels.gamble.rewardMultiplier;
+const GAMBLE_PRIME_RESET_HP = config.levels.gamble.primeResetHp;
+const GAMBLE_FAIL_PENALTY_HP = config.levels.gamble.failPenaltyHp;
+const GAMBLE_TINT_ARMED = config.levels.gamble.tintArmed;
+const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
 const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
 
@@ -256,6 +263,15 @@ export const createGameRuntime = async ({
         combo: toColorNumber(GameTheme.accents.combo),
         powerUp: toColorNumber(GameTheme.accents.powerUp),
     };
+
+    const gambleTintArmed = toColorNumber(GAMBLE_TINT_ARMED);
+    const gambleTintPrimed = toColorNumber(GAMBLE_TINT_PRIMED);
+    const gambleManager = createGambleBrickManager({
+        timerSeconds: GAMBLE_TIMER_SECONDS,
+        rewardMultiplier: Math.max(1, GAMBLE_REWARD_MULTIPLIER),
+        primeResetHp: Math.max(1, GAMBLE_PRIME_RESET_HP),
+        failPenaltyHp: Math.max(1, GAMBLE_FAIL_PENALTY_HP),
+    });
 
     let ballVisualDefaults: BallVisualDefaults = {
         baseColor: themeBallColors.core,
@@ -386,6 +402,10 @@ export const createGameRuntime = async ({
 
     let session = createSession();
     let scoringState = createScoring();
+    const syncMomentum = () => {
+        session.updateMomentum(getMomentumMetrics(scoringState));
+    };
+    syncMomentum();
     pushMusicState({ lives: toMusicLives(resolveInitialLives()), combo: 0 });
     const powerUpManager = new PowerUpManager();
     let runHighestCombo = 0;
@@ -443,6 +463,7 @@ export const createGameRuntime = async ({
         }
         visualBodies.delete(body);
         brickVisualState.delete(body);
+        gambleManager.unregister(body);
     };
 
     const levelRuntime = createLevelRuntime({
@@ -462,6 +483,60 @@ export const createGameRuntime = async ({
     const brickHealth = levelRuntime.brickHealth;
     const brickMetadata = levelRuntime.brickMetadata;
     const brickVisualState = levelRuntime.brickVisualState;
+
+    const applyGambleAppearance = (body: Body): void => {
+        const visual = visualBodies.get(body);
+        if (!(visual instanceof Sprite)) {
+            return;
+        }
+        const state = gambleManager.getState(body);
+        if (state === 'primed') {
+            visual.tint = gambleTintPrimed;
+        } else if (state === 'armed') {
+            visual.tint = gambleTintArmed;
+        } else {
+            visual.tint = 0xffffff;
+        }
+    };
+
+    const reapplyGambleAppearances = (): void => {
+        gambleManager.forEach((body) => {
+            applyGambleAppearance(body);
+        });
+    };
+
+    const registerGambleBricks = (): void => {
+        brickMetadata.forEach((metadata, body) => {
+            if (metadata?.traits?.includes('gamble')) {
+                gambleManager.register(body);
+                applyGambleAppearance(body);
+            }
+        });
+    };
+
+    const applyGambleFailurePenalty = (brick: Body, penaltyHp: number): void => {
+        if (!brickHealth.has(brick)) {
+            return;
+        }
+        const normalizedPenalty = Math.max(1, Math.round(penaltyHp));
+        brickHealth.set(brick, normalizedPenalty);
+        const state = brickVisualState.get(brick);
+        if (state) {
+            state.maxHp = Math.max(state.maxHp, normalizedPenalty);
+        }
+        levelRuntime.updateBrickDamage(brick, normalizedPenalty);
+        applyGambleAppearance(brick);
+    };
+
+    const tickGambleBricks = (deltaSeconds: number): void => {
+        const expirations = gambleManager.tick(deltaSeconds);
+        if (expirations.length === 0) {
+            return;
+        }
+        expirations.forEach(({ brick, penaltyHp }) => {
+            applyGambleFailurePenalty(brick, penaltyHp);
+        });
+    };
 
     const updateBrickLighting = (
         ...args: Parameters<typeof levelRuntime.updateBrickLighting>
@@ -499,12 +574,14 @@ export const createGameRuntime = async ({
     ) => levelRuntime.getGhostBrickRemainingDuration(...args);
 
     const loadLevel = (levelIndex: number) => {
+        gambleManager.clear();
         const result = levelRuntime.loadLevel(levelIndex);
         powerUpChanceMultiplier = result.powerUpChanceMultiplier;
         levelDifficultyMultiplier = result.difficultyMultiplier;
         brickLayoutBounds = result.layoutBounds;
         session.startRound({ breakableBricks: result.breakableBricks });
         brickParticles?.reset();
+        registerGambleBricks();
     };
 
     stage.addToLayer('playfield', createPlayfieldBackgroundLayer(playfieldDimensions).container);
@@ -865,6 +942,7 @@ export const createGameRuntime = async ({
     const applyRuntimeTheme = (theme: GameThemeDefinition) => {
         rowColors = theme.brickColors.map(toColorNumber);
         levelRuntime.setRowColors(rowColors);
+        reapplyGambleAppearances();
 
         themeBallColors = {
             core: toColorNumber(theme.ball.core),
@@ -1041,6 +1119,7 @@ export const createGameRuntime = async ({
             comboTimer: scoringState.comboTimer,
             activePowerUps: collectActivePowerUps(),
             reward: resolveRewardView(),
+            momentum: snapshot.hud.momentum,
         });
 
         if (scoringState.combo > lastComboCount) {
@@ -1170,6 +1249,7 @@ export const createGameRuntime = async ({
         } else {
             resetCombo(scoringState);
         }
+        syncMomentum();
 
         levelBricksBroken = 0;
         roundHighestCombo = scoringState.combo;
@@ -1333,17 +1413,25 @@ export const createGameRuntime = async ({
                 const impactVelocity = MatterVector.magnitude(ballBody.velocity);
                 const initialHp = metadata?.hp ?? currentHp;
 
+                const isFortified = metadata?.traits?.includes('fortified') ?? false;
+
                 if (nextHp > 0) {
                     brickHealth.set(brick, nextHp);
-
                     levelRuntime.updateBrickDamage(brick, nextHp);
+                    applyGambleAppearance(brick);
+
+                    const brickType = gambleManager.getState(brick)
+                        ? ('gamble' as const)
+                        : isFortified
+                            ? ('multi-hit' as const)
+                            : ('standard' as const);
 
                     bus.publish('BrickHit', {
                         sessionId,
                         row,
                         col,
                         impactVelocity,
-                        brickType: 'standard',
+                        brickType,
                         comboHeat: scoringState.combo,
                         previousHp: currentHp,
                         remainingHp: nextHp,
@@ -1356,13 +1444,51 @@ export const createGameRuntime = async ({
                         speed: impactVelocity,
                     });
                 } else {
+                    const gambleHitResult = gambleManager.onHit(brick);
+                    if (gambleHitResult.type === 'prime') {
+                        const resetHp = Math.max(1, Math.round(gambleHitResult.resetHp));
+                        brickHealth.set(brick, resetHp);
+                        const visualState = brickVisualState.get(brick);
+                        if (visualState) {
+                            visualState.maxHp = Math.max(visualState.maxHp, resetHp);
+                        }
+                        levelRuntime.updateBrickDamage(brick, resetHp);
+                        applyGambleAppearance(brick);
+
+                        bus.publish('BrickHit', {
+                            sessionId,
+                            row,
+                            col,
+                            impactVelocity,
+                            brickType: 'gamble',
+                            comboHeat: scoringState.combo,
+                            previousHp: currentHp,
+                            remainingHp: resetHp,
+                        }, frameTimestampMs);
+
+                        session.recordEntropyEvent({
+                            type: 'brick-hit',
+                            comboHeat: scoringState.combo,
+                            impactVelocity,
+                            speed: impactVelocity,
+                        });
+                        return;
+                    }
+
+                    const gambleSuccess = gambleHitResult.type === 'success';
+                    const brickBreakType = gambleSuccess
+                        ? ('gamble' as const)
+                        : isFortified
+                            ? ('multi-hit' as const)
+                            : ('standard' as const);
+
                     bus.publish('BrickBreak', {
                         sessionId,
                         row,
                         col,
                         impactVelocity,
                         comboHeat: scoringState.combo,
-                        brickType: 'standard',
+                        brickType: brickBreakType,
                         initialHp,
                     }, frameTimestampMs);
 
@@ -1382,10 +1508,21 @@ export const createGameRuntime = async ({
                         },
                     );
                     let points = basePoints;
+                    if (gambleSuccess) {
+                        const multiplier = Math.max(1, gambleHitResult.rewardMultiplier);
+                        const boosted = Math.max(basePoints, Math.round(basePoints * multiplier));
+                        const bonus = Math.max(0, boosted - basePoints);
+                        points = boosted;
+                        if (bonus > 0) {
+                            scoringState.score += bonus;
+                        }
+                    }
                     if (doublePointsMultiplier > 1) {
-                        const bonus = Math.round(basePoints * (doublePointsMultiplier - 1));
+                        const bonus = Math.round(points * (doublePointsMultiplier - 1));
                         points += bonus;
-                        scoringState.score += bonus;
+                        if (bonus > 0) {
+                            scoringState.score += bonus;
+                        }
                     }
 
                     levelBricksBroken += 1;
@@ -1422,7 +1559,7 @@ export const createGameRuntime = async ({
                             row,
                             col,
                             impactVelocity,
-                            brickType: 'standard',
+                            brickType: brickBreakType,
                             initialHp,
                             comboHeat: scoringState.combo,
                         },
@@ -1565,6 +1702,7 @@ export const createGameRuntime = async ({
                 session.recordLifeLost('ball-drop');
                 session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
                 resetCombo(scoringState);
+                syncMomentum();
 
                 if (session.snapshot().livesRemaining > 0) {
                     clearExtraBalls();
@@ -1675,6 +1813,7 @@ export const createGameRuntime = async ({
         }
 
         updateGhostBricks(deltaSeconds);
+        tickGambleBricks(deltaSeconds);
 
         if (activeReward?.type === 'ghost-brick' && getGhostBrickRemainingDuration() <= 0) {
             activeReward = null;
@@ -1709,6 +1848,7 @@ export const createGameRuntime = async ({
         if (comboBeforeDecay > 0 && scoringState.combo === 0) {
             session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeDecay });
         }
+        syncMomentum();
 
         const paddleTarget = inputManager.getPaddleTarget();
         const targetSnapshot = paddleTarget ? { x: paddleTarget.x, y: paddleTarget.y } : null;

@@ -101,6 +101,31 @@ describe('scoring', () => {
             expect(state.momentum.speedPressure).toBeGreaterThan(0);
             expect(state.momentum.comboHeat).toBeCloseTo(0.2, 5);
         });
+
+        it('respects custom momentum tuning overrides', () => {
+            const state = createScoring();
+            state.momentum.speedPressure = 0.9;
+
+            awardBrickPoints(
+                state,
+                {
+                    momentum: {
+                        speedPressureImpactRetention: 0.2,
+                        speedPressureAmbientDecay: 0.5,
+                    },
+                },
+                {
+                    impactSpeed: 1,
+                    maxSpeed: 10,
+                },
+            );
+
+            expect(state.momentum.speedPressure).toBeCloseTo(0.18, 5);
+
+            awardBrickPoints(state, { momentum: { speedPressureAmbientDecay: 0.5 } });
+
+            expect(state.momentum.speedPressure).toBeCloseTo(0.09, 5);
+        });
     });
 
     describe('decayCombo', () => {
@@ -148,6 +173,15 @@ describe('scoring', () => {
             decayCombo(state, 0.5);
 
             expect(state.momentum.speedPressure).toBeLessThan(0.9);
+        });
+
+        it('uses custom speed pressure decay override when provided', () => {
+            const state = createScoring();
+            state.momentum.speedPressure = 0.6;
+
+            decayCombo(state, 0.5, { momentum: { speedPressureDecayPerSecond: 0.1 } });
+
+            expect(state.momentum.speedPressure).toBeCloseTo(0.55, 5);
         });
     });
 

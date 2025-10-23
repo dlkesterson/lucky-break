@@ -18,6 +18,7 @@ const MIN_GAP = config.levels.minGap;
 const MAX_VOID_COLUMNS = config.levels.maxVoidColumns;
 const LOOP_PROGRESSIONS = config.levels.loopProgression;
 const LOOP_FALLBACK = config.levels.loopFallback;
+const GAMBLE_CONFIG = config.levels.gamble;
 
 export interface LoopScalingInfo {
     readonly loopCount: number;
@@ -29,6 +30,7 @@ export interface LoopScalingInfo {
     readonly fortifiedChance: number;
     readonly voidColumnChance: number;
     readonly centerFortifiedBias: number;
+    readonly maxVoidColumns: number;
 }
 
 export interface LevelGenerationOptions {
@@ -37,6 +39,8 @@ export interface LevelGenerationOptions {
     readonly voidColumnChance?: number;
     readonly maxVoidColumns?: number;
     readonly centerFortifiedBias?: number;
+    readonly gambleChance?: number;
+    readonly maxGambleBricks?: number;
 }
 
 export interface LevelSpec {
@@ -63,6 +67,8 @@ export interface LevelLayout {
     readonly spec: LevelSpec;
 }
 
+export type BrickTrait = 'fortified' | 'gamble';
+
 export interface BrickSpec {
     /** Grid row index */
     readonly row: number;
@@ -75,7 +81,7 @@ export interface BrickSpec {
     /** Hit points (how many hits to break) */
     readonly hp: number;
     /** Optional brick traits applied during procedural remix */
-    readonly traits?: readonly ('fortified')[];
+    readonly traits?: readonly BrickTrait[];
 }
 
 /** Default level presets with progressive difficulty */
@@ -158,6 +164,8 @@ export function generateLevelLayout(
         voidColumnChance = 0,
         maxVoidColumns = MAX_VOID_COLUMNS,
         centerFortifiedBias = 0,
+        gambleChance = 0,
+        maxGambleBricks = Number.POSITIVE_INFINITY,
     } = options;
 
     const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
@@ -172,6 +180,10 @@ export function generateLevelLayout(
 
     const bricks: BrickSpec[] = [];
     const voidColumns = new Set<number>();
+    const gambleAssignments = new Map<number, number>();
+    const normalizedGambleChance = Math.max(0, Math.min(1, gambleChance));
+    const gambleLimit = Math.max(0, Math.floor(maxGambleBricks));
+    let gambleCount = 0;
 
     if (random && voidColumnChance > 0 && spec.cols > 1) {
         const limit = Math.min(spec.cols - 1, Math.max(0, Math.floor(maxVoidColumns)));
@@ -211,7 +223,7 @@ export function generateLevelLayout(
             const y = startY + row * (brickHeight + gap);
 
             let brickHp = hp;
-            const traits: ('fortified')[] = [];
+            const traits: BrickTrait[] = [];
 
             if (random && fortifiedBaseChance > 0) {
                 const normalizedDistance = spec.cols <= 1 ? 0 : Math.abs(col - midColumn) / Math.max(1, midColumn);
@@ -221,6 +233,22 @@ export function generateLevelLayout(
                     const fortifiedStep = Math.max(1, Math.round(Math.max(0, hp) * 0.35));
                     brickHp += fortifiedStep;
                     traits.push('fortified');
+                }
+            }
+
+            const canAssignGamble =
+                random !== undefined &&
+                normalizedGambleChance > 0 &&
+                gambleCount < gambleLimit &&
+                !traits.includes('fortified');
+
+            if (canAssignGamble) {
+                const perRowAssigned = gambleAssignments.get(row) ?? 0;
+                if (perRowAssigned < 1 && random() < normalizedGambleChance) {
+                    traits.push('gamble');
+                    gambleAssignments.set(row, perRowAssigned + 1);
+                    gambleCount += 1;
+                    brickHp = Math.max(1, Math.round(GAMBLE_CONFIG.primeResetHp));
                 }
             }
 
@@ -322,6 +350,7 @@ const BASE_SCALING: LoopScalingInfo = {
     fortifiedChance: 0,
     voidColumnChance: 0,
     centerFortifiedBias: 0,
+    maxVoidColumns: MAX_VOID_COLUMNS,
 };
 
 const createBaselineStep = (): LoopScalingInfo => ({ ...BASE_SCALING });
@@ -337,6 +366,15 @@ const clampValue = (value: number, min: number, max: number): number => {
         return max;
     }
     return value;
+};
+
+const clampVoidColumnLimit = (value: number, maxCap: number): number => {
+    if (!Number.isFinite(value)) {
+        return MAX_VOID_COLUMNS;
+    }
+    const safeCap = Math.max(0, Math.floor(maxCap));
+    const rounded = Math.max(0, Math.floor(value));
+    return Math.min(rounded, safeCap);
 };
 
 export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
@@ -359,6 +397,10 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
             fortifiedChance: descriptor.fortifiedChance,
             voidColumnChance: descriptor.voidColumnChance,
             centerFortifiedBias: descriptor.centerFortifiedBias,
+            maxVoidColumns: clampVoidColumnLimit(
+                descriptor.maxVoidColumns ?? MAX_VOID_COLUMNS,
+                LOOP_FALLBACK.maxVoidColumnsCap,
+            ),
         } satisfies LoopScalingInfo;
     }
 
@@ -377,6 +419,10 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
             fortifiedChance: lastDefined.fortifiedChance,
             voidColumnChance: lastDefined.voidColumnChance,
             centerFortifiedBias: lastDefined.centerFortifiedBias,
+            maxVoidColumns: clampVoidColumnLimit(
+                lastDefined.maxVoidColumns ?? MAX_VOID_COLUMNS,
+                LOOP_FALLBACK.maxVoidColumnsCap,
+            ),
         } satisfies LoopScalingInfo;
     })();
 
@@ -391,6 +437,7 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
     let fortifiedChance = initialDescriptor.fortifiedChance;
     let voidColumnChance = initialDescriptor.voidColumnChance;
     let centerBias = initialDescriptor.centerFortifiedBias;
+    let maxVoidColumns = initialDescriptor.maxVoidColumns;
 
     for (let index = 0; index < extraLoops; index++) {
         speed = clampValue(speed + fallback.speedMultiplierIncrement, 1, fallback.maxSpeedMultiplier);
@@ -401,6 +448,7 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
         fortifiedChance = clampValue(fortifiedChance + fallback.fortifiedChanceIncrement, 0, fallback.maxFortifiedChance);
         voidColumnChance = clampValue(voidColumnChance + fallback.voidColumnChanceIncrement, 0, fallback.maxVoidColumnChance);
         centerBias = clampValue(centerBias + fallback.centerFortifiedBiasIncrement, 0, fallback.maxCenterFortifiedBias);
+        maxVoidColumns = clampVoidColumnLimit(maxVoidColumns + fallback.maxVoidColumnsIncrement, fallback.maxVoidColumnsCap);
     }
 
     return {
@@ -413,6 +461,7 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
         fortifiedChance,
         voidColumnChance,
         centerFortifiedBias: centerBias,
+        maxVoidColumns,
     } satisfies LoopScalingInfo;
 }
 

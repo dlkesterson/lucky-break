@@ -1,6 +1,7 @@
 import { Container, FillGradient, Graphics, Text } from 'pixi.js';
 import type { HudScoreboardEntry, HudScoreboardPrompt, HudScoreboardView } from './hud';
 import type { GameThemeDefinition } from './theme';
+import type { HudSnapshot } from 'app/state';
 
 export interface HudPowerUpView {
     readonly label: string;
@@ -19,6 +20,7 @@ export interface HudDisplayUpdate {
     readonly comboTimer: number;
     readonly activePowerUps: readonly HudPowerUpView[];
     readonly reward?: HudRewardView | null;
+    readonly momentum: HudSnapshot['momentum'];
 }
 
 export interface HudDisplay {
@@ -37,6 +39,12 @@ const PANEL_MIN_HEIGHT = 260;
 const ENTRY_ROW_HEIGHT = 20;
 const POWER_UP_ROW_HEIGHT = 18;
 const PROMPT_ROW_HEIGHT = 18;
+const MOMENTUM_SECTION_MARGIN = 12;
+const MOMENTUM_BAR_HEIGHT = 7;
+const MOMENTUM_BAR_RADIUS = 3;
+const MOMENTUM_BAR_VERTICAL_GAP = 14;
+
+type HudMomentum = HudSnapshot['momentum'];
 
 const parseColor = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -71,6 +79,23 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     let fontFamilyPrimary = activeTheme.font;
     let fontFamilyMono = activeTheme.monoFont ?? activeTheme.font;
 
+    const clampUnitValue = (value: number): number => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+
+    const momentumDescriptors = [
+        { key: 'comboHeat', label: 'Heat', resolveColor: () => colorCombo },
+        { key: 'speedPressure', label: 'Speed', resolveColor: () => colorPrimary },
+        { key: 'brickDensity', label: 'Field', resolveColor: () => colorReward },
+    ] as const;
+
+    interface MomentumBarView {
+        readonly container: Container;
+        readonly label: Text;
+        readonly background: Graphics;
+        readonly fill: Graphics;
+    }
+
+    let momentumBarBackgroundColor = parseColor(activeTheme.hud.panelLine);
+
     const container = new Container();
     container.eventMode = 'none';
 
@@ -78,6 +103,44 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     panel.alpha = 0.86;
     panel.eventMode = 'none';
     container.addChild(panel);
+
+    const momentumContainer = new Container();
+    momentumContainer.visible = false;
+    momentumContainer.eventMode = 'none';
+    container.addChild(momentumContainer);
+
+    const momentumHeader = createText('Momentum Metrics', {
+        fill: colorSecondary,
+        fontSize: 12,
+        fontFamily: fontFamilyPrimary,
+    });
+    momentumHeader.x = PANEL_PADDING;
+    momentumContainer.addChild(momentumHeader);
+
+    const momentumBars: MomentumBarView[] = momentumDescriptors.map(() => {
+        const barContainer = new Container();
+        barContainer.visible = false;
+        barContainer.eventMode = 'none';
+
+        const background = new Graphics();
+        background.x = PANEL_PADDING;
+        barContainer.addChild(background);
+
+        const fill = new Graphics();
+        fill.x = PANEL_PADDING;
+        barContainer.addChild(fill);
+
+        const label = createText('', {
+            fill: colorSecondary,
+            fontSize: 11,
+            fontFamily: fontFamilyMono,
+        });
+        label.x = PANEL_PADDING + 4;
+        barContainer.addChild(label);
+
+        momentumContainer.addChild(barContainer);
+        return { container: barContainer, label, background, fill } satisfies MomentumBarView;
+    });
 
     let currentPanelHeight = PANEL_MIN_HEIGHT;
     const redrawPanel = (height: number) => {
@@ -156,6 +219,68 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
 
     let comboPulseStrength = 0;
 
+    const updateMomentumSection = (momentum: HudMomentum, startY: number): number => {
+        if (!momentum) {
+            momentumContainer.visible = false;
+            momentumBars.forEach((bar) => {
+                bar.container.visible = false;
+            });
+            return startY;
+        }
+
+        momentumContainer.visible = true;
+        const sectionTop = startY + MOMENTUM_SECTION_MARGIN;
+        momentumContainer.y = sectionTop;
+        momentumHeader.y = 0;
+
+        let cursor = momentumHeader.y + 18;
+        const momentumBarWidth = PANEL_WIDTH - PANEL_PADDING * 2;
+        momentumDescriptors.forEach((descriptor, index) => {
+            const bar = momentumBars[index];
+            const value = clampUnitValue(momentum[descriptor.key]);
+            const percent = Math.round(value * 100);
+
+            bar.container.visible = true;
+            bar.container.y = cursor;
+            bar.label.text = `${descriptor.label} ${percent}%`;
+            bar.label.style.fill = colorSecondary;
+            bar.label.style.fontFamily = fontFamilyMono;
+            bar.label.y = 0;
+
+            bar.background.clear();
+            bar.background.roundRect(
+                0,
+                MOMENTUM_BAR_VERTICAL_GAP,
+                momentumBarWidth,
+                MOMENTUM_BAR_HEIGHT,
+                MOMENTUM_BAR_RADIUS,
+            );
+            bar.background.fill({ color: momentumBarBackgroundColor, alpha: 0.28 });
+            bar.background.visible = true;
+
+            bar.fill.clear();
+            if (value > 0) {
+                const barWidth = Math.max(2, Math.round(momentumBarWidth * value));
+                bar.fill.roundRect(
+                    0,
+                    MOMENTUM_BAR_VERTICAL_GAP,
+                    barWidth,
+                    MOMENTUM_BAR_HEIGHT,
+                    MOMENTUM_BAR_RADIUS,
+                );
+                bar.fill.fill({ color: descriptor.resolveColor(), alpha: 0.9 });
+                bar.fill.visible = true;
+            } else {
+                bar.fill.visible = false;
+            }
+
+            cursor += MOMENTUM_BAR_VERTICAL_GAP + MOMENTUM_BAR_HEIGHT + MOMENTUM_BAR_VERTICAL_GAP;
+        });
+
+        cursor += MOMENTUM_SECTION_MARGIN;
+        return momentumContainer.y + cursor;
+    };
+
     const updateEntries = (entries: readonly HudScoreboardEntry[], startY: number): number => {
         let cursor = startY;
         entryOrder.forEach((id) => {
@@ -226,6 +351,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
 
         let cursor = summaryText.visible ? summaryText.y + 24 : statusText.y + 20;
         cursor = updateEntries(payload.view.entries, cursor + 4);
+        cursor = updateMomentumSection(payload.momentum, cursor);
 
         difficultyText.text = `Difficulty ×${payload.difficultyMultiplier.toFixed(2)}`;
         difficultyText.y = cursor + 8;
@@ -308,6 +434,17 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         promptTexts.forEach((text, index) => {
             text.style.fill = index === 0 ? colorWarning : colorReward;
             text.style.fontFamily = fontFamilyPrimary;
+        });
+        momentumBarBackgroundColor = parseColor(activeTheme.hud.panelLine);
+        momentumHeader.style.fill = colorSecondary;
+        momentumHeader.style.fontFamily = fontFamilyPrimary;
+        momentumBars.forEach((bar) => {
+            bar.label.style.fill = colorSecondary;
+            bar.label.style.fontFamily = fontFamilyMono;
+            // Trigger redraw on next update by clearing existing geometry
+            bar.background.clear();
+            bar.fill.clear();
+            bar.fill.visible = false;
         });
 
         redrawPanel(currentPanelHeight);

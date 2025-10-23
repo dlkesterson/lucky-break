@@ -1,4 +1,5 @@
 import { Graphics, Container, Sprite } from 'pixi.js';
+import { gameConfig } from 'config/game';
 import { Body as MatterBody, Bodies } from 'matter-js';
 import type { Body } from 'matter-js';
 import type { StageHandle } from 'render/stage';
@@ -106,6 +107,7 @@ export const createLevelRuntime = ({
     coin,
     getLayoutRandom,
 }: LevelRuntimeOptions): LevelRuntimeHandle => {
+    const levelConfig = gameConfig.levels;
     const presetLevelCount = getPresetLevelCount();
 
     const brickHealth = new Map<Body, number>();
@@ -200,11 +202,19 @@ export const createLevelRuntime = ({
         const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
         const scaling = getLoopScalingInfo(loopCount);
         const layoutRandom = typeof getLayoutRandom === 'function' ? getLayoutRandom(levelIndex) : undefined;
+        const gambleChance = Math.min(
+            levelConfig.gamble.maxChance,
+            Math.max(0, levelConfig.gamble.baseChance + loopCount * levelConfig.gamble.loopBonus),
+        );
+        const maxGambleBricks = Math.max(0, Math.round(levelConfig.gamble.maxPerLevel));
         const layout = generateLevelLayout(effectiveSpec, brickSize.width, brickSize.height, playfieldWidth, {
             random: layoutRandom,
             fortifiedChance: scaling.fortifiedChance,
             voidColumnChance: scaling.voidColumnChance,
             centerFortifiedBias: scaling.centerFortifiedBias,
+            maxVoidColumns: scaling.maxVoidColumns,
+            gambleChance,
+            maxGambleBricks,
         });
         const difficultyMultiplier = getLevelDifficultyMultiplier(levelIndex);
         const chanceMultiplier = effectiveSpec.powerUpChanceMultiplier ?? 1;

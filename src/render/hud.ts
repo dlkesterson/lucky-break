@@ -50,7 +50,19 @@ const formatBrickProgress = (remaining: number, total: number): string => {
     return `${remaining} / ${total} (${percent}%)`;
 };
 
-const formatMomentum = (comboHeat: number, volleyLength: number): string => `Heat ${comboHeat} · Volley ${volleyLength}`;
+const clampUnit = (value: number): number => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+
+const formatPercent = (value: number): string => `${Math.round(clampUnit(value) * 100)}%`;
+
+const formatMomentum = (
+    momentum: GameSessionSnapshot['hud']['momentum'],
+): string => {
+    const volley = Math.max(0, Math.round(momentum.volleyLength));
+    const heat = formatPercent(momentum.comboHeat);
+    const speed = formatPercent(momentum.speedPressure);
+    const density = formatPercent(momentum.brickDensity);
+    return `Heat ${heat} · Volley ${volley} · Speed ${speed} · Field ${density}`;
+};
 
 const formatEntropy = (
     entropy: GameSessionSnapshot['hud']['entropy'],
@@ -128,7 +140,7 @@ export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboard
         {
             id: 'momentum',
             label: 'Momentum',
-            value: formatMomentum(snapshot.hud.momentum.comboHeat, snapshot.hud.momentum.volleyLength),
+            value: formatMomentum(snapshot.hud.momentum),
         },
         {
             id: 'audio',

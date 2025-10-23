@@ -87,8 +87,13 @@ describe('InputDebugOverlay', () => {
         mousePosition: { x: 320, y: 200 },
         touchPosition: null,
         gamepadCursor: { x: 640, y: 380 },
+        gamepadAxisRaw: 0.4,
+        gamepadAxisNormalized: 0.3,
+        gamepadButtonsPressed: [0, 1],
+        gamepadLaunchHeld: true,
         keyboardPressed: ['ArrowLeft'],
         paddleTarget: { x: 200, y: 0 },
+        aimDirection: { x: 0, y: -1 },
         launchPending: true,
     };
     const mockPaddleDebug = {
@@ -161,6 +166,11 @@ describe('InputDebugOverlay', () => {
         const textNode = panel.children[1] as Text;
         expect(textNode.text).toContain('Mode: mouse');
         expect(textNode.text).toContain('Ball: attached');
+        expect(textNode.text).toContain('Axis: raw 0.40 | filtered 0.30');
+        expect(textNode.text).toContain('Buttons: 0, 1');
+        expect(textNode.text).toContain('Keyboard: ArrowLeft');
+        expect(textNode.text).toContain('Aim: 0.0, -1.0');
+        expect(textNode.text).toContain('Launch: pending | trigger held');
 
         const pointerMock = pointer as unknown as {
             circle: MockFn;

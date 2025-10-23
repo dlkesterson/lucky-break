@@ -152,6 +152,7 @@ export interface GameSessionManager {
     readonly recordEntropyEvent: (event: EntropyEvent) => void;
     readonly collectCoins: (amount: number) => void;
     readonly getEntropyState: () => EntropySnapshot;
+    readonly updateMomentum: (snapshot: MomentumSnapshot) => void;
 }
 
 export interface GameSessionOptions {
@@ -303,6 +304,26 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         comboHeat: 0,
         comboTimer: 0,
         updatedAt: now(),
+    };
+
+    const applyMomentumSnapshot = (snapshot: MomentumSnapshot, timestamp: number): void => {
+        momentum.volleyLength = Math.max(0, Math.round(snapshot.volleyLength));
+        momentum.speedPressure = clamp01(snapshot.speedPressure);
+        momentum.brickDensity = clamp01(snapshot.brickDensity);
+        momentum.comboHeat = clamp01(snapshot.comboHeat);
+        momentum.comboTimer = Math.max(0, snapshot.comboTimer);
+        momentum.updatedAt = timestamp;
+    };
+
+    const commitMomentumSnapshot = (
+        snapshot: MomentumSnapshot | null | undefined,
+        timestamp: number,
+    ): boolean => {
+        if (!snapshot) {
+            return false;
+        }
+        applyMomentumSnapshot(snapshot, timestamp);
+        return true;
     };
 
     const audio: AudioState = {
@@ -510,19 +531,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             brickRemaining = Math.max(0, brickRemaining - 1);
         }
 
-        if (snapshot) {
-            momentum.volleyLength = snapshot.volleyLength;
-            momentum.speedPressure = clamp01(snapshot.speedPressure);
-            momentum.brickDensity = clamp01(snapshot.brickDensity);
-            momentum.comboHeat = clamp01(snapshot.comboHeat);
-            momentum.comboTimer = Math.max(0, snapshot.comboTimer);
-        } else {
-            momentum.volleyLength += 1;
-            momentum.comboHeat = Math.min(99, momentum.comboHeat + 1);
-            momentum.speedPressure = clamp01(momentum.speedPressure + 0.08);
-            momentum.brickDensity = brickTotal === 0 ? 0 : brickRemaining / brickTotal;
+        const appliedSnapshot = commitMomentumSnapshot(snapshot, timestamp);
+        if (!appliedSnapshot) {
+            const previous = cloneMomentum(momentum);
+            const fallbackSnapshot: MomentumSnapshot = {
+                volleyLength: previous.volleyLength + 1,
+                speedPressure: clamp01(previous.speedPressure + 0.08),
+                brickDensity: brickTotal === 0 ? 0 : brickRemaining / brickTotal,
+                comboHeat: clamp01(previous.comboHeat + 0.1),
+                comboTimer: Math.max(0, previous.comboTimer),
+            };
+            applyMomentumSnapshot(fallbackSnapshot, timestamp);
         }
-        momentum.updatedAt = timestamp;
 
         const comboHeat = event?.comboHeat ?? momentum.comboHeat;
         const impactVelocity = event?.impactVelocity;
@@ -636,6 +656,10 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 
     const getEntropyState: GameSessionManager['getEntropyState'] = () => cloneEntropy(entropy);
 
+    const updateMomentum: GameSessionManager['updateMomentum'] = (snapshot) => {
+        commitMomentumSnapshot(snapshot, now());
+    };
+
     return {
         snapshot,
         startRound,
@@ -645,5 +669,6 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         recordEntropyEvent,
         collectCoins,
         getEntropyState,
-    };
+        updateMomentum,
+    } satisfies GameSessionManager;
 };
