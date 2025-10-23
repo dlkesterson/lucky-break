@@ -2,7 +2,14 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
-import { GameTheme } from 'render/theme';
+import {
+    GameTheme,
+    getActiveThemeName,
+    getThemeLabel,
+    onThemeChange,
+    toggleTheme,
+} from 'render/theme';
+import type { ThemeName } from 'render/theme';
 
 export interface PauseScenePayload {
     readonly score: number;
@@ -29,7 +36,27 @@ export const createPauseScene = (
 ): Scene<PauseScenePayload, GameSceneServices> => {
     let container: Container | null = null;
     let resumeText: Text | null = null;
+    let titleText: Text | null = null;
+    let scoreText: Text | null = null;
+    let legendTitleText: Text | null = null;
+    let legendBodyText: Text | null = null;
+    let quitText: Text | null = null;
+    let themeToggleText: Text | null = null;
+    let background: Graphics | null = null;
+    let panel: Graphics | null = null;
     let elapsed = 0;
+    let unsubscribeTheme: (() => void) | null = null;
+
+    interface LayoutMetrics {
+        readonly width: number;
+        readonly height: number;
+        readonly panelWidth: number;
+        readonly panelHeight: number;
+        readonly panelX: number;
+        readonly panelY: number;
+    }
+
+    let layout: LayoutMetrics | null = null;
 
     const emitSceneEvent = (action: UiSceneTransitionAction) => {
         context.bus.publish('UiSceneTransition', {
@@ -57,6 +84,91 @@ export const createPauseScene = (
         context.renderStageSoon();
     };
 
+    const formatThemeLabel = (name: ThemeName): string => `COLOR MODE: ${getThemeLabel(name).toUpperCase()} (SHIFT+C)`;
+
+    const handleThemeTogglePointer = (event: { stopPropagation?: () => void }) => {
+        event.stopPropagation?.();
+        toggleTheme();
+    };
+
+    const repaintPanel = () => {
+        if (!layout || !panel || !background) {
+            return;
+        }
+
+        background.clear();
+        background.rect(0, 0, layout.width, layout.height);
+        background.fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.78 });
+
+        panel.clear();
+        panel.roundRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 28)
+            .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.95 })
+            .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 5, alignment: 0.5 });
+    };
+
+    const applyTheme = () => {
+        repaintPanel();
+
+        if (titleText) {
+            titleText.style = {
+                ...titleText.style,
+                fill: hexToNumber(GameTheme.hud.accent),
+                fontFamily: GameTheme.font,
+            };
+        }
+
+        if (scoreText) {
+            scoreText.style = {
+                ...scoreText.style,
+                fill: hexToNumber(GameTheme.hud.textPrimary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        if (resumeText) {
+            resumeText.style = {
+                ...resumeText.style,
+                fill: hexToNumber(GameTheme.accents.combo),
+                fontFamily: GameTheme.font,
+            };
+        }
+
+        if (legendTitleText) {
+            legendTitleText.style = {
+                ...legendTitleText.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.font,
+            };
+        }
+
+        if (legendBodyText) {
+            legendBodyText.style = {
+                ...legendBodyText.style,
+                fill: hexToNumber(GameTheme.hud.textPrimary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        if (quitText) {
+            quitText.style = {
+                ...quitText.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        if (themeToggleText) {
+            themeToggleText.style = {
+                ...themeToggleText.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+            themeToggleText.text = formatThemeLabel(getActiveThemeName());
+        }
+
+        context.renderStageSoon();
+    };
+
     const dispose = () => {
         if (!container) {
             return;
@@ -68,6 +180,19 @@ export const createPauseScene = (
         context.removeFromLayer(container);
         container = null;
         resumeText = null;
+        titleText = null;
+        scoreText = null;
+        legendTitleText = null;
+        legendBodyText = null;
+        quitText?.off('pointertap');
+        quitText = null;
+        themeToggleText?.off('pointertap', handleThemeTogglePointer);
+        themeToggleText = null;
+        background = null;
+        panel = null;
+        layout = null;
+        unsubscribeTheme?.();
+        unsubscribeTheme = null;
         elapsed = 0;
         context.renderStageSoon();
     };
@@ -83,25 +208,21 @@ export const createPauseScene = (
 
             const { width, height } = context.designSize;
 
-            const background = new Graphics();
-            background.rect(0, 0, width, height);
-            background.fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.78 });
+            background = new Graphics();
             background.eventMode = 'none';
 
             const panelWidth = Math.min(width * 0.7, 760);
             const panelHeight = Math.min(height * 0.65, 520);
             const panelX = (width - panelWidth) / 2;
             const panelY = (height - panelHeight) / 2;
+            layout = { width, height, panelWidth, panelHeight, panelX, panelY } satisfies LayoutMetrics;
 
-            const panel = new Graphics();
-            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 28)
-                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.95 })
-                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 5, alignment: 0.5 });
+            panel = new Graphics();
             panel.eventMode = 'none';
 
             const displayTitle = (options.title ?? DEFAULT_TITLE).toUpperCase();
 
-            const title = new Text({
+            titleText = new Text({
                 text: displayTitle,
                 style: {
                     fill: hexToNumber(GameTheme.hud.accent),
@@ -111,10 +232,10 @@ export const createPauseScene = (
                     align: 'center',
                 },
             });
-            title.anchor.set(0.5);
-            title.position.set(width / 2, panelY + panelHeight * 0.2);
+            titleText.anchor.set(0.5);
+            titleText.position.set(width / 2, panelY + panelHeight * 0.2);
 
-            const score = new Text({
+            scoreText = new Text({
                 text: `Score: ${payload.score}`,
                 style: {
                     fill: hexToNumber(GameTheme.hud.textPrimary),
@@ -123,8 +244,8 @@ export const createPauseScene = (
                     align: 'center',
                 },
             });
-            score.anchor.set(0.5);
-            score.position.set(width / 2, panelY + panelHeight * 0.38);
+            scoreText.anchor.set(0.5);
+            scoreText.position.set(width / 2, panelY + panelHeight * 0.38);
 
             const resumeCopy = (options.resumeLabel ?? DEFAULT_RESUME_LABEL).toUpperCase();
 
@@ -144,7 +265,7 @@ export const createPauseScene = (
             const legendTitle = payload.legendTitle ?? null;
             const legendLines = payload.legendLines ?? [];
 
-            const legendTitleText = new Text({
+            legendTitleText = new Text({
                 text: legendTitle ?? '',
                 style: {
                     fill: hexToNumber(GameTheme.hud.textSecondary),
@@ -158,7 +279,7 @@ export const createPauseScene = (
             legendTitleText.position.set(width / 2, panelY + panelHeight * 0.65);
             legendTitleText.visible = Boolean(legendTitle);
 
-            const legendBodyText = new Text({
+            legendBodyText = new Text({
                 text: legendLines.join('\n'),
                 style: {
                     fill: hexToNumber(GameTheme.hud.textPrimary),
@@ -173,7 +294,7 @@ export const createPauseScene = (
             legendBodyText.visible = legendLines.length > 0;
 
             const quitLabel = options.quitLabel ?? 'Hold Q to quit to menu';
-            const quitText = new Text({
+            quitText = new Text({
                 text: payload.onQuit ? quitLabel : '',
                 style: {
                     fill: hexToNumber(GameTheme.hud.textSecondary),
@@ -194,15 +315,31 @@ export const createPauseScene = (
                 });
             }
 
+            themeToggleText = new Text({
+                text: formatThemeLabel(getActiveThemeName()),
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 18,
+                    align: 'center',
+                },
+            });
+            themeToggleText.anchor.set(0.5, 1);
+            themeToggleText.position.set(width / 2, panelY + panelHeight - 18);
+            themeToggleText.cursor = 'pointer';
+            themeToggleText.eventMode = 'static';
+            themeToggleText.on('pointertap', handleThemeTogglePointer);
+
             container.addChild(
                 background,
                 panel,
-                title,
-                score,
+                titleText,
+                scoreText,
                 resumeText,
                 legendTitleText,
                 legendBodyText,
                 quitText,
+                themeToggleText,
             );
 
             container.on('pointertap', () => {
@@ -210,7 +347,10 @@ export const createPauseScene = (
             });
 
             context.addToLayer('hud', container);
-            context.renderStageSoon();
+            applyTheme();
+            unsubscribeTheme = onThemeChange(() => {
+                applyTheme();
+            });
             pushIdleAudioState();
             emitSceneEvent('enter');
         },

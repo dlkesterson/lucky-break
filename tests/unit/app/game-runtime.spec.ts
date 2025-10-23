@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const toneState = vi.hoisted(() => ({
     contextState: 'suspended' as 'suspended' | 'running',
@@ -38,6 +38,7 @@ const createStageStub = () => {
             renderer: {},
             render: vi.fn(),
         },
+        applyTheme: vi.fn(),
         register: vi.fn(),
         transitionTo: vi.fn().mockResolvedValue(undefined),
         push: vi.fn().mockResolvedValue(undefined),
@@ -309,6 +310,7 @@ vi.mock('tone', () => {
         Gain: MockGain,
         Player: MockPlayer,
         Transport: transport,
+        getTransport: () => transport,
         getContext: () => ({
             rawContext: {
                 get state() {
@@ -324,7 +326,7 @@ vi.mock('tone', () => {
     };
 });
 
-vi.mock('render/theme', () => {
+const themeMockState = vi.hoisted(() => {
     interface MockTheme {
         brickColors: string[];
         ball: { core: string; aura: string; highlight: string };
@@ -405,13 +407,43 @@ vi.mock('render/theme', () => {
         };
     };
 
+    const themeOptions = [
+        { name: 'default' as const, label: 'Vibrant' },
+        { name: 'colorBlind' as const, label: 'High Contrast' },
+    ];
+
+    const getThemeOptions = vi.fn(() => themeOptions);
+
+    const getActiveThemeName = vi.fn(() => activeName);
+
+    const toggleTheme = vi.fn((name?: 'default' | 'colorBlind') => {
+        const next = name ?? (activeName === 'default' ? 'colorBlind' : 'default');
+        setActiveTheme(next);
+        return activeName;
+    });
+
     return {
-        GameTheme: defaultTheme,
-        onThemeChange,
+        defaultTheme,
+        highContrastTheme,
         setActiveTheme,
-        getActiveThemeName: vi.fn(() => activeName),
+        onThemeChange,
+        getActiveThemeName,
+        getThemeOptions,
+        toggleTheme,
     };
 });
+
+vi.mock('render/theme', () => ({
+    GameTheme: themeMockState.defaultTheme,
+    onThemeChange: themeMockState.onThemeChange,
+    setActiveTheme: themeMockState.setActiveTheme,
+    getActiveThemeName: themeMockState.getActiveThemeName,
+    getThemeOptions: themeMockState.getThemeOptions,
+    toggleTheme: themeMockState.toggleTheme,
+}));
+
+const setActiveTheme = themeMockState.setActiveTheme;
+const getActiveThemeName = themeMockState.getActiveThemeName;
 
 vi.mock('physics/world', () => ({
     createPhysicsWorld: vi.fn(() => {
@@ -496,6 +528,7 @@ vi.mock('render/hud-display', () => ({
             getHeight: () => 90,
             update: vi.fn(),
             pulseCombo: vi.fn(),
+            setTheme: vi.fn(),
         };
     }),
     HudPowerUpView: vi.fn(),
@@ -1094,6 +1127,11 @@ describe('createGameRuntime', () => {
         highScoreModule.recordHighScore.mockClear();
         highScoreModule.recordHighScore.mockReturnValue({ accepted: false, position: null, entries: [] });
         matterEventsState.on.mockClear();
+
+        const themeSetter = setActiveTheme as unknown as Mock;
+        themeSetter.mockClear();
+        setActiveTheme('default');
+        themeSetter.mockClear();
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {
@@ -1389,6 +1427,33 @@ describe('createGameRuntime', () => {
         expect(inputManager!.resetLaunchTrigger.mock.calls.length).toBe(resetCallsBefore + 1);
 
         handle.dispose();
+    });
+
+    it('toggles the active theme when Shift+C is pressed', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        const themeSetter = setActiveTheme as unknown as Mock;
+        themeSetter.mockClear();
+
+        const event = new KeyboardEvent('keydown', { code: 'KeyC', shiftKey: true, cancelable: true });
+        document.dispatchEvent(event);
+
+        expect(themeSetter).toHaveBeenCalledWith('colorBlind');
+        expect(event.defaultPrevented).toBe(true);
+        expect(getActiveThemeName()).toBe('colorBlind');
+
+        handle.dispose();
+
+        themeSetter.mockClear();
+        setActiveTheme('default');
+        themeSetter.mockClear();
     });
 
     it('provides high score data to the main menu scene factory', async () => {

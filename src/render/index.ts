@@ -23,3 +23,4 @@ export {
 export { createStage, type StageConfig, type StageHandle } from './stage';
 export * from './hud';
 export * from './debug-overlay';
+export * from './visual-factory';

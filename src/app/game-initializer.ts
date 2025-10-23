@@ -13,9 +13,10 @@ import { createMusicDirector, type MusicDirector } from 'audio/music-director';
 import { loadSoundbank, requireSoundbankEntry } from 'audio/soundbank';
 import { createSubject, type Subject } from 'util/observable';
 import { resolveViewportSize } from 'render/viewport';
-import { Players, Panner, Volume, Transport, getContext } from 'tone';
+import { Players, Panner, Volume, Transport, getContext, getTransport } from 'tone';
 
 const AUDIO_RESUME_TIMEOUT_MS = 250;
+const IS_TEST_ENV = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
     if (value === null || value === undefined) {
@@ -60,6 +61,17 @@ const isAutoplayBlockedError = (error: unknown): boolean => {
 
 const getToneAudioContext = (): AudioContext => getContext().rawContext as AudioContext;
 
+const resolveToneTransport = () => {
+    try {
+        if (typeof getTransport === 'function') {
+            return getTransport();
+        }
+    } catch {
+        // Fallback handled below by returning static Transport reference.
+    }
+    return Transport;
+};
+
 const ensureToneAudio = async (): Promise<void> => {
     const context = getToneAudioContext();
     if (context.state === 'suspended') {
@@ -69,8 +81,9 @@ const ensureToneAudio = async (): Promise<void> => {
         }
     }
 
-    if (Transport.state !== 'started') {
-        const result = Transport.start();
+    const transport = resolveToneTransport();
+    if (transport?.state !== 'started' && typeof transport?.start === 'function') {
+        const result = transport.start();
         if (isPromiseLike(result)) {
             await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
         }
@@ -303,7 +316,9 @@ export const createGameInitializer = async ({
                     musicDirector.setState(currentMusicState);
                 })
                 .catch((unlockError) => {
-                    console.warn('Audio unlock attempt deferred until interaction', unlockError);
+                    if (!IS_TEST_ENV) {
+                        console.warn('Audio unlock attempt deferred until interaction', unlockError);
+                    }
                     onAudioBlocked?.(unlockError);
                 })
                 .finally(() => {
@@ -320,7 +335,9 @@ export const createGameInitializer = async ({
 
     if (!isToneAudioReady()) {
         void ensureToneAudio().catch((audioInitError) => {
-            console.warn('Audio context suspended; will retry after the first user interaction.', audioInitError);
+            if (!IS_TEST_ENV) {
+                console.warn('Audio context suspended; will retry after the first user interaction.', audioInitError);
+            }
             onAudioBlocked?.(audioInitError);
         });
     }

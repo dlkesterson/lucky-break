@@ -3,7 +3,14 @@ import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
 import type { HighScoreEntry } from 'util/high-scores';
-import { GameTheme } from 'render/theme';
+import {
+    GameTheme,
+    getActiveThemeName,
+    getThemeLabel,
+    onThemeChange,
+    toggleTheme,
+} from 'render/theme';
+import type { ThemeName } from 'render/theme';
 
 export interface MainMenuSceneOptions {
     readonly title?: string;
@@ -26,7 +33,23 @@ export const createMainMenuScene = (
     let promptLabel: Text | null = null;
     let helpLabel: Text | null = null;
     let scoreboardLabel: Text | null = null;
+    let title: Text | null = null;
+    let themeToggleLabel: Text | null = null;
+    let overlay: Graphics | null = null;
+    let panel: Graphics | null = null;
     let elapsed = 0;
+    let unsubscribeTheme: (() => void) | null = null;
+
+    interface LayoutMetrics {
+        readonly width: number;
+        readonly height: number;
+        readonly panelWidth: number;
+        readonly panelHeight: number;
+        readonly panelX: number;
+        readonly panelY: number;
+    }
+
+    let layout: LayoutMetrics | null = null;
 
     const handleStart = () => {
         const result = options.onStart();
@@ -61,6 +84,76 @@ export const createMainMenuScene = (
         context.renderStageSoon();
     };
 
+    const formatThemeLabel = (name: ThemeName): string => `COLOR MODE: ${getThemeLabel(name).toUpperCase()} (SHIFT+C)`;
+
+    const repaintPanel = () => {
+        if (!layout || !panel || !overlay) {
+            return;
+        }
+
+        overlay.clear();
+        overlay.rect(0, 0, layout.width, layout.height);
+        overlay.fill({ color: hexToNumber(GameTheme.background.to), alpha: 0.78 });
+
+        panel.clear();
+        panel.roundRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 36)
+            .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.94 })
+            .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 6, alignment: 0.5 });
+    };
+
+    const applyTheme = () => {
+        repaintPanel();
+
+        if (title) {
+            title.style = {
+                ...title.style,
+                fill: hexToNumber(GameTheme.hud.accent),
+                fontFamily: GameTheme.font,
+            };
+        }
+
+        if (promptLabel) {
+            promptLabel.style = {
+                ...promptLabel.style,
+                fill: hexToNumber(GameTheme.accents.powerUp),
+                fontFamily: GameTheme.font,
+            };
+        }
+
+        if (helpLabel) {
+            helpLabel.style = {
+                ...helpLabel.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        if (scoreboardLabel) {
+            scoreboardLabel.style = {
+                ...scoreboardLabel.style,
+                fill: hexToNumber(GameTheme.hud.textPrimary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        if (themeToggleLabel) {
+            const current = getActiveThemeName();
+            themeToggleLabel.text = formatThemeLabel(current);
+            themeToggleLabel.style = {
+                ...themeToggleLabel.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
+        context.renderStageSoon();
+    };
+
+    const handleThemeToggle = (event: { stopPropagation?: () => void }) => {
+        event.stopPropagation?.();
+        toggleTheme();
+    };
+
     return {
         init() {
             container = new Container();
@@ -68,26 +161,21 @@ export const createMainMenuScene = (
             container.on('pointertap', handleStart);
 
             const { width, height } = context.designSize;
-
-            const overlay = new Graphics();
-            overlay.rect(0, 0, width, height);
-            overlay.fill({ color: hexToNumber(GameTheme.background.to), alpha: 0.78 });
-            overlay.eventMode = 'none';
-
             const panelWidth = Math.min(width * 0.72, 820);
             const panelHeight = Math.min(height * 0.7, 540);
             const panelX = (width - panelWidth) / 2;
             const panelY = (height - panelHeight) / 2;
+            layout = { width, height, panelWidth, panelHeight, panelX, panelY } satisfies LayoutMetrics;
 
-            const panel = new Graphics();
-            panel.roundRect(panelX, panelY, panelWidth, panelHeight, 36)
-                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.94 })
-                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 6, alignment: 0.5 });
+            overlay = new Graphics();
+            overlay.eventMode = 'none';
+
+            panel = new Graphics();
             panel.eventMode = 'none';
 
             const displayTitle = (options.title ?? DEFAULT_TITLE).toUpperCase();
 
-            const title = new Text({
+            title = new Text({
                 text: displayTitle,
                 style: {
                     fill: hexToNumber(GameTheme.hud.accent),
@@ -118,6 +206,7 @@ export const createMainMenuScene = (
                 'Aim with the paddle to send the ball through the bricks.',
                 'Launch with tap, click, or spacebar and ride the streaks.',
                 'Snag power-ups to stack payouts and trigger lucky breaks!',
+                'Press SHIFT+C any time for high-contrast colors.',
             ];
 
             helpLabel = new Text({
@@ -163,9 +252,27 @@ export const createMainMenuScene = (
             scoreboardLabel.anchor.set(0.5, 0);
             scoreboardLabel.position.set(width / 2, panelY + panelHeight * 0.7);
 
-            container.addChild(overlay, panel, title, promptLabel, helpLabel, scoreboardLabel);
+            themeToggleLabel = new Text({
+                text: formatThemeLabel(getActiveThemeName()),
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 18,
+                    align: 'center',
+                },
+            });
+            themeToggleLabel.anchor.set(0.5, 1);
+            themeToggleLabel.position.set(width / 2, panelY + panelHeight - 24);
+            themeToggleLabel.eventMode = 'static';
+            themeToggleLabel.cursor = 'pointer';
+            themeToggleLabel.on('pointertap', handleThemeToggle);
+
+            container.addChild(overlay, panel, title, promptLabel, helpLabel, scoreboardLabel, themeToggleLabel);
             context.addToLayer('hud', container);
-            context.renderStageSoon();
+            applyTheme();
+            unsubscribeTheme = onThemeChange(() => {
+                applyTheme();
+            });
             pushIdleAudioState();
             emitSceneEvent('enter');
         },
@@ -189,6 +296,14 @@ export const createMainMenuScene = (
             promptLabel = null;
             helpLabel = null;
             scoreboardLabel = null;
+            title = null;
+            themeToggleLabel?.off('pointertap', handleThemeToggle);
+            themeToggleLabel = null;
+            overlay = null;
+            panel = null;
+            layout = null;
+            unsubscribeTheme?.();
+            unsubscribeTheme = null;
             pushIdleAudioState();
             emitSceneEvent('exit');
             context.renderStageSoon();

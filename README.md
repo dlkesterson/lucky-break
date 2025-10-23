@@ -18,6 +18,7 @@ The latest build is published via GitHub Pages: https://dlkesterson.github.io/lu
 - Gamepad support for standard controllers; analog stick steers the paddle and face buttons launch.
 - Dynamic music director and curated soundbank that adapt to combo heat and remaining lives.
 - Scene stack with polished transitions, HUD overlays, and mobile-friendly scaling.
+- Accessibility-first visuals with a high-contrast color mode (`Shift+C`, persisted per device).
 
 ## Getting Started
 

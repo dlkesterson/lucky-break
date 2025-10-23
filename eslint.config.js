@@ -35,6 +35,7 @@ export default tseslint.config(
       ...prettierRecommendedRules,
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/require-await': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
       'import/no-default-export': 'error',
     },
   },

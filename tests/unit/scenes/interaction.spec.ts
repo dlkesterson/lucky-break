@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
 
 vi.mock('pixi.js', () => {
     class Container {
@@ -76,7 +76,8 @@ import { createPauseScene } from 'scenes/pause';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
 import { createGameOverScene } from 'scenes/game-over';
-import { Container } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
+import * as ThemeModule from 'render/theme';
 import type { Application } from 'pixi.js';
 
 interface SceneTestHarness {
@@ -234,6 +235,42 @@ describe('scene interaction lifecycles', () => {
             scene: 'main-menu',
             action: 'resume',
         });
+
+        scene.destroy?.();
+    });
+
+    it('provides a clickable color mode toggle on the main menu', () => {
+        const toggleSpy = vi.spyOn(ThemeModule, 'toggleTheme').mockImplementation(() => 'colorBlind');
+        const { context, getLastAdded } = createSceneHarness();
+        const scene = createMainMenuScene(context, {
+            onStart: vi.fn(),
+        });
+
+        void scene.init();
+        const container = getLastAdded();
+        expect(container).not.toBeNull();
+
+        const themeNode = container?.children.find(
+            (child): child is Text => child instanceof Text && child.text.toUpperCase().includes('COLOR MODE'),
+        );
+        expect(themeNode).toBeTruthy();
+        if (!themeNode) {
+            throw new Error('theme toggle label missing');
+        }
+        expect(themeNode.cursor).toBe('pointer');
+        expect(themeNode.eventMode).toBe('static');
+
+        const onMock = Reflect.get(themeNode, 'on') as Mock;
+        const handler = onMock.mock.calls.find((call) => call[0] === 'pointertap')?.[1] as
+            | ((event: { stopPropagation: () => void }) => void)
+            | undefined;
+        expect(handler).toBeTypeOf('function');
+
+        handler?.({ stopPropagation: vi.fn() });
+        expect(toggleSpy).toHaveBeenCalledTimes(1);
+
+        toggleSpy.mockRestore();
+        scene.destroy?.();
     });
 
     it('disables pause overlay interaction while suspended', () => {

@@ -185,6 +185,7 @@ vi.mock('tone', () => ({
     Panner: audioStubFactory.PannerStub,
     Volume: audioStubFactory.VolumeStub,
     Transport: transportStub,
+    getTransport: () => transportStub,
     getContext: () => ({ rawContext: toneContextStub }),
 }));
 

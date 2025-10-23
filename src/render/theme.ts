@@ -175,6 +175,9 @@ export type GameTheme = typeof GameTheme;
 
 export const getThemeOptions = (): readonly ThemeOption[] => THEME_OPTIONS;
 
+export const getThemeLabel = (name: ThemeName): string =>
+    THEME_OPTIONS.find((option) => option.name === name)?.label ?? name;
+
 export const getActiveThemeName = (): ThemeName => activeThemeName;
 
 export const getActiveTheme = (): GameThemeDefinition => activeTheme;

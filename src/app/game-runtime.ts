@@ -1,8 +1,7 @@
 import {
     GameTheme,
-    getActiveThemeName,
     onThemeChange,
-    setActiveTheme,
+    toggleTheme,
     type GameThemeDefinition,
 } from 'render/theme';
 import { createPhysicsWorld } from 'physics/world';
@@ -44,13 +43,12 @@ import {
     toColorNumber,
     clampUnit,
     mixColors,
-    drawBallVisual,
-    drawPaddleVisual,
     createPlayfieldBackgroundLayer,
     type BallVisualDefaults,
     type BallVisualPalette,
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
+import { createVisualFactory } from 'render/visual-factory';
 import { createComboRing } from 'render/combo-ring';
 import { InputDebugOverlay, PhysicsDebugOverlay, type PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { Sprite, Container, Graphics, ColorMatrixFilter, type Filter } from 'pixi.js';
@@ -63,7 +61,7 @@ import {
     type Engine,
     type Body,
 } from 'matter-js';
-import { Transport, getContext } from 'tone';
+import { Transport, getContext, getTransport } from 'tone';
 import type { MusicState } from 'audio/music-director';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
@@ -129,6 +127,17 @@ const isAutoplayBlockedError = (error: unknown): boolean => {
 
 const getToneAudioContext = (): AudioContext => getContext().rawContext as AudioContext;
 
+const resolveToneTransport = () => {
+    try {
+        if (typeof getTransport === 'function') {
+            return getTransport();
+        }
+    } catch {
+        // Swallow and fall back to Transport constant.
+    }
+    return Transport;
+};
+
 const ensureToneAudio = async (): Promise<void> => {
     const context = getToneAudioContext();
     if (context.state === 'suspended') {
@@ -138,8 +147,9 @@ const ensureToneAudio = async (): Promise<void> => {
         }
     }
 
-    if (Transport.state !== 'started') {
-        const result = Transport.start();
+    const transport = resolveToneTransport();
+    if (transport?.state !== 'started' && typeof transport?.start === 'function') {
+        const result = transport.start();
         if (isPromiseLike(result)) {
             await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
         }
@@ -261,6 +271,11 @@ export const createGameRuntime = async ({
         gradient: GameTheme.paddle.gradient.map(toColorNumber),
         accentColor: themeBallColors.aura,
     };
+
+    const visualFactory = createVisualFactory({
+        ball: ballVisualDefaults,
+        paddle: paddleVisualDefaults,
+    });
 
     let ballHueShift = 0;
     let ballGlowPulse = 0;
@@ -581,8 +596,8 @@ export const createGameRuntime = async ({
     comboRing.container.zIndex = 40;
     gameContainer.addChild(comboRing.container);
 
-    const drawBallSprite = (graphics: Graphics, radius: number, palette?: BallVisualPalette) => {
-        drawBallVisual(graphics, radius, ballVisualDefaults, palette);
+    const drawBallSprite = (graphics: Graphics, radius: number, palette?: Partial<BallVisualPalette>) => {
+        visualFactory.ball.draw(graphics, radius, palette);
     };
 
     ballSpeedRing = createSpeedRing({
@@ -598,9 +613,7 @@ export const createGameRuntime = async ({
     ballSpeedRing.container.zIndex = 49;
     gameContainer.addChild(ballSpeedRing.container);
 
-    const ballGraphics = new Graphics();
-    drawBallSprite(ballGraphics, ball.radius);
-    ballGraphics.eventMode = 'none';
+    const ballGraphics = visualFactory.ball.create({ radius: ball.radius });
     ballGraphics.zIndex = 50;
     const ballGlowFilter = new GlowFilter({
         distance: 18,
@@ -627,9 +640,7 @@ export const createGameRuntime = async ({
         maxExtraBalls: MULTI_BALL_CAPACITY,
     });
 
-    const paddleGraphics = new Graphics();
-    drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
-    paddleGraphics.eventMode = 'none';
+    const paddleGraphics = visualFactory.paddle.create({ width: paddle.width, height: paddle.height });
     paddleGraphics.zIndex = 60;
     gameContainer.addChild(paddleGraphics);
     visualBodies.set(paddle.physicsBody, paddleGraphics);
@@ -884,13 +895,16 @@ export const createGameRuntime = async ({
         const vignetteColor = mixColors(0x040a18, themeAccents.combo, 0.3);
         beatVignette?.setColor(vignetteColor);
 
+        visualFactory.ball.setDefaults(ballVisualDefaults);
+        visualFactory.paddle.setDefaults(paddleVisualDefaults);
+
         ballGlowFilter.color = themeBallColors.highlight;
         ballSpeedRing?.setPalette({
             ringColor: themeBallColors.highlight,
             haloColor: themeBallColors.aura,
         });
         drawBallSprite(ballGraphics, ball.radius);
-        drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults);
+        visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height);
 
         multiBallController.applyTheme(themeBallColors);
 
@@ -914,6 +928,7 @@ export const createGameRuntime = async ({
         'Orange Ball Speed - Speeds up the ball and boosts scoring.',
         'Pink Multi Ball - Splits the active ball into additional balls.',
         'Green Sticky Paddle - Catches the ball until you launch again.',
+        'Shift + C toggles high-contrast color mode.',
     ] as const;
 
     const formatPowerUpLabel = (type: PowerUpType): string => {
@@ -1744,7 +1759,7 @@ export const createGameRuntime = async ({
                 ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence)
                 : undefined;
 
-        drawPaddleVisual(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults, {
+        visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height, {
             accentColor: paddleAccentColor ?? paddleVisualDefaults.accentColor,
             pulseStrength: paddlePulseLevel,
             motionGlow: paddleMotionGlow,
@@ -2153,9 +2168,7 @@ export const createGameRuntime = async ({
             void quitToMenu();
         } else if (event.code === 'KeyC' && event.shiftKey) {
             event.preventDefault();
-            const currentTheme = getActiveThemeName();
-            const nextTheme = currentTheme === 'default' ? 'colorBlind' : 'default';
-            setActiveTheme(nextTheme);
+            toggleTheme();
         } else if (event.code === 'F2') {
             event.preventDefault();
             overlayVisibility.inputDebug = !overlayVisibility.inputDebug;

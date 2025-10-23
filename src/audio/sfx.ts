@@ -49,6 +49,11 @@ const mixHash = (seed: number, value: number): number => {
     return mixed | 0;
 };
 
+const assertUnreachable = (value: never): never => {
+    void value;
+    throw new Error('Unhandled wall side encountered');
+};
+
 const hashString = (value: string): number => {
     let seed = FNV_OFFSET;
     for (let index = 0; index < value.length; index += 1) {
@@ -271,7 +276,9 @@ const buildWallHitDescriptor = (
         switch (payload.side) {
             case 'left': return -0.7;
             case 'right': return 0.7;
-            default: return 0;
+            case 'top': return 0;
+            case 'bottom': return 0;
+            default: return assertUnreachable(payload.side);
         }
     })();
 
@@ -281,7 +288,7 @@ const buildWallHitDescriptor = (
             case 'bottom': return -60;
             case 'right': return 30;
             case 'left': return -30;
-            default: return 0;
+            default: return assertUnreachable(payload.side);
         }
     })();
 

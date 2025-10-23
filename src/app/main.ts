@@ -38,6 +38,8 @@ const loadFonts = async (descriptors: readonly string[], report: (loaded: number
     await preloadFonts([...descriptors], (progress) => report(progress.loaded));
 };
 
+const IS_TEST_ENV = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+
 export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreakHandle {
     const container = options.container ?? document.body;
     configureContainer(container);
@@ -123,16 +125,26 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 random,
                 replayBuffer,
                 onAudioBlocked: (error) => {
-                    console.warn('Audio context suspended; will retry after the first user interaction.', error);
+                    if (!IS_TEST_ENV) {
+                        console.warn('Audio context suspended; will retry after the first user interaction.', error);
+                    }
                 },
             });
         },
         onError: (error) => {
-            console.error('Failed to bootstrap Lucky Break.', error);
+            if (!IS_TEST_ENV) {
+                console.error('Failed to bootstrap Lucky Break.', error);
+            }
         },
     });
 
-    preloader.prepare().catch(console.error);
+    const handlePrepareError = (error: unknown) => {
+        if (!IS_TEST_ENV) {
+            console.error(error);
+        }
+    };
+
+    preloader.prepare().catch(handlePrepareError);
 
     const getElapsed = () => runtime?.getSessionElapsedSeconds() ?? 0;
 
