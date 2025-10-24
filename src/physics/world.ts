@@ -96,7 +96,7 @@ const createFactories = (_world: PhysicsWorld, dimensions: PhysicsWorldDimension
     const halfHeight = dimensions.height / 2;
 
     const ball: PhysicsFactories['ball'] = (options) => {
-    const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
+        const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
         const body = Bodies.circle(position.x, position.y, options.radius, {
             restitution: options.restitution ?? 1, // Perfect energy-preserving bounces
             friction: 0,

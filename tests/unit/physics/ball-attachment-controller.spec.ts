@@ -177,7 +177,7 @@ describe('BallAttachmentController', () => {
 
     it('returns debug info referencing the underlying physics body', () => {
         const ball = controller.createAttachedBall({ x: 10, y: 20 });
-    (ball.physicsBody as any).velocity = { x: 5, y: -2 };
+        (ball.physicsBody as any).velocity = { x: 5, y: -2 };
 
         const info = controller.getDebugInfo(ball);
 

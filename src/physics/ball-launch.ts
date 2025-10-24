@@ -64,7 +64,7 @@ export class PhysicsBallLaunchController implements BallLaunchController {
         }
 
         // Calculate and apply launch velocity using setVelocity for consistent speed
-    const normalized = Vector.normalise(direction as MatterVector);
+        const normalized = Vector.normalise(direction as MatterVector);
         const velocity = Vector.mult(normalized, speed);
         Body.setVelocity(ball.physicsBody, velocity);
 
