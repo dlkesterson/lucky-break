@@ -17,7 +17,7 @@ export const createBrickDecorator = (
             const rng = random ?? noopRandom;
 
             if (normalizedDistance >= 0.95 && row <= 1) {
-                return { form: 'diamond', breakable: false };
+                return { form: 'circle', breakable: false };
             }
 
             if (normalizedDistance < 0.3 && row % 3 === 0) {

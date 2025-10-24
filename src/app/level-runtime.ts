@@ -143,6 +143,7 @@ export const createLevelRuntime = ({
         hasHpLabel: boolean;
         hpLabel?: BrickHpLabel | null;
         isBreakable: boolean;
+        alwaysShowHpLabel: boolean;
         textureOverride?: BrickTextureOverrides;
     }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
@@ -319,7 +320,9 @@ export const createLevelRuntime = ({
         visual.tint = 0xffffff;
         visual.blendMode = 'normal';
 
-        if (state.isBreakable && state.maxHp > 1) {
+        const shouldShowLabel = state.isBreakable && (state.maxHp > 1 || state.alwaysShowHpLabel);
+
+        if (shouldShowLabel) {
             const label = ensureHpLabel(visual, state.hpLabel, `${Math.max(0, safeHp)}`);
             label.visible = safeHp > 0;
             state.hpLabel = label;
@@ -476,9 +479,10 @@ export const createLevelRuntime = ({
             visualBodies.set(brick, brickVisual);
             stage.layers.playfield.addChild(brickVisual);
 
-            const hasHpLabel = isBreakable && maxHp > 1;
+            const alwaysShowHpLabel = isBreakable && (brickSpec.traits?.includes('gamble') ?? false);
+            const initialHasHpLabel = isBreakable && (maxHp > 1 || alwaysShowHpLabel);
             let hpLabel: BrickHpLabel | null = null;
-            if (hasHpLabel) {
+            if (initialHasHpLabel) {
                 hpLabel = ensureHpLabel(brickVisual, null, `${maxHp}`);
             }
 
@@ -489,9 +493,10 @@ export const createLevelRuntime = ({
                 maxHp,
                 currentHp: maxHp,
                 form: brickForm,
-                hasHpLabel,
+                hasHpLabel: initialHasHpLabel,
                 hpLabel,
                 isBreakable,
+                alwaysShowHpLabel,
                 textureOverride,
             });
 

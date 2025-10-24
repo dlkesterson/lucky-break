@@ -143,7 +143,7 @@ export const createLevelCompleteScene = (
             overlay.eventMode = 'none';
 
             const panelWidth = Math.min(width * 0.7, 760);
-            const panelHeight = Math.min(height * 0.62, 480);
+            const panelHeight = Math.min(height * 0.66, 520);
             const panelX = (width - panelWidth) / 2;
             const panelY = (height - panelHeight) / 2;
 
@@ -280,7 +280,11 @@ export const createLevelCompleteScene = (
                 host.addChild(labelText, valueText);
             });
 
-            let contentY = statStartY + (statLabels.length - 1) * statSpacing + 60;
+            const extrasLayer = new Container();
+            host.addChild(extrasLayer);
+
+            const extrasBaseY = statStartY + (statLabels.length - 1) * statSpacing + 60;
+            let extrasOffset = 0;
             const achievements = payload.achievements ?? [];
 
             const milestones = payload.milestones ?? [];
@@ -297,9 +301,9 @@ export const createLevelCompleteScene = (
                     },
                 });
                 milestoneHeading.anchor.set(0, 0.5);
-                milestoneHeading.position.set(contentLeft, contentY);
-                host.addChild(milestoneHeading);
-                contentY += 34;
+                milestoneHeading.position.set(contentLeft, extrasBaseY + extrasOffset);
+                extrasLayer.addChild(milestoneHeading);
+                extrasOffset += 34;
 
                 milestones.forEach((label) => {
                     const detail = new Text({
@@ -312,12 +316,12 @@ export const createLevelCompleteScene = (
                         },
                     });
                     detail.anchor.set(0, 0.5);
-                    detail.position.set(contentLeft, contentY);
-                    host.addChild(detail);
-                    contentY += 28;
+                    detail.position.set(contentLeft, extrasBaseY + extrasOffset);
+                    extrasLayer.addChild(detail);
+                    extrasOffset += 28;
                 });
 
-                contentY += 12;
+                extrasOffset += 12;
             }
 
             if (achievements.length > 0) {
@@ -333,9 +337,9 @@ export const createLevelCompleteScene = (
                     },
                 });
                 heading.anchor.set(0, 0.5);
-                heading.position.set(contentLeft, contentY);
-                host.addChild(heading);
-                contentY += 38;
+                heading.position.set(contentLeft, extrasBaseY + extrasOffset);
+                extrasLayer.addChild(heading);
+                extrasOffset += 38;
 
                 achievements.forEach((achievement) => {
                     const detail = new Text({
@@ -348,10 +352,22 @@ export const createLevelCompleteScene = (
                         },
                     });
                     detail.anchor.set(0, 0.5);
-                    detail.position.set(contentLeft, contentY);
-                    host.addChild(detail);
-                    contentY += 28;
+                    detail.position.set(contentLeft, extrasBaseY + extrasOffset);
+                    extrasLayer.addChild(detail);
+                    extrasOffset += 28;
                 });
+            }
+
+            let contentY = extrasBaseY + extrasOffset;
+            const promptBaseline = panelY + panelHeight - 70;
+            const overflow = contentY + 56 - promptBaseline;
+            if (overflow > 0 && extrasOffset > 0) {
+                const maxShift = Math.max(0, extrasBaseY - (statStartY + statSpacing * 0.5));
+                const shift = Math.min(overflow, maxShift);
+                if (shift > 0) {
+                    extrasLayer.y -= shift;
+                    contentY -= shift;
+                }
             }
 
             promptLabel = new Text({
@@ -365,7 +381,6 @@ export const createLevelCompleteScene = (
                 },
             });
             promptLabel.anchor.set(0.5);
-            const promptBaseline = panelY + panelHeight - 70;
             promptLabel.position.set(contentCenterX, Math.min(promptBaseline, contentY + 56));
 
             const continueHandler = () => {

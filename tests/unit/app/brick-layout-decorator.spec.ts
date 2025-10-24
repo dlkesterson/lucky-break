@@ -14,10 +14,10 @@ const buildContext = (overrides: Partial<BrickDecorationContext> = {}): BrickDec
 });
 
 describe('createBrickDecorator', () => {
-    it('creates wall diamonds near the top corners in portrait layouts', () => {
+    it('creates circular wall bricks near the top corners in portrait layouts', () => {
         const decorate = createBrickDecorator('portrait');
         const result = decorate?.(buildContext({ row: 0, slotIndex: 0, slotCount: 8 }));
-        expect(result).toEqual({ form: 'diamond', breakable: false });
+        expect(result).toEqual({ form: 'circle', breakable: false });
     });
 
     it('adds circular bricks near the portrait center rows', () => {

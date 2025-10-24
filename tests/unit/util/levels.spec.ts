@@ -301,7 +301,7 @@ describe('generateLevelLayout', () => {
             expect(edgeBricks.length).toBeGreaterThan(0);
             edgeBricks.forEach((brick) => {
                 expect(brick.breakable).toBe(false);
-                expect(brick.form).toBe('diamond');
+                expect(brick.form).toBe('rectangle');
                 expect(brick.traits?.includes('wall')).toBe(true);
                 expect(brick.hp).toBeGreaterThan(1000);
             });
@@ -320,7 +320,7 @@ describe('generateLevelLayout', () => {
             {
                 decorateBrick: ({ col }) => {
                     if (col % 3 === 0) {
-                        return { form: 'diamond' };
+                        return { form: 'diamond', breakable: true };
                     }
                     if (col % 3 === 1) {
                         return { form: 'circle', breakable: false, traits: ['wall'] };
@@ -384,7 +384,7 @@ describe('generateLevelLayout', () => {
 
         expect(fourth.breakable).toBe(false);
         expect(fourth.hp).toBe(5);
-        expect(fourth.form).toBe('diamond');
+        expect(fourth.form).toBe('rectangle');
         const fourthTraits = fourth.traits ?? [];
         expect(fourthTraits).toContain('wall');
 

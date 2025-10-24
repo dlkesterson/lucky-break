@@ -500,8 +500,8 @@ export function generateLevelLayout(
                 finalBreakable = false;
             }
 
-            if (!finalBreakable && decoration.form === undefined) {
-                finalForm = 'diamond';
+            if (!finalBreakable) {
+                finalForm = decoration.form === 'circle' || finalForm === 'circle' ? 'circle' : 'rectangle';
             }
 
             if (!finalBreakable && !mergedTraits.includes('wall')) {

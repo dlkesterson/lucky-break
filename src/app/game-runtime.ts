@@ -553,7 +553,6 @@ export const createGameRuntime = async ({
                 ? Math.min(MAX_LEVEL_BRICK_HP, Math.max(state.maxHp, clampedPenalty))
                 : Math.max(state.maxHp, clampedPenalty);
             state.maxHp = nextMax;
-            state.hasHpLabel = state.isBreakable && state.maxHp > 1;
         }
         levelRuntime.updateBrickDamage(brick, clampedPenalty);
         applyGambleAppearance(brick);
@@ -2148,13 +2147,9 @@ export const createGameRuntime = async ({
 
     stage.register('game-over', (context) =>
         createGameOverScene(context, {
-            prompt: 'Tap to restart',
+            prompt: 'Tap to return to menu',
             onRestart: () => {
-                if (stage.getCurrentScene() === 'game-over') {
-                    stage.pop();
-                }
-                renderStageSoon();
-                void beginNewSession();
+                void quitToMenu();
             },
         }),
         { provideContext: provideSceneServices },
@@ -2165,7 +2160,7 @@ export const createGameRuntime = async ({
     gameContainer.visible = false;
     hudContainer.visible = false;
 
-    const quitToMenu = async () => {
+    async function quitToMenu(): Promise<void> {
         if (!loop) {
             return;
         }
@@ -2190,7 +2185,7 @@ export const createGameRuntime = async ({
         }
 
         renderStageSoon();
-    };
+    }
 
     const resumeFromPause = () => {
         if (!loop || !isPaused) {
