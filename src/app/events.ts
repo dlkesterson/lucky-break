@@ -181,6 +181,7 @@ const toEnvelope = <EventName extends LuckyBreakEventName>(
 
 interface E2EHarness {
     readonly onEvent?: (event: EventEnvelope<LuckyBreakEventName>) => void;
+    readonly startGameplay?: () => Promise<void> | void;
 }
 
 const readE2EHarness = (): E2EHarness | null => {

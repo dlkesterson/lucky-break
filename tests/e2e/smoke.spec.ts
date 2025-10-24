@@ -33,7 +33,10 @@ test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
         const globalObject = window as unknown as {
             __LB_E2E_EVENTS__?: SceneEvent[];
-            __LB_E2E_HOOKS__?: { onEvent?: (event: SceneEvent) => void };
+            __LB_E2E_HOOKS__?: {
+                onEvent?: (event: SceneEvent) => void;
+                startGameplay?: () => Promise<void> | void;
+            };
         };
 
         globalObject.__LB_E2E_EVENTS__ = [];
@@ -52,13 +55,50 @@ test('loads the main menu and transitions into gameplay', async ({ page }) => {
     await page.waitForSelector('canvas', { state: 'attached' });
     await expect(page.locator('.lb-preloader')).toHaveCount(0);
 
-    const canvasCount = await page.locator('canvas').count();
-    expect(canvasCount).toBeGreaterThan(0);
+    await page.waitForFunction(() => {
+        const globalObject = window as unknown as { __LB_E2E_EVENTS__?: SceneEvent[] };
+        const events = globalObject.__LB_E2E_EVENTS__ ?? [];
+        return events.some((event) => {
+            if (!event || typeof event !== 'object') {
+                return false;
+            }
 
-    await page.mouse.move(640, 360);
-    await page.mouse.click(640, 360);
+            if (event.type !== 'UiSceneTransition') {
+                return false;
+            }
 
-    await page.waitForTimeout(500);
+            const payload = (event as SceneTransitionEvent).payload;
+            return payload?.scene === 'main-menu' && payload?.action === 'enter';
+        });
+    });
+
+    const canvas = page.locator('canvas').first();
+    await expect(canvas).toBeVisible();
+    await canvas.click();
+
+    await page.evaluate(() => {
+        const hooks = (window as unknown as {
+            __LB_E2E_HOOKS__?: { startGameplay?: () => Promise<void> | void };
+        }).__LB_E2E_HOOKS__;
+        return hooks?.startGameplay?.();
+    });
+
+    await page.waitForFunction(() => {
+        const globalObject = window as unknown as { __LB_E2E_EVENTS__?: SceneEvent[] };
+        const events = globalObject.__LB_E2E_EVENTS__ ?? [];
+        return events.some((event) => {
+            if (!event || typeof event !== 'object') {
+                return false;
+            }
+
+            if (event.type !== 'UiSceneTransition') {
+                return false;
+            }
+
+            const payload = (event as SceneTransitionEvent).payload;
+            return payload?.scene === 'gameplay' && payload?.action === 'enter';
+        });
+    });
 
     const sceneEvents = await page.evaluate(() => {
         const globalObject = window as unknown as { __LB_E2E_EVENTS__?: SceneEvent[] };

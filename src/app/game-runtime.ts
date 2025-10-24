@@ -1211,6 +1211,19 @@ export const createGameRuntime = async ({
         loop?.start();
     };
 
+    const registerE2EHarnessControls = (): void => {
+        const candidate = globalThis as { __LB_E2E_HOOKS__?: unknown };
+        const harness = candidate.__LB_E2E_HOOKS__;
+        if (!harness || typeof harness !== 'object') {
+            return;
+        }
+
+        const controls = harness as { startGameplay?: () => Promise<void> };
+        controls.startGameplay = () => beginNewSession();
+    };
+
+    registerE2EHarnessControls();
+
     const startLevel = (levelIndex: number, options: { resetScore?: boolean } = {}): void => {
         isPaused = false;
 
