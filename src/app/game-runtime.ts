@@ -12,6 +12,7 @@ import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createSpeedRing } from 'render/effects/speed-ring';
 import { createBrickParticleSystem, type BrickParticleSystem } from 'render/effects/brick-particles';
+import { createRoundCountdown, type RoundCountdownDisplay } from 'render/effects/round-countdown';
 import { createHudDisplay, type HudPowerUpView, type HudRewardView } from 'render/hud-display';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
@@ -199,6 +200,11 @@ const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
 const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
 const PRESET_OFFSET_SALT = 0x1f123bb5;
+
+const AUTO_COMPLETE_SETTINGS = config.levels.autoComplete;
+const AUTO_COMPLETE_ENABLED = AUTO_COMPLETE_SETTINGS.enabled;
+const AUTO_COMPLETE_COUNTDOWN = Math.max(1, AUTO_COMPLETE_SETTINGS.countdownSeconds);
+const AUTO_COMPLETE_TRIGGER = Math.max(1, AUTO_COMPLETE_SETTINGS.triggerRemainingBricks);
 
 const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     const normalizedIndex = levelIndex + 1;
@@ -409,7 +415,22 @@ export const createGameRuntime = async ({
     let roundHighestCombo = 0;
     let roundScoreBaseline = 0;
     let roundCoinBaseline = 0;
+    let levelAutoCompleted = false;
+    let autoCompleteActive = false;
+    let autoCompleteTimer = AUTO_COMPLETE_COUNTDOWN;
+    let roundCountdownDisplay: RoundCountdownDisplay | null = null;
     const pendingAchievementNotifications: AchievementUnlock[] = [];
+
+    const syncAutoCompleteCountdownDisplay = () => {
+        if (!roundCountdownDisplay) {
+            return;
+        }
+        if (!AUTO_COMPLETE_ENABLED || !autoCompleteActive) {
+            roundCountdownDisplay.hide();
+            return;
+        }
+        roundCountdownDisplay.show(autoCompleteTimer, AUTO_COMPLETE_COUNTDOWN);
+    };
 
     const consumeAchievementNotifications = (): readonly AchievementUnlock[] => {
         if (pendingAchievementNotifications.length === 0) {
@@ -584,6 +605,21 @@ export const createGameRuntime = async ({
     const getGhostBrickRemainingDuration = (
         ...args: Parameters<typeof levelRuntime.getGhostBrickRemainingDuration>
     ) => levelRuntime.getGhostBrickRemainingDuration(...args);
+    const forceClearBreakableBricks = () => levelRuntime.forceClearBreakableBricks();
+    const clearActivePowerUps = () => levelRuntime.clearActivePowerUps();
+    const clearActiveCoins = () => levelRuntime.clearActiveCoins();
+
+    const resetAutoCompleteCountdown = () => {
+        autoCompleteActive = false;
+        autoCompleteTimer = AUTO_COMPLETE_COUNTDOWN;
+        syncAutoCompleteCountdownDisplay();
+    };
+
+    const beginAutoCompleteCountdown = () => {
+        autoCompleteActive = true;
+        autoCompleteTimer = AUTO_COMPLETE_COUNTDOWN;
+        syncAutoCompleteCountdownDisplay();
+    };
 
     const loadLevel = (levelIndex: number) => {
         gambleManager.clear();
@@ -597,6 +633,13 @@ export const createGameRuntime = async ({
     };
 
     stage.addToLayer('playfield', createPlayfieldBackgroundLayer(playfieldDimensions).container);
+
+    roundCountdownDisplay = createRoundCountdown({
+        playfieldSize: playfieldDimensions,
+        theme: GameTheme,
+    });
+    stage.addToLayer('playfield', roundCountdownDisplay.container);
+    syncAutoCompleteCountdownDisplay();
 
     brickParticles = createBrickParticleSystem({
         random: random.random,
@@ -987,6 +1030,7 @@ export const createGameRuntime = async ({
         multiBallController.applyTheme(themeBallColors);
 
         hudDisplay.setTheme(theme);
+        roundCountdownDisplay?.setTheme(theme);
         stage.applyTheme(theme);
         replacePaddleLight(themeAccents.powerUp);
 
@@ -1112,8 +1156,32 @@ export const createGameRuntime = async ({
         const snapshot = session.snapshot();
         const hudView = buildHudScoreboard(snapshot);
 
+        const prompts = (() => {
+            if (!AUTO_COMPLETE_ENABLED || !autoCompleteActive) {
+                return hudView.prompts;
+            }
+            const secondsRemaining = Math.max(0, autoCompleteTimer);
+            const formatted = secondsRemaining >= 10
+                ? `${Math.ceil(secondsRemaining)}s`
+                : `${secondsRemaining.toFixed(1)}s`;
+            const severity = secondsRemaining <= 3 ? ('warning' as const) : ('info' as const);
+            const autoPrompt = {
+                id: 'auto-complete-countdown',
+                severity,
+                message: `Auto clear in ${formatted}`,
+            };
+            return [autoPrompt, ...hudView.prompts.filter((prompt) => prompt.id !== autoPrompt.id)];
+        })();
+
+        const viewWithCountdown = prompts === hudView.prompts
+            ? hudView
+            : {
+                ...hudView,
+                prompts,
+            };
+
         hudDisplay.update({
-            view: hudView,
+            view: viewWithCountdown,
             difficultyMultiplier: levelDifficultyMultiplier,
             comboCount: scoringState.combo,
             comboTimer: scoringState.comboTimer,
@@ -1244,6 +1312,9 @@ export const createGameRuntime = async ({
         gameContainer.visible = true;
         hudContainer.visible = true;
 
+        levelAutoCompleted = false;
+        resetAutoCompleteCountdown();
+
         if (options.resetScore) {
             scoringState = createScoring();
         } else {
@@ -1274,6 +1345,10 @@ export const createGameRuntime = async ({
         isPaused = false;
         loop?.stop();
         pendingReward = spinWheel(random.random);
+        resetAutoCompleteCountdown();
+
+        const autoCompletedThisLevel = levelAutoCompleted;
+        levelAutoCompleted = false;
 
         const roundUnlocks = achievements.recordRoundComplete({ bricksBroken: levelBricksBroken });
         if (roundUnlocks.length > 0) {
@@ -1298,6 +1373,9 @@ export const createGameRuntime = async ({
         }
         if (roundHighestCombo > 0) {
             milestones.push(`Combo x${roundHighestCombo}`);
+        }
+        if (autoCompletedThisLevel) {
+            milestones.push('Auto Clear Assist');
         }
         if (coinsCollected > 0) {
             milestones.push(`${coinsCollected.toLocaleString()} coins banked`);
@@ -1414,6 +1492,28 @@ export const createGameRuntime = async ({
                 const initialHp = metadata?.hp ?? currentHp;
 
                 const isFortified = metadata?.traits?.includes('fortified') ?? false;
+                const isBreakableBrick = metadata?.breakable !== false;
+
+                if (!isBreakableBrick) {
+                    bus.publish('BrickHit', {
+                        sessionId,
+                        row,
+                        col,
+                        impactVelocity,
+                        brickType: 'indestructible',
+                        comboHeat: scoringState.combo,
+                        previousHp: currentHp,
+                        remainingHp: currentHp,
+                    }, frameTimestampMs);
+
+                    session.recordEntropyEvent({
+                        type: 'wall-hit',
+                        comboHeat: scoringState.combo,
+                        impactVelocity,
+                        speed: impactVelocity,
+                    });
+                    return;
+                }
 
                 if (nextHp > 0) {
                     brickHealth.set(brick, nextHp);
@@ -1773,6 +1873,35 @@ export const createGameRuntime = async ({
         const safeMovementDelta = movementDelta > 0 ? movementDelta : 1 / 240;
 
         const sessionSnapshot = session.snapshot();
+
+        if (AUTO_COMPLETE_ENABLED && sessionSnapshot.status === 'active') {
+            const bricksRemaining = sessionSnapshot.brickRemaining;
+            if (bricksRemaining > 0 && bricksRemaining <= AUTO_COMPLETE_TRIGGER) {
+                if (!autoCompleteActive) {
+                    beginAutoCompleteCountdown();
+                } else {
+                    autoCompleteTimer = Math.max(0, autoCompleteTimer - deltaSeconds);
+                    syncAutoCompleteCountdownDisplay();
+                }
+
+                if (autoCompleteActive && autoCompleteTimer <= 0) {
+                    levelAutoCompleted = true;
+                    resetAutoCompleteCountdown();
+                    gambleManager.clear();
+                    forceClearBreakableBricks();
+                    clearActivePowerUps();
+                    clearActiveCoins();
+                    session.completeRound();
+                    handleLevelComplete();
+                    return;
+                }
+            } else if (autoCompleteActive) {
+                resetAutoCompleteCountdown();
+            }
+        } else if (autoCompleteActive) {
+            resetAutoCompleteCountdown();
+        }
+
         pushMusicState({
             lives: toMusicLives(sessionSnapshot.livesRemaining),
             combo: scoringState.combo,
@@ -2361,6 +2490,10 @@ export const createGameRuntime = async ({
             brickParticles.container.removeFromParent();
             brickParticles.destroy();
             brickParticles = null;
+        }
+        if (roundCountdownDisplay) {
+            roundCountdownDisplay.container.removeFromParent();
+            roundCountdownDisplay = null;
         }
         comboRing.container.removeFromParent();
         comboRing.dispose();

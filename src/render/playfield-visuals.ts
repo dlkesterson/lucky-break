@@ -234,12 +234,15 @@ export const paintBrickVisual = (
     damageLevel: number,
     restAlpha: number,
     form: BrickForm = 'rectangle',
+    overrides?: BrickVisualOverrides,
 ): void => {
     const halfWidth = width / 2;
     const halfHeight = height / 2;
     const damage = clampUnit(damageLevel);
-    const highlightColor = mixColors(color, 0xffffff, 0.45 + damage * 0.35);
-    const shadowColor = mixColors(color, 0x001020, 0.55 + damage * 0.15);
+    const baseColor = overrides?.fillColor ?? color;
+    const useFlatFill = overrides?.useFlatFill ?? false;
+    const highlightColor = useFlatFill ? baseColor : mixColors(baseColor, 0xffffff, 0.45 + damage * 0.35);
+    const shadowColor = useFlatFill ? baseColor : mixColors(baseColor, 0x001020, 0.55 + damage * 0.15);
 
     const gradient = new FillGradient(-halfWidth, -halfHeight, halfWidth, halfHeight);
     gradient.addColorStop(0, highlightColor);
@@ -247,7 +250,9 @@ export const paintBrickVisual = (
 
     graphics.clear();
 
-    const strokeOptions = { color: highlightColor, width: 2, alignment: 0.5, alpha: 0.45 + damage * 0.2 } as const;
+    const strokeAlpha = overrides?.strokeColor !== undefined ? 0.9 : 0.45 + damage * 0.2;
+    const strokeColor = overrides?.strokeColor ?? highlightColor;
+    const strokeOptions = { color: strokeColor, width: 2, alignment: 0.5, alpha: strokeAlpha } as const;
 
     if (form === 'circle') {
         const radius = Math.max(4, Math.min(halfWidth, halfHeight));
@@ -255,15 +260,17 @@ export const paintBrickVisual = (
         graphics.fill(gradient);
         graphics.stroke(strokeOptions);
 
-        const highlightRadius = radius * 0.65;
-        graphics.ellipse(0, -radius * 0.25, highlightRadius, highlightRadius * 0.45);
-        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+        if (!useFlatFill) {
+            const highlightRadius = radius * 0.65;
+            graphics.ellipse(0, -radius * 0.25, highlightRadius, highlightRadius * 0.45);
+            graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
 
-        const shadowRadius = radius * 0.75;
-        graphics.ellipse(0, radius * 0.3, shadowRadius, shadowRadius * 0.45);
-        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+            const shadowRadius = radius * 0.75;
+            graphics.ellipse(0, radius * 0.3, shadowRadius, shadowRadius * 0.45);
+            graphics.fill({ color: baseColor, alpha: 0.18 + damage * 0.22 });
+        }
 
-        if (damage > 0.01) {
+        if (!useFlatFill && damage > 0.01) {
             const crackAlpha = 0.12 + damage * 0.32;
             graphics.moveTo(-radius * 0.6, -radius * 0.2);
             graphics.lineTo(-radius * 0.15, radius * 0.05);
@@ -290,21 +297,23 @@ export const paintBrickVisual = (
         graphics.fill(gradient);
         graphics.stroke(strokeOptions);
 
-        graphics.moveTo(0, -halfHeight * 0.6);
-        graphics.lineTo(halfWidth * 0.45, -halfHeight * 0.05);
-        graphics.lineTo(0, -halfHeight * 0.1);
-        graphics.lineTo(-halfWidth * 0.45, -halfHeight * 0.05);
-        graphics.closePath();
-        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+        if (!useFlatFill) {
+            graphics.moveTo(0, -halfHeight * 0.6);
+            graphics.lineTo(halfWidth * 0.45, -halfHeight * 0.05);
+            graphics.lineTo(0, -halfHeight * 0.1);
+            graphics.lineTo(-halfWidth * 0.45, -halfHeight * 0.05);
+            graphics.closePath();
+            graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
 
-        graphics.moveTo(0, halfHeight * 0.75);
-        graphics.lineTo(halfWidth * 0.6, halfHeight * 0.1);
-        graphics.lineTo(0, halfHeight * 0.2);
-        graphics.lineTo(-halfWidth * 0.6, halfHeight * 0.1);
-        graphics.closePath();
-        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+            graphics.moveTo(0, halfHeight * 0.75);
+            graphics.lineTo(halfWidth * 0.6, halfHeight * 0.1);
+            graphics.lineTo(0, halfHeight * 0.2);
+            graphics.lineTo(-halfWidth * 0.6, halfHeight * 0.1);
+            graphics.closePath();
+            graphics.fill({ color: baseColor, alpha: 0.18 + damage * 0.22 });
+        }
 
-        if (damage > 0.01) {
+        if (!useFlatFill && damage > 0.01) {
             const crackAlpha = 0.12 + damage * 0.32;
             graphics.moveTo(-halfWidth * 0.35, -halfHeight * 0.45);
             graphics.lineTo(-halfWidth * 0.1, -halfHeight * 0.05);
@@ -322,14 +331,16 @@ export const paintBrickVisual = (
         graphics.fill(gradient);
         graphics.stroke(strokeOptions);
 
-        const innerHighlightHeight = height * 0.32;
-        graphics.roundRect(-halfWidth + 3, -halfHeight + 3, width - 6, innerHighlightHeight, cornerRadius * 0.6);
-        graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
+        if (!useFlatFill) {
+            const innerHighlightHeight = height * 0.32;
+            graphics.roundRect(-halfWidth + 3, -halfHeight + 3, width - 6, innerHighlightHeight, cornerRadius * 0.6);
+            graphics.fill({ color: 0xffffff, alpha: 0.12 + damage * 0.16 });
 
-        graphics.roundRect(-halfWidth + 4, halfHeight - innerHighlightHeight + 2, width - 8, innerHighlightHeight, cornerRadius * 0.6);
-        graphics.fill({ color, alpha: 0.18 + damage * 0.22 });
+            graphics.roundRect(-halfWidth + 4, halfHeight - innerHighlightHeight + 2, width - 8, innerHighlightHeight, cornerRadius * 0.6);
+            graphics.fill({ color: baseColor, alpha: 0.18 + damage * 0.22 });
+        }
 
-        if (damage > 0.01) {
+        if (!useFlatFill && damage > 0.01) {
             const crackAlpha = 0.12 + damage * 0.32;
             graphics.moveTo(-halfWidth + 6, -halfHeight + 10);
             graphics.lineTo(-halfWidth * 0.2, -halfHeight * 0.1);
@@ -347,3 +358,9 @@ export const paintBrickVisual = (
     graphics.alpha = restAlpha;
     graphics.tint = 0xffffff;
 };
+
+export interface BrickVisualOverrides {
+    readonly strokeColor?: number;
+    readonly fillColor?: number;
+    readonly useFlatFill?: boolean;
+}

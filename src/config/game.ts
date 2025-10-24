@@ -47,6 +47,12 @@ interface GambleBrickConfig {
     readonly tintPrimed: string;
 }
 
+interface LevelAutoCompleteConfig {
+    readonly enabled: boolean;
+    readonly countdownSeconds: number;
+    readonly triggerRemainingBricks: number;
+}
+
 export type RewardKey =
     | 'sticky-paddle'
     | 'double-points'
@@ -171,6 +177,7 @@ export interface GameConfig {
         readonly loopProgression: readonly LevelLoopProgressionStep[];
         readonly loopFallback: LevelLoopProgressionFallback;
         readonly gamble: GambleBrickConfig;
+        readonly autoComplete: LevelAutoCompleteConfig;
     };
     readonly rewards: {
         readonly definitions: RewardDefinitionMap;
@@ -315,6 +322,11 @@ export const gameConfig = {
             failPenaltyHp: 3,
             tintArmed: '#4DD8A6',
             tintPrimed: '#FFD166',
+        },
+        autoComplete: {
+            enabled: true,
+            countdownSeconds: 10,
+            triggerRemainingBricks: 1,
         },
     },
     rewards: {

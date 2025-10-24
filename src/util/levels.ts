@@ -20,7 +20,7 @@ const LOOP_PROGRESSIONS = config.levels.loopProgression;
 const LOOP_FALLBACK = config.levels.loopFallback;
 const GAMBLE_CONFIG = config.levels.gamble;
 const WALL_BRICK_HP = 9999;
-export const MAX_LEVEL_BRICK_HP = 3;
+export const MAX_LEVEL_BRICK_HP = 2;
 
 export interface LoopScalingInfo {
     readonly loopCount: number;
@@ -225,6 +225,77 @@ export function generateLevelLayout(
 
     const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
 
+    const pickFromList = (list: number[], rng: RandomSource | undefined): number | null => {
+        if (list.length === 0) {
+            return null;
+        }
+        const index = rng ? Math.floor(rng() * list.length) : Math.floor(list.length / 2);
+        const safeIndex = Math.max(0, Math.min(list.length - 1, index));
+        const [value] = list.splice(safeIndex, 1);
+        return value ?? null;
+    };
+
+    const removeValue = (list: number[], value: number): void => {
+        const index = list.indexOf(value);
+        if (index >= 0) {
+            list.splice(index, 1);
+        }
+    };
+
+    // Distribute non-breakable wall columns away from the edges to keep layouts open.
+    const planWallSlots = (slotCount: number, trimmed: boolean, rng: RandomSource | undefined): Set<number> => {
+        if (!trimmed || slotCount <= 0) {
+            return new Set<number>();
+        }
+
+        const interiorSlots = Array.from({ length: Math.max(slotCount - 2, 0) }, (_unused, index) => index + 1);
+        const edgeSlots = slotCount <= 0 ? [] : slotCount === 1 ? [0] : [0, slotCount - 1];
+        const availableInterior = [...interiorSlots];
+        const availableEdges = [...edgeSlots];
+        const planned = new Set<number>();
+
+        const pruneAdjacent = (slot: number) => {
+            removeValue(availableInterior, slot);
+            removeValue(availableEdges, slot);
+            removeValue(availableInterior, slot - 1);
+            removeValue(availableInterior, slot + 1);
+            removeValue(availableEdges, slot - 1);
+            removeValue(availableEdges, slot + 1);
+        };
+
+        const markSlot = (slot: number | null | undefined) => {
+            if (slot === null || slot === undefined) {
+                return;
+            }
+            const normalized = Math.max(0, Math.min(slotCount - 1, slot));
+            planned.add(normalized);
+            pruneAdjacent(normalized);
+        };
+
+        edgeSlots.forEach(markSlot);
+
+        const interiorBudget = Math.max(0, Math.floor(slotCount / 3));
+        const absoluteCap = slotCount >= 9 ? 3 : 2;
+        let remaining = Math.min(interiorBudget, absoluteCap);
+
+        while (remaining > 0) {
+            const edgeChance = rng ? rng() : 0;
+            const useEdgePool = availableEdges.length > 0 && (availableInterior.length === 0 || edgeChance < 0.18);
+            const source = useEdgePool ? availableEdges : availableInterior;
+            if (source.length === 0) {
+                break;
+            }
+            const slot = pickFromList(source, rng);
+            if (slot === null) {
+                break;
+            }
+            markSlot(slot);
+            remaining -= 1;
+        }
+
+        return planned;
+    };
+
     if (fieldWidth <= 0 || brickWidth <= 0) {
         return { bricks: [], breakableCount: 0, spec };
     }
@@ -307,6 +378,7 @@ export function generateLevelLayout(
     let gambleCount = 0;
 
     const slotCount = visibleColumns.length;
+    const plannedWallSlots = planWallSlots(slotCount, trimmedForWidth, random);
 
     if (random && voidColumnChance > 0 && slotCount > 1) {
         const limit = Math.min(slotCount - 1, Math.max(0, Math.floor(maxVoidColumns)));
@@ -413,7 +485,7 @@ export function generateLevelLayout(
             let finalBreakable = decoration.breakable ?? true;
             const finalSensor = decoration.isSensor ?? false;
 
-            if (trimmedForWidth && (slotIndex === 0 || slotIndex === slotCount - 1) && decoration.breakable === undefined) {
+            if (decoration.breakable === undefined && plannedWallSlots.has(slotIndex)) {
                 finalBreakable = false;
             }
 

@@ -19,12 +19,15 @@ import {
     type LevelGenerationOptions,
 } from 'util/levels';
 import { mixColors } from 'render/playfield-visuals';
-import { createBrickTextureCache } from 'render/brick-texture-cache';
+import { createBrickTextureCache, type BrickTextureOverrides } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
 import type { RandomSource } from 'util/random';
 
 type BrickHpLabel = Container & { text?: string };
+
+const WALL_BRICK_COLOR = 0xffffff;
+const WALL_STROKE_COLOR = 0xa4acb6;
 
 export interface BrickLayoutBounds {
     readonly minX: number;
@@ -109,6 +112,7 @@ export interface LevelRuntimeHandle {
     applyGhostBrickReward(duration: number, count: number): void;
     updateGhostBricks(deltaSeconds: number): number;
     getGhostBrickRemainingDuration(): number;
+    forceClearBreakableBricks(): number;
 }
 
 export const createLevelRuntime = ({
@@ -139,6 +143,7 @@ export const createLevelRuntime = ({
         hasHpLabel: boolean;
         hpLabel?: BrickHpLabel | null;
         isBreakable: boolean;
+        textureOverride?: BrickTextureOverrides;
     }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
@@ -158,9 +163,7 @@ export const createLevelRuntime = ({
         }
         let label: BrickHpLabel;
         const hasTextCtor = typeof PixiJS === 'object' && PixiJS !== null && Object.prototype.hasOwnProperty.call(PixiJS, 'Text');
-        const TextCtor = hasTextCtor
-            ? (PixiJS as { Text: new (...args: any[]) => Container & { text?: string } }).Text
-            : null;
+        const TextCtor = hasTextCtor ? PixiJS.Text : null;
         if (typeof TextCtor === 'function') {
             const fontSize = Math.max(12, Math.round(brickSize.height * 0.55));
             const strokeWidth = Math.max(2, Math.round(fontSize * 0.18));
@@ -235,6 +238,22 @@ export const createLevelRuntime = ({
                 return;
             }
 
+            if (!state.isBreakable) {
+                visual.texture = brickTextures.get({
+                    baseColor: state.baseColor,
+                    maxHp: state.maxHp,
+                    currentHp: state.currentHp,
+                    width: brickSize.width,
+                    height: brickSize.height,
+                    form: state.form,
+                    override: state.textureOverride,
+                });
+                visual.tint = 0xffffff;
+                visual.alpha = Math.min(brickLighting.restAlpha, 0.7);
+                visual.blendMode = 'normal';
+                return;
+            }
+
             const dist = distance(ballPosition, body.position);
             if (dist < brickLighting.radius) {
                 const proximity = 1 - dist / brickLighting.radius;
@@ -270,16 +289,32 @@ export const createLevelRuntime = ({
         const safeHp = Math.max(0, Math.min(nextMaxHp, rawCurrentHp));
         state.currentHp = safeHp;
 
-        const texture = brickTextures.get({
+        if (!state.isBreakable) {
+            state.currentHp = safeHp;
+            visual.texture = brickTextures.get({
+                baseColor: state.baseColor,
+                maxHp: state.maxHp,
+                currentHp: state.currentHp,
+                width: brickSize.width,
+                height: brickSize.height,
+                form: state.form,
+                override: state.textureOverride,
+            });
+            visual.alpha = Math.min(brickLighting.restAlpha, 0.7);
+            visual.tint = 0xffffff;
+            visual.blendMode = 'normal';
+            return;
+        }
+
+        visual.texture = brickTextures.get({
             baseColor: state.baseColor,
             maxHp: state.maxHp,
             currentHp: safeHp,
             width: brickSize.width,
             height: brickSize.height,
             form: state.form,
+            override: state.textureOverride,
         });
-
-        visual.texture = texture;
         visual.alpha = brickLighting.restAlpha;
         visual.tint = 0xffffff;
         visual.blendMode = 'normal';
@@ -414,20 +449,29 @@ export const createLevelRuntime = ({
             const isBreakable = brickSpec.breakable !== false;
             const rawHp = Math.max(1, brickSpec.hp);
             const maxHp = isBreakable ? Math.min(MAX_LEVEL_BRICK_HP, rawHp) : rawHp;
+            const baseColor = isBreakable ? paletteColor : WALL_BRICK_COLOR;
+            const textureOverride: BrickTextureOverrides | undefined = isBreakable
+                ? undefined
+                : {
+                    strokeColor: WALL_STROKE_COLOR,
+                    fillColor: WALL_BRICK_COLOR,
+                    useFlatFill: true,
+                };
             const texture = brickTextures.get({
-                baseColor: paletteColor,
+                baseColor,
                 maxHp,
                 currentHp: maxHp,
                 width: brickSize.width,
                 height: brickSize.height,
                 form: brickForm,
+                override: textureOverride,
             });
             const brickVisual = new Sprite(texture);
             brickVisual.anchor.set(0.5);
             brickVisual.sortableChildren = true;
             brickVisual.position.set(brickSpec.x, brickSpec.y);
             brickVisual.zIndex = 5;
-            brickVisual.alpha = brickLighting.restAlpha;
+            brickVisual.alpha = isBreakable ? brickLighting.restAlpha : Math.min(brickLighting.restAlpha, 0.7);
             brickVisual.eventMode = 'none';
             visualBodies.set(brick, brickVisual);
             stage.layers.playfield.addChild(brickVisual);
@@ -441,13 +485,14 @@ export const createLevelRuntime = ({
             brickHealth.set(brick, maxHp);
             brickMetadata.set(brick, brickSpec);
             brickVisualState.set(brick, {
-                baseColor: paletteColor,
+                baseColor,
                 maxHp,
                 currentHp: maxHp,
                 form: brickForm,
                 hasHpLabel,
                 hpLabel,
                 isBreakable,
+                textureOverride,
             });
 
             minX = Math.min(minX, brickSpec.x - brickSize.width / 2);
@@ -485,7 +530,7 @@ export const createLevelRuntime = ({
         paletteRowColors = filteredColors;
         brickVisualState.forEach((state, body) => {
             const metadata = brickMetadata.get(body);
-            if (!metadata) {
+            if (!metadata || metadata.breakable === false) {
                 return;
             }
             const nextBase = resolvePaletteColor(metadata.row);
@@ -500,6 +545,7 @@ export const createLevelRuntime = ({
                 width: brickSize.width,
                 height: brickSize.height,
                 form: state.form,
+                override: state.textureOverride,
             });
             const visual = visualBodies.get(body);
             if (visual instanceof Sprite) {
@@ -622,6 +668,32 @@ export const createLevelRuntime = ({
         }
     };
 
+    const forceClearBreakableBricks: LevelRuntimeHandle['forceClearBreakableBricks'] = () => {
+        let removed = 0;
+        const bodies = Array.from(brickHealth.keys());
+        bodies.forEach((body) => {
+            const metadata = brickMetadata.get(body);
+            if (metadata?.breakable === false) {
+                return;
+            }
+            const visual = visualBodies.get(body);
+            const state = brickVisualState.get(body);
+            if (visual instanceof Sprite && state?.hpLabel) {
+                removeHpLabel(visual, state.hpLabel);
+                state.hpLabel = null;
+                state.hasHpLabel = false;
+            }
+            clearGhostEffect(body);
+            physics.remove(body);
+            removeBodyVisual(body);
+            brickHealth.delete(body);
+            brickMetadata.delete(body);
+            brickVisualState.delete(body);
+            removed += 1;
+        });
+        return removed;
+    };
+
     const applyGhostBrickReward: LevelRuntimeHandle['applyGhostBrickReward'] = (duration, count) => {
         resetGhostBricks();
 
@@ -629,7 +701,13 @@ export const createLevelRuntime = ({
             return;
         }
 
-        const bricks = Array.from(brickHealth.keys()).filter((body) => body.label === 'brick');
+        const bricks = Array.from(brickHealth.keys()).filter((body) => {
+            if (body.label !== 'brick') {
+                return false;
+            }
+            const metadata = brickMetadata.get(body);
+            return metadata?.breakable !== false;
+        });
         if (bricks.length === 0) {
             return;
         }
@@ -702,5 +780,6 @@ export const createLevelRuntime = ({
         applyGhostBrickReward,
         updateGhostBricks,
         getGhostBrickRemainingDuration,
+        forceClearBreakableBricks,
     } satisfies LevelRuntimeHandle;
 };

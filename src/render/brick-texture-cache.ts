@@ -1,6 +1,8 @@
 import { Graphics, Texture } from 'pixi.js';
 import type { BrickForm } from 'util/levels';
-import { computeBrickFillColor, paintBrickVisual } from './playfield-visuals';
+import { computeBrickFillColor, paintBrickVisual, type BrickVisualOverrides } from './playfield-visuals';
+
+export type { BrickVisualOverrides as BrickTextureOverrides };
 
 export interface BrickTextureRequest {
     readonly baseColor: number;
@@ -9,6 +11,7 @@ export interface BrickTextureRequest {
     readonly width: number;
     readonly height: number;
     readonly form?: BrickForm;
+    readonly override?: BrickVisualOverrides;
 }
 
 interface TextureRenderer {
@@ -31,11 +34,18 @@ const clamp = (value: number, min: number, max: number): number => {
     return value;
 };
 
-const createCacheKey = ({ baseColor, maxHp, currentHp, width, height, form }: BrickTextureRequest): string => {
+const createCacheKey = ({ baseColor, maxHp, currentHp, width, height, form, override }: BrickTextureRequest): string => {
     const safeMaxHp = Math.max(1, Math.round(maxHp));
     const safeCurrentHp = clamp(Math.round(currentHp), 0, safeMaxHp);
     const resolvedForm: BrickForm = form ?? 'rectangle';
-    return [baseColor, safeMaxHp, safeCurrentHp, width, height, resolvedForm].join(':');
+    const overrideKey = override
+        ? [
+            override.strokeColor ?? 'null',
+            override.fillColor ?? 'null',
+            override.useFlatFill ? 'flat' : 'grad',
+        ].join(',')
+        : '';
+    return [baseColor, safeMaxHp, safeCurrentHp, width, height, resolvedForm, overrideKey].join(':');
 };
 
 export const createBrickTextureCache = (renderer: TextureRenderer): BrickTextureCache => {
@@ -56,7 +66,7 @@ export const createBrickTextureCache = (renderer: TextureRenderer): BrickTexture
         const graphics = new Graphics();
         graphics.eventMode = 'none';
         const resolvedForm: BrickForm = request.form ?? 'rectangle';
-        paintBrickVisual(graphics, request.width, request.height, fillColor, damageLevel, 1, resolvedForm);
+        paintBrickVisual(graphics, request.width, request.height, fillColor, damageLevel, 1, resolvedForm, request.override);
 
         const texture = renderer.generateTexture(graphics);
         graphics.destroy();
