@@ -31,6 +31,36 @@ const configureContainer = (container: HTMLElement): void => {
     container.style.height = '100vh';
     container.style.overflow = 'hidden';
     container.style.backgroundColor = '#000000';
+
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    let lastAppliedHeight = 0;
+
+    const applyViewportHeight = () => {
+        const viewport = window.visualViewport;
+        const candidateHeight = viewport?.height ?? window.innerHeight ?? container.clientHeight;
+        if (!Number.isFinite(candidateHeight) || candidateHeight <= 0) {
+            return;
+        }
+
+        const safeHeight = Math.round(candidateHeight);
+        if (safeHeight > 0 && safeHeight !== lastAppliedHeight) {
+            container.style.height = `${safeHeight}px`;
+            lastAppliedHeight = safeHeight;
+        }
+    };
+
+    applyViewportHeight();
+
+    const viewport = window.visualViewport;
+    if (viewport) {
+        viewport.addEventListener('resize', applyViewportHeight);
+        viewport.addEventListener('scroll', applyViewportHeight);
+    }
+    window.addEventListener('resize', applyViewportHeight);
+    window.addEventListener('orientationchange', applyViewportHeight);
 };
 
 const loadFonts = async (descriptors: readonly string[], report: (loaded: number) => void): Promise<void> => {

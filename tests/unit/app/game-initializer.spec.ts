@@ -467,7 +467,9 @@ describe('createGameInitializer', () => {
 
         expect(addSpy).not.toHaveBeenCalledWith('resize', expect.any(Function));
         expect(addSpy).not.toHaveBeenCalledWith('orientationchange', expect.any(Function));
-        expect(resizeObserverInstances).toHaveLength(0);
+        expect(resizeObserverInstances).toHaveLength(1);
+        const observerInstance = resizeObserverInstances[0];
+        expect(observerInstance.observe).toHaveBeenCalledWith(container);
 
         result.dispose();
 
@@ -483,6 +485,7 @@ describe('createGameInitializer', () => {
 
         expect(removeSpy).not.toHaveBeenCalledWith('resize', expect.any(Function));
         expect(removeSpy).not.toHaveBeenCalledWith('orientationchange', expect.any(Function));
+        expect(observerInstance.disconnect).toHaveBeenCalled();
 
         addSpy.mockRestore();
         removeSpy.mockRestore();

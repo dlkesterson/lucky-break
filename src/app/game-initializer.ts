@@ -397,7 +397,9 @@ export const createGameInitializer = async ({
 
     const resolveViewportDimensions = () => {
         const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : playfieldSize.width;
-        const fallbackHeight = typeof window !== 'undefined' ? window.innerHeight : playfieldSize.height;
+        const fallbackHeight = typeof window !== 'undefined'
+            ? window.visualViewport?.height ?? window.innerHeight
+            : playfieldSize.height;
         return resolveViewportSize({
             container,
             fallbackWidth,
@@ -410,7 +412,40 @@ export const createGameInitializer = async ({
         stage.resize(size);
     };
 
+    const handleContainerResize = () => {
+        const size = resolveViewportDimensions();
+        stage.resize(size);
+        renderStageSoon();
+    };
+
+    let resizeObserver: ResizeObserver | null = null;
+    let detachViewportListeners: (() => void) | null = null;
+
     applyInitialViewport();
+
+    if (typeof ResizeObserver === 'function') {
+        resizeObserver = new ResizeObserver(() => {
+            handleContainerResize();
+        });
+        resizeObserver.observe(container);
+    } else if (typeof window !== 'undefined') {
+        const onViewportChange = () => {
+            handleContainerResize();
+        };
+
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
+        const viewport = window.visualViewport;
+        viewport?.addEventListener('resize', onViewportChange);
+        viewport?.addEventListener('scroll', onViewportChange);
+
+        detachViewportListeners = () => {
+            window.removeEventListener('resize', onViewportChange);
+            window.removeEventListener('orientationchange', onViewportChange);
+            viewport?.removeEventListener('resize', onViewportChange);
+            viewport?.removeEventListener('scroll', onViewportChange);
+        };
+    }
 
     const dispose = () => {
         router.dispose();
@@ -432,6 +467,10 @@ export const createGameInitializer = async ({
         brickPlayersPromise = null;
         volume.dispose();
         panner.dispose();
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        detachViewportListeners?.();
+        detachViewportListeners = null;
     };
 
     return {
