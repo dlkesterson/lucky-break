@@ -6,7 +6,7 @@ vi.mock('physics/world', () => ({
 
 import { createPhysicsWorld } from 'physics/world';
 import { BallAttachmentController } from 'physics/ball-attachment';
-import { Body } from 'matter-js';
+import { Body } from 'physics/matter';
 import type { Vector2 } from 'physics/contracts';
 
 type StubWorld = ReturnType<typeof createStubWorld>;
@@ -56,12 +56,12 @@ describe('BallAttachmentController', () => {
 
     beforeEach(() => {
         setPositionSpy = vi.spyOn(Body, 'setPosition') as ReturnType<typeof vi.spyOn>;
-        setPositionSpy.mockImplementation((body: any, position: Vector2) => {
+        setPositionSpy.mockImplementation((body: any, position: any) => {
             body.position = { ...position };
             return body;
         });
         setVelocitySpy = vi.spyOn(Body, 'setVelocity') as ReturnType<typeof vi.spyOn>;
-        setVelocitySpy.mockImplementation((body: any, velocity: Vector2) => {
+        setVelocitySpy.mockImplementation((body: any, velocity: any) => {
             body.velocity = { ...velocity };
             return body;
         });
@@ -177,7 +177,7 @@ describe('BallAttachmentController', () => {
 
     it('returns debug info referencing the underlying physics body', () => {
         const ball = controller.createAttachedBall({ x: 10, y: 20 });
-        ball.physicsBody.velocity = { x: 5, y: -2 };
+    (ball.physicsBody as any).velocity = { x: 5, y: -2 };
 
         const info = controller.getDebugInfo(ball);
 

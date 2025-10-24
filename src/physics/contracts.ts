@@ -6,7 +6,7 @@
  * Purpose: Defines the ball physics interface for attachment and launch mechanics
  */
 
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 
 export interface BallController {
     /**

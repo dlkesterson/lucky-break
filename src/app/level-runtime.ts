@@ -1,8 +1,8 @@
 import { Graphics, Container, Sprite } from 'pixi.js';
 import * as PixiJS from 'pixi.js';
 import { gameConfig } from 'config/game';
-import { Body as MatterBody, Bodies } from 'matter-js';
-import type { Body } from 'matter-js';
+import { Body as MatterBody, Bodies } from 'physics/matter';
+import type { MatterBody as Body } from 'physics/matter';
 import type { StageHandle } from 'render/stage';
 import type { PhysicsWorldHandle } from 'physics/world';
 import {

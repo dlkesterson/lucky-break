@@ -7,7 +7,8 @@
  */
 
 import type { Ball, Vector2 } from './contracts';
-import { Body, Vector } from 'matter-js';
+import { Body, Vector } from 'physics/matter';
+import type { MatterVector } from 'physics/matter';
 
 export interface BallLaunchController {
     /**
@@ -63,7 +64,7 @@ export class PhysicsBallLaunchController implements BallLaunchController {
         }
 
         // Calculate and apply launch velocity using setVelocity for consistent speed
-        const normalized = Vector.normalise(direction as Vector);
+    const normalized = Vector.normalise(direction as MatterVector);
         const velocity = Vector.mult(normalized, speed);
         Body.setVelocity(ball.physicsBody, velocity);
 

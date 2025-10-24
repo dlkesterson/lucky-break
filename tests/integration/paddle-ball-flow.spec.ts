@@ -12,7 +12,7 @@ import { PaddleBodyController } from 'render/paddle-body';
 import { BallAttachmentController } from 'physics/ball-attachment';
 import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { createPhysicsWorld } from 'physics/world';
-import { Bodies, Body, Vector } from 'matter-js';
+import { Bodies, Body, Vector } from 'physics/matter';
 import { reflectOffPaddle } from 'util/paddle-reflection';
 import { PowerUpManager } from 'util/power-ups';
 import { spinWheel } from 'game/rewards';

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { reflectOffPaddle, calculateReflectionData, getHitOffset } from 'util/paddle-reflection';
-import { Bodies, Body } from 'matter-js';
+import { Bodies, Body } from 'physics/matter';
 
 describe('paddle-reflection', () => {
     describe('reflectOffPaddle', () => {

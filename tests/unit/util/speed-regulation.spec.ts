@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { regulateSpeed, isSpeedWithinRange, getSpeedDebugInfo, getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { gameConfig } from 'config/game';
-import { Bodies, Body, Vector } from 'matter-js';
+import { Bodies, Body, Vector } from 'physics/matter';
 
 describe('speed-regulation', () => {
     describe('regulateSpeed', () => {

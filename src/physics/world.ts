@@ -1,7 +1,13 @@
-import { Bodies, Body, Composite, Engine, World, type Vector } from 'matter-js';
+import { Bodies, Body, Composite, Engine } from 'physics/matter';
+import type { MatterVector, MatterBody as BodyType, MatterEngine as EngineType, MatterWorld as WorldType } from 'physics/matter';
 import type { BrickForm } from 'util/levels';
 import { rootLogger } from 'util/log';
 import type { Vector2, BallAttachment } from '../types';
+
+type PhysicsVector = MatterVector;
+type PhysicsBody = BodyType;
+type PhysicsEngine = EngineType;
+type PhysicsWorld = WorldType;
 
 const DEFAULT_TIMESTEP_MS = 1000 / 120;
 const DEFAULT_WIDTH = 800;
@@ -25,52 +31,52 @@ export interface PhysicsWorldConfig {
 
 export interface BallFactoryOptions {
     readonly radius: number;
-    readonly position?: Vector;
+    readonly position?: PhysicsVector;
     readonly restitution?: number;
     readonly label?: string;
-    readonly velocity?: Vector;
+    readonly velocity?: PhysicsVector;
 }
 
 export interface PaddleFactoryOptions {
     readonly size: { readonly width: number; readonly height: number };
-    readonly position: Vector;
+    readonly position: PhysicsVector;
     readonly label?: string;
 }
 
 export interface BrickFactoryOptions {
     readonly size: { readonly width: number; readonly height: number };
-    readonly position: Vector;
+    readonly position: PhysicsVector;
     readonly label?: string;
     readonly isSensor?: boolean;
     readonly shape?: BrickForm;
 }
 
 export interface PhysicsFactories {
-    readonly ball: (options: BallFactoryOptions) => Body;
-    readonly paddle: (options: PaddleFactoryOptions) => Body;
-    readonly brick: (options: BrickFactoryOptions) => Body;
-    readonly bounds: () => Body[];
+    readonly ball: (options: BallFactoryOptions) => PhysicsBody;
+    readonly paddle: (options: PaddleFactoryOptions) => PhysicsBody;
+    readonly brick: (options: BrickFactoryOptions) => PhysicsBody;
+    readonly bounds: () => PhysicsBody[];
 }
 
 export interface PhysicsWorldHandle {
-    readonly engine: Engine;
-    readonly world: World;
+    readonly engine: PhysicsEngine;
+    readonly world: PhysicsWorld;
     readonly step: (deltaMs?: number) => void;
-    readonly add: (body: Body | Body[]) => void;
-    readonly remove: (body: Body | Body[]) => void;
+    readonly add: (body: PhysicsBody | PhysicsBody[]) => void;
+    readonly remove: (body: PhysicsBody | PhysicsBody[]) => void;
     readonly factory: PhysicsFactories;
     readonly dispose: () => void;
     // Ball attachment tracking
-    readonly attachBallToPaddle: (ball: Body, paddle: Body, offset?: Vector2) => void;
-    readonly detachBallFromPaddle: (ball: Body) => void;
-    readonly updateBallAttachment: (ball: Body, paddlePosition: Vector2) => void;
-    readonly isBallAttached: (ball: Body) => boolean;
-    readonly getBallAttachment: (ball: Body) => BallAttachment | null;
+    readonly attachBallToPaddle: (ball: PhysicsBody, paddle: PhysicsBody, offset?: Vector2) => void;
+    readonly detachBallFromPaddle: (ball: PhysicsBody) => void;
+    readonly updateBallAttachment: (ball: PhysicsBody, paddlePosition: Vector2) => void;
+    readonly isBallAttached: (ball: PhysicsBody) => boolean;
+    readonly getBallAttachment: (ball: PhysicsBody) => BallAttachment | null;
 }
 
-const withDefaultVector = (vector: Vector | undefined, fallback: Vector): Vector => vector ?? fallback;
+const withDefaultVector = (vector: PhysicsVector | undefined, fallback: PhysicsVector): PhysicsVector => vector ?? fallback;
 
-const toBodyArray = (input: Body | Body[]): Body[] => {
+const toBodyArray = (input: PhysicsBody | PhysicsBody[]): PhysicsBody[] => {
     if (Array.isArray(input)) {
         return [...input];
     }
@@ -78,19 +84,19 @@ const toBodyArray = (input: Body | Body[]): Body[] => {
     return [input];
 };
 
-const configureGravity = (engine: Engine, gravity?: number): void => {
+const configureGravity = (engine: PhysicsEngine, gravity?: number): void => {
     engine.world.gravity.x = 0;
     engine.world.gravity.y = gravity ?? 1;
     engine.world.gravity.scale = 0.001;
 };
 
-const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): PhysicsFactories => {
+const createFactories = (_world: PhysicsWorld, dimensions: PhysicsWorldDimensions): PhysicsFactories => {
     const wallThickness = dimensions.wallThickness ?? DEFAULT_WALL_THICKNESS;
     const halfWidth = dimensions.width / 2;
     const halfHeight = dimensions.height / 2;
 
     const ball: PhysicsFactories['ball'] = (options) => {
-        const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
+    const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
         const body = Bodies.circle(position.x, position.y, options.radius, {
             restitution: options.restitution ?? 1, // Perfect energy-preserving bounces
             friction: 0,
@@ -148,7 +154,7 @@ const createFactories = (_world: World, dimensions: PhysicsWorldDimensions): Phy
                 { x: -halfWidth, y: 0 },
             ];
 
-            const body = Bodies.fromVertices(x, y, [vertices], baseOptions, true) as Body | Body[] | undefined;
+            const body = Bodies.fromVertices(x, y, [vertices], baseOptions, true) as PhysicsBody | PhysicsBody[] | undefined;
             if (!body) {
                 throw new Error('Failed to create diamond brick body.');
             }
@@ -286,7 +292,7 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
 
         ballAttachments.forEach((attachment, ballId) => {
             if (attachment.isAttached) {
-                const ball = Composite.get(engine.world, ballId, 'body') as Body;
+                const ball = Composite.get(engine.world, ballId, 'body') as PhysicsBody;
                 if (!ball) {
                     if (!orphanedAttachmentWarnings.has(ballId)) {
                         orphanedAttachmentWarnings.add(ballId);

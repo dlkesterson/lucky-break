@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Bodies } from 'matter-js';
+import { Bodies } from 'physics/matter';
 import type { Paddle, Vector2 } from 'render/contracts';
 import { createPhysicsWorld } from 'physics/world';
 

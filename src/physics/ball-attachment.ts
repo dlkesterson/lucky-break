@@ -7,7 +7,7 @@
  */
 
 import type { BallController, Ball, BallOptions, Vector2, BallDebugInfo } from './contracts';
-import { Body } from 'matter-js';
+import { Body } from 'physics/matter';
 import { createPhysicsWorld } from './world';
 
 export class BallAttachmentController implements BallController {

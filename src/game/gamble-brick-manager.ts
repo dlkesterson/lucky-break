@@ -1,4 +1,4 @@
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 
 export interface GambleBrickManagerOptions {
     readonly timerSeconds: number;

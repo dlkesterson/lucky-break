@@ -78,7 +78,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
 import type { Paddle } from 'render/contracts';
 import type { Ball } from 'physics/contracts';
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 
 describe('InputDebugOverlay', () => {
     const mockInputState = {

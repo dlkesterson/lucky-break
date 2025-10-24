@@ -988,25 +988,32 @@ const matterEventsState = vi.hoisted(() => ({
     on: vi.fn(),
 }));
 
-vi.mock('matter-js', () => ({
-    Events: {
-        on: matterEventsState.on,
-    },
-    Body: {
-        setVelocity: vi.fn((body: any, velocity: { x: number; y: number }) => {
-            body.velocity = { ...velocity };
-        }),
-        setAngularVelocity: vi.fn((body: any, velocity: number) => {
-            body.angularVelocity = velocity;
-        }),
-        setPosition: vi.fn((body: any, position: { x: number; y: number }) => {
-            body.position = { ...position };
-        }),
-    },
-    Vector: {
-        magnitude: ({ x = 0, y = 0 }: { x?: number; y?: number }) => Math.hypot(x, y),
-    },
-}));
+vi.mock('physics/matter', () => {
+    const exports = {
+        Events: {
+            on: matterEventsState.on,
+        },
+        Body: {
+            setVelocity: vi.fn((body: any, velocity: { x: number; y: number }) => {
+                body.velocity = { ...velocity };
+            }),
+            setAngularVelocity: vi.fn((body: any, velocity: number) => {
+                body.angularVelocity = velocity;
+            }),
+            setPosition: vi.fn((body: any, position: { x: number; y: number }) => {
+                body.position = { ...position };
+            }),
+        },
+        Vector: {
+            magnitude: ({ x = 0, y = 0 }: { x?: number; y?: number }) => Math.hypot(x, y),
+        },
+    };
+
+    return {
+        ...exports,
+        default: exports,
+    };
+});
 
 const createMultiBallControllerStub = () => ({
     promoteExtraBallToPrimary: vi.fn(() => false),

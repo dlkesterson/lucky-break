@@ -58,10 +58,8 @@ import {
     Events,
     Body as MatterBody,
     Vector as MatterVector,
-    type IEventCollision,
-    type Engine,
-    type Body,
-} from 'matter-js';
+} from 'physics/matter';
+import type { IEventCollision, MatterEngine as Engine, MatterBody as Body } from 'physics/matter';
 import { Transport, getContext, getTransport } from 'tone';
 import type { MusicState } from 'audio/music-director';
 import { mulberry32, type RandomManager } from 'util/random';

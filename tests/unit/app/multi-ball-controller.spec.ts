@@ -84,7 +84,7 @@ const matterMocks = vi.hoisted(() => ({
     }),
 }));
 
-vi.mock('matter-js', () => {
+vi.mock('physics/matter', () => {
     const { setVelocity } = matterMocks;
     const magnitude = (vector: { x: number; y: number }) => Math.hypot(vector.x, vector.y);
     const normalise = (vector: { x: number; y: number }) => {
@@ -109,13 +109,19 @@ vi.mock('matter-js', () => {
         y: vector.y * scalar,
     });
 
-    return {
+    const exports = {
         Body: { setVelocity },
         Vector: { magnitude, normalise, create, rotate, clone, mult },
     };
+
+    return {
+        ...exports,
+        default: exports,
+    };
 });
 
-import { Body as MatterBody, type Body } from 'matter-js';
+import { Body as MatterBody } from 'physics/matter';
+import type { MatterBody as Body } from 'physics/matter';
 import { createMultiBallController } from 'app/multi-ball-controller';
 import { mixColors } from 'render/playfield-visuals';
 

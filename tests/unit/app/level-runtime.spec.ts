@@ -105,10 +105,17 @@ const matterState = vi.hoisted(() => {
     };
 });
 
-vi.mock('matter-js', () => ({
-    Body: { setVelocity: matterState.setVelocityMock },
-    Bodies: { circle: matterState.circleMock },
-}));
+vi.mock('physics/matter', () => {
+    const exports = {
+        Body: { setVelocity: matterState.setVelocityMock },
+        Bodies: { circle: matterState.circleMock },
+    };
+
+    return {
+        ...exports,
+        default: exports,
+    };
+});
 
 const distanceMock = vi.hoisted(() =>
     vi.fn((lhs: { x: number; y: number }, rhs: { x: number; y: number }) => {

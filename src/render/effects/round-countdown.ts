@@ -119,7 +119,7 @@ export const createRoundCountdown = ({ playfieldSize, theme }: RoundCountdownOpt
         valueText.style.fontSize = fontSize;
         valueText.style.fontFamily = activeTheme.font;
         valueText.style.letterSpacing = letterSpacing;
-    const strokeColor = mixColors(resolveColor(activeTheme.accents.combo), resolveColor(activeTheme.background.to), 0.25);
+        const strokeColor = mixColors(resolveColor(activeTheme.accents.combo), resolveColor(activeTheme.background.to), 0.25);
         valueText.style.stroke = {
             color: strokeColor,
             width: strokeThickness,

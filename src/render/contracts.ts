@@ -6,7 +6,7 @@
  * Purpose: Defines the paddle control interface for movement and interaction
  */
 
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 
 export interface PaddleController {
     /**

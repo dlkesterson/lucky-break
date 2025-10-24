@@ -5,8 +5,8 @@
  * Provides tactical depth by varying bounce angle based on paddle hit location
  */
 
-import { Vector, Body } from 'matter-js';
-import type { Vector as Vec } from 'matter-js';
+import { Vector, Body } from 'physics/matter';
+import type { MatterVector as Vec, MatterBody } from 'physics/matter';
 
 export interface PaddleReflectionConfig {
     /** Width of the paddle for hit offset calculation */
@@ -27,7 +27,7 @@ const DEFAULT_MAX_ANGLE = Math.PI * 0.42; // ~75 degrees
  * @param paddle - Paddle physics body
  * @param config - Reflection configuration
  */
-export function reflectOffPaddle(ball: Body, paddle: Body, config: PaddleReflectionConfig): void {
+export function reflectOffPaddle(ball: MatterBody, paddle: MatterBody, config: PaddleReflectionConfig): void {
     // Calculate hit offset from paddle center (-1 = left edge, +1 = right edge)
     const hitOffset = (ball.position.x - paddle.position.x) / (config.paddleWidth * 0.5);
     const clamped = Math.max(-1, Math.min(1, hitOffset));

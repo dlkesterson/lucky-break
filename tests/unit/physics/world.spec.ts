@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 import { createPhysicsWorld } from 'physics/world';
 
 describe('createPhysicsWorld', () => {

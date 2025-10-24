@@ -1,4 +1,5 @@
-import { Body, Engine, Events, Vector as MatterVector, type IEventCollision } from 'matter-js';
+import { Body, Events, Vector as MatterVector } from 'physics/matter';
+import type { IEventCollision, MatterBody, MatterEngine } from 'physics/matter';
 import { createGameSessionManager, type GameSessionManager } from 'app/state';
 import { createEventBus, type EventEnvelope, type LuckyBreakEventBus, type LuckyBreakEventName } from 'app/events';
 import { createPhysicsWorld, type PhysicsWorldHandle } from 'physics/world';
@@ -9,6 +10,9 @@ import { awardBrickPoints, createScoring, decayCombo, getMomentumMetrics, resetC
 import { reflectOffPaddle } from 'util/paddle-reflection';
 import { smoothTowards } from 'util/input-helpers';
 import type { ReplayEvent, ReplayRecording } from 'app/replay-buffer';
+
+type PhysicsBody = MatterBody;
+type PhysicsEngine = MatterEngine;
 
 const config = gameConfig;
 const PLAYFIELD_WIDTH = config.playfield.width;
@@ -24,7 +28,7 @@ const AUTO_LAUNCH_DELAY = 0.45;
 const MIN_VERTICAL_SPEED = 2.5;
 
 interface BrickState {
-    readonly body: Body;
+    readonly body: PhysicsBody;
     hp: number;
     readonly initialHp: number;
     readonly row: number;
@@ -116,7 +120,7 @@ const clampPaddleX = (value: number, width: number): number => {
     return Math.max(halfWidth, Math.min(PLAYFIELD_WIDTH - halfWidth, value));
 };
 
-const applySpeedClamps = (ball: Body): void => {
+const applySpeedClamps = (ball: PhysicsBody): void => {
     const velocity = ball.velocity;
     const speed = MatterVector.magnitude(velocity);
     if (!Number.isFinite(speed) || speed <= 0) {
@@ -359,7 +363,7 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         }
     };
 
-    const collisionHandler = (event: IEventCollision<Engine>) => {
+    const collisionHandler = (event: IEventCollision<PhysicsEngine>) => {
         for (const pair of event.pairs) {
             const { bodyA, bodyB } = pair;
 

@@ -24,7 +24,7 @@ const matterMocks = vi.hoisted(() => {
     return { setVelocityMock, normaliseMock, multMock };
 });
 
-vi.mock('matter-js', () => ({
+vi.mock('physics/matter', () => ({
     Body: {
         setVelocity: matterMocks.setVelocityMock,
     },
@@ -32,16 +32,26 @@ vi.mock('matter-js', () => ({
         normalise: matterMocks.normaliseMock,
         mult: matterMocks.multMock,
     },
+    default: {
+        Body: {
+            setVelocity: matterMocks.setVelocityMock,
+        },
+        Vector: {
+            normalise: matterMocks.normaliseMock,
+            mult: matterMocks.multMock,
+        },
+    },
 }));
 
 import { PhysicsBallLaunchController } from 'physics/ball-launch';
+import type { MatterBody } from 'physics/matter';
 import type { Ball, Vector2 } from 'physics/contracts';
 
 const createBall = (overrides: Partial<Ball> = {}): Ball => ({
     id: 'ball-test',
     physicsBody: {
         velocity: { x: 0, y: 0 },
-    },
+    } as unknown as MatterBody,
     isAttached: true,
     attachmentOffset: { x: 0, y: 0 },
     radius: 8,

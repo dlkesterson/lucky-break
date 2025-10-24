@@ -5,7 +5,8 @@
  * Prevents ball from getting too slow (boring) or too fast (unplayable)
  */
 
-import { Vector, Body } from 'matter-js';
+import { Vector, Body } from 'physics/matter';
+import type { MatterBody } from 'physics/matter';
 import { gameConfig } from 'config/game';
 
 export interface AdaptiveSpeedConfig {
@@ -35,7 +36,7 @@ const DEFAULT_MULTIPLIER_PER_STEP = gameConfig.speedRegulation.multiplierPerStep
  * @param body - Physics body to regulate
  * @param config - Speed regulation config
  */
-export function regulateSpeed(body: Body, config: SpeedRegulationConfig): void {
+export function regulateSpeed(body: MatterBody, config: SpeedRegulationConfig): void {
     const velocity = body.velocity;
     const speed = Vector.magnitude(velocity);
 
@@ -67,7 +68,7 @@ export function regulateSpeed(body: Body, config: SpeedRegulationConfig): void {
  * @param config - Speed regulation config
  * @returns True if speed is within [baseSpeed, maxSpeed]
  */
-export function isSpeedWithinRange(body: Body, config: SpeedRegulationConfig): boolean {
+export function isSpeedWithinRange(body: MatterBody, config: SpeedRegulationConfig): boolean {
     const speed = Vector.magnitude(body.velocity);
     return speed >= config.baseSpeed && speed <= config.maxSpeed;
 }
@@ -80,7 +81,7 @@ export function isSpeedWithinRange(body: Body, config: SpeedRegulationConfig): b
  * @returns Debug information about current speed state
  */
 export function getSpeedDebugInfo(
-    body: Body,
+    body: MatterBody,
     config: SpeedRegulationConfig,
 ): {
     currentSpeed: number;

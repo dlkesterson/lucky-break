@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Body } from 'matter-js';
+import type { MatterBody as Body } from 'physics/matter';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
 
 const makeBrick = (): Body => ({ label: 'brick' } as unknown as Body);

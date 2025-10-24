@@ -1,6 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
-import { Body as MatterBody, Vector as MatterVector } from 'matter-js';
-import type { Body } from 'matter-js';
+import { Body as MatterBody, Vector as MatterVector } from 'physics/matter';
+import type { MatterBody as Body } from 'physics/matter';
 import type { Ball } from 'physics/contracts';
 import type { Paddle } from 'render/contracts';
 import type { PhysicsWorldHandle } from 'physics/world';
