@@ -66,6 +66,16 @@ vi.mock('pixi.js', () => {
             return this;
         }
 
+        moveTo(x: number, y: number): this {
+            this.drawCommands.push({ type: 'moveTo', payload: { x, y } });
+            return this;
+        }
+
+        lineTo(x: number, y: number): this {
+            this.drawCommands.push({ type: 'lineTo', payload: { x, y } });
+            return this;
+        }
+
         fill(style: unknown): this {
             this.drawCommands.push({ type: 'fill', payload: style });
             return this;
@@ -98,11 +108,21 @@ vi.mock('pixi.js', () => {
         public alpha = 1;
         public visible = true;
         public scale = createPoint();
+        public anchor = createPoint();
 
         public constructor(text: string, style: Record<string, unknown>) {
             super();
             this.text = text;
             this.style = { ...style };
+            const fontSize = typeof style.fontSize === 'number' ? style.fontSize : 16;
+            Object.defineProperty(this, 'height', {
+                value: fontSize,
+                writable: true,
+            });
+            Object.defineProperty(this, 'width', {
+                value: text.length * 10,
+                writable: true,
+            });
         }
     }
 
@@ -114,7 +134,7 @@ vi.mock('pixi.js', () => {
     };
 });
 
-import { Text, Graphics } from 'pixi.js';
+import { Text } from 'pixi.js';
 import { createHudDisplay, type HudDisplayUpdate } from 'render/hud-display';
 import type { GameThemeDefinition } from 'render/theme';
 
@@ -165,6 +185,13 @@ const createUpdatePayload = (): HudDisplayUpdate => ({
         { label: 'Wide Paddle', remaining: '5s' },
     ],
     reward: { label: 'Double Points', remaining: '8s' },
+    momentum: {
+        comboHeat: 0.42,
+        speedPressure: 0.58,
+        brickDensity: 0.66,
+        volleyLength: 14,
+        comboTimer: 3.2,
+    },
 });
 
 const isText = (value: unknown): value is Text => value instanceof Text;
@@ -181,8 +208,8 @@ describe('createHudDisplay', () => {
     it('renders scoreboard elements, toggles combo display, and resizes the panel', () => {
         const display = createHudDisplay(theme);
 
-        expect(display.width).toBe(300);
-        expect(display.getHeight()).toBe(260);
+        expect(display.width).toBe(480);
+        expect(display.getHeight()).toBe(220);
 
         display.update(payload);
 
@@ -190,7 +217,7 @@ describe('createHudDisplay', () => {
         const texts = container.children.filter(isText);
 
         const statusText = texts.find((text) => text.text === payload.view.statusText);
-        expect(statusText?.y).toBe(18);
+        expect(statusText?.y).toBe(12);
 
         const comboLabel = texts.find((text) => text.text.startsWith('Combo ×'));
         expect(comboLabel?.visible).toBe(true);
@@ -198,7 +225,7 @@ describe('createHudDisplay', () => {
 
         const comboTimer = texts.find((text) => text.text.endsWith('s window'));
         expect(comboTimer?.visible).toBe(true);
-        expect(comboTimer?.alpha).toBeGreaterThanOrEqual(0.7);
+        expect(comboTimer?.alpha).toBeGreaterThanOrEqual(0.72);
 
         const powerHeader = texts.find((text) => text.text === 'Power-Ups');
         expect(powerHeader?.visible).toBe(true);
@@ -209,11 +236,7 @@ describe('createHudDisplay', () => {
         const prompts = texts.filter((text) => text.text?.includes('Momentum dropping'));
         expect(prompts).toHaveLength(1);
 
-        expect(display.getHeight()).toBeGreaterThan(260);
-
-        const panel = container.children[0] as Graphics & { drawCommands: { type: string; payload?: any }[] };
-        const lastRoundRect = panel.drawCommands.filter((command) => command.type === 'roundRect').at(-1);
-        expect(lastRoundRect?.payload?.height).toBe(display.getHeight());
+        expect(display.getHeight()).toBeGreaterThan(220);
     });
 
     it('applies combo pulse intensity and decays over subsequent updates', () => {
@@ -258,18 +281,17 @@ describe('createHudDisplay', () => {
         };
 
         display.setTheme(nextTheme);
+        display.update(payload);
 
         const texts = display.container.children.filter(isText);
         const statusText = texts.find((text) => text.text === payload.view.statusText);
         const rewardText = texts.find((text) => text.text.startsWith('Double Points'));
         const warningPrompt = texts.find((text) => text.text.startsWith('! '));
+        const momentumLabel = texts.find((text) => text.text === 'MOMENTUM');
 
         expect(statusText?.style.fill).toBe(parseColor(nextTheme.hud.textPrimary));
         expect(rewardText?.style.fill).toBe(parseColor(nextTheme.hud.accent));
         expect(warningPrompt?.style.fill).toBe(parseColor(nextTheme.hud.danger));
-
-        const panel = display.container.children[0] as Graphics & { drawCommands: { type: string; payload?: any }[] };
-        const strokeCommand = panel.drawCommands.filter((command) => command.type === 'stroke').at(-1);
-        expect(strokeCommand?.payload).toMatchObject({ color: parseColor(nextTheme.hud.panelLine) });
+        expect(momentumLabel?.style.fill).toBe(parseColor(nextTheme.hud.textSecondary));
     });
 });

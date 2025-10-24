@@ -243,13 +243,18 @@ export function generateLevelLayout(
     };
 
     // Distribute non-breakable wall columns away from the edges to keep layouts open.
+    // Wide desktop layouts still anchor edge walls even when every column fits on screen.
     const planWallSlots = (slotCount: number, trimmed: boolean, rng: RandomSource | undefined): Set<number> => {
-        if (!trimmed || slotCount <= 0) {
+        if (slotCount <= 0) {
+            return new Set<number>();
+        }
+
+        if (!trimmed && slotCount < 6) {
             return new Set<number>();
         }
 
         const interiorSlots = Array.from({ length: Math.max(slotCount - 2, 0) }, (_unused, index) => index + 1);
-        const edgeSlots = slotCount <= 0 ? [] : slotCount === 1 ? [0] : [0, slotCount - 1];
+        const edgeSlots = slotCount === 1 ? [0] : slotCount === 2 ? [0, 1] : [0, slotCount - 1];
         const availableInterior = [...interiorSlots];
         const availableEdges = [...edgeSlots];
         const planned = new Set<number>();
@@ -274,9 +279,11 @@ export function generateLevelLayout(
 
         edgeSlots.forEach(markSlot);
 
-        const interiorBudget = Math.max(0, Math.floor(slotCount / 3));
-        const absoluteCap = slotCount >= 9 ? 3 : 2;
-        let remaining = Math.min(interiorBudget, absoluteCap);
+        const allowInteriorWalls = slotCount >= 5;
+        const interiorBudget = allowInteriorWalls ? Math.max(1, Math.floor(slotCount / 3)) : 0;
+        const trimmedCap = slotCount >= 9 ? 3 : 2;
+        const baselineCap = Math.max(1, Math.floor(slotCount / 5));
+        let remaining = Math.min(interiorBudget, trimmed ? trimmedCap : baselineCap);
 
         while (remaining > 0) {
             const edgeChance = rng ? rng() : 0;
@@ -450,6 +457,10 @@ export function generateLevelLayout(
                     gambleCount += 1;
                     brickHp = Math.max(1, Math.round(GAMBLE_CONFIG.primeResetHp));
                 }
+            }
+
+            if (baseTraits.includes('gamble')) {
+                plannedWallSlots.delete(slotIndex);
             }
 
             const decoration = decorateBrick?.({

@@ -85,7 +85,6 @@ export const createLevelCompleteScene = (
 ): Scene<LevelCompletePayload, GameSceneServices> => {
     let container: Container | null = null;
     let promptLabel: Text | null = null;
-    let summaryLabel: Text | null = null;
     let elapsed = 0;
 
     const emitSceneEvent = (action: UiSceneTransitionAction) => {
@@ -123,7 +122,6 @@ export const createLevelCompleteScene = (
         }
         container = null;
         promptLabel = null;
-        summaryLabel = null;
         elapsed = 0;
         context.renderStageSoon();
     };
@@ -158,6 +156,11 @@ export const createLevelCompleteScene = (
             const defaultTitle = `Level ${payload.level} Complete`;
             const displayTitle = (options.title ? options.title(payload) : defaultTitle).toUpperCase();
 
+            const contentPadding = 44;
+            const contentLeft = panelX + contentPadding;
+            const contentRight = panelX + panelWidth - contentPadding;
+            const contentCenterX = panelX + panelWidth / 2;
+
             const title = new Text({
                 text: displayTitle,
                 style: {
@@ -170,19 +173,19 @@ export const createLevelCompleteScene = (
                 },
             });
             title.anchor.set(0.5);
-            title.position.set(width / 2, panelY + panelHeight * 0.25);
+            title.position.set(contentCenterX, panelY + 120);
 
             const score = new Text({
                 text: options.scoreLabel ? options.scoreLabel(payload) : `Total Score: ${formatScore(payload.score)}`,
                 style: {
                     fill: hexToNumber(GameTheme.hud.textPrimary),
                     fontFamily: GameTheme.monoFont,
-                    fontSize: 30,
+                    fontSize: 36,
                     align: 'center',
                 },
             });
             score.anchor.set(0.5);
-            score.position.set(width / 2, panelY + panelHeight * 0.42);
+            score.position.set(contentCenterX, title.y + 68);
 
             let rewardText: Text | null = null;
             if (payload.reward) {
@@ -190,45 +193,95 @@ export const createLevelCompleteScene = (
                     text: `Reward: ${describeReward(payload.reward)}`,
                     style: {
                         fill: hexToNumber(GameTheme.accents.powerUp),
-                        fontFamily: GameTheme.monoFont,
-                        fontSize: 26,
+                        fontFamily: GameTheme.font,
+                        fontSize: 32,
+                        fontWeight: '700',
                         align: 'center',
                     },
                 });
                 rewardText.anchor.set(0.5);
-                rewardText.position.set(width / 2, panelY + panelHeight * 0.52);
+                rewardText.position.set(contentCenterX, score.y + 52);
+            }
+
+            const host = container;
+            if (!host) {
+                throw new Error('LevelCompleteScene container not initialized');
             }
 
             const recap = payload.recap;
-            const recapLines = [
-                `Round Score: +${formatScore(recap.roundScore)}`,
-                `Bricks Cleared: ${recap.bricksBroken}/${recap.brickTotal}`,
-                `Best Combo: x${recap.bestCombo}`,
-                `Volley Length: ${recap.volleyLength}`,
-                `Speed Pressure Peak: ${formatPercentage(recap.speedPressure)}`,
-                `Coins Collected: ${formatScore(recap.coinsCollected)}`,
-                `Duration: ${formatDuration(recap.durationMs)}`,
+            const statLabels = [
+                {
+                    label: 'Round Score',
+                    value: `+${formatScore(recap.roundScore)}`,
+                },
+                {
+                    label: 'Bricks Cleared',
+                    value: `${recap.bricksBroken}/${recap.brickTotal}`,
+                },
+                {
+                    label: 'Best Combo',
+                    value: `x${recap.bestCombo}`,
+                },
+                {
+                    label: 'Volley Length',
+                    value: `${recap.volleyLength}`,
+                },
+                {
+                    label: 'Speed Pressure Peak',
+                    value: `${formatPercentage(recap.speedPressure)}`,
+                },
+                {
+                    label: 'Coins Collected',
+                    value: `${formatScore(recap.coinsCollected)}`,
+                },
+                {
+                    label: 'Duration',
+                    value: `${formatDuration(recap.durationMs)}`,
+                },
             ];
 
-            summaryLabel = new Text({
-                text: recapLines.join('\n'),
-                style: {
-                    fill: hexToNumber(GameTheme.hud.textPrimary),
-                    fontFamily: GameTheme.monoFont,
-                    fontSize: 24,
-                    align: 'center',
-                    lineHeight: 32,
-                },
-            });
-            summaryLabel.anchor.set(0.5);
-            summaryLabel.position.set(width / 2, panelY + panelHeight * 0.66);
+            const statStartY = (rewardText?.y ?? score.y) + 60;
+            const statSpacing = 40;
 
-            let contentY = panelY + panelHeight * 0.78;
+            const divider = new Graphics();
+            divider.moveTo(contentLeft, statStartY - 36)
+                .lineTo(contentRight, statStartY - 36)
+                .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 3, alpha: 0.55 });
+
+            const labelStyle = {
+                fontFamily: GameTheme.monoFont,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontSize: 24,
+            } as const;
+
+            const valueStyle = {
+                fontFamily: GameTheme.monoFont,
+                fill: hexToNumber(GameTheme.hud.textPrimary),
+                fontSize: 26,
+            } as const;
+
+            statLabels.forEach(({ label, value }, index) => {
+                const statY = statStartY + index * statSpacing;
+
+                const labelText = new Text({
+                    text: label.toUpperCase(),
+                    style: { ...labelStyle, letterSpacing: 1 },
+                });
+                labelText.anchor.set(0, 0.5);
+                labelText.position.set(contentLeft, statY);
+
+                const valueText = new Text({
+                    text: value,
+                    style: valueStyle,
+                });
+                valueText.anchor.set(1, 0.5);
+                valueText.position.set(contentRight, statY);
+
+                host.addChild(labelText, valueText);
+            });
+
+            let contentY = statStartY + (statLabels.length - 1) * statSpacing + 60;
             const achievements = payload.achievements ?? [];
-            if (!container) {
-                throw new Error('LevelCompleteScene container not initialized');
-            }
-            const host = container;
 
             const milestones = payload.milestones ?? [];
             if (milestones.length > 0) {
@@ -239,12 +292,12 @@ export const createLevelCompleteScene = (
                         fontFamily: GameTheme.font,
                         fontSize: 40,
                         fontWeight: '700',
-                        align: 'center',
+                        align: 'left',
                         letterSpacing: 1,
                     },
                 });
-                milestoneHeading.anchor.set(0.5);
-                milestoneHeading.position.set(width / 2, contentY);
+                milestoneHeading.anchor.set(0, 0.5);
+                milestoneHeading.position.set(contentLeft, contentY);
                 host.addChild(milestoneHeading);
                 contentY += 34;
 
@@ -255,11 +308,11 @@ export const createLevelCompleteScene = (
                             fill: hexToNumber(GameTheme.hud.textSecondary),
                             fontFamily: GameTheme.monoFont,
                             fontSize: 24,
-                            align: 'center',
+                            align: 'left',
                         },
                     });
-                    detail.anchor.set(0.5);
-                    detail.position.set(width / 2, contentY);
+                    detail.anchor.set(0, 0.5);
+                    detail.position.set(contentLeft, contentY);
                     host.addChild(detail);
                     contentY += 28;
                 });
@@ -275,12 +328,12 @@ export const createLevelCompleteScene = (
                         fontFamily: GameTheme.font,
                         fontSize: 40,
                         fontWeight: '700',
-                        align: 'center',
+                        align: 'left',
                         letterSpacing: 1,
                     },
                 });
-                heading.anchor.set(0.5);
-                heading.position.set(width / 2, contentY);
+                heading.anchor.set(0, 0.5);
+                heading.position.set(contentLeft, contentY);
                 host.addChild(heading);
                 contentY += 38;
 
@@ -291,11 +344,11 @@ export const createLevelCompleteScene = (
                             fill: hexToNumber(GameTheme.hud.textSecondary),
                             fontFamily: GameTheme.monoFont,
                             fontSize: 24,
-                            align: 'center',
+                            align: 'left',
                         },
                     });
-                    detail.anchor.set(0.5);
-                    detail.position.set(width / 2, contentY);
+                    detail.anchor.set(0, 0.5);
+                    detail.position.set(contentLeft, contentY);
                     host.addChild(detail);
                     contentY += 28;
                 });
@@ -312,8 +365,8 @@ export const createLevelCompleteScene = (
                 },
             });
             promptLabel.anchor.set(0.5);
-            const promptBaseline = panelY + panelHeight * 0.82;
-            promptLabel.position.set(width / 2, Math.min(promptBaseline, contentY + 48));
+            const promptBaseline = panelY + panelHeight - 70;
+            promptLabel.position.set(contentCenterX, Math.min(promptBaseline, contentY + 56));
 
             const continueHandler = () => {
                 const result = payload.onContinue();
@@ -324,10 +377,11 @@ export const createLevelCompleteScene = (
 
             container.on('pointertap', continueHandler);
             context.addToLayer('hud', container);
-            container.addChild(overlay, panel, title, score, promptLabel, summaryLabel);
+            container.addChild(overlay, panel, title, score, promptLabel);
             if (rewardText) {
                 host.addChild(rewardText);
             }
+            host.addChild(divider);
             context.renderStageSoon();
             pushIdleAudioState();
             emitSceneEvent('enter');

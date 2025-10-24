@@ -848,11 +848,13 @@ export const createGameRuntime = async ({
     const hudContainer = new Container();
     hudContainer.eventMode = 'none';
     hudContainer.visible = false;
-    stage.layers.hud.addChild(hudContainer);
+    hudContainer.zIndex = 1;
+    stage.layers.playfield.addChild(hudContainer);
 
     const hudDisplay = hudProfile === 'mobile'
         ? createMobileHudDisplay(GameTheme)
         : createHudDisplay(GameTheme);
+    hudDisplay.container.zIndex = 1;
     hudContainer.addChild(hudDisplay.container);
 
     const positionHud = () => {
@@ -862,125 +864,31 @@ export const createGameRuntime = async ({
         const hudWidth = hudDisplay.width;
         const hudHeight = hudDisplay.getHeight();
         const clampScale = (value: number) => Math.max(minScale, Math.min(maxScale, value));
+        const paddleTop = paddle.position.y - paddle.height / 2;
+        const widthScaleLimit = (PLAYFIELD_WIDTH - margin * 2) / hudWidth;
+        let scale = clampScale(Math.min(maxScale, widthScaleLimit));
 
-        const place = (x: number, y: number, scale: number) => {
-            hudDisplay.container.scale.set(scale);
-            hudDisplay.container.position.set(Math.round(x), Math.round(y));
-        };
+        const safePaddleTop = paddleTop - margin;
+        let top = Math.max(margin, safePaddleTop - hudHeight * scale);
 
-        if (!brickLayoutBounds) {
-            place(margin, margin, maxScale);
-            return;
+        if (brickLayoutBounds) {
+            const bricksBottom = brickLayoutBounds.maxY;
+            const preferredTop = bricksBottom + margin;
+            const availableHeight = safePaddleTop - preferredTop;
+            if (availableHeight > 0) {
+                const heightScaleLimit = availableHeight / hudHeight;
+                scale = clampScale(Math.min(scale, heightScaleLimit));
+                const maxTop = safePaddleTop - hudHeight * scale;
+                top = Math.max(margin, Math.min(maxTop, preferredTop));
+            }
         }
 
-        const fullWidthLimit = (PLAYFIELD_WIDTH - margin * 2) / hudWidth;
-        const fullHeightLimit = (PLAYFIELD_HEIGHT - margin * 2) / hudHeight;
-        const globalScaleLimit = Math.max(minScale, Math.min(maxScale, fullWidthLimit, fullHeightLimit));
+        const width = hudWidth * scale;
+        const x = Math.round((PLAYFIELD_WIDTH - width) / 2);
+        const y = Math.round(Math.max(margin, top));
 
-        const placements: { priority: number; scale: number; x: number; y: number }[] = [];
-        const { minX, maxX, minY, maxY } = brickLayoutBounds;
-
-        const tryTop = () => {
-            const availableHeight = minY - margin;
-            if (availableHeight <= 0) {
-                return;
-            }
-            let scale = clampScale(Math.min(globalScaleLimit, availableHeight / hudHeight));
-            if (scale < minScale) {
-                return;
-            }
-            const width = hudWidth * scale;
-            if (width > PLAYFIELD_WIDTH - margin * 2) {
-                scale = clampScale((PLAYFIELD_WIDTH - margin * 2) / hudWidth);
-            }
-            if (scale < minScale) {
-                return;
-            }
-            placements.push({ priority: 0, scale, x: margin, y: margin });
-        };
-
-        const tryRight = () => {
-            const availableWidth = PLAYFIELD_WIDTH - maxX - margin;
-            if (availableWidth <= 0) {
-                return;
-            }
-            let scale = clampScale(Math.min(globalScaleLimit, availableWidth / hudWidth));
-            if (scale < minScale) {
-                return;
-            }
-            const height = hudHeight * scale;
-            if (height > PLAYFIELD_HEIGHT - margin * 2) {
-                scale = clampScale((PLAYFIELD_HEIGHT - margin * 2) / hudHeight);
-            }
-            if (scale < minScale) {
-                return;
-            }
-            const width = hudWidth * scale;
-            const y = Math.max(margin, Math.min(PLAYFIELD_HEIGHT - height - margin, minY));
-            placements.push({ priority: 1, scale, x: PLAYFIELD_WIDTH - width - margin, y });
-        };
-
-        const tryLeft = () => {
-            const availableWidth = minX - margin;
-            if (availableWidth <= 0) {
-                return;
-            }
-            let scale = clampScale(Math.min(globalScaleLimit, availableWidth / hudWidth));
-            if (scale < minScale) {
-                return;
-            }
-            const height = hudHeight * scale;
-            if (height > PLAYFIELD_HEIGHT - margin * 2) {
-                scale = clampScale((PLAYFIELD_HEIGHT - margin * 2) / hudHeight);
-            }
-            if (scale < minScale) {
-                return;
-            }
-            const y = Math.max(margin, Math.min(PLAYFIELD_HEIGHT - hudHeight * scale - margin, minY));
-            placements.push({ priority: 2, scale, x: margin, y });
-        };
-
-        const tryBottom = () => {
-            const availableHeight = PLAYFIELD_HEIGHT - maxY - margin;
-            if (availableHeight <= 0) {
-                return;
-            }
-            let scale = clampScale(Math.min(globalScaleLimit, availableHeight / hudHeight));
-            if (scale < minScale) {
-                return;
-            }
-            const width = hudWidth * scale;
-            if (width > PLAYFIELD_WIDTH - margin * 2) {
-                scale = clampScale((PLAYFIELD_WIDTH - margin * 2) / hudWidth);
-            }
-            if (scale < minScale) {
-                return;
-            }
-            const height = hudHeight * scale;
-            const y = PLAYFIELD_HEIGHT - height - margin;
-            const x = Math.max(margin, Math.min(PLAYFIELD_WIDTH - width - margin, minX));
-            placements.push({ priority: 3, scale, x, y });
-        };
-
-        tryTop();
-        tryRight();
-        tryLeft();
-        tryBottom();
-
-        if (placements.length === 0) {
-            place(margin, margin, globalScaleLimit);
-            return;
-        }
-
-        placements.sort((a, b) => {
-            if (a.priority !== b.priority) {
-                return a.priority - b.priority;
-            }
-            return b.scale - a.scale;
-        });
-
-        const chosen = placements[0];
-        place(chosen.x, chosen.y, chosen.scale);
+        hudDisplay.container.scale.set(scale);
+        hudDisplay.container.position.set(x, y);
     };
 
     const applyRuntimeTheme = (theme: GameThemeDefinition) => {

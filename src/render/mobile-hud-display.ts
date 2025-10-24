@@ -1,13 +1,12 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Text } from 'pixi.js';
 import type { HudScoreboardEntry, HudScoreboardView } from './hud';
 import type { HudDisplay, HudDisplayUpdate } from './hud-display';
 import type { GameThemeDefinition } from './theme';
 
-const PANEL_WIDTH = 320;
+const PANEL_WIDTH = 360;
 const PANEL_HEIGHT = 110;
-const PANEL_RADIUS = 14;
-const PADDING = 14;
-const MIN_HEIGHT = 88;
+const PADDING = 16;
+const MIN_HEIGHT = 96;
 
 const parseColor = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -39,8 +38,6 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
     let primaryColor = parseColor(activeTheme.hud.textPrimary);
     let secondaryColor = parseColor(activeTheme.hud.textSecondary);
     let accentColor = parseColor(activeTheme.accents.combo);
-    let panelFillColor = parseColor(activeTheme.hud.panelFill);
-    let panelLineColor = parseColor(activeTheme.hud.panelLine);
     let fontFamilyPrimary = activeTheme.font;
     let fontFamilyMono = activeTheme.monoFont ?? activeTheme.font;
 
@@ -49,15 +46,11 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
 
     const container = new Container();
     container.eventMode = 'none';
-    container.alpha = 0.95;
-
-    const background = new Graphics();
-    background.eventMode = 'none';
-    container.addChild(background);
+    container.alpha = 1;
 
     const statusText = createText('', {
         fill: primaryColor,
-        fontSize: 20,
+        fontSize: 42,
         fontWeight: 'bold',
         fontFamily: fontFamilyPrimary,
     });
@@ -66,7 +59,7 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
 
     const summaryText = createText('', {
         fill: secondaryColor,
-        fontSize: 14,
+        fontSize: 28,
         fontFamily: fontFamilyPrimary,
         alpha: 0.88,
     });
@@ -76,7 +69,7 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
 
     const statLineText = createText('', {
         fill: primaryColor,
-        fontSize: 16,
+        fontSize: 30,
         fontFamily: fontFamilyMono,
     });
     statLineText.x = PADDING;
@@ -84,7 +77,7 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
 
     const difficultyText = createText('', {
         fill: secondaryColor,
-        fontSize: 13,
+        fontSize: 24,
         fontFamily: fontFamilyMono,
     });
     difficultyText.x = PADDING;
@@ -92,7 +85,7 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
 
     const comboText = createText('', {
         fill: accentColor,
-        fontSize: 18,
+        fontSize: 42,
         fontWeight: 'bold',
         fontFamily: fontFamilyPrimary,
     });
@@ -100,34 +93,25 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
     comboText.visible = false;
     container.addChild(comboText);
 
-    const redrawBackground = () => {
-        background.clear();
-        background.roundRect(0, 0, PANEL_WIDTH, currentHeight, PANEL_RADIUS);
-        background.fill({ color: panelFillColor, alpha: 0.42 });
-        background.stroke({ color: panelLineColor, width: 2, alpha: 0.35 });
-    };
-    redrawBackground();
-
     const layoutTexts = () => {
         let cursor = PADDING;
         if (statusText.visible) {
             statusText.y = cursor;
-            cursor += statusText.height + 4;
+            cursor += statusText.height + 6;
         }
         if (summaryText.visible) {
             summaryText.y = cursor;
-            cursor += summaryText.height + 6;
+            cursor += summaryText.height + 8;
         }
         statLineText.y = cursor;
-        cursor += statLineText.height + 6;
+        cursor += statLineText.height + 8;
         difficultyText.y = cursor;
-        cursor += difficultyText.height + 6;
+        cursor += difficultyText.height + 8;
         if (comboText.visible) {
             comboText.y = cursor;
-            cursor += comboText.height + 6;
+            cursor += comboText.height + 10;
         }
         currentHeight = Math.max(MIN_HEIGHT, Math.round(cursor + PADDING));
-        redrawBackground();
     };
 
     const buildStatLine = (view: HudScoreboardView): string => {
@@ -172,8 +156,6 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
         primaryColor = parseColor(activeTheme.hud.textPrimary);
         secondaryColor = parseColor(activeTheme.hud.textSecondary);
         accentColor = parseColor(activeTheme.accents.combo);
-        panelFillColor = parseColor(activeTheme.hud.panelFill);
-        panelLineColor = parseColor(activeTheme.hud.panelLine);
         fontFamilyPrimary = activeTheme.font;
         fontFamilyMono = activeTheme.monoFont ?? activeTheme.font;
 
@@ -187,8 +169,6 @@ export const createMobileHudDisplay = (theme: GameThemeDefinition): HudDisplay =
         difficultyText.style.fontFamily = fontFamilyMono;
         comboText.style.fill = accentColor;
         comboText.style.fontFamily = fontFamilyPrimary;
-
-        redrawBackground();
     };
 
     return {

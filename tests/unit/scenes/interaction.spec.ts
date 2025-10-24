@@ -58,6 +58,9 @@ vi.mock('pixi.js', () => {
         public clear = vi.fn().mockReturnThis();
         public roundRect = vi.fn().mockReturnThis();
         public stroke = vi.fn().mockReturnThis();
+        public moveTo = vi.fn().mockReturnThis();
+        public lineTo = vi.fn().mockReturnThis();
+        public closePath = vi.fn().mockReturnThis();
     }
 
     return { Container, Text, Graphics };

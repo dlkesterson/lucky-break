@@ -1,4 +1,4 @@
-import { Container, FillGradient, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { HudScoreboardEntry, HudScoreboardPrompt, HudScoreboardView } from './hud';
 import type { GameThemeDefinition } from './theme';
 import type { HudSnapshot } from 'app/state';
@@ -32,17 +32,16 @@ export interface HudDisplay {
     setTheme(theme: GameThemeDefinition): void;
 }
 
-const PANEL_WIDTH = 300;
-const PANEL_RADIUS = 18;
-const PANEL_PADDING = 18;
-const PANEL_MIN_HEIGHT = 260;
-const ENTRY_ROW_HEIGHT = 20;
-const POWER_UP_ROW_HEIGHT = 18;
-const PROMPT_ROW_HEIGHT = 18;
-const MOMENTUM_SECTION_MARGIN = 12;
-const MOMENTUM_BAR_HEIGHT = 7;
-const MOMENTUM_BAR_RADIUS = 3;
-const MOMENTUM_BAR_VERTICAL_GAP = 14;
+const PANEL_WIDTH = 480;
+const PANEL_PADDING = 12;
+const PANEL_MIN_HEIGHT = 220;
+const ENTRY_ROW_HEIGHT = 32;
+const POWER_UP_ROW_HEIGHT = 24;
+const PROMPT_ROW_HEIGHT = 22;
+const MOMENTUM_SECTION_MARGIN = 16;
+const MOMENTUM_BAR_HEIGHT = 8;
+const MOMENTUM_BAR_RADIUS = 4;
+const MOMENTUM_BAR_VERTICAL_GAP = 16;
 
 type HudMomentum = HudSnapshot['momentum'];
 
@@ -98,11 +97,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
 
     const container = new Container();
     container.eventMode = 'none';
-
-    const panel = new Graphics();
-    panel.alpha = 0.86;
-    panel.eventMode = 'none';
-    container.addChild(panel);
+    container.sortableChildren = true;
 
     const momentumContainer = new Container();
     momentumContainer.visible = false;
@@ -111,8 +106,9 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
 
     const momentumHeader = createText('Momentum Metrics', {
         fill: colorSecondary,
-        fontSize: 12,
+        fontSize: 14,
         fontFamily: fontFamilyPrimary,
+        letterSpacing: 1,
     });
     momentumHeader.x = PANEL_PADDING;
     momentumContainer.addChild(momentumHeader);
@@ -132,7 +128,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
 
         const label = createText('', {
             fill: colorSecondary,
-            fontSize: 11,
+            fontSize: 13,
             fontFamily: fontFamilyMono,
         });
         label.x = PANEL_PADDING + 4;
@@ -143,74 +139,100 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     });
 
     let currentPanelHeight = PANEL_MIN_HEIGHT;
-    const redrawPanel = (height: number) => {
-        currentPanelHeight = height;
-        panel.clear();
-        const gradient = new FillGradient(0, 0, 0, height);
-        gradient.addColorStop(0, activeTheme.hud.panelFill);
-        gradient.addColorStop(1, activeTheme.background.to);
-        panel.roundRect(0, 0, PANEL_WIDTH, height, PANEL_RADIUS);
-        panel.fill(gradient);
-        panel.stroke({ color: parseColor(activeTheme.hud.panelLine), width: 2, alpha: 0.75 });
-    };
-    redrawPanel(PANEL_MIN_HEIGHT);
 
-    const statusText = createText('', { fill: colorPrimary, fontSize: 20, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
+    const statusText = createText('', {
+        fill: colorPrimary,
+        fontSize: 28,
+        fontWeight: 'bold',
+        fontFamily: fontFamilyPrimary,
+        letterSpacing: 1,
+    });
     statusText.x = PANEL_PADDING;
     container.addChild(statusText);
 
-    const summaryText = createText('', { fill: colorSecondary, fontSize: 14, fontFamily: fontFamilyPrimary });
+    const summaryText = createText('', {
+        fill: colorSecondary,
+        fontSize: 18,
+        fontFamily: fontFamilyPrimary,
+        letterSpacing: 0.5,
+    });
     summaryText.x = PANEL_PADDING;
-    summaryText.alpha = 0.8;
+    summaryText.alpha = 0.92;
     container.addChild(summaryText);
 
     const entryOrder: readonly HudScoreboardEntry['id'][] = ['score', 'coins', 'lives', 'bricks', 'entropy', 'momentum', 'audio'];
-    const entryTexts = new Map<HudScoreboardEntry['id'], Text>();
+    const entryLabelTexts = new Map<HudScoreboardEntry['id'], Text>();
+    const entryValueTexts = new Map<HudScoreboardEntry['id'], Text>();
 
-    entryOrder.forEach((id, index) => {
-        const text = createText('', { fill: colorPrimary, fontSize: 14, fontFamily: fontFamilyMono });
-        text.x = PANEL_PADDING;
-        text.y = PANEL_PADDING + 70 + index * ENTRY_ROW_HEIGHT;
-        container.addChild(text);
-        entryTexts.set(id, text);
+    entryOrder.forEach((id) => {
+        const label = createText('', {
+            fill: colorSecondary,
+            fontSize: 16,
+            fontFamily: fontFamilyMono,
+            letterSpacing: 1,
+        });
+        label.x = PANEL_PADDING;
+        container.addChild(label);
+        entryLabelTexts.set(id, label);
+
+        const value = createText('', {
+            fill: colorPrimary,
+            fontSize: 20,
+            fontFamily: fontFamilyMono,
+        });
+        value.anchor.set(1, 0);
+        value.x = PANEL_WIDTH - PANEL_PADDING;
+        container.addChild(value);
+        entryValueTexts.set(id, value);
     });
 
-    const difficultyText = createText('', { fill: colorSecondary, fontSize: 13, fontFamily: fontFamilyMono });
+    const difficultyText = createText('', {
+        fill: colorSecondary,
+        fontSize: 16,
+        fontFamily: fontFamilyMono,
+        letterSpacing: 0.5,
+    });
     difficultyText.x = PANEL_PADDING;
     container.addChild(difficultyText);
 
-    const comboLabel = createText('', { fill: colorCombo, fontSize: 18, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
+    const comboLabel = createText('', {
+        fill: colorCombo,
+        fontSize: 24,
+        fontWeight: 'bold',
+        fontFamily: fontFamilyPrimary,
+        letterSpacing: 1,
+    });
     comboLabel.x = PANEL_PADDING;
     comboLabel.visible = false;
     container.addChild(comboLabel);
 
-    const comboTimerText = createText('', { fill: colorSecondary, fontSize: 12, fontFamily: fontFamilyMono });
+    const comboTimerText = createText('', { fill: colorSecondary, fontSize: 14, fontFamily: fontFamilyMono });
     comboTimerText.x = PANEL_PADDING + 6;
     comboTimerText.visible = false;
     container.addChild(comboTimerText);
 
-    const powerUpHeader = createText('Power-Ups', { fill: colorSecondary, fontSize: 12, fontFamily: fontFamilyPrimary });
+    const powerUpHeader = createText('Power-Ups', { fill: colorSecondary, fontSize: 16, fontFamily: fontFamilyPrimary, letterSpacing: 0.5 });
     powerUpHeader.x = PANEL_PADDING;
     powerUpHeader.visible = false;
     powerUpHeader.alpha = 0.9;
     container.addChild(powerUpHeader);
 
     const powerUpTexts: Text[] = Array.from({ length: 4 }, () => {
-        const text = createText('', { fill: colorPrimary, fontSize: 13, fontFamily: fontFamilyMono });
-        text.x = PANEL_PADDING + 10;
+        const text = createText('', { fill: colorPrimary, fontSize: 16, fontFamily: fontFamilyMono });
+        text.x = PANEL_PADDING + 12;
         text.visible = false;
         container.addChild(text);
         return text;
     });
 
-    const rewardText = createText('', { fill: colorReward, fontSize: 13, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
+    const rewardText = createText('', { fill: colorReward, fontSize: 18, fontWeight: 'bold', fontFamily: fontFamilyPrimary });
     rewardText.x = PANEL_PADDING;
     rewardText.visible = false;
     container.addChild(rewardText);
 
     const promptTexts: Text[] = Array.from({ length: 2 }, (_, index) => {
         const baseColor = index === 0 ? colorWarning : colorReward;
-        const text = createText('', { fill: baseColor, fontSize: 12, fontFamily: fontFamilyPrimary });
+        const text = createText('', { fill: baseColor, fontSize: 15, fontFamily: fontFamilyPrimary });
         text.x = PANEL_PADDING;
         text.visible = false;
         container.addChild(text);
@@ -233,7 +255,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         momentumContainer.y = sectionTop;
         momentumHeader.y = 0;
 
-        let cursor = momentumHeader.y + 18;
+        let cursor = momentumHeader.height + 6;
         const momentumBarWidth = PANEL_WIDTH - PANEL_PADDING * 2;
         momentumDescriptors.forEach((descriptor, index) => {
             const bar = momentumBars[index];
@@ -247,10 +269,11 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
             bar.label.style.fontFamily = fontFamilyMono;
             bar.label.y = 0;
 
+            const barY = bar.label.height + 4;
             bar.background.clear();
             bar.background.roundRect(
                 0,
-                MOMENTUM_BAR_VERTICAL_GAP,
+                barY,
                 momentumBarWidth,
                 MOMENTUM_BAR_HEIGHT,
                 MOMENTUM_BAR_RADIUS,
@@ -263,7 +286,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
                 const barWidth = Math.max(2, Math.round(momentumBarWidth * value));
                 bar.fill.roundRect(
                     0,
-                    MOMENTUM_BAR_VERTICAL_GAP,
+                    barY,
                     barWidth,
                     MOMENTUM_BAR_HEIGHT,
                     MOMENTUM_BAR_RADIUS,
@@ -274,7 +297,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
                 bar.fill.visible = false;
             }
 
-            cursor += MOMENTUM_BAR_VERTICAL_GAP + MOMENTUM_BAR_HEIGHT + MOMENTUM_BAR_VERTICAL_GAP;
+            cursor += bar.label.height + MOMENTUM_BAR_HEIGHT + MOMENTUM_BAR_VERTICAL_GAP;
         });
 
         cursor += MOMENTUM_SECTION_MARGIN;
@@ -284,18 +307,23 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     const updateEntries = (entries: readonly HudScoreboardEntry[], startY: number): number => {
         let cursor = startY;
         entryOrder.forEach((id) => {
-            const target = entryTexts.get(id);
-            if (!target) {
+            const labelTarget = entryLabelTexts.get(id);
+            const valueTarget = entryValueTexts.get(id);
+            if (!labelTarget || !valueTarget) {
                 return;
             }
             const entry = entries.find((candidate) => candidate.id === id);
             if (!entry) {
-                target.visible = false;
+                labelTarget.visible = false;
+                valueTarget.visible = false;
                 return;
             }
-            target.visible = true;
-            target.text = `${entry.label}: ${entry.value}`;
-            target.y = cursor;
+            labelTarget.visible = true;
+            valueTarget.visible = true;
+            labelTarget.text = entry.label.toUpperCase();
+            labelTarget.y = cursor;
+            valueTarget.text = entry.value;
+            valueTarget.y = labelTarget.y;
             cursor += ENTRY_ROW_HEIGHT;
         });
         return cursor;
@@ -342,20 +370,26 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     };
 
     const update = (payload: HudDisplayUpdate): void => {
+        let cursor = PANEL_PADDING;
+
         statusText.text = payload.view.statusText;
-        statusText.y = PANEL_PADDING;
+        statusText.visible = statusText.text.length > 0;
+        statusText.y = cursor;
+        cursor += statusText.visible ? statusText.height + 6 : 0;
 
         summaryText.text = payload.view.summaryLine;
-        summaryText.visible = payload.view.summaryLine.length > 0;
-        summaryText.y = statusText.y + 26;
+        summaryText.visible = summaryText.text.length > 0;
+        if (summaryText.visible) {
+            summaryText.y = cursor;
+            cursor += summaryText.height + 10;
+        }
 
-        let cursor = summaryText.visible ? summaryText.y + 24 : statusText.y + 20;
         cursor = updateEntries(payload.view.entries, cursor + 4);
-        cursor = updateMomentumSection(payload.momentum, cursor);
+        cursor = updateMomentumSection(payload.momentum, cursor + 4);
 
         difficultyText.text = `Difficulty ×${payload.difficultyMultiplier.toFixed(2)}`;
-        difficultyText.y = cursor + 8;
-        cursor = difficultyText.y + 24;
+        difficultyText.y = cursor + 6;
+        cursor = difficultyText.y + 28;
 
         const hasCombo = payload.comboCount > 0;
         comboLabel.visible = hasCombo;
@@ -366,9 +400,9 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
             comboLabel.scale.set(1 + comboPulseStrength * 0.12);
 
             comboTimerText.text = `${payload.comboTimer.toFixed(1)}s window`;
-            comboTimerText.y = comboLabel.y + 20;
-            comboTimerText.alpha = Math.min(1, 0.7 + comboPulseStrength * 0.3);
-            cursor = comboTimerText.y + 24;
+            comboTimerText.y = comboLabel.y + comboLabel.height + 4;
+            comboTimerText.alpha = Math.min(1, 0.72 + comboPulseStrength * 0.28);
+            cursor = comboTimerText.y + comboTimerText.height + 6;
             comboPulseStrength = Math.max(0, comboPulseStrength - 0.04);
         } else {
             comboLabel.scale.set(1);
@@ -381,18 +415,17 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
             rewardText.text = payload.reward.remaining
                 ? `${payload.reward.label} — ${payload.reward.remaining}`
                 : payload.reward.label;
-            rewardText.y = cursor + 8;
-            cursor = rewardText.y + 22;
+            rewardText.y = cursor + 10;
+            cursor = rewardText.y + rewardText.height + 8;
         } else {
             rewardText.visible = false;
         }
 
-        updatePrompts(payload.view.prompts, cursor + 8);
+        updatePrompts(payload.view.prompts, cursor + 10);
 
-        const requiredHeight = Math.max(PANEL_MIN_HEIGHT, Math.round(cursor + 48));
-        if (Math.abs(requiredHeight - currentPanelHeight) > 1) {
-            redrawPanel(requiredHeight);
-        }
+        const promptSpan = payload.view.prompts.length > 0 ? PROMPT_ROW_HEIGHT * payload.view.prompts.length : 0;
+        const requiredHeight = Math.max(PANEL_MIN_HEIGHT, Math.round(cursor + promptSpan + PANEL_PADDING));
+        currentPanelHeight = requiredHeight;
     };
 
     const pulseCombo = (intensity = 0.6): void => {
@@ -413,7 +446,11 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         statusText.style.fontFamily = fontFamilyPrimary;
         summaryText.style.fill = colorSecondary;
         summaryText.style.fontFamily = fontFamilyPrimary;
-        entryTexts.forEach((text) => {
+        entryLabelTexts.forEach((text) => {
+            text.style.fill = colorSecondary;
+            text.style.fontFamily = fontFamilyMono;
+        });
+        entryValueTexts.forEach((text) => {
             text.style.fill = colorPrimary;
             text.style.fontFamily = fontFamilyMono;
         });
@@ -441,13 +478,10 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         momentumBars.forEach((bar) => {
             bar.label.style.fill = colorSecondary;
             bar.label.style.fontFamily = fontFamilyMono;
-            // Trigger redraw on next update by clearing existing geometry
             bar.background.clear();
             bar.fill.clear();
             bar.fill.visible = false;
         });
-
-        redrawPanel(currentPanelHeight);
     };
 
     return {
