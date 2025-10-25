@@ -11,6 +11,10 @@ import { createAchievementManager, type AchievementUnlock } from './achievements
 import { buildHudScoreboard } from 'render/hud';
 import { createDynamicLight } from 'render/effects/dynamic-light';
 import { createSpeedRing } from 'render/effects/speed-ring';
+import { createComboBloomEffect } from 'render/effects/combo-bloom';
+import { createBallTrailsEffect, type BallTrailSource } from 'render/effects/ball-trails';
+import { createHeatDistortionEffect, type HeatDistortionSource } from 'render/effects/heat-distortion';
+import { createHeatRippleEffect } from 'render/effects/heat-ripple';
 import { createBrickParticleSystem, type BrickParticleSystem } from 'render/effects/brick-particles';
 import { createRoundCountdown, type RoundCountdownDisplay } from 'render/effects/round-countdown';
 import { createHudDisplay, type HudPowerUpView, type HudRewardView } from 'render/hud-display';
@@ -61,7 +65,7 @@ import {
 } from 'physics/matter';
 import type { IEventCollision, MatterEngine as Engine, MatterBody as Body } from 'physics/matter';
 import { Transport, getContext, getTransport } from 'tone';
-import type { MusicState } from 'audio/music-director';
+import type { MusicBeatEvent, MusicState } from 'audio/music-director';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
@@ -265,6 +269,7 @@ export const createGameRuntime = async ({
 
     const PLAYFIELD_WIDTH = playfieldDimensions.width;
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
+    const PLAYFIELD_SIZE_MAX = Math.max(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
     const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
     const hudProfile: 'desktop' | 'mobile' = uiProfile === 'mobile' ? 'mobile' : 'desktop';
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
@@ -315,6 +320,39 @@ export const createGameRuntime = async ({
     let paddleGlowPulse = 0;
     let comboRingPulse = 0;
     let comboRingPhase = 0;
+    let playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | (ReturnType<typeof createPlayfieldBackgroundLayer> & { tiling?: { tint?: number; alpha?: number } }) | null = null;
+    let comboBloomEffect: ReturnType<typeof createComboBloomEffect> | null = null;
+    let ballTrailsEffect: ReturnType<typeof createBallTrailsEffect> | null = null;
+    let heatDistortionEffect: ReturnType<typeof createHeatDistortionEffect> | null = null;
+    let heatRippleEffect: ReturnType<typeof createHeatRippleEffect> | null = null;
+    const ballTrailSources: BallTrailSource[] = [];
+    const heatDistortionSources: HeatDistortionSource[] = [];
+    let backgroundPulse = 0;
+    let bloomBeatBoost = 0;
+    let backgroundAccentIndex = 0;
+    let backgroundAccentColor = themeAccents.combo;
+    let bloomAccentColor = themeAccents.combo;
+    let backgroundAccentPalette: number[] = [
+        themeAccents.combo,
+        themeBallColors.aura,
+        mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
+    ];
+
+    const rebuildBackgroundPalette = () => {
+        backgroundAccentPalette = [
+            themeAccents.combo,
+            themeBallColors.aura,
+            mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
+        ];
+        if (backgroundAccentPalette.length === 0) {
+            backgroundAccentPalette = [0xffffff];
+        }
+        backgroundAccentIndex %= backgroundAccentPalette.length;
+        backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex] ?? themeAccents.combo;
+        bloomAccentColor = backgroundAccentColor;
+    };
+
+    rebuildBackgroundPalette();
 
     let ballLight: ReturnType<typeof createDynamicLight> | null = null;
     let paddleLight: ReturnType<typeof createDynamicLight> | null = null;
@@ -356,6 +394,53 @@ export const createGameRuntime = async ({
         },
         onAudioBlocked,
     });
+
+    const attachPlayfieldFilter = (filter: Filter) => {
+        const existing = stage.layers.playfield.filters;
+        if (existing?.includes(filter)) {
+            return;
+        }
+        const next = existing ? existing.slice() : [];
+        next.push(filter);
+        stage.layers.playfield.filters = next;
+    };
+
+    const detachPlayfieldFilter = (filter: Filter) => {
+        const existing = stage.layers.playfield.filters;
+        if (!existing) {
+            return;
+        }
+        const next = existing.filter((entry) => entry !== filter);
+        stage.layers.playfield.filters = next.length > 0 ? next : null;
+    };
+
+    comboBloomEffect = createComboBloomEffect({ baseColor: themeAccents.combo });
+    if (comboBloomEffect) {
+        attachPlayfieldFilter(comboBloomEffect.filter);
+    }
+
+    ballTrailsEffect = createBallTrailsEffect({
+        coreColor: themeBallColors.core,
+        auraColor: themeBallColors.aura,
+        accentColor: themeAccents.combo,
+    });
+    stage.addToLayer('effects', ballTrailsEffect.container);
+
+    heatDistortionEffect = createHeatDistortionEffect();
+    if (heatDistortionEffect) {
+        attachPlayfieldFilter(heatDistortionEffect.filter);
+    }
+
+    heatRippleEffect = createHeatRippleEffect();
+    attachPlayfieldFilter(heatRippleEffect.filter);
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+        const globalRef = window as typeof window & {
+            __LBHeatRipple?: { getActiveRippleCount: () => number };
+        };
+        globalRef.__LBHeatRipple = {
+            getActiveRippleCount: () => heatRippleEffect?.getActiveRippleCount() ?? 0,
+        };
+    }
 
     const physics = createPhysicsWorld({
         dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
@@ -626,10 +711,36 @@ export const createGameRuntime = async ({
         brickLayoutBounds = result.layoutBounds;
         session.startRound({ breakableBricks: result.breakableBricks });
         brickParticles?.reset();
+        heatRippleEffect?.clear();
         registerGambleBricks();
     };
 
-    stage.addToLayer('playfield', createPlayfieldBackgroundLayer(playfieldDimensions).container);
+    playfieldBackground = createPlayfieldBackgroundLayer(playfieldDimensions);
+    stage.addToLayer('playfield', playfieldBackground.container);
+
+    const applyBackgroundAccent = (accentIndexDelta: number) => {
+        if (backgroundAccentPalette.length === 0) {
+            return;
+        }
+        backgroundAccentIndex = (backgroundAccentIndex + accentIndexDelta + backgroundAccentPalette.length) %
+            backgroundAccentPalette.length;
+        backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex];
+        bloomAccentColor = backgroundAccentColor;
+    };
+
+    const handleMusicBeat = (event: MusicBeatEvent) => {
+        const pulseIntensity = event.isDownbeat ? 0.5 : 0.28;
+        backgroundPulse = Math.min(1, backgroundPulse + pulseIntensity);
+        bloomBeatBoost = Math.min(0.7, bloomBeatBoost + (event.isDownbeat ? 0.35 : 0.2));
+    };
+
+    const handleMusicMeasure = () => {
+        applyBackgroundAccent(1);
+        backgroundPulse = Math.min(1, backgroundPulse + 0.2);
+    };
+
+    musicDirector.setBeatCallback(handleMusicBeat);
+    musicDirector.setMeasureCallback(handleMusicMeasure);
 
     roundCountdownDisplay = createRoundCountdown({
         playfieldSize: playfieldDimensions,
@@ -937,7 +1048,29 @@ export const createGameRuntime = async ({
         hudDisplay.setTheme(theme);
         roundCountdownDisplay?.setTheme(theme);
         stage.applyTheme(theme);
+        ballTrailsEffect?.applyTheme({
+            coreColor: themeBallColors.core,
+            auraColor: themeBallColors.aura,
+            accentColor: themeAccents.combo,
+        });
+        comboBloomEffect?.applyTheme(themeAccents.combo);
         replacePaddleLight(themeAccents.powerUp);
+        rebuildBackgroundPalette();
+        backgroundPulse = 0;
+        bloomBeatBoost = 0;
+        const background = playfieldBackground;
+        if (background) {
+            const overlay = (background as { overlay?: { tint?: number; alpha?: number } }).overlay;
+            if (overlay) {
+                overlay.tint = 0xffffff;
+                overlay.alpha = 1;
+            }
+            const tilingTarget = background.tilingSprite ?? (background as { tiling?: { tint?: number; alpha?: number } }).tiling;
+            if (tilingTarget) {
+                (tilingTarget as { tint?: number }).tint = 0xffffff;
+                (tilingTarget as { alpha?: number }).alpha = 0.78;
+            }
+        }
 
         renderStageSoon();
     };
@@ -1461,6 +1594,28 @@ export const createGameRuntime = async ({
                         impactVelocity,
                         speed: impactVelocity,
                     });
+
+                    if (heatRippleEffect) {
+                        const normalizedX = clampUnit(brick.position.x / PLAYFIELD_WIDTH);
+                        const normalizedY = clampUnit(brick.position.y / PLAYFIELD_HEIGHT);
+                        const hitSpeedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
+                        const hitComboIntensity = clampUnit(
+                            scoringState.combo / Math.max(1, config.scoring.multiplierThreshold * 2),
+                        );
+                        const rippleIntensity = Math.min(1, 0.18 + hitSpeedIntensity * 0.45 + hitComboIntensity * 0.3);
+                        const contactRadius = typeof ballBody.circleRadius === 'number' && Number.isFinite(ballBody.circleRadius)
+                            ? Math.max(2, ballBody.circleRadius)
+                            : ball.radius;
+                        const normalizedRadius = clampUnit(contactRadius / PLAYFIELD_SIZE_MAX);
+                        heatRippleEffect.spawnRipple({
+                            position: { x: normalizedX, y: normalizedY },
+                            intensity: rippleIntensity * 0.8,
+                            startRadius: Math.max(0.012, normalizedRadius * 1.4),
+                            endRadius: Math.min(0.45, normalizedRadius * 1.3 + 0.15 + rippleIntensity * 0.2),
+                            duration: 0.4 + rippleIntensity * 0.3,
+                            width: Math.max(0.035, 0.09 - rippleIntensity * 0.025),
+                        });
+                    }
                 } else {
                     const gambleHitResult = gambleManager.onHit(brick);
                     if (gambleHitResult.type === 'prime') {
@@ -1589,18 +1744,36 @@ export const createGameRuntime = async ({
                         momentum: getMomentumMetrics(scoringState),
                     });
 
+                    const speedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
+                    const comboIntensity = clampUnit(
+                        scoringState.combo / Math.max(1, config.scoring.multiplierThreshold * 2),
+                    );
                     const visualState = brickVisualState.get(brick);
                     if (brickParticles && visualState) {
-                        const comboIntensity = clampUnit(
-                            scoringState.combo / Math.max(1, config.scoring.multiplierThreshold * 2),
-                        );
-                        const speedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
                         const burstStrength = Math.max(0.3, Math.min(1, comboIntensity * 0.5 + speedIntensity * 0.7));
                         brickParticles.emit({
                             position: { x: brick.position.x, y: brick.position.y },
                             baseColor: visualState.baseColor,
                             intensity: burstStrength,
                             impactSpeed: impactVelocity,
+                        });
+                    }
+
+                    if (heatRippleEffect) {
+                        const normalizedX = clampUnit(brick.position.x / PLAYFIELD_WIDTH);
+                        const normalizedY = clampUnit(brick.position.y / PLAYFIELD_HEIGHT);
+                        const rippleIntensity = Math.min(1, 0.28 + speedIntensity * 0.55 + comboIntensity * 0.45);
+                        const contactRadius = typeof ballBody.circleRadius === 'number' && Number.isFinite(ballBody.circleRadius)
+                            ? Math.max(2, ballBody.circleRadius)
+                            : ball.radius;
+                        const normalizedRadius = clampUnit(contactRadius / PLAYFIELD_SIZE_MAX);
+                        heatRippleEffect.spawnRipple({
+                            position: { x: normalizedX, y: normalizedY },
+                            intensity: rippleIntensity,
+                            startRadius: Math.max(0.015, normalizedRadius * 1.6),
+                            endRadius: Math.min(0.65, normalizedRadius * 1.6 + 0.22 + rippleIntensity * 0.3),
+                            duration: 0.55 + rippleIntensity * 0.4,
+                            width: Math.max(0.03, 0.085 - rippleIntensity * 0.03),
                         });
                     }
 
@@ -2091,6 +2264,78 @@ export const createGameRuntime = async ({
         ballGlowFilter.color = glowColor;
         ballGlowFilter.outerStrength = Math.min(5, 1.4 + comboEnergy * 0.8 + ballPulse * 2.6);
 
+        backgroundPulse = Math.max(0, backgroundPulse - deltaSeconds * 1.6);
+        bloomBeatBoost = Math.max(0, bloomBeatBoost - deltaSeconds * 1.8);
+
+        const backgroundIntensity = clampUnit(backgroundPulse);
+        const background = playfieldBackground;
+        if (background) {
+            const overlayTint = mixColors(0xffffff, backgroundAccentColor, backgroundIntensity * 0.75);
+            const overlay = (background as { overlay?: { tint?: number; alpha?: number } }).overlay;
+            if (overlay) {
+                overlay.tint = overlayTint;
+                overlay.alpha = 0.9 + backgroundIntensity * 0.1;
+            }
+            const tilingTarget = background.tilingSprite ?? (background as { tiling?: { tint?: number; alpha?: number } }).tiling;
+            if (tilingTarget) {
+                (tilingTarget as { tint?: number }).tint = mixColors(0xffffff, backgroundAccentColor, backgroundIntensity * 0.45);
+                (tilingTarget as { alpha?: number }).alpha = 0.6 + backgroundIntensity * 0.2;
+            }
+        }
+
+        const bloomEnergy = clampUnit(comboEnergy + bloomBeatBoost);
+        comboBloomEffect?.update({
+            comboEnergy: bloomEnergy,
+            deltaSeconds,
+            accentColor: bloomAccentColor,
+        });
+
+        if (ballTrailsEffect) {
+            ballTrailSources.length = 0;
+            multiBallController.visitActiveBalls(({ body, isPrimary }) => {
+                const normalizedSpeed = clampUnit(
+                    MatterVector.magnitude(body.velocity) / Math.max(1, currentMaxSpeed),
+                );
+                ballTrailSources.push({
+                    id: body.id,
+                    position: { x: body.position.x, y: body.position.y },
+                    radius: ball.radius,
+                    normalizedSpeed,
+                    isPrimary,
+                });
+            });
+
+            ballTrailsEffect.update({
+                deltaSeconds,
+                comboEnergy,
+                sources: ballTrailSources,
+            });
+        }
+
+        if (heatDistortionEffect) {
+            heatDistortionSources.length = 0;
+            multiBallController.visitActiveBalls(({ body }) => {
+                const normalizedX = clampUnit(body.position.x / PLAYFIELD_WIDTH);
+                const normalizedY = clampUnit(body.position.y / PLAYFIELD_HEIGHT);
+                const speed = MatterVector.magnitude(body.velocity);
+                const normalizedSpeed = clampUnit(speed / Math.max(1, currentMaxSpeed));
+                const swirl = 6 + normalizedSpeed * 18;
+                heatDistortionSources.push({
+                    position: { x: normalizedX, y: normalizedY },
+                    intensity: normalizedSpeed,
+                    swirl,
+                });
+            });
+
+            heatDistortionEffect.update({
+                deltaSeconds,
+                comboEnergy,
+                sources: heatDistortionSources,
+            });
+        }
+
+        heatRippleEffect?.update(deltaSeconds);
+
         ballGlowPulse = Math.max(0, ballGlowPulse - deltaSeconds * 1.6);
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);
         comboRingPulse = Math.max(0, comboRingPulse - deltaSeconds * 1.05);
@@ -2384,6 +2629,35 @@ export const createGameRuntime = async ({
     const cleanupVisuals = () => {
         unsubscribeTheme?.();
         unsubscribeTheme = null;
+        if (comboBloomEffect) {
+            detachPlayfieldFilter(comboBloomEffect.filter);
+            comboBloomEffect.destroy();
+            comboBloomEffect = null;
+        }
+        if (ballTrailsEffect) {
+            ballTrailsEffect.destroy();
+            ballTrailsEffect = null;
+        }
+        if (heatDistortionEffect) {
+            detachPlayfieldFilter(heatDistortionEffect.filter);
+            heatDistortionEffect.destroy();
+            heatDistortionEffect = null;
+        }
+        if (heatRippleEffect) {
+            detachPlayfieldFilter(heatRippleEffect.filter);
+            heatRippleEffect.destroy();
+            heatRippleEffect = null;
+        }
+        if (import.meta.env.DEV && typeof window !== 'undefined') {
+            const globalRef = window as typeof window & {
+                __LBHeatRipple?: { getActiveRippleCount: () => number };
+            };
+            if (globalRef.__LBHeatRipple) {
+                delete globalRef.__LBHeatRipple;
+            }
+        }
+        ballTrailSources.length = 0;
+        heatDistortionSources.length = 0;
         if (ballSpeedRing) {
             ballSpeedRing.container.removeFromParent();
             ballSpeedRing.destroy();
@@ -2411,6 +2685,9 @@ export const createGameRuntime = async ({
         }
         comboRing.container.removeFromParent();
         comboRing.dispose();
+        playfieldBackground = null;
+        musicDirector.setBeatCallback(null);
+        musicDirector.setMeasureCallback(null);
         document.removeEventListener('keydown', handleGlobalKeyDown);
     };
 

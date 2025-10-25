@@ -45,6 +45,7 @@ export interface MultiBallController {
         readonly maxSpeed: number;
         readonly deltaSeconds: number;
     }): void;
+    visitActiveBalls(visitor: (entry: { readonly body: Body; readonly isPrimary: boolean }) => void): void;
 }
 
 const createAngularOffsets = (count: number): number[] => {
@@ -282,6 +283,13 @@ export const createMultiBallController = ({
         });
     };
 
+    const visitActiveBalls: MultiBallController['visitActiveBalls'] = (visitor) => {
+        visitor({ body: ball.physicsBody, isPrimary: true });
+        extraBalls.forEach((entry) => {
+            visitor({ body: entry.body, isPrimary: false });
+        });
+    };
+
     return {
         spawnExtraBalls,
         promoteExtraBallToPrimary,
@@ -291,5 +299,6 @@ export const createMultiBallController = ({
         count,
         applyTheme,
         updateSpeedIndicators,
+        visitActiveBalls,
     };
 };

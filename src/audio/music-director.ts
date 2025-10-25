@@ -17,11 +17,14 @@ const DEFAULT_CROSSFADE_SECONDS = 1.2;
 const LEVEL_EPSILON = 0.01;
 
 export type BaseLayerId = 'calm' | 'intense';
-export type MusicLayerId = BaseLayerId | 'melody';
+export type MusicLayerId = BaseLayerId;
 
 export interface MusicState {
     readonly lives: 1 | 2 | 3;
     readonly combo: number;
+    readonly tempoRatio?: number;
+    readonly paused?: boolean;
+    readonly warbleIntensity?: number;
 }
 
 export interface MusicLayerDefinition {
@@ -55,24 +58,39 @@ interface TransportLike {
     clear(id: number): void;
     cancel?(time?: number): void;
     nextSubdivision?(subdivision: string): number;
+    scheduleRepeat?(callback: (time: number) => void, interval: number | string, startTime?: number): number;
 }
 
 export interface MusicDirectorOptions {
     readonly transport?: TransportLike;
     readonly now?: () => number;
     readonly crossfadeSeconds?: number;
-    readonly melodyFadeSeconds?: number;
     readonly comboBoostRate?: number;
     readonly comboBoostCap?: number;
     readonly layerFactory?: MusicLayerFactory;
     readonly layers?: Partial<Record<MusicLayerId, Partial<Omit<MusicLayerDefinition, 'id'>>>>;
+    readonly beatsPerMeasure?: number;
 }
 
 export interface MusicDirector {
     readonly setState: (state: MusicState) => void;
     readonly getState: () => MusicState | null;
     readonly setEnabled: (enabled: boolean) => void;
+    readonly setBeatCallback: (callback: ((event: MusicBeatEvent) => void) | null) => void;
+    readonly setMeasureCallback: (callback: ((event: MusicMeasureEvent) => void) | null) => void;
     readonly dispose: () => void;
+}
+
+export interface MusicBeatEvent {
+    readonly index: number;
+    readonly subdivision: number;
+    readonly isDownbeat: boolean;
+    readonly transportTime: number;
+}
+
+export interface MusicMeasureEvent {
+    readonly index: number;
+    readonly transportTime: number;
 }
 
 const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
@@ -89,13 +107,6 @@ const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
         baseLevel: 0.9,
         fadeInSeconds: 0.3,
         fadeOutSeconds: 0.25,
-    },
-    melody: {
-        id: 'melody',
-        url: new URL('../../assets/samples/092_funkiclassic2.wav', import.meta.url).href,
-        baseLevel: 0.8,
-        fadeInSeconds: 0.45,
-        fadeOutSeconds: 0.35,
     },
 };
 
@@ -236,32 +247,30 @@ const selectBaseLayer = (lives: 1 | 2 | 3): BaseLayerId => (lives === 3 ? 'calm'
 
 const otherBaseLayer = (layer: BaseLayerId): BaseLayerId => (layer === 'calm' ? 'intense' : 'calm');
 
-type TransitionKey = 'base' | 'melody';
+type TransitionKey = 'base';
 
 export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDirector => {
     const transport = options.transport ?? Transport;
     const now = options.now ?? toneNow;
     const crossfadeSeconds = Math.max(0.05, options.crossfadeSeconds ?? DEFAULT_CROSSFADE_SECONDS);
-    const melodyFadeSeconds = Math.max(0.05, options.melodyFadeSeconds ?? crossfadeSeconds * 0.75);
     const comboBoostRate = options.comboBoostRate ?? 0.0125;
     const comboBoostCap = options.comboBoostCap ?? 0.3;
     const layerFactory = options.layerFactory ?? createToneMusicLayer;
+    const beatsPerMeasure = Math.max(1, Math.round(options.beatsPerMeasure ?? 4));
 
     const definitions: Record<MusicLayerId, MusicLayerDefinition> = {
         calm: mergeLayerDefinition('calm', options.layers?.calm),
         intense: mergeLayerDefinition('intense', options.layers?.intense),
-        melody: mergeLayerDefinition('melody', options.layers?.melody),
     };
 
     const calmLayer = layerFactory(definitions.calm, { now });
     const intenseLayer = layerFactory(definitions.intense, { now });
-    const melodyLayer = layerFactory(definitions.melody, { now });
     const baseLayers: Record<BaseLayerId, MusicLayerHandle> = {
         calm: calmLayer,
         intense: intenseLayer,
     };
 
-    for (const layer of [calmLayer, intenseLayer, melodyLayer]) {
+    for (const layer of [calmLayer, intenseLayer]) {
         layer.ensureStarted();
         layer.setImmediate(0);
     }
@@ -271,12 +280,84 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     let enabled = true;
     let currentBase: BaseLayerId = 'calm';
     const baseLevels: Record<BaseLayerId, number> = { calm: 0, intense: 0 };
-    let melodyLevel = 0;
     let pendingBaseTarget: BaseLayerId | null = null;
     let pendingBaseLevel = 0;
-    let pendingMelodyLevel: number | null = null;
     const pendingTransitions = new Map<TransitionKey, number>();
     let lastState: MusicState | null = null;
+    let beatCallback: ((event: MusicBeatEvent) => void) | null = null;
+    let measureCallback: ((event: MusicMeasureEvent) => void) | null = null;
+    let beatScheduleHandle: number | null = null;
+    let beatIndex = 0;
+    let measureIndex = 0;
+
+    const cancelBeatSchedule = () => {
+        if (beatScheduleHandle === null) {
+            return;
+        }
+        try {
+            transport.clear(beatScheduleHandle);
+        } catch {
+            // Best effort; ignore failures.
+        }
+        beatScheduleHandle = null;
+    };
+
+    const normalizeTransportTime = (time: number): number => (Number.isFinite(time) ? time : now());
+
+    const scheduleBeatEvents = () => {
+        if (beatScheduleHandle !== null) {
+            // already scheduled
+            return;
+        }
+        if (!enabled) {
+            return;
+        }
+        if (!beatCallback && !measureCallback) {
+            return;
+        }
+        if (typeof transport.scheduleRepeat !== 'function') {
+            return;
+        }
+
+        try {
+            const handle = transport.scheduleRepeat((time) => {
+                const eventTime = normalizeTransportTime(time);
+                const currentBeat = beatIndex;
+                const subdivision = currentBeat % beatsPerMeasure;
+                const isDownbeat = subdivision === 0;
+
+                if (beatCallback) {
+                    beatCallback({
+                        index: currentBeat,
+                        subdivision,
+                        isDownbeat,
+                        transportTime: eventTime,
+                    });
+                }
+
+                if (isDownbeat) {
+                    const currentMeasure = measureIndex;
+                    if (measureCallback) {
+                        measureCallback({
+                            index: currentMeasure,
+                            transportTime: eventTime,
+                        });
+                    }
+                    measureIndex += 1;
+                }
+
+                beatIndex += 1;
+            }, '4n');
+
+            if (typeof handle === 'number' && Number.isFinite(handle)) {
+                beatScheduleHandle = handle;
+            } else {
+                beatScheduleHandle = null;
+            }
+        } catch {
+            beatScheduleHandle = null;
+        }
+    };
 
     const cancelTransition = (key: TransitionKey) => {
         const handle = pendingTransitions.get(key);
@@ -321,9 +402,6 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         const boost = computeComboBoost(state.combo, comboBoostRate, comboBoostCap);
         const baseTargetLevel = clamp01(definitions[baseKey].baseLevel + boost);
         const otherKey = otherBaseLayer(baseKey);
-        const melodyTargetLevel = state.lives === 1
-            ? clamp01(definitions.melody.baseLevel + boost * 0.5)
-            : 0;
 
         baseLayers[baseKey].setImmediate(baseTargetLevel);
         baseLevels[baseKey] = baseTargetLevel;
@@ -333,8 +411,6 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             baseLevels[otherKey] = 0;
         }
 
-        melodyLayer.setImmediate(melodyTargetLevel);
-        melodyLevel = melodyTargetLevel;
         currentBase = baseKey;
         initialized = true;
     };
@@ -344,8 +420,6 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             baseLayers[key].rampTo(0, time, crossfadeSeconds);
             baseLevels[key] = 0;
         }
-        melodyLayer.rampTo(0, time, melodyFadeSeconds);
-        melodyLevel = 0;
     };
 
     const updateBaseLayer = (target: BaseLayerId, level: number) => {
@@ -393,27 +467,6 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         });
     };
 
-    const updateMelodyLayer = (level: number) => {
-        const actualLevel = melodyLayer.getLevel();
-        const alreadyAtLevel =
-            Math.abs(melodyLevel - level) <= LEVEL_EPSILON && Math.abs(actualLevel - level) <= LEVEL_EPSILON;
-        if (alreadyAtLevel && pendingMelodyLevel === null) {
-            return;
-        }
-
-        pendingMelodyLevel = level;
-
-        scheduleTransition('melody', (time) => {
-            if (disposed) {
-                return;
-            }
-
-            melodyLayer.rampTo(level, time, melodyFadeSeconds);
-            melodyLevel = level;
-            pendingMelodyLevel = null;
-        });
-    };
-
     const setState: MusicDirector['setState'] = (state) => {
         if (disposed) {
             return;
@@ -424,6 +477,9 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         const normalizedState: MusicState = {
             lives: normalizedLives,
             combo: normalizedCombo,
+            tempoRatio: state.tempoRatio,
+            paused: state.paused,
+            warbleIntensity: state.warbleIntensity,
         };
 
         if (!enabled) {
@@ -439,26 +495,21 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
 
         const baseTarget = selectBaseLayer(normalizedState.lives);
         const baseMismatch = Math.abs(baseLayers[baseTarget].getLevel() - baseLevels[baseTarget]) > LEVEL_EPSILON * 2;
-        const melodyMismatch = Math.abs(melodyLayer.getLevel() - melodyLevel) > LEVEL_EPSILON * 2;
 
         if (
             lastState &&
             lastState.lives === normalizedState.lives &&
-            Math.abs(lastState.combo - normalizedState.combo) <= LEVEL_EPSILON &&
-            !baseMismatch &&
-            !melodyMismatch
+            Math.abs((lastState.combo ?? 0) - (normalizedState.combo ?? 0)) <= LEVEL_EPSILON &&
+            !baseMismatch
         ) {
+            lastState = { ...normalizedState };
             return;
         }
 
         const boost = computeComboBoost(normalizedState.combo, comboBoostRate, comboBoostCap);
         const baseTargetLevel = clamp01(definitions[baseTarget].baseLevel + boost);
-        const melodyTargetLevel = normalizedState.lives === 1
-            ? clamp01(definitions.melody.baseLevel + boost * 0.5)
-            : 0;
 
         updateBaseLayer(baseTarget, baseTargetLevel);
-        updateMelodyLayer(melodyTargetLevel);
         lastState = { ...normalizedState };
     };
 
@@ -471,10 +522,9 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
 
         if (!value) {
             cancelTransition('base');
-            cancelTransition('melody');
             pendingBaseTarget = null;
             pendingBaseLevel = 0;
-            pendingMelodyLevel = null;
+            cancelBeatSchedule();
             const start = now();
             silenceLayers(start);
             initialized = false;
@@ -483,8 +533,8 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
 
         pendingBaseTarget = null;
         pendingBaseLevel = 0;
-        pendingMelodyLevel = null;
         initialized = false;
+        scheduleBeatEvents();
     };
 
     const dispose: MusicDirector['dispose'] = () => {
@@ -493,13 +543,12 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         }
         disposed = true;
         cancelTransition('base');
-        cancelTransition('melody');
+        cancelBeatSchedule();
         try {
             transport.cancel?.(now());
         } catch {
             // Best effort; ignore transport cancellation errors.
         }
-        melodyLayer.dispose();
         calmLayer.dispose();
         intenseLayer.dispose();
         pendingTransitions.clear();
@@ -507,10 +556,30 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
 
     const getState: MusicDirector['getState'] = () => (lastState ? { ...lastState } : null);
 
+    const setBeatCallback: MusicDirector['setBeatCallback'] = (callback) => {
+        beatCallback = callback ?? null;
+        if (!beatCallback && !measureCallback) {
+            cancelBeatSchedule();
+        } else {
+            scheduleBeatEvents();
+        }
+    };
+
+    const setMeasureCallback: MusicDirector['setMeasureCallback'] = (callback) => {
+        measureCallback = callback ?? null;
+        if (!beatCallback && !measureCallback) {
+            cancelBeatSchedule();
+        } else {
+            scheduleBeatEvents();
+        }
+    };
+
     return {
         setState,
         getState,
         setEnabled,
+        setBeatCallback,
+        setMeasureCallback,
         dispose,
     };
 };

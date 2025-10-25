@@ -192,6 +192,8 @@ const createGameInitializerMock = vi.hoisted(() =>
             setState: vi.fn(),
             getState: vi.fn(() => null),
             setEnabled: vi.fn(),
+            setBeatCallback: vi.fn(),
+            setMeasureCallback: vi.fn(),
             dispose: vi.fn(),
         };
         initializerState.instances.push({
@@ -529,6 +531,23 @@ vi.mock('render/effects/dynamic-light', () => ({
         },
         flash: vi.fn(),
         update: vi.fn(),
+        destroy: vi.fn(),
+    })),
+}));
+
+vi.mock('render/effects/ball-trails', () => ({
+    createBallTrailsEffect: vi.fn(() => ({
+        container: {
+            parent: null,
+            removeFromParent() {
+                if (this.parent && typeof (this.parent as any).removeChild === 'function') {
+                    (this.parent as any).removeChild(this);
+                }
+            },
+            destroy: vi.fn(),
+        },
+        update: vi.fn(),
+        applyTheme: vi.fn(),
         destroy: vi.fn(),
     })),
 }));
@@ -954,6 +973,49 @@ vi.mock('pixi.js', () => {
         }
     }
 
+    class MockUniformGroup {
+        uniforms: Record<string, unknown>;
+        constructor(definition: Record<string, { value: unknown }>) {
+            this.uniforms = {};
+            for (const [key, descriptor] of Object.entries(definition)) {
+                const value = descriptor?.value;
+                if (value instanceof Float32Array) {
+                    this.uniforms[key] = new Float32Array(value);
+                } else if (Array.isArray(value)) {
+                    this.uniforms[key] = [...value];
+                } else if (typeof value === 'object' && value !== null) {
+                    const cloneSource = value as Record<string, unknown>;
+                    this.uniforms[key] = { ...cloneSource };
+                } else {
+                    this.uniforms[key] = value;
+                }
+            }
+        }
+        update = vi.fn();
+    }
+
+    class MockFilter {
+        static from(options: { resources?: Record<string, Record<string, { value: unknown }>>; padding?: number }) {
+            const source = options?.resources ?? {};
+            const resources = Object.fromEntries(
+                Object.entries(source).map(([key, value]) => [key, new MockUniformGroup(value)]),
+            );
+            const instance = new MockFilter(resources);
+            instance.padding = options?.padding ?? 0;
+            return instance;
+        }
+
+        resources: Record<string, MockUniformGroup>;
+        enabled = true;
+        padding = 0;
+
+        constructor(resources: Record<string, MockUniformGroup>) {
+            this.resources = resources;
+        }
+
+        destroy = vi.fn();
+    }
+
     return {
         Container: MockContainer,
         Graphics: MockGraphics,
@@ -964,6 +1026,8 @@ vi.mock('pixi.js', () => {
         FillGradient: MockFillGradient,
         Text: MockText,
         TextStyle: MockTextStyle,
+        Filter: MockFilter,
+        defaultFilterVert: 'mock-filter-vert',
     };
 });
 
@@ -981,6 +1045,7 @@ vi.mock('@pixi/filter-glow', () => ({
             this.color = options.color;
             this.quality = options.quality;
         }
+        destroy = vi.fn();
     },
 }));
 
@@ -1023,6 +1088,18 @@ const createMultiBallControllerStub = () => ({
     count: vi.fn(() => 0),
     isExtraBallBody: vi.fn(() => false),
     applyTheme: vi.fn(),
+    visitActiveBalls: vi.fn((visitor?: (entry: { body: { id: number; position: { x: number; y: number }; velocity: { x: number; y: number } }; isPrimary: boolean }) => void) => {
+        if (typeof visitor === 'function') {
+            visitor({
+                body: {
+                    id: 1,
+                    position: { x: 0, y: 0 },
+                    velocity: { x: 0, y: 0 },
+                },
+                isPrimary: true,
+            });
+        }
+    }),
 });
 
 const multiBallControllerMockFactory = vi.fn(createMultiBallControllerStub);

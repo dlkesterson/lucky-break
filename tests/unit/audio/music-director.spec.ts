@@ -48,7 +48,9 @@ const createLayerFactory = (store: RecordedAction[]): MusicLayerFactory => (defi
 const createTransportStub = (autoExecute: boolean) => {
     let handle = 0;
     const pending = new Map<number, (time: number) => void>();
+    const repeats = new Map<number, (time: number) => void>();
     const scheduledCalls: { readonly when: number | string }[] = [];
+    const scheduledRepeats: { readonly interval: number | string }[] = [];
     const clearedHandles: number[] = [];
     const cancelInvocations: number[] = [];
 
@@ -64,14 +66,27 @@ const createTransportStub = (autoExecute: boolean) => {
         return id;
     };
 
+    const scheduleRepeat = (callback: (time: number) => void, interval: number | string): number => {
+        const id = ++handle;
+        scheduledRepeats.push({ interval });
+        if (autoExecute) {
+            callback(typeof interval === 'number' ? interval : 64);
+        } else {
+            repeats.set(id, callback);
+        }
+        return id;
+    };
+
     const clear = (id: number): void => {
         clearedHandles.push(id);
         pending.delete(id);
+        repeats.delete(id);
     };
 
     const cancel = (time?: number): void => {
         cancelInvocations.push(typeof time === 'number' ? time : Number.NaN);
         pending.clear();
+        repeats.clear();
     };
 
     const nextSubdivision = (): number => 64;
@@ -83,28 +98,46 @@ const createTransportStub = (autoExecute: boolean) => {
         }
     };
 
+    const emitRepeats = (time = 64, count = 1): void => {
+        const callbacks = Array.from(repeats.values());
+        for (let iteration = 0; iteration < count; iteration += 1) {
+            for (const callback of callbacks) {
+                callback(time);
+            }
+        }
+    };
+
     const reset = (): void => {
         scheduledCalls.length = 0;
+        scheduledRepeats.length = 0;
         clearedHandles.length = 0;
         cancelInvocations.length = 0;
+        pending.clear();
+        repeats.clear();
     };
 
     const getScheduleCount = (): number => scheduledCalls.length;
+    const getRepeatScheduleCount = (): number => scheduledRepeats.length;
     const getClearedCount = (): number => clearedHandles.length;
     const getCancelCount = (): number => cancelInvocations.length;
     const getLastCancelTime = (): number | undefined => cancelInvocations[cancelInvocations.length - 1];
+    const getActiveRepeatCount = (): number => repeats.size;
 
     return {
         scheduleOnce,
+        scheduleRepeat,
         clear,
         cancel,
         nextSubdivision,
         runPending,
+        emitRepeats,
         reset,
         getScheduleCount,
+        getRepeatScheduleCount,
         getClearedCount,
         getCancelCount,
         getLastCancelTime,
+        getActiveRepeatCount,
     };
 };
 
@@ -118,11 +151,10 @@ describe('createMusicDirector', () => {
             layers: {
                 calm: { baseLevel: 0.52 },
                 intense: { baseLevel: 0.72 },
-                melody: { baseLevel: 0.61 },
             },
         });
 
-        expect(actions.filter((entry) => entry.type === 'start')).toHaveLength(3);
+        expect(actions.filter((entry) => entry.type === 'start')).toHaveLength(2);
         expect(actions.filter((entry) => entry.type === 'set').every((entry) => entry.value === 0)).toBe(true);
         actions.length = 0;
 
@@ -131,7 +163,6 @@ describe('createMusicDirector', () => {
         expect(transport.getScheduleCount()).toBe(0);
         expect(actions).toEqual([
             { layer: 'calm', type: 'set', value: 0.52 },
-            { layer: 'melody', type: 'set', value: 0 },
         ]);
 
         director.dispose();
@@ -147,7 +178,6 @@ describe('createMusicDirector', () => {
             layers: {
                 calm: { baseLevel: 0.5 },
                 intense: { baseLevel: 0.8 },
-                melody: { baseLevel: 0.7 },
             },
         });
 
@@ -166,7 +196,7 @@ describe('createMusicDirector', () => {
         director.dispose();
     });
 
-    it('activates melody layer at one life and scales with combo', () => {
+    it('applies combo boost to the active layer', () => {
         const actions: RecordedAction[] = [];
         const transport = createTransportStub(true);
         const director = createMusicDirector({
@@ -175,7 +205,6 @@ describe('createMusicDirector', () => {
             layers: {
                 calm: { baseLevel: 0.55 },
                 intense: { baseLevel: 0.75 },
-                melody: { baseLevel: 0.65 },
             },
         });
 
@@ -193,9 +222,8 @@ describe('createMusicDirector', () => {
         reset();
 
         director.setState({ lives: 1, combo: 24 });
-        const melodyRamp = actions.find((entry) => entry.layer === 'melody' && entry.type === 'ramp');
-        expect(melodyRamp?.value ?? 0).toBeGreaterThan(0.65);
-        expect(melodyRamp?.duration).toBeCloseTo(toPrecision(0.9), 3);
+        const intenseRampLowLives = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(intenseRampLowLives?.value).toBeCloseTo(1, 3);
 
         director.dispose();
     });
@@ -209,7 +237,6 @@ describe('createMusicDirector', () => {
             layers: {
                 calm: { baseLevel: 0.5 },
                 intense: { baseLevel: 0.8 },
-                melody: { baseLevel: 0.7 },
             },
         });
 
@@ -221,7 +248,7 @@ describe('createMusicDirector', () => {
         director.dispose();
         expect(transport.getClearedCount()).toBe(1);
         expect(transport.getCancelCount()).toBe(1);
-        expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(3);
+        expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(2);
     });
 
     it('falls back when transport scheduling fails and normalizes state', () => {
@@ -265,7 +292,6 @@ describe('createMusicDirector', () => {
             transport,
             now,
             crossfadeSeconds: 0.5,
-            melodyFadeSeconds: 0.3,
             comboBoostRate: 0.2,
             comboBoostCap: 0.6,
             layerFactory: createLayerFactory(actions),
@@ -279,25 +305,20 @@ describe('createMusicDirector', () => {
         expect(baseFallbackRamp?.time).toBe(toPrecision(123));
         actions.length = 0;
 
-        director.setState({ lives: 1, combo: 12 });
-        const melodyBoostCallback = scheduledCallbacks.shift();
-        melodyBoostCallback?.(Infinity);
-        const melodyBoostRamp = actions.find((entry) => entry.layer === 'melody' && entry.type === 'ramp');
-        expect(melodyBoostRamp?.time).toBe(toPrecision(123));
-        actions.length = 0;
-
         director.setState({ lives: 1, combo: 0 });
         const baseCallback = scheduledCallbacks.shift();
+        expect(typeof baseCallback).toBe('function');
         baseCallback?.(Infinity);
         const baseRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
         expect(baseRamp?.time).toBe(toPrecision(123));
         baseCallback?.(10);
         const repeatedRamp = actions.filter((entry) => entry.layer === 'intense' && entry.type === 'ramp');
         expect(repeatedRamp.some((entry) => entry.time === toPrecision(10))).toBe(true);
-        const melodyCallback = scheduledCallbacks.shift();
-        melodyCallback?.(10);
-        const melodyRamp = actions.find((entry) => entry.layer === 'melody' && entry.time === toPrecision(10));
-        expect(melodyRamp).toBeDefined();
+        actions.length = 0;
+
+        director.setState({ lives: 3, combo: 0 });
+        const calmFallbackRamp = actions.find((entry) => entry.layer === 'calm' && entry.type === 'ramp');
+        expect(calmFallbackRamp?.time).toBe(toPrecision(123));
         actions.length = 0;
 
         director.setState({ lives: 3, combo: Number.NaN });
@@ -309,7 +330,49 @@ describe('createMusicDirector', () => {
         expect(director.getState()?.combo).not.toBe(999);
 
         director.dispose();
-        expect(clear).toHaveBeenCalled();
         expect(transport.cancel).toHaveBeenCalled();
+    });
+
+    it('emits beat and measure callbacks when registered', () => {
+        const actions: RecordedAction[] = [];
+        const transport = createTransportStub(false);
+        const director = createMusicDirector({
+            transport,
+            layerFactory: createLayerFactory(actions),
+            beatsPerMeasure: 4,
+        });
+
+        const beatSpy = vi.fn();
+        const measureSpy = vi.fn();
+
+        director.setBeatCallback(beatSpy);
+        director.setMeasureCallback(measureSpy);
+
+        expect(transport.getRepeatScheduleCount()).toBe(1);
+
+        transport.emitRepeats(32, 5);
+
+        expect(beatSpy).toHaveBeenCalledTimes(5);
+        expect(beatSpy.mock.calls[0][0]).toEqual(
+            expect.objectContaining({ index: 0, subdivision: 0, isDownbeat: true }),
+        );
+        expect(beatSpy.mock.calls[1][0]).toEqual(
+            expect.objectContaining({ index: 1, subdivision: 1, isDownbeat: false }),
+        );
+        expect(measureSpy).toHaveBeenCalledTimes(2);
+        expect(measureSpy.mock.calls[0][0]).toEqual(expect.objectContaining({ index: 0 }));
+        expect(measureSpy.mock.calls[1][0]).toEqual(expect.objectContaining({ index: 1 }));
+
+        director.setEnabled(false);
+        expect(transport.getActiveRepeatCount()).toBe(0);
+
+        director.setEnabled(true);
+        expect(transport.getRepeatScheduleCount()).toBe(2);
+
+        director.setBeatCallback(null);
+        director.setMeasureCallback(null);
+        expect(transport.getActiveRepeatCount()).toBe(0);
+
+        director.dispose();
     });
 });
