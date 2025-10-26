@@ -319,4 +319,57 @@ describe('render/playfield-visuals', () => {
         paintBrickVisual(baseDiamond, 60, 30, 0xaa55ff, 0.004, 0.92, 'diamond');
         expect(strokeCountBelow(getCommands(baseDiamond))).toBe(0);
     });
+
+    it('supports flat-fill overrides without emitting highlight or crack details', () => {
+        const gfx = new Graphics();
+        paintBrickVisual(
+            gfx,
+            64,
+            28,
+            0x224466,
+            0.8,
+            0.95,
+            'rectangle',
+            {
+                useFlatFill: true,
+                strokeColor: 0xffcc00,
+                fillColor: 0x112233,
+            },
+        );
+
+        const commands = getCommands(gfx);
+        const strokes = commands.filter((command) => command.type === 'stroke');
+        expect(strokes).toHaveLength(1);
+        expect(strokes[0]?.payload).toMatchObject({ color: 0xffcc00, alpha: 0.9, width: 2 });
+
+        const highlightFills = commands.filter((command) => command.type === 'fill' && typeof command.payload?.alpha === 'number' && command.payload.alpha > 0 && command.payload.alpha < 0.5 && command.payload.color === 0xffffff);
+        expect(highlightFills).toHaveLength(0);
+
+        const crackMoves = commands.filter((command) => command.type === 'moveTo');
+        expect(crackMoves).toHaveLength(0);
+    });
+
+    it('applies flat fill to circular bricks without shading overlays', () => {
+        const gfx = new Graphics();
+        paintBrickVisual(
+            gfx,
+            48,
+            48,
+            0x44aaff,
+            0.7,
+            0.9,
+            'circle',
+            {
+                useFlatFill: true,
+                strokeColor: 0xffffff,
+            },
+        );
+
+        const commands = getCommands(gfx);
+        const ellipseCommands = commands.filter((command) => command.type === 'ellipse');
+        expect(ellipseCommands).toHaveLength(0);
+
+        const crackStrokes = commands.filter((command) => command.type === 'stroke' && typeof command.payload?.width === 'number' && command.payload.width < 2);
+        expect(crackStrokes).toHaveLength(0);
+    });
 });

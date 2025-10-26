@@ -82,12 +82,12 @@ describe('createAudioWaveBackdrop', () => {
     });
 
     describe('bump highlight selection', () => {
-        const highlightCases: Array<{
+        const highlightCases: {
             label: string;
             kind: AudioWaveKind | 'invalid';
             options?: AudioWaveBumpOptions;
             expectedColor: number;
-        }> = [
+        }[] = [
                 {
                     label: 'foreshadow cancel accent',
                     kind: 'foreshadow',

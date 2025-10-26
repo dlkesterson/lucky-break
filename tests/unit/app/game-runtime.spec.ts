@@ -77,6 +77,15 @@ const launchControllerState = vi.hoisted(() => ({
     instances: [] as any[],
 }));
 
+const loggerState = vi.hoisted(() => ({
+    runtime: null as {
+        debug: Mock;
+        error: Mock;
+        info: Mock;
+        warn: Mock;
+    } | null,
+}));
+
 const sessionManagerState = vi.hoisted(() => ({
     instances: [] as any[],
     options: [] as Record<string, unknown>[],
@@ -1192,12 +1201,18 @@ vi.mock('util/input-helpers', () => ({
 
 vi.mock('util/log', () => ({
     rootLogger: {
-        child: vi.fn(() => ({
-            debug: vi.fn(),
-            error: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-        })),
+        child: vi.fn((name: string) => {
+            const logger = {
+                debug: vi.fn(),
+                error: vi.fn(),
+                info: vi.fn(),
+                warn: vi.fn(),
+            } satisfies Record<'debug' | 'error' | 'info' | 'warn', Mock>;
+            if (name === 'game-runtime') {
+                loggerState.runtime = logger;
+            }
+            return logger;
+        }),
     },
 }));
 
@@ -1250,6 +1265,11 @@ describe('game-runtime internal helpers', () => {
         }
     });
 
+    it('propagates promise rejections without swallowing errors', async () => {
+        const failure = new Error('wait failed');
+        await expect(internalHelpers.waitForPromise(Promise.reject(failure), 10)).rejects.toBe(failure);
+    });
+
     it('detects autoplay blocking errors', () => {
         const named = new Error('blocked');
         named.name = 'NotAllowedError';
@@ -1297,6 +1317,200 @@ describe('game-runtime internal helpers', () => {
 
         expect(toneState.resumeMock).not.toHaveBeenCalled();
         expect(toneState.transportStartMock).not.toHaveBeenCalled();
+    });
+
+    it('bubbles autoplay blocks originating from Tone.start', async () => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+
+        const blocked = new Error('autoplay');
+        blocked.name = 'NotAllowedError';
+        const toneModule = await import('tone');
+        const startMock = toneModule.start as Mock;
+        startMock.mockImplementationOnce(() => Promise.reject(blocked));
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
+    });
+
+    it('bubbles autoplay blocks originating from AudioContext.resume', async () => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+
+        const blocked = new Error('context blocked');
+        blocked.name = 'NotAllowedError';
+        toneState.resumeImpl = () => Promise.reject(blocked);
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
+
+        toneState.resumeImpl = () => Promise.resolve();
+    });
+
+    it('bubbles autoplay blocks originating from Tone.Transport.start', async () => {
+        toneState.contextState = 'running';
+        toneState.transportState = 'stopped';
+
+        const blocked = new Error('transport blocked');
+        blocked.name = 'NotAllowedError';
+        toneState.transportStartMock.mockImplementationOnce(() => Promise.reject(blocked));
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
+    });
+
+    it('logs and rethrows unexpected Tone.Transport.start errors', async () => {
+        toneState.contextState = 'running';
+        toneState.transportState = 'stopped';
+
+        const unexpected = new Error('transport failed');
+        toneState.transportStartMock.mockImplementationOnce(() => Promise.reject(unexpected));
+
+        const runtimeLogger = loggerState.runtime;
+        expect(runtimeLogger).toBeDefined();
+        runtimeLogger!.warn.mockClear();
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(unexpected);
+        expect(runtimeLogger!.warn).toHaveBeenCalledWith('Tone.Transport.start failed', { error: unexpected });
+    });
+
+    it('logs and rethrows unexpected Tone.start errors', async () => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+
+        const toneModule = await import('tone');
+        const failure = new Error('tone start failed');
+        (toneModule.start as Mock).mockImplementationOnce(() => Promise.reject(failure));
+
+        const runtimeLogger = loggerState.runtime;
+        expect(runtimeLogger).toBeDefined();
+        runtimeLogger!.warn.mockClear();
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(failure);
+        expect(runtimeLogger!.warn).toHaveBeenCalledWith('Tone.start failed', { error: failure });
+    });
+
+    it('logs and rethrows unexpected AudioContext.resume errors', async () => {
+        toneState.contextState = 'suspended';
+        toneState.transportState = 'stopped';
+
+        const failure = new Error('resume failed');
+        toneState.resumeImpl = () => Promise.reject(failure);
+
+        const runtimeLogger = loggerState.runtime;
+        expect(runtimeLogger).toBeDefined();
+        runtimeLogger!.warn.mockClear();
+
+        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(failure);
+        expect(runtimeLogger!.warn).toHaveBeenCalledWith('AudioContext.resume failed', { error: failure });
+
+        toneState.resumeImpl = () => Promise.resolve();
+    });
+
+    it('derives layout seeds deterministically and remaps zero hashes', () => {
+        const baseSeed = 1234;
+        const levelIndex = 2;
+        const expected = ((baseSeed ^ Math.imul(levelIndex + 1, 0x9e3779b1)) >>> 0) || 1;
+        expect(internalHelpers.deriveLayoutSeed(baseSeed, levelIndex)).toBe(expected);
+
+        const zeroHashSeed = Math.imul(1, 0x9e3779b1) >>> 0;
+        expect(internalHelpers.deriveLayoutSeed(zeroHashSeed, 0)).toBe(1);
+    });
+
+    it('resolves ball radius using circle radius, bounds, and defaults', () => {
+        const toBody = <T>(value: T) => value as unknown as Parameters<(typeof internalHelpers)['resolveBallRadius']>[0];
+
+        const circleBody = { circleRadius: 1 } as const;
+        expect(internalHelpers.resolveBallRadius(toBody(circleBody))).toBe(2);
+
+        const boundsBody = {
+            bounds: {
+                min: { x: 4, y: 6 },
+                max: { x: 14, y: 18 },
+            },
+        } as const;
+    expect(internalHelpers.resolveBallRadius(toBody(boundsBody))).toBe(6);
+
+        const fallbackBody = { bounds: { min: { x: NaN, y: NaN }, max: { x: NaN, y: NaN } } } as const;
+        expect(internalHelpers.resolveBallRadius(toBody(fallbackBody))).toBe(10);
+    });
+
+    it('clamps MIDI notes into the allowed range', () => {
+        expect(internalHelpers.clampMidiNote(NaN)).toBe(36);
+        expect(internalHelpers.clampMidiNote(-10)).toBe(36);
+        expect(internalHelpers.clampMidiNote(60)).toBe(60);
+        expect(internalHelpers.clampMidiNote(200)).toBe(96);
+        expect(internalHelpers.clampMidiNote(20, 40, 80)).toBe(40);
+        expect(internalHelpers.clampMidiNote(85, 40, 80)).toBe(80);
+    });
+
+    it('computes ray intersections across edge cases', () => {
+        const toBounds = <T>(value: T) => value as unknown as Parameters<(typeof internalHelpers)['intersectRayWithExpandedAabb']>[2];
+        const bounds = {
+            min: { x: 0, y: 0 },
+            max: { x: 10, y: 10 },
+        } as const;
+
+        const diagonalHit = internalHelpers.intersectRayWithExpandedAabb(
+            { x: -5, y: -5 },
+            { x: 1, y: 2 },
+            toBounds(bounds),
+            0,
+        );
+        expect(diagonalHit).toBe(5);
+
+        const verticalOutside = internalHelpers.intersectRayWithExpandedAabb(
+            { x: 15, y: -5 },
+            { x: 0, y: 1 },
+            toBounds(bounds),
+            0,
+        );
+        expect(verticalOutside).toBeNull();
+
+        const swappedDirectionHit = internalHelpers.intersectRayWithExpandedAabb(
+            { x: 15, y: 5 },
+            { x: -1, y: 1 },
+            toBounds(bounds),
+            0,
+        );
+        expect(swappedDirectionHit).toBe(5);
+
+        const forwardMiss = internalHelpers.intersectRayWithExpandedAabb(
+            { x: 5, y: 20 },
+            { x: 0, y: 1 },
+            toBounds(bounds),
+            0,
+        );
+        expect(forwardMiss).toBeNull();
+
+        const parallelOutside = internalHelpers.intersectRayWithExpandedAabb(
+            { x: 5, y: 20 },
+            { x: 1, y: 0 },
+            toBounds(bounds),
+            0,
+        );
+        expect(parallelOutside).toBeNull();
+
+        const noOverlap = internalHelpers.intersectRayWithExpandedAabb(
+            { x: -5, y: 5 },
+            { x: -1, y: 0 },
+            toBounds(bounds),
+            0,
+        );
+        expect(noOverlap).toBeNull();
+
+        const horizontalHit = internalHelpers.intersectRayWithExpandedAabb(
+            { x: -5, y: 5 },
+            { x: 1, y: 0 },
+            toBounds(bounds),
+            0,
+        );
+        expect(horizontalHit).toBe(5);
+
+        const verticalSwap = internalHelpers.intersectRayWithExpandedAabb(
+            { x: 5, y: 15 },
+            { x: 0, y: -1 },
+            toBounds(bounds),
+            0,
+        );
+        expect(verticalSwap).toBe(5);
     });
 });
 

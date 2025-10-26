@@ -3265,4 +3265,8 @@ export const __internalGameRuntimeTesting = {
     isAutoplayBlockedError,
     resolveToneTransport,
     ensureToneAudio,
+    resolveBallRadius,
+    intersectRayWithExpandedAabb,
+    deriveLayoutSeed,
+    clampMidiNote,
 };
