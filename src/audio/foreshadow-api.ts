@@ -1,8 +1,13 @@
-import { AudioForeshadower, PredictedEvent } from './AudioForeshadower';
+import {
+    AudioForeshadower,
+    PredictedEvent,
+    type ForeshadowDiagnostics,
+} from './AudioForeshadower';
 
 export interface ForeshadowerInitOptions {
     readonly scale: readonly number[];
     readonly seed: number;
+    readonly diagnostics?: ForeshadowDiagnostics;
 }
 
 let foreshadower: AudioForeshadower | null = null;
@@ -28,17 +33,19 @@ export function initForeshadower(
         options = {
             scale: normalizeScale(arg1),
             seed: typeof arg2 === 'number' && Number.isFinite(arg2) ? Math.floor(arg2) : 1,
+            diagnostics: undefined,
         };
     } else {
         const input = arg1 as ForeshadowerInitOptions;
         options = {
             scale: normalizeScale(input.scale),
             seed: Math.floor(input.seed ?? 1),
+            diagnostics: input.diagnostics,
         };
     }
 
     foreshadower?.dispose();
-    foreshadower = new AudioForeshadower(options.scale, options.seed);
+    foreshadower = new AudioForeshadower(options.scale, options.seed, options.diagnostics);
     return foreshadower;
 }
 

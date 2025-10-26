@@ -319,4 +319,41 @@ describe('AudioForeshadower', () => {
         foreshadower.scheduleEvent({ id: 'ignored', type: 'paddleBounce', timeUntil: 2 });
         expect(tone.__toneState.parts.length).toBe(partCount);
     });
+
+    it('emits diagnostics for scheduling, triggering, and lifecycle events', async () => {
+        mockRandomValues.push(0.4, 0.8);
+        mockRandomValues.push(...Array(12).fill(0.5));
+
+        const { AudioForeshadower } = await import('audio/AudioForeshadower');
+        const tone = (await import('tone')) as ToneModule;
+
+        const onPatternScheduled = vi.fn();
+        const onNoteTriggered = vi.fn();
+        const onEventFinalized = vi.fn();
+
+        const foreshadower = new AudioForeshadower([60, 64, 67], 23, {
+            onPatternScheduled,
+            onNoteTriggered,
+            onEventFinalized,
+        });
+
+        foreshadower.scheduleEvent({ id: 'complete', type: 'brickHit', timeUntil: 1.2, intensity: 0.5 });
+        expect(onPatternScheduled).toHaveBeenCalledTimes(1);
+        expect(onPatternScheduled.mock.calls[0][0]?.event.id).toBe('complete');
+
+        const part = tone.__toneState.parts.at(-1);
+        expect(part).toBeDefined();
+        const payload = part?.events[0];
+        part?.invoke(0.6, payload?.payload ?? { instrument: 'melodic', duration: 0.2, velocity: 0.6 });
+        expect(onNoteTriggered).toHaveBeenCalled();
+
+        const transport = (tone.Transport as unknown as { __flushUntil: (time: number) => void });
+        transport.__flushUntil(Number.POSITIVE_INFINITY);
+        expect(onEventFinalized).toHaveBeenCalledWith({ eventId: 'complete', reason: 'completed' });
+
+        foreshadower.scheduleEvent({ id: 'cancel', type: 'brickHit', timeUntil: 1.4 });
+        foreshadower.cancelEvent('cancel');
+        transport.__flushUntil(Number.POSITIVE_INFINITY);
+        expect(onEventFinalized).toHaveBeenCalledWith({ eventId: 'cancel', reason: 'cancelled' });
+    });
 });

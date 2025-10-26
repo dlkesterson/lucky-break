@@ -66,6 +66,34 @@ const MIN_LEAD_SECONDS = 0.35;
 const MAX_LEAD_SECONDS = 2.6;
 const CLEANUP_DELAY = 0.35;
 
+export interface ForeshadowScheduleTelemetry {
+    readonly event: PredictedEvent;
+    readonly instrument: ForeshadowPattern['instrument'];
+    readonly duration: number;
+    readonly startTime: number;
+    readonly endTime: number;
+    readonly noteCount: number;
+    readonly averageVelocity: number;
+}
+
+export interface ForeshadowTriggerTelemetry {
+    readonly eventId: string;
+    readonly instrument: ForeshadowPattern['instrument'];
+    readonly velocity: number;
+    readonly time: number;
+}
+
+export interface ForeshadowCompletionTelemetry {
+    readonly eventId: string;
+    readonly reason: 'completed' | 'cancelled';
+}
+
+export interface ForeshadowDiagnostics {
+    readonly onPatternScheduled?: (payload: ForeshadowScheduleTelemetry) => void;
+    readonly onNoteTriggered?: (payload: ForeshadowTriggerTelemetry) => void;
+    readonly onEventFinalized?: (payload: ForeshadowCompletionTelemetry) => void;
+}
+
 type ForeshadowEffectId = 'drum-roll' | 'scale-run';
 
 export class AudioForeshadower {
@@ -77,14 +105,17 @@ export class AudioForeshadower {
 
     private readonly active = new Map<string, ScheduledForeshadow>();
 
+    private readonly diagnostics?: ForeshadowDiagnostics;
+
     private disposed = false;
 
-    constructor(scale: readonly number[], seed: number) {
+    constructor(scale: readonly number[], seed: number, diagnostics?: ForeshadowDiagnostics) {
         const resolvedScale = scale.length > 0 ? scale : DEFAULT_SCALE;
         this.scale = Array.from(resolvedScale, (value) => clampMidi(value));
         this.seed = seed >>> 0;
         this.masterGain = new Gain(1);
         this.masterGain.toDestination();
+        this.diagnostics = diagnostics;
     }
 
     scheduleEvent(event: PredictedEvent): void {
@@ -134,6 +165,12 @@ export class AudioForeshadower {
                 } catch {
                     // Tone.js may throw if context is suspended; ignore.
                 }
+                this.diagnostics?.onNoteTriggered?.({
+                    eventId: event.id,
+                    instrument: pattern.instrument,
+                    velocity,
+                    time,
+                });
                 return;
             }
 
@@ -145,6 +182,12 @@ export class AudioForeshadower {
                 } catch {
                     // Ignore playback failure; transport may be paused.
                 }
+                this.diagnostics?.onNoteTriggered?.({
+                    eventId: event.id,
+                    instrument: pattern.instrument,
+                    velocity,
+                    time,
+                });
             }
         });
 
@@ -194,11 +237,24 @@ export class AudioForeshadower {
             }
 
             scheduled.disposeId = Transport.scheduleOnce(() => {
-                this.disposeScheduled(event.id);
+                this.disposeScheduled(event.id, 'completed');
             }, time + 0.22);
         }, cleanupTime);
 
         this.active.set(event.id, scheduled);
+
+        const averageVelocity = pattern.events.length > 0
+            ? pattern.events.reduce((sum, entry) => sum + clamp01(entry.velocity), 0) / pattern.events.length
+            : 0;
+        this.diagnostics?.onPatternScheduled?.({
+            event,
+            instrument: pattern.instrument,
+            duration: pattern.duration,
+            startTime,
+            endTime,
+            noteCount: pattern.events.length,
+            averageVelocity,
+        });
     }
 
     cancelEvent(eventId: string): void {
@@ -244,7 +300,7 @@ export class AudioForeshadower {
         }
 
         scheduled.disposeId = Transport.scheduleOnce(() => {
-            this.disposeScheduled(eventId);
+            this.disposeScheduled(eventId, 'cancelled');
         }, now + 0.24);
     }
 
@@ -264,7 +320,7 @@ export class AudioForeshadower {
         }
     }
 
-    private disposeScheduled(eventId: string): void {
+    private disposeScheduled(eventId: string, reason: 'completed' | 'cancelled' = 'completed'): void {
         const scheduled = this.active.get(eventId);
         if (!scheduled) {
             return;
@@ -285,6 +341,7 @@ export class AudioForeshadower {
         } catch {
             // ignore
         }
+        this.diagnostics?.onEventFinalized?.({ eventId, reason });
     }
 
     private computeSeed(event: PredictedEvent): number {

@@ -4,6 +4,7 @@ import {
     cancelForeshadowEvent,
     disposeForeshadower,
 } from 'audio/foreshadow-api';
+import type { ForeshadowDiagnostics } from 'audio/AudioForeshadower';
 
 import {
     GameTheme,
@@ -29,6 +30,7 @@ import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
+import { createAudioWaveBackdrop, type AudioWaveBackdrop } from 'render/effects/audio-waves';
 import { createGameOverScene } from 'scenes/game-over';
 import { createPauseScene } from 'scenes/pause';
 import { gameConfig, type GameConfig } from 'config/game';
@@ -477,6 +479,7 @@ export const createGameRuntime = async ({
     let comboRingPulse = 0;
     let comboRingPhase = 0;
     let playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | null = null;
+    let audioWaveBackdrop: AudioWaveBackdrop | null = null;
     let comboBloomEffect: ReturnType<typeof createComboBloomEffect> | null = null;
     let ballTrailsEffect: ReturnType<typeof createBallTrailsEffect> | null = null;
     let heatDistortionEffect: ReturnType<typeof createHeatDistortionEffect> | null = null;
@@ -584,6 +587,55 @@ export const createGameRuntime = async ({
         pendingVisualTimers.add(timer);
     };
 
+    const resolveForeshadowVisualTime = (transportTime: number): number | undefined => {
+        if (!Number.isFinite(transportTime)) {
+            return undefined;
+        }
+        const nowSeconds = Transport.now();
+        const deltaSeconds = Math.max(0, transportTime - nowSeconds);
+        const offsetMs = deltaSeconds * 1000 - scheduler.lookAheadMs;
+        if (!Number.isFinite(offsetMs)) {
+            return undefined;
+        }
+        return scheduler.predictAt(offsetMs);
+    };
+
+    type ForeshadowInstrument = 'melodic' | 'percussion';
+
+    const foreshadowVisualEvents = new Map<string, ForeshadowInstrument>();
+
+    const triggerForeshadowWave = (
+        accent: 'schedule' | 'note' | 'cancel',
+        instrument: ForeshadowInstrument,
+        intensity: number,
+        transportTime?: number,
+    ): void => {
+        if (!audioWaveBackdrop) {
+            return;
+        }
+        const clampedIntensity = clampUnit(intensity);
+        if (clampedIntensity <= 0 && accent !== 'cancel') {
+            return;
+        }
+        const applyBump = () => {
+            const backdrop = audioWaveBackdrop;
+            if (!backdrop) {
+                return;
+            }
+            backdrop.setVisible(true);
+            const resolvedIntensity = accent === 'cancel' ? Math.max(clampedIntensity, 0.35) : clampedIntensity;
+            backdrop.bump('foreshadow', {
+                accent,
+                instrument,
+                intensity: resolvedIntensity,
+            });
+        };
+        const scheduledTime = typeof transportTime === 'number'
+            ? resolveForeshadowVisualTime(transportTime)
+            : undefined;
+        scheduleVisualEffect(scheduledTime, applyBump);
+    };
+
     const attachPlayfieldFilter = (filter: Filter) => {
         const existing = stage.layers.playfield.filters;
         if (existing?.includes(filter)) {
@@ -643,9 +695,28 @@ export const createGameRuntime = async ({
 
     const foreshadowScale = deriveForeshadowScale(random.seed());
     const foreshadowSeed = (random.seed() ^ FORESHADOW_EVENT_SALT) >>> 0;
+    const foreshadowDiagnostics: ForeshadowDiagnostics = {
+        onPatternScheduled: ({ event, instrument, averageVelocity, startTime }) => {
+            foreshadowVisualEvents.set(event.id, instrument);
+            triggerForeshadowWave('schedule', instrument, averageVelocity, startTime);
+        },
+        onNoteTriggered: ({ eventId, instrument, velocity, time }) => {
+            foreshadowVisualEvents.set(eventId, instrument);
+            triggerForeshadowWave('note', instrument, velocity, time);
+        },
+        onEventFinalized: ({ eventId, reason }) => {
+            const instrument = foreshadowVisualEvents.get(eventId) ?? 'melodic';
+            if (reason === 'cancelled') {
+                triggerForeshadowWave('cancel', instrument, 0.6);
+            }
+            foreshadowVisualEvents.delete(eventId);
+        },
+    };
+
     initForeshadower({
         scale: foreshadowScale,
         seed: foreshadowSeed,
+        diagnostics: foreshadowDiagnostics,
     });
 
     interface BallForeshadowState {
@@ -851,6 +922,10 @@ export const createGameRuntime = async ({
         });
         activeForeshadowByBall.clear();
         foreshadowEventCounter = 0;
+        foreshadowVisualEvents.clear();
+        if (audioWaveBackdrop) {
+            audioWaveBackdrop.setVisible(false);
+        }
     };
 
     const resolveBrickTargetMidi = (brick: Body): number => {
@@ -1095,6 +1170,15 @@ export const createGameRuntime = async ({
 
     playfieldBackground = createPlayfieldBackgroundLayer(playfieldDimensions);
     stage.addToLayer('playfield', playfieldBackground.container);
+
+    const initialAudioWaveBackdrop = createAudioWaveBackdrop({
+        width: PLAYFIELD_WIDTH,
+        height: PLAYFIELD_HEIGHT,
+    });
+    initialAudioWaveBackdrop.container.zIndex = 2;
+    initialAudioWaveBackdrop.setVisible(false);
+    stage.addToLayer('playfield', initialAudioWaveBackdrop.container);
+    audioWaveBackdrop = initialAudioWaveBackdrop;
 
     const applyBackgroundAccent = (accentIndexDelta: number) => {
         if (backgroundAccentPalette.length === 0) {
@@ -2779,6 +2863,9 @@ export const createGameRuntime = async ({
         }
 
         heatRippleEffect?.update(deltaSeconds);
+        if (audioWaveBackdrop) {
+            audioWaveBackdrop.update(deltaSeconds);
+        }
 
         ballGlowPulse = Math.max(0, ballGlowPulse - deltaSeconds * 1.6);
         paddleGlowPulse = Math.max(0, paddleGlowPulse - deltaSeconds * 1.3);
@@ -3097,6 +3184,12 @@ export const createGameRuntime = async ({
             detachPlayfieldFilter(heatRippleEffect.filter);
             heatRippleEffect.destroy();
             heatRippleEffect = null;
+        }
+        if (audioWaveBackdrop) {
+            const backdrop = audioWaveBackdrop;
+            backdrop.container.removeFromParent();
+            backdrop.destroy();
+            audioWaveBackdrop = null;
         }
         if (import.meta.env.DEV && typeof window !== 'undefined') {
             const globalRef = window as typeof window & {

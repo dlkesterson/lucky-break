@@ -323,7 +323,9 @@ export const createLevelRuntime = ({
         const shouldShowLabel = state.isBreakable && (state.maxHp > 1 || state.alwaysShowHpLabel);
 
         if (shouldShowLabel) {
-            const label = ensureHpLabel(visual, state.hpLabel, `${Math.max(0, safeHp)}`);
+            const displayHp = Math.max(0, safeHp);
+            const labelText = state.maxHp > 1 ? `${displayHp}/${state.maxHp}` : `${displayHp}`;
+            const label = ensureHpLabel(visual, state.hpLabel, labelText);
             label.visible = safeHp > 0;
             state.hpLabel = label;
             state.hasHpLabel = true;
@@ -483,7 +485,8 @@ export const createLevelRuntime = ({
             const initialHasHpLabel = isBreakable && (maxHp > 1 || alwaysShowHpLabel);
             let hpLabel: BrickHpLabel | null = null;
             if (initialHasHpLabel) {
-                hpLabel = ensureHpLabel(brickVisual, null, `${maxHp}`);
+                const initialText = maxHp > 1 ? `${maxHp}/${maxHp}` : `${maxHp}`;
+                hpLabel = ensureHpLabel(brickVisual, null, initialText);
             }
 
             brickHealth.set(brick, maxHp);
