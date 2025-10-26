@@ -1,4 +1,11 @@
 import {
+    scheduleForeshadowEvent,
+    initForeshadower,
+    cancelForeshadowEvent,
+    disposeForeshadower,
+} from 'audio/foreshadow-api';
+
+import {
     GameTheme,
     onThemeChange,
     toggleTheme,
@@ -64,8 +71,9 @@ import {
     Vector as MatterVector,
 } from 'physics/matter';
 import type { IEventCollision, MatterEngine as Engine, MatterBody as Body } from 'physics/matter';
-import { Transport, getContext, getTransport } from 'tone';
-import type { MusicBeatEvent, MusicState } from 'audio/music-director';
+import { Transport, getContext, getTransport, start as toneStart } from 'tone';
+import type { MusicState } from 'audio/music-director';
+import { createMidiEngine, type MidiEngine } from 'audio/midi-engine';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import { createGameInitializer } from './game-initializer';
@@ -146,18 +154,57 @@ const resolveToneTransport = () => {
 
 const ensureToneAudio = async (): Promise<void> => {
     const context = getToneAudioContext();
-    if (context.state === 'suspended') {
-        const result = context.resume();
-        if (isPromiseLike(result)) {
-            await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+    const attemptToneStart = async () => {
+        try {
+            const result = toneStart();
+            if (isPromiseLike(result)) {
+                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+            }
+        } catch (error) {
+            if (isAutoplayBlockedError(error)) {
+                throw error;
+            }
+            runtimeLogger.warn('Tone.start failed', { error });
+            throw error;
         }
+    };
+
+    if (context.state !== 'running') {
+        await attemptToneStart();
+    }
+
+    if (context.state === 'suspended') {
+        try {
+            const result = context.resume();
+            if (isPromiseLike(result)) {
+                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+            }
+        } catch (error) {
+            if (isAutoplayBlockedError(error)) {
+                throw error;
+            }
+            runtimeLogger.warn('AudioContext.resume failed', { error });
+            throw error;
+        }
+    }
+
+    if (context.state !== 'running') {
+        runtimeLogger.warn('Audio context is still suspended after resume attempt');
     }
 
     const transport = resolveToneTransport();
     if (transport?.state !== 'started' && typeof transport?.start === 'function') {
-        const result = transport.start();
-        if (isPromiseLike(result)) {
-            await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+        try {
+            const result = transport.start();
+            if (isPromiseLike(result)) {
+                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
+            }
+        } catch (error) {
+            if (isAutoplayBlockedError(error)) {
+                throw error;
+            }
+            runtimeLogger.warn('Tone.Transport.start failed', { error });
+            throw error;
         }
     }
 };
@@ -202,6 +249,115 @@ const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
 const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
 const PRESET_OFFSET_SALT = 0x1f123bb5;
+
+const FORESHADOW_SCALE_SALT = 0x4b1d9a85;
+const FORESHADOW_EVENT_SALT = 0x2c9277b9;
+const FORESHADOW_MIN_PREDICTION_SECONDS = 0.28;
+const FORESHADOW_MAX_PREDICTION_SECONDS = 3.6;
+const FORESHADOW_MIN_SPEED = Math.max(4, BALL_BASE_SPEED * 0.75);
+const FORESHADOW_MIN_LEAD_SECONDS = 0.35;
+const FORESHADOW_MAX_LEAD_SECONDS = 2.6;
+
+const FORESHADOW_SCALE_LIBRARY: readonly (readonly number[])[] = [
+    [52, 55, 57, 59, 62, 64, 67], // D mixolydian
+    [48, 50, 53, 55, 57, 60, 62], // C major pentatonic
+    [45, 48, 50, 52, 55, 57, 60], // A minor
+    [47, 50, 52, 54, 57, 59, 62], // B dorian
+    [49, 52, 54, 56, 59, 61, 64], // C# minor
+    [57, 60, 62, 64, 67, 69, 72], // A major
+    [55, 58, 60, 63, 65, 67, 70], // G mixolydian
+    [53, 56, 58, 60, 63, 65, 68], // F lydian
+];
+
+const clampMidiNote = (note: number, min = 36, max = 96): number => {
+    if (!Number.isFinite(note)) {
+        return min;
+    }
+    return Math.max(min, Math.min(max, Math.round(note)));
+};
+
+const deriveForeshadowScale = (seed: number): readonly number[] => {
+    const normalizedSeed = (seed ^ FORESHADOW_SCALE_SALT) >>> 0;
+    const rng = mulberry32(normalizedSeed);
+    const libraryIndex = Math.floor(rng() * FORESHADOW_SCALE_LIBRARY.length) % FORESHADOW_SCALE_LIBRARY.length;
+    const baseScale = FORESHADOW_SCALE_LIBRARY[libraryIndex] ?? FORESHADOW_SCALE_LIBRARY[0];
+    const octaveShift = Math.floor(rng() * 3) - 1; // -1, 0, 1
+    const shiftSemitones = octaveShift * 12;
+    return baseScale.map((note) => clampMidiNote(note + shiftSemitones));
+};
+
+const resolveBallRadius = (body: Body): number => {
+    if (typeof body.circleRadius === 'number' && Number.isFinite(body.circleRadius)) {
+        return Math.max(2, body.circleRadius);
+    }
+    const width = body.bounds?.max.x - body.bounds?.min.x;
+    const height = body.bounds?.max.y - body.bounds?.min.y;
+    if (Number.isFinite(width) && Number.isFinite(height)) {
+        return Math.max(2, Math.max(width ?? 0, height ?? 0) / 2);
+    }
+    return 10;
+};
+
+const intersectRayWithExpandedAabb = (
+    origin: { readonly x: number; readonly y: number },
+    direction: { readonly x: number; readonly y: number },
+    bounds: Body['bounds'],
+    radius: number,
+): number | null => {
+    const minX = bounds.min.x - radius;
+    const maxX = bounds.max.x + radius;
+    const minY = bounds.min.y - radius;
+    const maxY = bounds.max.y + radius;
+
+    let tMin = 0;
+    let tMax = Number.POSITIVE_INFINITY;
+
+    if (Math.abs(direction.x) < 1e-6) {
+        if (origin.x < minX || origin.x > maxX) {
+            return null;
+        }
+    } else {
+        const invX = 1 / direction.x;
+        let t1 = (minX - origin.x) * invX;
+        let t2 = (maxX - origin.x) * invX;
+        if (t1 > t2) {
+            [t1, t2] = [t2, t1];
+        }
+        tMin = Math.max(tMin, t1);
+        tMax = Math.min(tMax, t2);
+        if (tMin > tMax) {
+            return null;
+        }
+    }
+
+    if (Math.abs(direction.y) < 1e-6) {
+        if (origin.y < minY || origin.y > maxY) {
+            return null;
+        }
+    } else {
+        const invY = 1 / direction.y;
+        let t1 = (minY - origin.y) * invY;
+        let t2 = (maxY - origin.y) * invY;
+        if (t1 > t2) {
+            [t1, t2] = [t2, t1];
+        }
+        tMin = Math.max(tMin, t1);
+        tMax = Math.min(tMax, t2);
+        if (tMin > tMax) {
+            return null;
+        }
+    }
+
+    if (tMax < 0) {
+        return null;
+    }
+
+    const impactTime = tMin >= 0 ? tMin : tMax;
+    if (!Number.isFinite(impactTime) || impactTime < 0) {
+        return null;
+    }
+    return impactTime;
+};
 
 const AUTO_COMPLETE_SETTINGS = config.levels.autoComplete;
 const AUTO_COMPLETE_ENABLED = AUTO_COMPLETE_SETTINGS.enabled;
@@ -320,15 +476,13 @@ export const createGameRuntime = async ({
     let paddleGlowPulse = 0;
     let comboRingPulse = 0;
     let comboRingPhase = 0;
-    let playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | (ReturnType<typeof createPlayfieldBackgroundLayer> & { tiling?: { tint?: number; alpha?: number } }) | null = null;
+    let playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | null = null;
     let comboBloomEffect: ReturnType<typeof createComboBloomEffect> | null = null;
     let ballTrailsEffect: ReturnType<typeof createBallTrailsEffect> | null = null;
     let heatDistortionEffect: ReturnType<typeof createHeatDistortionEffect> | null = null;
     let heatRippleEffect: ReturnType<typeof createHeatRippleEffect> | null = null;
     const ballTrailSources: BallTrailSource[] = [];
     const heatDistortionSources: HeatDistortionSource[] = [];
-    let backgroundPulse = 0;
-    let bloomBeatBoost = 0;
     let backgroundAccentIndex = 0;
     let backgroundAccentColor = themeAccents.combo;
     let bloomAccentColor = themeAccents.combo;
@@ -395,6 +549,41 @@ export const createGameRuntime = async ({
         onAudioBlocked,
     });
 
+    const hasPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';
+    const pendingVisualTimers = new Set<ReturnType<typeof setTimeout>>();
+    let audioVisualSkewSeconds = 0;
+    let syncDriftMs = 0;
+    const midiEngine: MidiEngine = createMidiEngine();
+
+    const computeScheduledAudioTime = (offsetMs = 0): number => scheduler.predictAt(offsetMs);
+
+    const scheduleVisualEffect = (scheduledTime: number | undefined, effect: () => void): void => {
+        if (typeof scheduledTime !== 'number' || !Number.isFinite(scheduledTime)) {
+            effect();
+            return;
+        }
+
+        if (!hasPerformanceNow) {
+            effect();
+            return;
+        }
+
+        const wallNowSeconds = performance.now() / 1000;
+        const targetVisualSeconds = scheduledTime + audioVisualSkewSeconds;
+        const delayMs = Math.max(0, (targetVisualSeconds - wallNowSeconds) * 1000);
+
+        if (delayMs <= 2) {
+            effect();
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            pendingVisualTimers.delete(timer);
+            effect();
+        }, delayMs);
+        pendingVisualTimers.add(timer);
+    };
+
     const attachPlayfieldFilter = (filter: Filter) => {
         const existing = stage.layers.playfield.filters;
         if (existing?.includes(filter)) {
@@ -452,6 +641,22 @@ export const createGameRuntime = async ({
 
     const sessionNow = (): number => Math.max(0, Math.floor(sessionElapsedSeconds * 1000));
 
+    const foreshadowScale = deriveForeshadowScale(random.seed());
+    const foreshadowSeed = (random.seed() ^ FORESHADOW_EVENT_SALT) >>> 0;
+    initForeshadower({
+        scale: foreshadowScale,
+        seed: foreshadowSeed,
+    });
+
+    interface BallForeshadowState {
+        readonly eventId: string;
+        readonly brickId: number;
+        readonly scheduledAt: number;
+    }
+
+    const activeForeshadowByBall = new Map<number, BallForeshadowState>();
+    let foreshadowEventCounter = 0;
+
     const createSession = () =>
         createGameSessionManager({
             sessionId: 'game-session',
@@ -473,16 +678,29 @@ export const createGameRuntime = async ({
 
     let lastMusicState: MusicState | null = null;
     const pushMusicState = (state: MusicState) => {
+        const normalizedWarble = state.warbleIntensity;
+        const normalized: MusicState = {
+            lives: state.lives,
+            combo: state.combo,
+            tempoRatio: clampUnit(state.tempoRatio ?? 0),
+            paused: state.paused,
+            warbleIntensity: normalizedWarble === undefined ? undefined : clampUnit(normalizedWarble ?? 0),
+            bricksRemainingRatio: clampUnit(state.bricksRemainingRatio ?? 1),
+        };
+
         if (
             lastMusicState &&
-            lastMusicState.lives === state.lives &&
-            Math.abs(lastMusicState.combo - state.combo) <= 1e-3
+            lastMusicState.lives === normalized.lives &&
+            Math.abs(lastMusicState.combo - normalized.combo) <= 1e-3 &&
+            Math.abs((lastMusicState.tempoRatio ?? 0) - (normalized.tempoRatio ?? 0)) <= 1e-3 &&
+            Math.abs((lastMusicState.warbleIntensity ?? 0) - (normalized.warbleIntensity ?? 0)) <= 1e-3 &&
+            Math.abs((lastMusicState.bricksRemainingRatio ?? 1) - (normalized.bricksRemainingRatio ?? 1)) <= 1e-3
         ) {
             return;
         }
 
-        musicDirector.setState(state);
-        lastMusicState = { ...state };
+        musicDirector.setState(normalized);
+        lastMusicState = { ...normalized };
     };
 
     let session = createSession();
@@ -491,7 +709,13 @@ export const createGameRuntime = async ({
         session.updateMomentum(getMomentumMetrics(scoringState));
     };
     syncMomentum();
-    pushMusicState({ lives: toMusicLives(resolveInitialLives()), combo: 0 });
+    pushMusicState({
+        lives: toMusicLives(resolveInitialLives()),
+        combo: 0,
+        tempoRatio: 0,
+        bricksRemainingRatio: 1,
+        warbleIntensity: 0,
+    });
     const powerUpManager = new PowerUpManager();
     let runHighestCombo = 0;
     let levelBricksBroken = 0;
@@ -594,6 +818,160 @@ export const createGameRuntime = async ({
     const brickHealth = levelRuntime.brickHealth;
     const brickMetadata = levelRuntime.brickMetadata;
     const brickVisualState = levelRuntime.brickVisualState;
+
+    const nextForeshadowEventId = (): string => {
+        foreshadowEventCounter = (foreshadowEventCounter + 1) >>> 0;
+        const salted = foreshadowEventCounter ^ foreshadowSeed;
+        return `foreshadow:${salted.toString(16)}`;
+    };
+
+    const cancelForeshadowForBall = (ballId: number): void => {
+        const entry = activeForeshadowByBall.get(ballId);
+        if (!entry) {
+            return;
+        }
+        cancelForeshadowEvent(entry.eventId);
+        activeForeshadowByBall.delete(ballId);
+    };
+
+    const releaseForeshadowForBall = (ballId: number, actualTimeSeconds?: number): void => {
+        const entry = activeForeshadowByBall.get(ballId);
+        if (!entry) {
+            return;
+        }
+        if (typeof actualTimeSeconds === 'number' && entry.scheduledAt - actualTimeSeconds > 0.12) {
+            cancelForeshadowEvent(entry.eventId);
+        }
+        activeForeshadowByBall.delete(ballId);
+    };
+
+    const resetForeshadowing = (): void => {
+        activeForeshadowByBall.forEach((entry) => {
+            cancelForeshadowEvent(entry.eventId);
+        });
+        activeForeshadowByBall.clear();
+        foreshadowEventCounter = 0;
+    };
+
+    const resolveBrickTargetMidi = (brick: Body): number => {
+        const metadata = brickMetadata.get(brick);
+        if (!metadata) {
+            return foreshadowScale[0] ?? 60;
+        }
+        const scaleLength = foreshadowScale.length || 1;
+        const base = foreshadowScale[Math.abs(metadata.row) % scaleLength] ?? foreshadowScale[0] ?? 60;
+        const octaveStep = Math.floor(metadata.row / scaleLength);
+        const octaveOffset = Math.max(-1, Math.min(2, octaveStep)) * 12;
+        const columnAccent = (metadata.col ?? 0) % 3;
+        const columnOffset = columnAccent === 2 ? 4 : columnAccent === 1 ? 2 : 0;
+        return clampMidiNote(base + octaveOffset + columnOffset);
+    };
+
+    interface PredictedBrickImpact {
+        readonly brick: Body;
+        readonly timeUntil: number;
+        readonly speed: number;
+    }
+
+    const predictNextBrickImpact = (ballBody: Body): PredictedBrickImpact | null => {
+        const speed = MatterVector.magnitude(ballBody.velocity);
+        if (!Number.isFinite(speed) || speed < FORESHADOW_MIN_SPEED) {
+            return null;
+        }
+        const direction = ballBody.velocity;
+        if (Math.abs(direction.x) < 1e-6 && Math.abs(direction.y) < 1e-6) {
+            return null;
+        }
+
+        const radius = resolveBallRadius(ballBody);
+        const origin = { x: ballBody.position.x, y: ballBody.position.y };
+
+        let best: PredictedBrickImpact | null = null;
+
+        brickHealth.forEach((hp, brick) => {
+            if (hp <= 0) {
+                return;
+            }
+            if (brick.isSensor) {
+                return;
+            }
+            const metadata = brickMetadata.get(brick);
+            if (metadata?.breakable === false) {
+                return;
+            }
+
+            const bounds = brick.bounds;
+            const impactTime = intersectRayWithExpandedAabb(origin, direction, bounds, radius);
+            if (impactTime === null) {
+                return;
+            }
+            if (impactTime < FORESHADOW_MIN_PREDICTION_SECONDS || impactTime > FORESHADOW_MAX_PREDICTION_SECONDS) {
+                return;
+            }
+            if (!best || impactTime < best.timeUntil) {
+                best = {
+                    brick,
+                    timeUntil: impactTime,
+                    speed,
+                };
+            }
+        });
+
+        return best;
+    };
+
+    const updateForeshadowPredictions = (): void => {
+        const nowSeconds = sessionElapsedSeconds;
+        const visited = new Set<number>();
+        multiBallController.visitActiveBalls(({ body }) => {
+            visited.add(body.id);
+            const prediction = predictNextBrickImpact(body);
+            if (!prediction) {
+                cancelForeshadowForBall(body.id);
+                return;
+            }
+
+            const scheduledAt = nowSeconds + prediction.timeUntil;
+            const existing = activeForeshadowByBall.get(body.id);
+            if (existing) {
+                const timeDelta = Math.abs(existing.scheduledAt - scheduledAt);
+                if (existing.brickId === prediction.brick.id && timeDelta < 0.1) {
+                    return;
+                }
+                cancelForeshadowForBall(body.id);
+            }
+
+            const eventId = nextForeshadowEventId();
+            const targetMidi = resolveBrickTargetMidi(prediction.brick);
+            const normalizedIntensity = clampUnit(prediction.speed / Math.max(FORESHADOW_MIN_SPEED, currentMaxSpeed || FORESHADOW_MIN_SPEED));
+            const rawLead = prediction.timeUntil * 0.75;
+            const leadInSeconds = Math.min(
+                Math.max(FORESHADOW_MIN_LEAD_SECONDS, rawLead),
+                Math.max(FORESHADOW_MIN_LEAD_SECONDS, Math.min(prediction.timeUntil - 0.1, FORESHADOW_MAX_LEAD_SECONDS)),
+            );
+
+            scheduleForeshadowEvent({
+                id: eventId,
+                type: 'brickHit',
+                timeUntil: prediction.timeUntil,
+                targetMidi,
+                intensity: normalizedIntensity,
+                leadInSeconds,
+            });
+
+            activeForeshadowByBall.set(body.id, {
+                eventId,
+                brickId: prediction.brick.id,
+                scheduledAt,
+            });
+        });
+
+        activeForeshadowByBall.forEach((entry, ballId) => {
+            if (!visited.has(ballId)) {
+                cancelForeshadowForBall(ballId);
+            }
+        });
+    };
 
     const applyGambleAppearance = (body: Body): void => {
         const visual = visualBodies.get(body);
@@ -728,18 +1106,10 @@ export const createGameRuntime = async ({
         bloomAccentColor = backgroundAccentColor;
     };
 
-    const handleMusicBeat = (event: MusicBeatEvent) => {
-        const pulseIntensity = event.isDownbeat ? 0.5 : 0.28;
-        backgroundPulse = Math.min(1, backgroundPulse + pulseIntensity);
-        bloomBeatBoost = Math.min(0.7, bloomBeatBoost + (event.isDownbeat ? 0.35 : 0.2));
-    };
-
     const handleMusicMeasure = () => {
         applyBackgroundAccent(1);
-        backgroundPulse = Math.min(1, backgroundPulse + 0.2);
     };
-
-    musicDirector.setBeatCallback(handleMusicBeat);
+    musicDirector.setBeatCallback(null);
     musicDirector.setMeasureCallback(handleMusicMeasure);
 
     roundCountdownDisplay = createRoundCountdown({
@@ -902,6 +1272,7 @@ export const createGameRuntime = async ({
 
     const reattachBallToPaddle = (): void => {
         const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
+        cancelForeshadowForBall(ball.physicsBody.id);
         physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
         ball.isAttached = true;
         ball.attachmentOffset = attachmentOffset;
@@ -922,10 +1293,15 @@ export const createGameRuntime = async ({
     };
 
     const removeExtraBallByBody = (body: Body) => {
+        cancelForeshadowForBall(body.id);
         multiBallController.removeExtraBallByBody(body);
     };
 
     const clearExtraBalls = () => {
+        const extraBallIds = Array.from(activeForeshadowByBall.keys()).filter((ballId) => ballId !== ball.physicsBody.id);
+        extraBallIds.forEach((ballId) => {
+            cancelForeshadowForBall(ballId);
+        });
         multiBallController.clear();
     };
 
@@ -1056,21 +1432,6 @@ export const createGameRuntime = async ({
         comboBloomEffect?.applyTheme(themeAccents.combo);
         replacePaddleLight(themeAccents.powerUp);
         rebuildBackgroundPalette();
-        backgroundPulse = 0;
-        bloomBeatBoost = 0;
-        const background = playfieldBackground;
-        if (background) {
-            const overlay = (background as { overlay?: { tint?: number; alpha?: number } }).overlay;
-            if (overlay) {
-                overlay.tint = 0xffffff;
-                overlay.alpha = 1;
-            }
-            const tilingTarget = background.tilingSprite ?? (background as { tiling?: { tint?: number; alpha?: number } }).tiling;
-            if (tilingTarget) {
-                (tilingTarget as { tint?: number }).tint = 0xffffff;
-                (tilingTarget as { alpha?: number }).alpha = 0.78;
-            }
-        }
 
         renderStageSoon();
     };
@@ -1328,13 +1689,21 @@ export const createGameRuntime = async ({
         lastRecordedInputTarget = null;
         replayBuffer.begin(activeSeed);
 
+        resetForeshadowing();
+
         refreshAchievementUpgrades();
         pendingAchievementNotifications.length = 0;
 
         session = createSession();
         runHighestCombo = 0;
         levelBricksBroken = 0;
-        pushMusicState({ lives: toMusicLives(resolveInitialLives()), combo: 0 });
+        pushMusicState({
+            lives: toMusicLives(resolveInitialLives()),
+            combo: 0,
+            tempoRatio: 0,
+            bricksRemainingRatio: 1,
+            warbleIntensity: 0,
+        });
         currentLevelIndex = 0;
         pendingReward = null;
         activateReward(null);
@@ -1380,6 +1749,7 @@ export const createGameRuntime = async ({
 
         powerUpManager.clearAll();
         clearExtraBalls();
+        resetForeshadowing();
         loadLevel(levelIndex);
         reattachBallToPaddle();
         if (pendingReward) {
@@ -1393,6 +1763,7 @@ export const createGameRuntime = async ({
 
     const handleLevelComplete = (): void => {
         clearExtraBalls();
+        resetForeshadowing();
         isPaused = false;
         loop?.stop();
         pendingReward = spinWheel(random.random);
@@ -1488,6 +1859,7 @@ export const createGameRuntime = async ({
 
     const handleGameOver = (): void => {
         clearExtraBalls();
+        resetForeshadowing();
         isPaused = false;
         loop?.stop();
         pendingReward = null;
@@ -1533,6 +1905,7 @@ export const createGameRuntime = async ({
             if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyA.label === 'brick' && bodyB.label === 'ball')) {
                 const brick = bodyA.label === 'brick' ? bodyA : bodyB;
                 const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+                releaseForeshadowForBall(ballBody.id, sessionElapsedSeconds);
 
                 const currentHp = brickHealth.get(brick) ?? 1;
                 const nextHp = currentHp - 1;
@@ -1540,12 +1913,14 @@ export const createGameRuntime = async ({
                 const row = metadata?.row ?? Math.floor((brick.position.y - 100) / BRICK_HEIGHT);
                 const col = metadata?.col ?? Math.floor((brick.position.x - 50) / BRICK_WIDTH);
                 const impactVelocity = MatterVector.magnitude(ballBody.velocity);
+                const impactStrength = clampUnit(impactVelocity / Math.max(1, currentMaxSpeed));
                 const initialHp = metadata?.hp ?? currentHp;
 
                 const isFortified = metadata?.traits?.includes('fortified') ?? false;
                 const isBreakableBrick = metadata?.breakable !== false;
 
                 if (!isBreakableBrick) {
+                    const scheduledTime = computeScheduledAudioTime();
                     bus.publish('BrickHit', {
                         sessionId,
                         row,
@@ -1555,6 +1930,7 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         previousHp: currentHp,
                         remainingHp: currentHp,
+                        scheduledTime,
                     }, frameTimestampMs);
 
                     session.recordEntropyEvent({
@@ -1562,6 +1938,12 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         impactVelocity,
                         speed: impactVelocity,
+                    });
+                    midiEngine.triggerBrickAccent({
+                        combo: Math.max(1, scoringState.combo),
+                        intensity: impactStrength,
+                        time: scheduledTime,
+                        accent: 'hit',
                     });
                     return;
                 }
@@ -1577,6 +1959,7 @@ export const createGameRuntime = async ({
                             ? ('multi-hit' as const)
                             : ('standard' as const);
 
+                    const scheduledTime = computeScheduledAudioTime();
                     bus.publish('BrickHit', {
                         sessionId,
                         row,
@@ -1586,6 +1969,7 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         previousHp: currentHp,
                         remainingHp: nextHp,
+                        scheduledTime,
                     }, frameTimestampMs);
 
                     session.recordEntropyEvent({
@@ -1595,7 +1979,17 @@ export const createGameRuntime = async ({
                         speed: impactVelocity,
                     });
 
-                    if (heatRippleEffect) {
+                    midiEngine.triggerBrickAccent({
+                        combo: Math.max(1, scoringState.combo),
+                        intensity: impactStrength,
+                        time: scheduledTime,
+                        accent: 'hit',
+                    });
+
+                    scheduleVisualEffect(scheduledTime, () => {
+                        if (!heatRippleEffect) {
+                            return;
+                        }
                         const normalizedX = clampUnit(brick.position.x / PLAYFIELD_WIDTH);
                         const normalizedY = clampUnit(brick.position.y / PLAYFIELD_HEIGHT);
                         const hitSpeedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
@@ -1612,10 +2006,8 @@ export const createGameRuntime = async ({
                             intensity: rippleIntensity * 0.8,
                             startRadius: Math.max(0.012, normalizedRadius * 1.4),
                             endRadius: Math.min(0.45, normalizedRadius * 1.3 + 0.15 + rippleIntensity * 0.2),
-                            duration: 0.4 + rippleIntensity * 0.3,
-                            width: Math.max(0.035, 0.09 - rippleIntensity * 0.025),
                         });
-                    }
+                    });
                 } else {
                     const gambleHitResult = gambleManager.onHit(brick);
                     if (gambleHitResult.type === 'prime') {
@@ -1633,6 +2025,7 @@ export const createGameRuntime = async ({
                         levelRuntime.updateBrickDamage(brick, clampedReset);
                         applyGambleAppearance(brick);
 
+                        const scheduledTime = computeScheduledAudioTime();
                         bus.publish('BrickHit', {
                             sessionId,
                             row,
@@ -1642,6 +2035,7 @@ export const createGameRuntime = async ({
                             comboHeat: scoringState.combo,
                             previousHp: currentHp,
                             remainingHp: clampedReset,
+                            scheduledTime,
                         }, frameTimestampMs);
 
                         session.recordEntropyEvent({
@@ -1649,6 +2043,12 @@ export const createGameRuntime = async ({
                             comboHeat: scoringState.combo,
                             impactVelocity,
                             speed: impactVelocity,
+                        });
+                        midiEngine.triggerBrickAccent({
+                            combo: Math.max(1, scoringState.combo),
+                            intensity: impactStrength,
+                            time: scheduledTime,
+                            accent: 'hit',
                         });
                         return;
                     }
@@ -1660,6 +2060,7 @@ export const createGameRuntime = async ({
                             ? ('multi-hit' as const)
                             : ('standard' as const);
 
+                    const scheduledTime = computeScheduledAudioTime();
                     bus.publish('BrickBreak', {
                         sessionId,
                         row,
@@ -1668,6 +2069,7 @@ export const createGameRuntime = async ({
                         comboHeat: scoringState.combo,
                         brickType: brickBreakType,
                         initialHp,
+                        scheduledTime,
                     }, frameTimestampMs);
 
                     const bricksRemainingBefore = sessionSnapshot.brickRemaining;
@@ -1748,8 +2150,21 @@ export const createGameRuntime = async ({
                     const comboIntensity = clampUnit(
                         scoringState.combo / Math.max(1, config.scoring.multiplierThreshold * 2),
                     );
-                    const visualState = brickVisualState.get(brick);
-                    if (brickParticles && visualState) {
+                    const breakAccentIntensity = Math.min(1, speedIntensity * 0.7 + comboIntensity * 0.6);
+                    midiEngine.triggerBrickAccent({
+                        combo: scoringState.combo,
+                        intensity: breakAccentIntensity,
+                        time: scheduledTime,
+                        accent: 'break',
+                    });
+                    scheduleVisualEffect(scheduledTime, () => {
+                        if (!brickParticles) {
+                            return;
+                        }
+                        const visualState = brickVisualState.get(brick);
+                        if (!visualState) {
+                            return;
+                        }
                         const burstStrength = Math.max(0.3, Math.min(1, comboIntensity * 0.5 + speedIntensity * 0.7));
                         brickParticles.emit({
                             position: { x: brick.position.x, y: brick.position.y },
@@ -1757,9 +2172,12 @@ export const createGameRuntime = async ({
                             intensity: burstStrength,
                             impactSpeed: impactVelocity,
                         });
-                    }
+                    });
 
-                    if (heatRippleEffect) {
+                    scheduleVisualEffect(scheduledTime, () => {
+                        if (!heatRippleEffect) {
+                            return;
+                        }
                         const normalizedX = clampUnit(brick.position.x / PLAYFIELD_WIDTH);
                         const normalizedY = clampUnit(brick.position.y / PLAYFIELD_HEIGHT);
                         const rippleIntensity = Math.min(1, 0.28 + speedIntensity * 0.55 + comboIntensity * 0.45);
@@ -1772,10 +2190,8 @@ export const createGameRuntime = async ({
                             intensity: rippleIntensity,
                             startRadius: Math.max(0.015, normalizedRadius * 1.6),
                             endRadius: Math.min(0.65, normalizedRadius * 1.6 + 0.22 + rippleIntensity * 0.3),
-                            duration: 0.55 + rippleIntensity * 0.4,
-                            width: Math.max(0.03, 0.085 - rippleIntensity * 0.03),
                         });
-                    }
+                    });
 
                     const spawnChance = Math.min(1, 0.25 * powerUpChanceMultiplier);
                     if (shouldSpawnPowerUp({ spawnChance }, random.random)) {
@@ -1825,6 +2241,7 @@ export const createGameRuntime = async ({
                 const impactSpeed = MatterVector.magnitude(ballBody.velocity);
 
                 if (powerUpManager.isActive('sticky-paddle') && ballBody === ball.physicsBody) {
+                    releaseForeshadowForBall(ballBody.id, sessionElapsedSeconds);
                     const offsetX = ball.physicsBody.position.x - paddle.physicsBody.position.x;
                     const offsetY = -ball.radius - paddle.height / 2;
                     const attachmentOffset = { x: offsetX, y: offsetY };
@@ -1840,14 +2257,18 @@ export const createGameRuntime = async ({
                     });
                 }
 
-                ballLight?.flash();
-                paddleLight?.flash(0.3);
+                const scheduledTime = computeScheduledAudioTime();
+                scheduleVisualEffect(scheduledTime, () => {
+                    ballLight?.flash();
+                    paddleLight?.flash(0.3);
+                });
 
                 bus.publish('PaddleHit', {
                     sessionId,
                     angle: reflectionData.angle,
                     speed: impactSpeed,
                     impactOffset: reflectionData.impactOffset,
+                    scheduledTime,
                 }, frameTimestampMs);
 
                 session.recordEntropyEvent({
@@ -1869,11 +2290,18 @@ export const createGameRuntime = async ({
                 const side = wallToSide[wallBody.label];
                 if (side) {
                     const wallSpeed = MatterVector.magnitude(ballBody.velocity);
+                    const scheduledTime = computeScheduledAudioTime();
                     bus.publish('WallHit', {
                         sessionId,
                         side,
                         speed: wallSpeed,
+                        scheduledTime,
                     }, frameTimestampMs);
+
+                    midiEngine.triggerWallHit({
+                        speed: wallSpeed,
+                        time: scheduledTime,
+                    });
 
                     session.recordEntropyEvent({
                         type: 'wall-hit',
@@ -1884,6 +2312,8 @@ export const createGameRuntime = async ({
 
             if ((bodyA.label === 'ball' && bodyB.label === 'wall-bottom') || (bodyA.label === 'wall-bottom' && bodyB.label === 'ball')) {
                 const ballBody = bodyA.label === 'ball' ? bodyA : bodyB;
+
+                releaseForeshadowForBall(ballBody.id, sessionElapsedSeconds);
 
                 if (multiBallController.isExtraBallBody(ballBody)) {
                     removeExtraBallByBody(ballBody);
@@ -1912,9 +2342,15 @@ export const createGameRuntime = async ({
                 const powerUpBody = bodyA.label === 'powerup' ? bodyA : bodyB;
                 const entry = findPowerUp(powerUpBody);
                 if (entry) {
+                    const scheduledTime = computeScheduledAudioTime();
                     powerUpManager.activate(entry.type, { defaultDuration: POWER_UP_DURATION });
                     removePowerUp(entry);
                     handlePowerUpActivation(entry.type);
+                    const sparkle = clampUnit(scoringState.combo / Math.max(1, config.scoring.multiplierThreshold));
+                    midiEngine.triggerPowerUp({
+                        time: scheduledTime,
+                        sparkle,
+                    });
                 }
             }
 
@@ -1952,6 +2388,16 @@ export const createGameRuntime = async ({
     });
 
     const runGameplayUpdate = (deltaSeconds: number): void => {
+        const audioTimeSeconds = scheduler.now();
+        if (hasPerformanceNow) {
+            const wallClockSeconds = performance.now() / 1000;
+            audioVisualSkewSeconds = wallClockSeconds - audioTimeSeconds;
+            syncDriftMs = audioVisualSkewSeconds * 1000;
+        } else {
+            audioVisualSkewSeconds = 0;
+            syncDriftMs = 0;
+        }
+
         sessionElapsedSeconds += deltaSeconds;
         replayBuffer.markTime(sessionElapsedSeconds);
         frameTimestampMs = sessionNow();
@@ -1964,9 +2410,10 @@ export const createGameRuntime = async ({
         const safeMovementDelta = movementDelta > 0 ? movementDelta : 1 / 240;
 
         const sessionSnapshot = session.snapshot();
+        const bricksRemaining = sessionSnapshot.brickRemaining;
+        const bricksTotal = sessionSnapshot.brickTotal;
 
         if (AUTO_COMPLETE_ENABLED && sessionSnapshot.status === 'active') {
-            const bricksRemaining = sessionSnapshot.brickRemaining;
             if (bricksRemaining > 0 && bricksRemaining <= AUTO_COMPLETE_TRIGGER) {
                 if (!autoCompleteActive) {
                     beginAutoCompleteCountdown();
@@ -1992,11 +2439,6 @@ export const createGameRuntime = async ({
         } else if (autoCompleteActive) {
             resetAutoCompleteCountdown();
         }
-
-        pushMusicState({
-            lives: toMusicLives(sessionSnapshot.livesRemaining),
-            combo: scoringState.combo,
-        });
 
         const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
         const difficultyScale = levelDifficultyMultiplier;
@@ -2165,6 +2607,24 @@ export const createGameRuntime = async ({
             }
             : null;
 
+        const speedRange = Math.max(1, currentMaxSpeed - currentBaseSpeed);
+        const normalizedSpeed = speedRange <= 1
+            ? clampUnit(speedAfterRegulation / Math.max(1, currentMaxSpeed))
+            : clampUnit((speedAfterRegulation - currentBaseSpeed) / speedRange);
+        const bricksRatio = bricksTotal > 0 ? clampUnit(bricksRemaining / bricksTotal) : 1;
+        const lowLives = sessionSnapshot.livesRemaining <= 1;
+        const midLives = sessionSnapshot.livesRemaining === 2;
+        const baseWarble = lowLives ? 0.55 : midLives ? 0.25 : 0;
+        const warbleIntensity = clampUnit(baseWarble + normalizedSpeed * 0.35 + (1 - bricksRatio) * (lowLives ? 0.35 : 0.2));
+
+        pushMusicState({
+            lives: toMusicLives(sessionSnapshot.livesRemaining),
+            combo: scoringState.combo,
+            tempoRatio: normalizedSpeed,
+            bricksRemainingRatio: bricksRatio,
+            warbleIntensity,
+        });
+
         const physicsOverlayState: PhysicsDebugOverlayState = {
             currentSpeed: speedAfterRegulation,
             baseSpeed: currentBaseSpeed,
@@ -2175,6 +2635,7 @@ export const createGameRuntime = async ({
             regulation: regulationInfo,
             extraBalls: multiBallController.count(),
             extraBallCapacity: MULTI_BALL_CAPACITY,
+            syncDriftMs,
         };
 
         lastPhysicsDebugState = physicsOverlayState;
@@ -2182,6 +2643,8 @@ export const createGameRuntime = async ({
         if (movementDelta > 0) {
             physics.step(movementDelta * 1000);
         }
+
+        updateForeshadowPredictions();
 
         visualBodies.forEach((visual, body) => {
             visual.x = body.position.x;
@@ -2264,26 +2727,7 @@ export const createGameRuntime = async ({
         ballGlowFilter.color = glowColor;
         ballGlowFilter.outerStrength = Math.min(5, 1.4 + comboEnergy * 0.8 + ballPulse * 2.6);
 
-        backgroundPulse = Math.max(0, backgroundPulse - deltaSeconds * 1.6);
-        bloomBeatBoost = Math.max(0, bloomBeatBoost - deltaSeconds * 1.8);
-
-        const backgroundIntensity = clampUnit(backgroundPulse);
-        const background = playfieldBackground;
-        if (background) {
-            const overlayTint = mixColors(0xffffff, backgroundAccentColor, backgroundIntensity * 0.75);
-            const overlay = (background as { overlay?: { tint?: number; alpha?: number } }).overlay;
-            if (overlay) {
-                overlay.tint = overlayTint;
-                overlay.alpha = 0.9 + backgroundIntensity * 0.1;
-            }
-            const tilingTarget = background.tilingSprite ?? (background as { tiling?: { tint?: number; alpha?: number } }).tiling;
-            if (tilingTarget) {
-                (tilingTarget as { tint?: number }).tint = mixColors(0xffffff, backgroundAccentColor, backgroundIntensity * 0.45);
-                (tilingTarget as { alpha?: number }).alpha = 0.6 + backgroundIntensity * 0.2;
-            }
-        }
-
-        const bloomEnergy = clampUnit(comboEnergy + bloomBeatBoost);
+        const bloomEnergy = clampUnit(comboEnergy);
         comboBloomEffect?.update({
             comboEnergy: bloomEnergy,
             deltaSeconds,
@@ -2627,6 +3071,12 @@ export const createGameRuntime = async ({
     document.addEventListener('keydown', handleGlobalKeyDown);
 
     const cleanupVisuals = () => {
+        if (pendingVisualTimers.size > 0) {
+            for (const timer of pendingVisualTimers) {
+                clearTimeout(timer);
+            }
+            pendingVisualTimers.clear();
+        }
         unsubscribeTheme?.();
         unsubscribeTheme = null;
         if (comboBloomEffect) {
@@ -2694,6 +3144,9 @@ export const createGameRuntime = async ({
     const handleBeforeUnload = () => {
         cleanupVisuals();
         disposeInitializer();
+        resetForeshadowing();
+        disposeForeshadower();
+        midiEngine.dispose();
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -2702,6 +3155,9 @@ export const createGameRuntime = async ({
         window.removeEventListener('beforeunload', handleBeforeUnload);
         cleanupVisuals();
         disposeInitializer();
+        resetForeshadowing();
+        disposeForeshadower();
+        midiEngine.dispose();
     };
 
     return {

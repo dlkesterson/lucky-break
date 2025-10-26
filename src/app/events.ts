@@ -14,6 +14,7 @@ export interface BrickBreakPayload {
     readonly brickType: BrickType;
     readonly comboHeat: number;
     readonly initialHp: number;
+    readonly scheduledTime?: number;
 }
 
 export interface PaddleHitPayload {
@@ -21,12 +22,14 @@ export interface PaddleHitPayload {
     readonly angle: number;
     readonly speed: number;
     readonly impactOffset: number;
+    readonly scheduledTime?: number;
 }
 
 export interface WallHitPayload {
     readonly sessionId: string;
     readonly side: WallHitSide;
     readonly speed: number;
+    readonly scheduledTime?: number;
 }
 
 export interface BrickHitPayload {
@@ -38,6 +41,7 @@ export interface BrickHitPayload {
     readonly comboHeat: number;
     readonly previousHp: number;
     readonly remainingHp: number;
+    readonly scheduledTime?: number;
 }
 
 export interface LifeLostPayload {
@@ -138,6 +142,7 @@ export interface BrickBreakEventInput {
     readonly comboHeat: number;
     readonly initialHp: number;
     readonly timestamp?: number;
+    readonly scheduledTime?: number;
 }
 
 export interface RoundCompletedEventInput {
@@ -294,6 +299,7 @@ export const createScoringEventEmitter = (bus: LuckyBreakEventBus): ScoringEvent
                 brickType: event.brickType,
                 comboHeat: event.comboHeat,
                 initialHp: event.initialHp,
+                scheduledTime: event.scheduledTime,
             },
             event.timestamp,
         );

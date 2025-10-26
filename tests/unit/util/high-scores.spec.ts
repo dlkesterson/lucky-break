@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearHighScores, getHighScores, recordHighScore } from 'util/high-scores';
 
 describe('high score utilities', () => {
     beforeEach(() => {
+        vi.restoreAllMocks();
         window.localStorage.clear();
         clearHighScores();
     });
@@ -87,5 +88,72 @@ describe('high score utilities', () => {
         expect(result.accepted).toBe(true);
         expect(result.entries).toHaveLength(1);
         expect(result.entries[0]?.name).toBe('ZZZ');
+    });
+
+    it('rejects negative scores without mutating the leaderboard', () => {
+        recordHighScore(1_500, { name: 'AAA', achievedAt: 1 });
+        const snapshot = getHighScores();
+
+        const result = recordHighScore(-25);
+
+        expect(result.accepted).toBe(false);
+        expect(result.entries).toEqual(snapshot);
+        expect(getHighScores()).toEqual(snapshot);
+    });
+
+    it('returns the existing leaderboard when the new score does not place', () => {
+        for (let index = 0; index < 10; index += 1) {
+            recordHighScore(10_000 - index * 100, { achievedAt: index });
+        }
+        const filled = getHighScores();
+
+        const result = recordHighScore(1_000, { achievedAt: 9999 });
+
+        expect(result.accepted).toBe(false);
+        expect(result.position).toBeNull();
+        expect(result.entries).toEqual(filled);
+        expect(getHighScores()).toEqual(filled);
+    });
+
+    it('falls back to the current time when achievedAt metadata is invalid', () => {
+        vi.spyOn(Date, 'now').mockReturnValue(42_000);
+
+        const result = recordHighScore(2_500, { achievedAt: Number.NaN });
+
+        expect(result.accepted).toBe(true);
+        expect(result.entries[0]?.achievedAt).toBe(42_000);
+    });
+
+    it('logs persisting failures and keeps in-memory scores when storage writes fail', () => {
+        const originalStorage = window.localStorage;
+        const failingStorage = {
+            getItem: vi.fn().mockReturnValue(null),
+            setItem: vi.fn(() => {
+                throw new Error('write blocked');
+            }),
+            clear: vi.fn(),
+        } satisfies Pick<Storage, 'getItem' | 'setItem' | 'clear'>;
+
+        Object.defineProperty(window, 'localStorage', {
+            value: failingStorage,
+            configurable: true,
+        });
+
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        try {
+            const result = recordHighScore(3_000, { name: 'ERR' });
+
+            expect(result.accepted).toBe(true);
+            expect(getHighScores()[0]?.name).toBe('ERR');
+            expect(failingStorage.setItem).toHaveBeenCalled();
+            expect(consoleSpy).toHaveBeenCalledWith('Failed to persist high scores, retaining in memory only', expect.any(Error));
+        } finally {
+            consoleSpy.mockRestore();
+            Object.defineProperty(window, 'localStorage', {
+                value: originalStorage,
+                configurable: true,
+            });
+        }
     });
 });

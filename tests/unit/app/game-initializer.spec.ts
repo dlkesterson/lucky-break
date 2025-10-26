@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MusicDirector } from 'audio/music-director';
 
 interface StageStub {
     readonly layers: {
@@ -14,10 +15,13 @@ interface StageStub {
 
 interface SchedulerStub {
     lookAheadMs: number;
+    lookAheadSeconds: number;
     schedule: ReturnType<typeof vi.fn>;
     cancel: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     context: { currentTime: number };
+    now: ReturnType<typeof vi.fn>;
+    predictAt: ReturnType<typeof vi.fn>;
 }
 
 interface SubjectStub {
@@ -31,6 +35,7 @@ const createToneSchedulerMock = vi.hoisted(() => vi.fn());
 const createReactiveAudioLayerMock = vi.hoisted(() => vi.fn());
 const createSfxRouterMock = vi.hoisted(() => vi.fn());
 const createMusicDirectorMock = vi.hoisted(() => vi.fn());
+const createComboFillEngineMock = vi.hoisted(() => vi.fn());
 const loadSoundbankMock = vi.hoisted(() => vi.fn());
 const requireSoundbankEntryMock = vi.hoisted(() => vi.fn());
 const createSubjectMock = vi.hoisted(() => vi.fn());
@@ -48,93 +53,6 @@ const toneContextStub = vi.hoisted(
             decodeAudioData: vi.fn(),
         }) as unknown as AudioContext & { state: AudioContextState },
 );
-
-const audioStubFactory = vi.hoisted(() => {
-    interface PlayerStub {
-        playbackRate: number;
-        volume: { value: number };
-        start: ReturnType<typeof vi.fn>;
-    }
-
-    const createPlayerStub = (): PlayerStub => ({
-        playbackRate: 1,
-        volume: { value: 0 },
-        start: vi.fn(),
-    });
-
-    const playersInstances: PlayersStub[] = [];
-
-    class PlayersStub {
-        public readonly connect = vi.fn();
-
-        public readonly dispose = vi.fn(() => {
-            /* noop */
-        });
-
-        private readonly players = new Map<string, PlayerStub>();
-
-        public constructor(urls: Record<string, string>, onload?: () => void) {
-            playersInstances.push(this);
-            Object.keys(urls).forEach((id) => {
-                this.players.set(id, createPlayerStub());
-            });
-            if (onload) {
-                void Promise.resolve().then(() => {
-                    onload();
-                });
-            }
-        }
-
-        public player(id: string): PlayerStub | null {
-            return this.players.get(id) ?? null;
-        }
-    }
-
-    const volumeInstances: VolumeStub[] = [];
-
-    class VolumeStub {
-        public readonly connect = vi.fn();
-
-        public readonly dispose = vi.fn(() => {
-            /* noop */
-        });
-
-        public constructor(public readonly value: number) {
-            volumeInstances.push(this);
-        }
-    }
-
-    const pannerInstances: PannerStub[] = [];
-
-    class PannerStub {
-        public readonly connect = vi.fn();
-
-        public readonly toDestination = vi.fn();
-
-        public readonly dispose = vi.fn(() => {
-            /* noop */
-        });
-
-        public readonly pan = {
-            setValueAtTime: vi.fn(),
-        } as const;
-
-        public constructor(public readonly value: number) {
-            pannerInstances.push(this);
-        }
-    }
-
-    return {
-        playersInstances,
-        PlayersStub,
-        volumeInstances,
-        VolumeStub,
-        pannerInstances,
-        PannerStub,
-    };
-});
-
-const { playersInstances, volumeInstances, pannerInstances } = audioStubFactory;
 
 const transportStub = vi.hoisted(() => {
     const stub = {
@@ -163,6 +81,10 @@ vi.mock('audio/sfx', () => ({
     createSfxRouter: createSfxRouterMock,
 }));
 
+vi.mock('audio/combo-fill', () => ({
+    createComboFillEngine: createComboFillEngineMock,
+}));
+
 vi.mock('audio/music-director', () => ({
     createMusicDirector: createMusicDirectorMock,
 }));
@@ -181,12 +103,10 @@ vi.mock('render/viewport', () => ({
 }));
 
 vi.mock('tone', () => ({
-    Players: audioStubFactory.PlayersStub,
-    Panner: audioStubFactory.PannerStub,
-    Volume: audioStubFactory.VolumeStub,
     Transport: transportStub,
     getTransport: () => transportStub,
     getContext: () => ({ rawContext: toneContextStub }),
+    start: vi.fn(() => Promise.resolve()),
 }));
 
 const resizeObserverInstances: ResizeObserverMock[] = [];
@@ -216,7 +136,8 @@ describe('createGameInitializer', () => {
     let schedulerStub: SchedulerStub;
     let reactiveLayerStub: { dispose: ReturnType<typeof vi.fn> };
     let routerStub: { dispose: ReturnType<typeof vi.fn> };
-    let musicDirectorStub: { setState: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> };
+    let musicDirectorStub: MusicDirector;
+    let comboFillEngineStub: { trigger: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> };
     let subjectStub: SubjectStub;
     let pulseControls: PulseControls;
     let boostComboMock: ReturnType<typeof vi.fn>;
@@ -248,12 +169,20 @@ describe('createGameInitializer', () => {
     const createSchedulerStub = (): SchedulerStub => {
         const schedule = vi.fn();
         schedule.mockReturnValue({ id: 1, time: 0 });
+        const now = vi.fn().mockReturnValue(0);
+        const predictAt = vi.fn().mockImplementation((offsetMs?: number) => {
+            const offset = typeof offsetMs === 'number' ? offsetMs : 0;
+            return 0.12 + offset / 1000;
+        });
         return {
             lookAheadMs: 120,
+            lookAheadSeconds: 0.12,
             schedule,
             cancel: vi.fn(),
             dispose: vi.fn(),
             context: { currentTime: 0 },
+            now,
+            predictAt,
         } satisfies SchedulerStub;
     };
 
@@ -286,9 +215,20 @@ describe('createGameInitializer', () => {
         routerStub = { dispose: vi.fn() };
         createSfxRouterMock.mockReturnValue(routerStub);
 
+        comboFillEngineStub = {
+            trigger: vi.fn(),
+            dispose: vi.fn(),
+        };
+        createComboFillEngineMock.mockReturnValue(comboFillEngineStub);
+
         musicDirectorStub = {
             setState: vi.fn(),
             dispose: vi.fn(),
+            setEnabled: vi.fn(),
+            getState: vi.fn().mockReturnValue({ lives: 3, combo: 0 }),
+            setBeatCallback: vi.fn(),
+            setMeasureCallback: vi.fn(),
+            triggerComboAccent: vi.fn(),
         };
         createMusicDirectorMock.mockReturnValue(musicDirectorStub);
 
@@ -317,9 +257,6 @@ describe('createGameInitializer', () => {
             boostPowerUp: boostPowerUpMock,
         } satisfies PulseControls;
 
-        playersInstances.length = 0;
-        volumeInstances.length = 0;
-        pannerInstances.length = 0;
         resizeObserverInstances.length = 0;
 
         toneContextStub.state = 'running';
@@ -377,23 +314,27 @@ describe('createGameInitializer', () => {
         expect(createToneSchedulerMock).toHaveBeenCalledWith({ lookAheadMs: 120 });
         expect(createReactiveAudioLayerMock).toHaveBeenCalledWith(subjectStub, transportStub, expect.objectContaining({ lookAheadMs: schedulerStub.lookAheadMs }));
 
-        expect(requireSoundbankEntryMock).toHaveBeenCalledWith(expect.anything(), 'calm');
-        expect(requireSoundbankEntryMock).toHaveBeenCalledWith(expect.anything(), 'intense');
-        expect(requireSoundbankEntryMock).toHaveBeenCalledWith(expect.anything(), 'melody');
-        expect(musicDirectorStub.setState).toHaveBeenCalledWith({ lives: 3, combo: 0 });
+        expect(requireSoundbankEntryMock).not.toHaveBeenCalled();
 
-        expect(playersInstances).toHaveLength(1);
-        expect(volumeInstances).toHaveLength(1);
-        expect(pannerInstances).toHaveLength(1);
+        const routerArgs = createSfxRouterMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+        expect(routerArgs?.scheduler).toBe(schedulerStub);
+        expect(routerArgs?.bus).toBeDefined();
+        expect(routerArgs?.brickSampleIds).toBeUndefined();
+        expect(routerArgs?.trigger).toBeUndefined();
 
-        expect(capturedReactiveOptions).toBeDefined();
-        const onFill = capturedReactiveOptions?.onFill as ((event: { type: string }) => void) | undefined;
+        const onFill = capturedReactiveOptions?.onFill as
+            | ((event: { type: string; payload: { combo?: number; powerUpType?: string }; scheduledTime: number }) => void)
+            | undefined;
         expect(onFill).toBeTypeOf('function');
 
-        onFill?.({ type: 'combo' });
+        onFill?.({ type: 'combo', payload: { combo: 24 }, scheduledTime: 1.25 });
         expect(boostComboMock).toHaveBeenCalledWith({ ring: 0.45, ball: 0.5 });
+        expect(comboFillEngineStub.trigger).toHaveBeenCalledWith({ intensity: 1, time: 1.25 });
+        expect(musicDirectorStub.triggerComboAccent).toHaveBeenCalledWith(
+            expect.objectContaining({ depth: 0.48, holdSeconds: 0.9 })
+        );
 
-        onFill?.({ type: 'power-up' });
+        onFill?.({ type: 'power-up', payload: { powerUpType: 'multi-ball' }, scheduledTime: 2 });
         expect(boostPowerUpMock).toHaveBeenCalledWith({ paddle: 0.6 });
 
         result.renderStageOnce();
@@ -476,12 +417,9 @@ describe('createGameInitializer', () => {
         expect(routerStub.dispose).toHaveBeenCalled();
         expect(schedulerStub.dispose).toHaveBeenCalled();
         expect(reactiveLayerStub.dispose).toHaveBeenCalled();
+        expect(comboFillEngineStub.dispose).toHaveBeenCalled();
         expect(subjectStub.complete).toHaveBeenCalled();
         expect(musicDirectorStub.dispose).toHaveBeenCalled();
-
-        expect(volumeInstances[0]?.dispose).toHaveBeenCalled();
-        expect(pannerInstances[0]?.dispose).toHaveBeenCalled();
-        expect(playersInstances[0]?.dispose).toHaveBeenCalled();
 
         expect(removeSpy).not.toHaveBeenCalledWith('resize', expect.any(Function));
         expect(removeSpy).not.toHaveBeenCalledWith('orientationchange', expect.any(Function));

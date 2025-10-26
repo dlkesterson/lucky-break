@@ -5,7 +5,11 @@ const noopRandom = () => 0.5;
 export const createBrickDecorator = (
     orientation: 'portrait' | 'landscape',
 ): LevelGenerationOptions['decorateBrick'] => {
+
     if (orientation === 'portrait') {
+        // Track wall piece count in closure
+        let wallCount = 0;
+        const WALL_MAX = 6;
         return (context) => {
             const { row, slotIndex, slotCount, traits, random } = context;
             if (traits?.includes('gamble') || traits?.includes('fortified')) {
@@ -16,7 +20,9 @@ export const createBrickDecorator = (
             const normalizedDistance = slotCount <= 1 ? 0 : Math.abs(slotIndex - center) / Math.max(1, center);
             const rng = random ?? noopRandom;
 
-            if (normalizedDistance >= 0.95 && row <= 1) {
+            // Only allow up to WALL_MAX wall pieces near the extreme slots
+            if (wallCount < WALL_MAX && normalizedDistance >= 0.95 && row <= 1) {
+                wallCount++;
                 return { form: 'circle', breakable: false };
             }
 

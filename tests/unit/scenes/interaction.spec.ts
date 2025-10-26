@@ -114,10 +114,16 @@ const createSceneHarness = (): SceneTestHarness => {
 
     const scheduler: ToneScheduler = {
         lookAheadMs: 0,
+        lookAheadSeconds: 0,
         schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
         cancel: vi.fn(),
         dispose: vi.fn(),
         context: {} as AudioContext,
+        now: vi.fn().mockReturnValue(0),
+        predictAt: vi.fn().mockImplementation((offsetMs?: number) => {
+            const offset = typeof offsetMs === 'number' ? offsetMs : 0;
+            return offset / 1000;
+        }),
     };
 
     const audioState$: Subject<ReactiveAudioGameState> = {
@@ -131,6 +137,9 @@ const createSceneHarness = (): SceneTestHarness => {
         getState: vi.fn().mockReturnValue(null),
         setEnabled: vi.fn(),
         dispose: vi.fn(),
+        setBeatCallback: vi.fn(),
+        setMeasureCallback: vi.fn(),
+        triggerComboAccent: vi.fn(),
     };
 
     const random: RandomManager = {

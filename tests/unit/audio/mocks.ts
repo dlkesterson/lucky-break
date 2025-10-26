@@ -67,6 +67,10 @@ export const installToneMock = (): ToneMockContext => {
         return subdivisions[subdivision] ?? nowSeconds + 0.5;
     });
 
+    const startTone = vi.fn(async () => {
+        audioContextStub.state = 'running';
+    });
+
     const transportCore = {
         schedule: schedule as ReturnType<typeof vi.fn>,
         scheduleOnce: scheduleOnce as ReturnType<typeof vi.fn>,
@@ -99,6 +103,7 @@ export const installToneMock = (): ToneMockContext => {
     vi.doMock('tone', () => ({
         Transport: transport,
         now: () => nowSeconds,
+        start: startTone,
         getContext: () => ({ rawContext: audioContextStub as unknown as AudioContext }),
         Destination: {
             volume: {

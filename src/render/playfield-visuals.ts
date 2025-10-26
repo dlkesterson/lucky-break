@@ -180,42 +180,15 @@ export const createPlayfieldBackgroundLayer = (
     overlay.eventMode = 'none';
     overlay.clear();
 
-    const skyGradient = new FillGradient(0, 0, 0, dimensions.height);
-    skyGradient.addColorStop(0, 0x1b2757);
-    skyGradient.addColorStop(0.35, 0x2f5ec6);
-    skyGradient.addColorStop(0.7, 0x69b8ff);
-    skyGradient.addColorStop(1, 0xf6fbff);
+    const baseGradient = new FillGradient(0, 0, 0, dimensions.height);
+    baseGradient.addColorStop(0, 0x0c172f);
+    baseGradient.addColorStop(1, 0x04070f);
 
     overlay.rect(0, 0, dimensions.width, dimensions.height);
-    overlay.fill(skyGradient);
-
-    overlay.circle(dimensions.width * 0.5, dimensions.height * 0.28, dimensions.width * 0.65);
-    overlay.fill({ color: 0xffffff, alpha: 0.1 });
+    overlay.fill(baseGradient);
+    overlay.tint = 0xffffff;
+    overlay.alpha = 1;
     overlay.blendMode = 'normal';
-
-    overlay.rect(0, dimensions.height * 0.58, dimensions.width, dimensions.height * 0.42);
-    overlay.fill({ color: 0xffffff, alpha: 0.16 });
-
-    const clouds = [
-        { width: 0.72, height: 0.04, y: 0.22, offset: -0.18 },
-        { width: 0.58, height: 0.035, y: 0.32, offset: 0.12 },
-        { width: 0.66, height: 0.038, y: 0.4, offset: -0.05 },
-        { width: 0.54, height: 0.03, y: 0.48, offset: 0.18 },
-    ] as const;
-
-    for (const cloud of clouds) {
-        const bandWidth = dimensions.width * cloud.width;
-        const bandHeight = dimensions.height * cloud.height;
-        const bandY = dimensions.height * cloud.y;
-        const bandX = (dimensions.width - bandWidth) / 2 + dimensions.width * cloud.offset * 0.25;
-
-        overlay.roundRect(bandX, bandY, bandWidth, bandHeight, bandHeight * 0.45);
-        overlay.fill({ color: 0xffffff, alpha: 0.1 });
-    }
-
-    overlay.circle(dimensions.width * 0.5, dimensions.height * 0.62, dimensions.width * 0.55);
-    overlay.fill({ color: 0xffffff, alpha: 0.08 });
-    overlay.blendMode = 'add';
 
     container.addChild(overlay);
 

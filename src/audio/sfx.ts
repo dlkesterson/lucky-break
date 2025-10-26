@@ -320,25 +320,36 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
 
     const scheduleSource = (source: SfxSource) => {
         let handle: ScheduledEventHandle | null = null;
+        const targetScheduledTime = typeof source.scheduledTime === 'number' && Number.isFinite(source.scheduledTime)
+            ? source.scheduledTime
+            : null;
+        const basePrediction = options.scheduler.predictAt();
+        const offsetCandidateMs = targetScheduledTime !== null
+            ? (targetScheduledTime - basePrediction) * 1000
+            : 0;
+        const scheduleOffsetMs = Number.isFinite(offsetCandidateMs)
+            ? Math.max(0, offsetCandidateMs)
+            : 0;
 
         const scheduledHandle = options.scheduler.schedule((scheduledTime) => {
             if (handle) {
                 pending.delete(handle);
             }
             let descriptor: SfxTriggerDescriptor | null = null;
+            const resolvedTime = targetScheduledTime ?? scheduledTime;
 
             switch (source.event) {
                 case 'BrickBreak':
-                    descriptor = buildBrickBreakDescriptor(samples, scheduledTime, source);
+                    descriptor = buildBrickBreakDescriptor(samples, resolvedTime, source);
                     break;
                 case 'BrickHit':
-                    descriptor = buildBrickHitDescriptor(samples, brickImpactSampleId, scheduledTime, source);
+                    descriptor = buildBrickHitDescriptor(samples, brickImpactSampleId, resolvedTime, source);
                     break;
                 case 'PaddleHit':
-                    descriptor = buildPaddleHitDescriptor(paddleSample, scheduledTime, source);
+                    descriptor = buildPaddleHitDescriptor(paddleSample, resolvedTime, source);
                     break;
                 case 'WallHit':
-                    descriptor = buildWallHitDescriptor(wallSample, scheduledTime, source);
+                    descriptor = buildWallHitDescriptor(wallSample, resolvedTime, source);
                     break;
                 default:
                     descriptor = null;
@@ -347,7 +358,7 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
             if (descriptor) {
                 trigger(descriptor);
             }
-        });
+        }, scheduleOffsetMs);
         handle = scheduledHandle;
         pending.add(handle);
     };

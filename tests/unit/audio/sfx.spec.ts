@@ -103,6 +103,7 @@ describe('createSfxRouter', () => {
 
         const scheduler = {
             lookAheadMs: 0,
+            lookAheadSeconds: 0,
             context: {} as AudioContext,
             schedule: (callback: (time: number) => void) => {
                 callback(0.25);
@@ -114,6 +115,8 @@ describe('createSfxRouter', () => {
             dispose: () => {
                 /* no-op */
             },
+            now: () => 0,
+            predictAt: () => 0,
         } satisfies ReturnType<typeof createToneScheduler>;
 
         const router = createSfxRouter({
@@ -154,6 +157,7 @@ describe('createSfxRouter', () => {
         let nextHandle = 0;
         const scheduler = {
             lookAheadMs: 0,
+            lookAheadSeconds: 0,
             context: {} as AudioContext,
             schedule: (callback: (time: number) => void) => {
                 callback(0.2);
@@ -166,6 +170,8 @@ describe('createSfxRouter', () => {
             dispose: () => {
                 /* no-op */
             },
+            now: () => 0,
+            predictAt: () => 0,
         } satisfies ReturnType<typeof createToneScheduler>;
 
         const router = createSfxRouter({

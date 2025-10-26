@@ -194,6 +194,7 @@ const createGameInitializerMock = vi.hoisted(() =>
             setEnabled: vi.fn(),
             setBeatCallback: vi.fn(),
             setMeasureCallback: vi.fn(),
+            triggerComboAccent: vi.fn(),
             dispose: vi.fn(),
         };
         initializerState.instances.push({
@@ -206,7 +207,16 @@ const createGameInitializerMock = vi.hoisted(() =>
         return {
             stage,
             bus: { publish: vi.fn() },
-            scheduler: { lookAheadMs: 120 },
+            scheduler: {
+                lookAheadMs: 120,
+                lookAheadSeconds: 0.12,
+                schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
+                cancel: vi.fn(),
+                dispose: vi.fn(),
+                context: { currentTime: 0 } as AudioContext,
+                now: vi.fn().mockReturnValue(0),
+                predictAt: vi.fn().mockImplementation((offsetMs?: number) => 0.12 + (typeof offsetMs === 'number' ? offsetMs / 1000 : 0)),
+            },
             audioState$: { next: vi.fn() },
             musicDirector,
             renderStageSoon,
@@ -243,6 +253,7 @@ vi.mock('tone', () => {
         toneState.transportState = 'started';
         return result;
     });
+    const toneStartMock = vi.fn(() => Promise.resolve());
     toneState.resumeMock = resumeMock;
     toneState.transportStartMock = transportStartMock;
 
@@ -343,6 +354,7 @@ vi.mock('tone', () => {
         Volume: MockVolume,
         Panner: MockPanner,
         Players: MockPlayers,
+        start: toneStartMock,
     };
 });
 
@@ -434,7 +446,7 @@ const themeMockState = vi.hoisted(() => {
 
     const getThemeOptions = vi.fn(() => themeOptions);
 
-    const getActiveThemeName = vi.fn(() => activeName);
+    const getActiveThemeName = () => activeName;
 
     const toggleTheme = vi.fn((name?: 'default' | 'colorBlind') => {
         const next = name ?? (activeName === 'default' ? 'colorBlind' : 'default');
@@ -1181,8 +1193,10 @@ vi.mock('util/input-helpers', () => ({
 vi.mock('util/log', () => ({
     rootLogger: {
         child: vi.fn(() => ({
+            debug: vi.fn(),
             error: vi.fn(),
             info: vi.fn(),
+            warn: vi.fn(),
         })),
     },
 }));
@@ -1368,10 +1382,12 @@ describe('createGameRuntime', () => {
         expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
         expect(toneState.transportStartMock).toHaveBeenCalledTimes(1);
         expect(initializerState.instances).toHaveLength(1);
-        expect(initializerState.instances[0]?.musicDirector.setState).toHaveBeenCalledWith({
-            lives: 3,
-            combo: 0,
-        });
+        expect(initializerState.instances[0]?.musicDirector.setState).toHaveBeenCalledWith(
+            expect.objectContaining({
+                lives: 3,
+                combo: 0,
+            }),
+        );
 
         handle.dispose();
     });

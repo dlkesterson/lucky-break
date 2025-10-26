@@ -213,6 +213,7 @@ export interface PhysicsDebugOverlayState {
     } | null;
     readonly extraBalls: number;
     readonly extraBallCapacity: number;
+    readonly syncDriftMs?: number;
 }
 
 export class PhysicsDebugOverlay {
@@ -281,6 +282,9 @@ export class PhysicsDebugOverlay {
             timeScaleLabel,
             regulationLine,
             `Multi-Ball: ${Math.min(state.extraBalls, state.extraBallCapacity)}/${state.extraBallCapacity}`,
+            `Audio drift: ${typeof state.syncDriftMs === 'number' && Number.isFinite(state.syncDriftMs)
+                ? state.syncDriftMs.toFixed(1)
+                : '—'} ms`,
         ];
 
         this.text.text = lines.join('\n');

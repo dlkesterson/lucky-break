@@ -39,6 +39,9 @@ const createLayerFactory = (store: RecordedAction[]): MusicLayerFactory => (defi
             });
         },
         getLevel: () => level,
+        setPlaybackRate: () => {
+            // no-op for tests
+        },
         dispose: () => {
             store.push({ layer: definition.id, type: 'dispose' });
         },
@@ -154,22 +157,30 @@ describe('createMusicDirector', () => {
             },
         });
 
-        expect(actions.filter((entry) => entry.type === 'start')).toHaveLength(2);
-        expect(actions.filter((entry) => entry.type === 'set').every((entry) => entry.value === 0)).toBe(true);
+        expect(actions.filter((entry) => entry.type === 'start')).toHaveLength(3);
+        const initialZeroSets = actions.filter((entry) => entry.type === 'set');
+        expect(initialZeroSets).toHaveLength(3);
+        expect(initialZeroSets.every((entry) => entry.value === 0)).toBe(true);
         actions.length = 0;
 
         director.setState({ lives: 3, combo: 0 });
 
         expect(transport.getScheduleCount()).toBe(0);
-        expect(actions).toEqual([
-            { layer: 'calm', type: 'set', value: 0.52 },
-        ]);
+        const postSets = actions.filter((entry) => entry.type === 'set');
+        expect(postSets).toHaveLength(3);
+        const calmSet = postSets.find((entry) => entry.layer === 'calm');
+        const intenseSet = postSets.find((entry) => entry.layer === 'intense');
+        const melodySet = postSets.find((entry) => entry.layer === 'melody');
+        expect(calmSet?.value ?? 0).toBeGreaterThan(intenseSet?.value ?? 0);
+        expect(calmSet?.value ?? 0).toBeGreaterThan(0);
+        expect(intenseSet?.value ?? -1).toBe(0);
+        expect(melodySet?.value ?? 0).toBe(0);
 
         director.dispose();
         expect(transport.getCancelCount()).toBe(1);
     });
 
-    it('crossfades to intense layer when lives drop', () => {
+    it('crossfades to intense layer when tempo increases', () => {
         const actions: RecordedAction[] = [];
         const transport = createTransportStub(true);
         const director = createMusicDirector({
@@ -181,17 +192,23 @@ describe('createMusicDirector', () => {
             },
         });
 
-        director.setState({ lives: 3, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0 });
+        const calmSets = actions.filter((entry) => entry.layer === 'calm' && entry.type === 'set');
+        const intenseSets = actions.filter((entry) => entry.layer === 'intense' && entry.type === 'set');
+        const baselineCalm = calmSets[calmSets.length - 1]?.value ?? 0;
+        const baselineIntense = intenseSets[intenseSets.length - 1]?.value ?? 0;
         actions.length = 0;
         transport.reset();
 
-        director.setState({ lives: 2, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0.85 });
 
         expect(transport.getScheduleCount()).toBe(1);
-        expect(actions).toEqual([
-            { layer: 'intense', type: 'ramp', value: 0.8, time: 64, duration: toPrecision(1.2) },
-            { layer: 'calm', type: 'ramp', value: 0, time: 64, duration: toPrecision(1.2) },
-        ]);
+        const intenseRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        const calmRamp = actions.find((entry) => entry.layer === 'calm' && entry.type === 'ramp');
+        expect(intenseRamp?.value ?? 0).toBeGreaterThan(baselineIntense);
+        expect(calmRamp?.value ?? 0).toBeLessThan(baselineCalm);
+        const melodyRamp = actions.find((entry) => entry.layer === 'melody' && entry.type === 'ramp');
+        expect(melodyRamp?.value ?? 0).toBe(0);
 
         director.dispose();
     });
@@ -214,16 +231,20 @@ describe('createMusicDirector', () => {
         };
 
         director.setState({ lives: 3, combo: 0 });
+        const intenseBaselineEntries = actions.filter((entry) => entry.layer === 'intense' && entry.type === 'set');
+        const baselineIntense = intenseBaselineEntries[intenseBaselineEntries.length - 1]?.value ?? 0;
         reset();
 
-        director.setState({ lives: 2, combo: 16 });
+        director.setState({ lives: 3, combo: 16 });
         const intenseRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
-        expect(intenseRamp?.value).toBeCloseTo(0.75 + 0.2, 3);
+        expect(intenseRamp?.value ?? 0).toBeGreaterThan(baselineIntense + 0.05);
         reset();
 
-        director.setState({ lives: 1, combo: 24 });
-        const intenseRampLowLives = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
-        expect(intenseRampLowLives?.value).toBeCloseTo(1, 3);
+        director.setState({ lives: 3, combo: 24, bricksRemainingRatio: 0.1, tempoRatio: 0.6 });
+        const intenseRampHighPressure = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(intenseRampHighPressure?.value ?? 0).toBeGreaterThan(baselineIntense + 0.1);
+        const melodyRamp = actions.find((entry) => entry.layer === 'melody' && entry.type === 'ramp');
+        expect(melodyRamp?.value ?? 0).toBeGreaterThan(0);
 
         director.dispose();
     });
@@ -240,15 +261,15 @@ describe('createMusicDirector', () => {
             },
         });
 
-        director.setState({ lives: 3, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0 });
         transport.reset();
-        director.setState({ lives: 2, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0.85 });
         expect(transport.getScheduleCount()).toBe(1);
 
         director.dispose();
         expect(transport.getClearedCount()).toBe(1);
         expect(transport.getCancelCount()).toBe(1);
-        expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(2);
+        expect(actions.filter((entry) => entry.type === 'dispose')).toHaveLength(3);
     });
 
     it('falls back when transport scheduling fails and normalizes state', () => {
@@ -297,15 +318,15 @@ describe('createMusicDirector', () => {
             layerFactory: createLayerFactory(actions),
         });
 
-        director.setState({ lives: 3, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0 });
         actions.length = 0;
 
-        director.setState({ lives: 2, combo: 4 });
+        director.setState({ lives: 3, combo: 4, tempoRatio: 0.5 });
         const baseFallbackRamp = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
         expect(baseFallbackRamp?.time).toBe(toPrecision(123));
         actions.length = 0;
 
-        director.setState({ lives: 1, combo: 0 });
+        director.setState({ lives: 3, combo: 0, tempoRatio: 0.8 });
         const baseCallback = scheduledCallbacks.shift();
         expect(typeof baseCallback).toBe('function');
         baseCallback?.(Infinity);
@@ -316,12 +337,12 @@ describe('createMusicDirector', () => {
         expect(repeatedRamp.some((entry) => entry.time === toPrecision(10))).toBe(true);
         actions.length = 0;
 
-        director.setState({ lives: 3, combo: 0 });
+        director.setState({ lives: 3, combo: 0, bricksRemainingRatio: 0.15 });
         const calmFallbackRamp = actions.find((entry) => entry.layer === 'calm' && entry.type === 'ramp');
         expect(calmFallbackRamp?.time).toBe(toPrecision(123));
         actions.length = 0;
 
-        director.setState({ lives: 3, combo: Number.NaN });
+        director.setState({ lives: 3, combo: Number.NaN, tempoRatio: 0.3 });
 
         const snapshot = director.getState();
         expect(snapshot).not.toBeNull();
@@ -331,6 +352,52 @@ describe('createMusicDirector', () => {
 
         director.dispose();
         expect(transport.cancel).toHaveBeenCalled();
+    });
+
+    it('ducks base layers during combo accents and restores afterwards', () => {
+        const actions: RecordedAction[] = [];
+        const transport = createTransportStub(false);
+        const now = vi.fn(() => 10);
+        const director = createMusicDirector({
+            transport,
+            now,
+            layerFactory: createLayerFactory(actions),
+        });
+
+        director.setState({ lives: 2, combo: 8 });
+        const baselineCalm = actions.filter((entry) => entry.layer === 'calm').pop()?.value ?? 0;
+        const baselineIntense = actions.filter((entry) => entry.layer === 'intense').pop()?.value ?? 0;
+
+        actions.length = 0;
+        transport.reset();
+
+        director.triggerComboAccent({
+            depth: 0.4,
+            attackSeconds: 0.1,
+            holdSeconds: 0.2,
+            releaseSeconds: 0.3,
+        });
+
+        const calmDuck = actions.find((entry) => entry.layer === 'calm' && entry.type === 'ramp');
+        const intenseDuck = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(calmDuck?.value ?? 0).toBeLessThan(baselineCalm);
+        expect(intenseDuck?.value ?? 0).toBeLessThan(baselineIntense);
+        expect(calmDuck?.duration).toBeCloseTo(0.1, 3);
+        expect(intenseDuck?.duration).toBeCloseTo(0.1, 3);
+
+        expect(transport.getScheduleCount()).toBe(1);
+
+        actions.length = 0;
+        transport.runPending(48);
+
+        const calmRestore = actions.find((entry) => entry.layer === 'calm' && entry.type === 'ramp');
+        const intenseRestore = actions.find((entry) => entry.layer === 'intense' && entry.type === 'ramp');
+        expect(calmRestore?.value ?? 0).toBeCloseTo(baselineCalm, 3);
+        expect(intenseRestore?.value ?? 0).toBeCloseTo(baselineIntense, 3);
+        expect(calmRestore?.duration).toBeCloseTo(0.3, 3);
+        expect(intenseRestore?.duration).toBeCloseTo(0.3, 3);
+
+        director.dispose();
     });
 
     it('emits beat and measure callbacks when registered', () => {

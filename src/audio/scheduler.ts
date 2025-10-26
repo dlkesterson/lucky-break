@@ -19,10 +19,13 @@ export interface ToneSchedulerOptions {
 
 export interface ToneScheduler {
     readonly lookAheadMs: number;
+    readonly lookAheadSeconds: number;
     readonly schedule: (callback: (time: number) => void, offsetMs?: number) => ScheduledEventHandle;
     readonly cancel: (handle: ScheduledEventHandle) => void;
     readonly dispose: () => void;
     readonly context: AudioContext;
+    readonly now: () => number;
+    readonly predictAt: (offsetMs?: number) => number;
 }
 
 const toSeconds = (milliseconds: number): number => milliseconds / 1000;
@@ -57,6 +60,7 @@ const resolveTransport = (): {
 export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneScheduler => {
     const lookAheadMs = Math.max(0, options.lookAheadMs ?? DEFAULT_LOOK_AHEAD_MS);
     const now = options.now ?? toneNow;
+    const lookAheadSeconds = toSeconds(lookAheadMs);
     const transportLike = resolveTransport();
 
     const fallbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -154,7 +158,7 @@ export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneSch
     const active = new Set<number>();
 
     const schedule: ToneScheduler['schedule'] = (callback, offsetMs = 0) => {
-        const offsetSeconds = toSeconds(lookAheadMs + offsetMs);
+        const offsetSeconds = lookAheadSeconds + toSeconds(offsetMs);
         const targetTime = now() + offsetSeconds;
         const scheduleAt = usingTransport ? `+${offsetSeconds}` : targetTime;
 
@@ -182,12 +186,22 @@ export const createToneScheduler = (options: ToneSchedulerOptions = {}): ToneSch
         cancelFn(0);
     };
 
+    const nowSeconds: ToneScheduler['now'] = () => now();
+
+    const predictAt: ToneScheduler['predictAt'] = (offsetMs = 0) => {
+        const normalizedOffsetMs = Number.isFinite(offsetMs) ? offsetMs : 0;
+        return nowSeconds() + lookAheadSeconds + toSeconds(normalizedOffsetMs);
+    };
+
     return {
         lookAheadMs,
+        lookAheadSeconds,
         schedule,
         cancel,
         dispose,
         context: audioContext,
+        now: nowSeconds,
+        predictAt,
     };
 };
 

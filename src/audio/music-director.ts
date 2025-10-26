@@ -17,7 +17,8 @@ const DEFAULT_CROSSFADE_SECONDS = 1.2;
 const LEVEL_EPSILON = 0.01;
 
 export type BaseLayerId = 'calm' | 'intense';
-export type MusicLayerId = BaseLayerId;
+export type SupportLayerId = 'melody';
+export type MusicLayerId = BaseLayerId | SupportLayerId;
 
 export interface MusicState {
     readonly lives: 1 | 2 | 3;
@@ -25,6 +26,7 @@ export interface MusicState {
     readonly tempoRatio?: number;
     readonly paused?: boolean;
     readonly warbleIntensity?: number;
+    readonly bricksRemainingRatio?: number;
 }
 
 export interface MusicLayerDefinition {
@@ -45,6 +47,7 @@ export interface MusicLayerHandle {
     readonly setImmediate: (level: number) => void;
     readonly rampTo: (level: number, startTime: number, duration: number) => void;
     readonly getLevel: () => number;
+    readonly setPlaybackRate: (rate: number) => void;
     readonly dispose: () => void;
 }
 
@@ -59,6 +62,10 @@ interface TransportLike {
     cancel?(time?: number): void;
     nextSubdivision?(subdivision: string): number;
     scheduleRepeat?(callback: (time: number) => void, interval: number | string, startTime?: number): number;
+    bpm?: {
+        value?: number;
+        rampTo?: (value: number, rampTime: number) => void;
+    };
 }
 
 export interface MusicDirectorOptions {
@@ -70,6 +77,9 @@ export interface MusicDirectorOptions {
     readonly layerFactory?: MusicLayerFactory;
     readonly layers?: Partial<Record<MusicLayerId, Partial<Omit<MusicLayerDefinition, 'id'>>>>;
     readonly beatsPerMeasure?: number;
+    readonly baseTempoBpm?: number;
+    readonly maxTempoBpm?: number;
+    readonly tempoRampSeconds?: number;
 }
 
 export interface MusicDirector {
@@ -78,6 +88,7 @@ export interface MusicDirector {
     readonly setEnabled: (enabled: boolean) => void;
     readonly setBeatCallback: (callback: ((event: MusicBeatEvent) => void) | null) => void;
     readonly setMeasureCallback: (callback: ((event: MusicMeasureEvent) => void) | null) => void;
+    readonly triggerComboAccent: (options?: ComboAccentOptions) => void;
     readonly dispose: () => void;
 }
 
@@ -91,6 +102,14 @@ export interface MusicBeatEvent {
 export interface MusicMeasureEvent {
     readonly index: number;
     readonly transportTime: number;
+}
+
+export interface ComboAccentOptions {
+    readonly depth?: number;
+    readonly attackSeconds?: number;
+    readonly holdSeconds?: number;
+    readonly releaseSeconds?: number;
+    readonly targets?: readonly MusicLayerId[];
 }
 
 const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
@@ -107,6 +126,13 @@ const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
         baseLevel: 0.9,
         fadeInSeconds: 0.3,
         fadeOutSeconds: 0.25,
+    },
+    melody: {
+        id: 'melody',
+        url: new URL('../../assets/samples/092_funkiclassic2.wav', import.meta.url).href,
+        baseLevel: 0.8,
+        fadeInSeconds: 0.35,
+        fadeOutSeconds: 0.45,
     },
 };
 
@@ -136,6 +162,7 @@ const createToneMusicLayer: MusicLayerFactory = (definition, { now }) => {
     let startRequested = false;
     let startError: unknown = null;
     let loadPromise: Promise<void> | null = null;
+    let playbackRate = 1;
 
     const ensureLoaded = (): Promise<void> => {
         loadPromise ??= player
@@ -211,6 +238,31 @@ const createToneMusicLayer: MusicLayerFactory = (definition, { now }) => {
 
     const getLevel = () => gain.gain.value;
 
+    const setPlaybackRate = (rate: number) => {
+        if (!Number.isFinite(rate)) {
+            return;
+        }
+        const clamped = Math.max(0.25, Math.min(rate, 4));
+        if (Math.abs(playbackRate - clamped) <= 0.005) {
+            return;
+        }
+        playbackRate = clamped;
+        try {
+            if (typeof (player.playbackRate as unknown as { value?: number }).value === 'number') {
+                (player.playbackRate as unknown as { value: number }).value = clamped;
+                return;
+            }
+        } catch {
+            // Fallback to direct assignment below.
+        }
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (player.playbackRate as any) = clamped;
+        } catch {
+            // No-op if playback rate cannot be set.
+        }
+    };
+
     const dispose = () => {
         player.dispose();
         gain.dispose();
@@ -222,6 +274,7 @@ const createToneMusicLayer: MusicLayerFactory = (definition, { now }) => {
         setImmediate,
         rampTo,
         getLevel,
+        setPlaybackRate,
         dispose,
     };
 };
@@ -243,11 +296,14 @@ const computeComboBoost = (combo: number, rate: number, cap: number): number => 
     return Math.min(cap, combo * rate);
 };
 
-const selectBaseLayer = (lives: 1 | 2 | 3): BaseLayerId => (lives === 3 ? 'calm' : 'intense');
+type TransitionKey = 'mix' | 'duckRelease';
 
-const otherBaseLayer = (layer: BaseLayerId): BaseLayerId => (layer === 'calm' ? 'intense' : 'calm');
-
-type TransitionKey = 'base';
+const clampPlaybackRate = (value: number): number => {
+    if (!Number.isFinite(value)) {
+        return 1;
+    }
+    return Math.max(0.25, Math.min(value, 4));
+};
 
 export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDirector => {
     const transport = options.transport ?? Transport;
@@ -257,38 +313,56 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     const comboBoostCap = options.comboBoostCap ?? 0.3;
     const layerFactory = options.layerFactory ?? createToneMusicLayer;
     const beatsPerMeasure = Math.max(1, Math.round(options.beatsPerMeasure ?? 4));
+    const baseTempoBpm = options.baseTempoBpm ?? 73;
+    const maxTempoBpm = Math.max(baseTempoBpm, options.maxTempoBpm ?? 92);
+    const tempoRampSeconds = Math.max(0.02, options.tempoRampSeconds ?? 0.25);
 
     const definitions: Record<MusicLayerId, MusicLayerDefinition> = {
         calm: mergeLayerDefinition('calm', options.layers?.calm),
         intense: mergeLayerDefinition('intense', options.layers?.intense),
+        melody: mergeLayerDefinition('melody', options.layers?.melody),
     };
 
-    const calmLayer = layerFactory(definitions.calm, { now });
-    const intenseLayer = layerFactory(definitions.intense, { now });
-    const baseLayers: Record<BaseLayerId, MusicLayerHandle> = {
-        calm: calmLayer,
-        intense: intenseLayer,
+    const layerOrder: MusicLayerId[] = ['calm', 'intense', 'melody'];
+    const musicLayers: Partial<Record<MusicLayerId, MusicLayerHandle>> = {};
+
+    const ensureLayer = (id: MusicLayerId): MusicLayerHandle => {
+        let layer = musicLayers[id];
+        if (!layer) {
+            layer = layerFactory(definitions[id], { now });
+            layer.ensureStarted();
+            layer.setImmediate(0);
+            if (typeof layer.setPlaybackRate === 'function') {
+                layer.setPlaybackRate(1);
+            }
+            musicLayers[id] = layer;
+        }
+        return layer;
     };
 
-    for (const layer of [calmLayer, intenseLayer]) {
-        layer.ensureStarted();
-        layer.setImmediate(0);
+    for (const id of layerOrder) {
+        ensureLayer(id);
     }
 
     let disposed = false;
     let initialized = false;
     let enabled = true;
-    let currentBase: BaseLayerId = 'calm';
-    const baseLevels: Record<BaseLayerId, number> = { calm: 0, intense: 0 };
-    let pendingBaseTarget: BaseLayerId | null = null;
-    let pendingBaseLevel = 0;
+    const layerLevels: Record<MusicLayerId, number> = { calm: 0, intense: 0, melody: 0 };
+    const desiredLevels: Record<MusicLayerId, number> = { calm: 0, intense: 0, melody: 0 };
+    const playbackRates: Record<MusicLayerId, number> = { calm: 1, intense: 1, melody: 1 };
     const pendingTransitions = new Map<TransitionKey, number>();
+    let lastTempoTarget = baseTempoBpm;
     let lastState: MusicState | null = null;
     let beatCallback: ((event: MusicBeatEvent) => void) | null = null;
     let measureCallback: ((event: MusicMeasureEvent) => void) | null = null;
     let beatScheduleHandle: number | null = null;
     let beatIndex = 0;
     let measureIndex = 0;
+    let activeDuck: {
+        factor: number;
+        targets: Set<MusicLayerId>;
+        releaseSeconds: number;
+    } | null = null;
 
     const cancelBeatSchedule = () => {
         if (beatScheduleHandle === null) {
@@ -397,74 +471,206 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         callback(now());
     };
 
-    const applyInitialState = (state: MusicState) => {
-        const baseKey = selectBaseLayer(state.lives);
-        const boost = computeComboBoost(state.combo, comboBoostRate, comboBoostCap);
-        const baseTargetLevel = clamp01(definitions[baseKey].baseLevel + boost);
-        const otherKey = otherBaseLayer(baseKey);
+    const applyTempoTarget = (target: number) => {
+        if (!Number.isFinite(target)) {
+            return;
+        }
+        const clamped = Math.max(20, Math.min(target, 220));
+        if (Math.abs(clamped - lastTempoTarget) <= 0.05) {
+            return;
+        }
+        const bpmControl = transport.bpm as
+            | {
+                value?: number;
+                rampTo?: (value: number, rampTime: number) => void;
+            }
+            | undefined;
+        try {
+            if (bpmControl) {
+                if (typeof bpmControl.rampTo === 'function') {
+                    bpmControl.rampTo(clamped, tempoRampSeconds);
+                } else if (typeof bpmControl.value === 'number') {
+                    bpmControl.value = clamped;
+                }
+            }
+        } catch {
+            // Swallow tempo synchronisation issues; audio will continue.
+        }
+        lastTempoTarget = clamped;
+    };
 
-        baseLayers[baseKey].setImmediate(baseTargetLevel);
-        baseLevels[baseKey] = baseTargetLevel;
+    const applyPlaybackRates = (rates: Record<MusicLayerId, number>) => {
+        for (const id of layerOrder) {
+            const target = clampPlaybackRate(rates[id] ?? 1);
+            if (Math.abs(playbackRates[id] - target) <= 0.003) {
+                continue;
+            }
+            playbackRates[id] = target;
+            const layer = musicLayers[id];
+            if (!layer || typeof layer.setPlaybackRate !== 'function') {
+                continue;
+            }
+            try {
+                layer.setPlaybackRate(target);
+            } catch {
+                // Ignore playback rate errors; layer will continue with previous rate.
+            }
+        }
+    };
 
-        if (baseLevels[otherKey] > 0) {
-            baseLayers[otherKey].setImmediate(0);
-            baseLevels[otherKey] = 0;
+    const computeMixTargets = (state: MusicState) => {
+        const speed = clamp01(Number.isFinite(state.tempoRatio ?? NaN) ? state.tempoRatio ?? 0 : 0);
+        const bricksRatio = clamp01(
+            Number.isFinite(state.bricksRemainingRatio ?? NaN) ? state.bricksRemainingRatio ?? 1 : 1,
+        );
+        const comboBoost = computeComboBoost(state.combo, comboBoostRate, comboBoostCap);
+        const calmMix = clamp01(1 - speed * 0.65);
+        const intenseMix = clamp01(speed * 0.75 + (1 - bricksRatio) * 0.25 + comboBoost * 0.5);
+        const melodyMix = clamp01(comboBoost * 0.6 + (1 - bricksRatio) * 0.2);
+
+        const levels: Record<MusicLayerId, number> = {
+            calm: clamp01(definitions.calm.baseLevel * calmMix),
+            intense: clamp01(definitions.intense.baseLevel * intenseMix),
+            melody: clamp01(definitions.melody.baseLevel * melodyMix),
+        };
+
+        const warbleIntensity = clamp01(
+            Number.isFinite(state.warbleIntensity ?? NaN)
+                ? state.warbleIntensity ?? 0
+                : 0,
+        );
+
+        const playback: Record<MusicLayerId, number> = {
+            calm: 1,
+            intense: clampPlaybackRate(1 + warbleIntensity * 0.045),
+            melody: 1,
+        };
+
+        const comboNormalized = comboBoostCap > 0 ? comboBoost / comboBoostCap : 0;
+        const tempoBlend = clamp01(speed + comboNormalized * 0.1);
+        const tempoTarget = baseTempoBpm + (maxTempoBpm - baseTempoBpm) * tempoBlend;
+
+        return { levels, playback, tempoTarget };
+    };
+
+    const updateDesiredLevels = (levels: Record<MusicLayerId, number>): boolean => {
+        let changed = false;
+        for (const id of layerOrder) {
+            const target = clamp01(levels[id] ?? 0);
+            if (Math.abs(desiredLevels[id] - target) > LEVEL_EPSILON) {
+                desiredLevels[id] = target;
+                changed = true;
+            }
+        }
+        return changed;
+    };
+
+    const resolveDuckFactor = (id: MusicLayerId): number => {
+        if (!activeDuck) {
+            return 1;
+        }
+        return activeDuck.targets.has(id) ? activeDuck.factor : 1;
+    };
+
+    const applyLevels = (time: number, immediate: boolean, durationOverride?: number) => {
+        for (const id of layerOrder) {
+            const layer = musicLayers[id];
+            const target = desiredLevels[id];
+            if (!layer) {
+                continue;
+            }
+            const effectiveTarget = target * resolveDuckFactor(id);
+            if (immediate) {
+                layer.setImmediate(effectiveTarget);
+            } else {
+                layer.rampTo(effectiveTarget, time, durationOverride ?? crossfadeSeconds);
+            }
+            layerLevels[id] = effectiveTarget;
+        }
+    };
+
+    const requestMixUpdate = (immediate: boolean) => {
+        if (!enabled) {
+            return;
         }
 
-        currentBase = baseKey;
+        if (immediate) {
+            cancelTransition('mix');
+            applyLevels(now(), true);
+            return;
+        }
+
+        const needsUpdate = layerOrder.some((id) => Math.abs(layerLevels[id] - desiredLevels[id]) > LEVEL_EPSILON);
+        if (!needsUpdate) {
+            return;
+        }
+
+        scheduleTransition('mix', (time) => {
+            if (disposed || !enabled) {
+                return;
+            }
+            applyLevels(time, false);
+        });
+    };
+
+    const applyInitialState = (state: MusicState) => {
+        const targets = computeMixTargets(state);
+        updateDesiredLevels(targets.levels);
+        applyPlaybackRates(targets.playback);
+        applyTempoTarget(targets.tempoTarget);
+        applyLevels(now(), true);
         initialized = true;
     };
 
     const silenceLayers = (time: number) => {
-        for (const key of ['calm', 'intense'] as const) {
-            baseLayers[key].rampTo(0, time, crossfadeSeconds);
-            baseLevels[key] = 0;
+        for (const id of layerOrder) {
+            const layer = musicLayers[id];
+            if (!layer) {
+                continue;
+            }
+            desiredLevels[id] = 0;
+            layerLevels[id] = 0;
+            layer.rampTo(0, time, crossfadeSeconds);
         }
     };
 
-    const updateBaseLayer = (target: BaseLayerId, level: number) => {
-        const recordedLevel = baseLevels[target];
-        const actualLevel = baseLayers[target].getLevel();
-        const recordedMatches = Math.abs(recordedLevel - level) <= LEVEL_EPSILON;
-        const actualMatches = Math.abs(actualLevel - level) <= LEVEL_EPSILON;
-        const alreadyAtLevel = currentBase === target && recordedMatches && actualMatches;
+    const cancelDuckRelease = () => {
+        cancelTransition('duckRelease');
+    };
 
-        if (alreadyAtLevel && pendingBaseTarget === null) {
+    const scheduleDuckRelease = (holdSeconds: number, releaseSeconds: number) => {
+        if (!activeDuck) {
             return;
         }
 
-        if (
-            pendingBaseTarget === target &&
-            Math.abs(pendingBaseLevel - level) <= LEVEL_EPSILON &&
-            actualMatches
-        ) {
-            return;
-        }
+        const safeHold = Math.max(0, holdSeconds);
 
-        pendingBaseTarget = target;
-        pendingBaseLevel = level;
-
-        scheduleTransition('base', (time) => {
+        const executeRelease = (time: number) => {
+            pendingTransitions.delete('duckRelease');
             if (disposed) {
                 return;
             }
+            activeDuck = null;
+            applyLevels(Number.isFinite(time) ? time : now(), false, releaseSeconds);
+        };
 
-            const activeLayer = baseLayers[target];
-            const inactiveKey = otherBaseLayer(target);
-            const inactiveLayer = baseLayers[inactiveKey];
+        cancelTransition('duckRelease');
 
-            activeLayer.rampTo(level, time, crossfadeSeconds);
-            baseLevels[target] = level;
-
-            const inactiveLevel = baseLevels[inactiveKey];
-            if (inactiveLevel > LEVEL_EPSILON) {
-                inactiveLayer.rampTo(0, time, crossfadeSeconds);
-                baseLevels[inactiveKey] = 0;
+        if (typeof transport.scheduleOnce === 'function') {
+            try {
+                const handle = transport.scheduleOnce((time) => {
+                    executeRelease(Number.isFinite(time) ? time : now());
+                }, `+${safeHold}`);
+                if (typeof handle === 'number' && Number.isFinite(handle)) {
+                    pendingTransitions.set('duckRelease', handle);
+                    return;
+                }
+            } catch {
+                // Fall through to immediate scheduling below on failure.
             }
+        }
 
-            currentBase = target;
-            pendingBaseTarget = null;
-        });
+        executeRelease(now() + safeHold);
     };
 
     const setState: MusicDirector['setState'] = (state) => {
@@ -477,40 +683,40 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         const normalizedState: MusicState = {
             lives: normalizedLives,
             combo: normalizedCombo,
-            tempoRatio: state.tempoRatio,
+            tempoRatio: Number.isFinite(state.tempoRatio ?? NaN) ? clamp01(state.tempoRatio ?? 0) : 0,
             paused: state.paused,
-            warbleIntensity: state.warbleIntensity,
+            warbleIntensity: Number.isFinite(state.warbleIntensity ?? NaN)
+                ? clamp01(state.warbleIntensity ?? 0)
+                : state.warbleIntensity,
+            bricksRemainingRatio: Number.isFinite(state.bricksRemainingRatio ?? NaN)
+                ? clamp01(state.bricksRemainingRatio ?? 1)
+                : state.bricksRemainingRatio,
         };
 
+        lastState = { ...normalizedState };
+
+        const targets = computeMixTargets(normalizedState);
+
         if (!enabled) {
-            lastState = { ...normalizedState };
+            updateDesiredLevels(targets.levels);
+            applyPlaybackRates(targets.playback);
+            applyTempoTarget(targets.tempoTarget);
+            initialized = false;
             return;
         }
 
         if (!initialized) {
             applyInitialState(normalizedState);
-            lastState = { ...normalizedState };
             return;
         }
 
-        const baseTarget = selectBaseLayer(normalizedState.lives);
-        const baseMismatch = Math.abs(baseLayers[baseTarget].getLevel() - baseLevels[baseTarget]) > LEVEL_EPSILON * 2;
-
-        if (
-            lastState &&
-            lastState.lives === normalizedState.lives &&
-            Math.abs((lastState.combo ?? 0) - (normalizedState.combo ?? 0)) <= LEVEL_EPSILON &&
-            !baseMismatch
-        ) {
-            lastState = { ...normalizedState };
-            return;
+        const levelsChanged = updateDesiredLevels(targets.levels);
+        if (levelsChanged) {
+            requestMixUpdate(false);
         }
 
-        const boost = computeComboBoost(normalizedState.combo, comboBoostRate, comboBoostCap);
-        const baseTargetLevel = clamp01(definitions[baseTarget].baseLevel + boost);
-
-        updateBaseLayer(baseTarget, baseTargetLevel);
-        lastState = { ...normalizedState };
+        applyPlaybackRates(targets.playback);
+        applyTempoTarget(targets.tempoTarget);
     };
 
     const setEnabled: MusicDirector['setEnabled'] = (value) => {
@@ -521,9 +727,9 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         enabled = value;
 
         if (!value) {
-            cancelTransition('base');
-            pendingBaseTarget = null;
-            pendingBaseLevel = 0;
+            cancelTransition('mix');
+            cancelDuckRelease();
+            activeDuck = null;
             cancelBeatSchedule();
             const start = now();
             silenceLayers(start);
@@ -531,10 +737,50 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             return;
         }
 
-        pendingBaseTarget = null;
-        pendingBaseLevel = 0;
         initialized = false;
         scheduleBeatEvents();
+        if (lastState) {
+            const targets = computeMixTargets(lastState);
+            updateDesiredLevels(targets.levels);
+            requestMixUpdate(false);
+            applyPlaybackRates(targets.playback);
+            applyTempoTarget(targets.tempoTarget);
+        }
+    };
+
+    const triggerComboAccent: MusicDirector['triggerComboAccent'] = (options = {}) => {
+        if (disposed || !enabled) {
+            return;
+        }
+
+        const attackSeconds = Math.max(0.02, options.attackSeconds ?? 0.12);
+        const holdSeconds = Math.max(0.05, options.holdSeconds ?? 0.8);
+        const releaseSeconds = Math.max(0.05, options.releaseSeconds ?? 0.6);
+        const depth = clamp01(options.depth ?? 0.45);
+        const factor = Math.max(0.2, 1 - depth);
+        const targetList = options.targets && options.targets.length > 0
+            ? options.targets
+            : (['calm', 'intense'] as const satisfies readonly MusicLayerId[]);
+        const validTargets = targetList.filter((id): id is MusicLayerId => layerOrder.includes(id));
+        if (validTargets.length === 0) {
+            return;
+        }
+
+        const nowTime = now();
+        if (activeDuck) {
+            activeDuck.factor = Math.min(activeDuck.factor, factor);
+            activeDuck.releaseSeconds = Math.max(activeDuck.releaseSeconds, releaseSeconds);
+            validTargets.forEach((id) => activeDuck?.targets.add(id));
+        } else {
+            activeDuck = {
+                factor,
+                targets: new Set<MusicLayerId>(validTargets),
+                releaseSeconds,
+            };
+        }
+
+        applyLevels(nowTime, false, attackSeconds);
+        scheduleDuckRelease(holdSeconds, activeDuck.releaseSeconds);
     };
 
     const dispose: MusicDirector['dispose'] = () => {
@@ -542,15 +788,19 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             return;
         }
         disposed = true;
-        cancelTransition('base');
+        cancelTransition('mix');
+        cancelTransition('duckRelease');
         cancelBeatSchedule();
         try {
             transport.cancel?.(now());
         } catch {
             // Best effort; ignore transport cancellation errors.
         }
-        calmLayer.dispose();
-        intenseLayer.dispose();
+        for (const layer of Object.values(musicLayers)) {
+            if (layer) {
+                layer.dispose();
+            }
+        }
         pendingTransitions.clear();
     };
 
@@ -580,6 +830,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         setEnabled,
         setBeatCallback,
         setMeasureCallback,
+        triggerComboAccent,
         dispose,
     };
 };
