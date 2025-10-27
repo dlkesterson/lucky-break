@@ -15,6 +15,7 @@ import {
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from '../state';
+import type { LifeLostCause } from '../events';
 import { createAchievementManager, type AchievementUnlock } from '../achievements';
 import { buildHudScoreboard } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
@@ -1372,6 +1373,25 @@ export const createRuntimeFacade = async ({
         loop?.start();
     };
 
+    interface E2EHarnessRuntimeState {
+        readonly currentScene: string | null;
+        readonly isPaused: boolean;
+        readonly loopRunning: boolean;
+        readonly livesRemaining: number;
+    }
+
+    interface E2EHarnessControls {
+        startGameplay?: () => Promise<void> | void;
+        skipLevel?: () => Promise<void> | void;
+        loseLife?: (cause?: LifeLostCause) => Promise<void> | void;
+        drainLives?: (options?: { leaveOne?: boolean }) => Promise<void> | void;
+        pauseGameplay?: () => Promise<void> | void;
+        resumeGameplay?: () => Promise<void> | void;
+        quitToMenu?: () => Promise<void> | void;
+        launchBall?: (direction?: { x: number; y: number }) => Promise<void> | void;
+        getRuntimeState?: () => E2EHarnessRuntimeState;
+    }
+
     const registerE2EHarnessControls = (): void => {
         const candidate = globalThis as { __LB_E2E_HOOKS__?: unknown };
         const harness = candidate.__LB_E2E_HOOKS__;
@@ -1379,11 +1399,114 @@ export const createRuntimeFacade = async ({
             return;
         }
 
-        const controls = harness as { startGameplay?: () => Promise<void> };
-        controls.startGameplay = () => beginNewSession();
-    };
+        const controls = harness as E2EHarnessControls;
 
-    registerE2EHarnessControls();
+        const resolveCurrentScene = () => stage.getCurrentScene();
+        const isGameplaySceneActive = () => resolveCurrentScene() === 'gameplay';
+        const isPauseSceneActive = () => resolveCurrentScene() === 'pause';
+        const isGameOverSceneActive = () => resolveCurrentScene() === 'game-over';
+        const isLevelCompleteSceneActive = () => resolveCurrentScene() === 'level-complete';
+
+        const loseLifeInternal = (cause: LifeLostCause = 'forced-reset') => {
+            if (!isGameplaySceneActive()) {
+                return;
+            }
+
+            const comboBeforeReset = scoring.state.combo;
+            session.recordLifeLost(cause);
+            session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
+            scoring.lifeLost();
+            syncMomentum();
+
+            if (session.snapshot().livesRemaining > 0) {
+                clearExtraBalls();
+                reattachBallToPaddle();
+                renderStageSoon();
+                return;
+            }
+
+            handleGameOver();
+        };
+
+        controls.startGameplay = () => beginNewSession();
+        controls.skipLevel = () => {
+            if (!isGameplaySceneActive()) {
+                return;
+            }
+            skipToNextLevelCheat();
+        };
+        controls.loseLife = (cause?: LifeLostCause) => {
+            loseLifeInternal(cause ?? 'forced-reset');
+        };
+        controls.drainLives = (options?: { leaveOne?: boolean }) => {
+            if (!isGameplaySceneActive()) {
+                return;
+            }
+            const targetLives = options?.leaveOne === true ? 1 : 0;
+            while (session.snapshot().livesRemaining > targetLives) {
+                loseLifeInternal('forced-reset');
+                if (session.snapshot().livesRemaining <= targetLives || !isGameplaySceneActive()) {
+                    break;
+                }
+            }
+        };
+        controls.pauseGameplay = () => {
+            if (!isGameplaySceneActive() || isPaused || !loop?.isRunning()) {
+                return;
+            }
+            pauseGame();
+        };
+        controls.resumeGameplay = () => {
+            if (!isPauseSceneActive() || !isPaused) {
+                return;
+            }
+            resumeFromPause();
+        };
+        controls.quitToMenu = () => {
+            if (
+                !isGameplaySceneActive() &&
+                !isPauseSceneActive() &&
+                !isGameOverSceneActive() &&
+                !isLevelCompleteSceneActive()
+            ) {
+                return;
+            }
+            return quitToMenu();
+        };
+        controls.launchBall = (direction?: { x: number; y: number }) => {
+            if (!isGameplaySceneActive() || !launchController.canLaunch(ball)) {
+                return;
+            }
+            const launchDirection = direction ?? { x: 0, y: -1 };
+            replayBuffer.recordLaunch(runtimeState.sessionElapsedSeconds);
+            physics.detachBallFromPaddle(ball.physicsBody);
+            launchController.launch(ball, launchDirection, runtimeState.currentLaunchSpeed);
+            runtimeInput.resetLaunchTrigger();
+            const snapshot = session.snapshot();
+            bus.publish('BallLaunched', {
+                sessionId: snapshot.sessionId,
+                position: {
+                    x: ball.physicsBody.position.x,
+                    y: ball.physicsBody.position.y,
+                },
+                direction: {
+                    x: launchDirection.x,
+                    y: launchDirection.y,
+                },
+                speed: MatterVector.magnitude(ball.physicsBody.velocity),
+            });
+        };
+        controls.getRuntimeState = () => {
+            const currentScene = stage.getCurrentScene() ?? null;
+            const snapshot = session.snapshot();
+            return {
+                currentScene,
+                isPaused,
+                loopRunning: Boolean(loop?.isRunning()),
+                livesRemaining: snapshot.livesRemaining,
+            } satisfies E2EHarnessRuntimeState;
+        };
+    };
 
     const startLevel = (levelIndex: number, options: { resetScore?: boolean } = {}): void => {
         isPaused = false;
@@ -1809,6 +1932,18 @@ export const createRuntimeFacade = async ({
             physics.detachBallFromPaddle(ball.physicsBody);
             launchController.launch(ball, launchIntent.direction, runtimeState.currentLaunchSpeed);
             runtimeInput.resetLaunchTrigger();
+            bus.publish('BallLaunched', {
+                sessionId: sessionSnapshot.sessionId,
+                position: {
+                    x: ball.physicsBody.position.x,
+                    y: ball.physicsBody.position.y,
+                },
+                direction: {
+                    x: launchIntent.direction.x,
+                    y: launchIntent.direction.y,
+                },
+                speed: MatterVector.magnitude(ball.physicsBody.velocity),
+            });
         } else if (launchIntent) {
             runtimeInput.resetLaunchTrigger();
         }
@@ -2202,6 +2337,9 @@ export const createRuntimeFacade = async ({
         handleLevelComplete();
         renderStageSoon();
     };
+
+
+    registerE2EHarnessControls();
 
 
     const cleanupVisuals = () => {

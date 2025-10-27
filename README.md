@@ -5,20 +5,27 @@
 [![CI](https://github.com/dlkesterson/lucky-break/actions/workflows/ci.yml/badge.svg)](https://github.com/dlkesterson/lucky-break/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fdlkesterson.github.io%2Flucky-break%2Fcoverage%2Fcoverage-summary.json&label=coverage)](https://dlkesterson.github.io/lucky-break/coverage/index.html)
 
-Lucky Break is a browser-based brick breaker with a deterministic game loop, responsive input on every device, and reactive audio that ramps with the action.
+Lucky Break is a high-tempo brick breaker with deterministic physics, multi-ball chaos, wager-driven bricks, and reactive audio that leans into every rally.
 
 ## Play Online
 
 The latest build is published via GitHub Pages: https://dlkesterson.github.io/lucky-break/
 
-## Highlights
+## Core Systems
 
-- Fixed-timestep simulation with seeded RNG for fully reproducible runs and replays.
-- Touch gestures (swipe to aim, long press to charge) and mouse controls tuned for fast play.
-- Gamepad support for standard controllers; analog stick steers the paddle and face buttons launch.
-- Dynamic music director and curated soundbank that adapt to combo heat and remaining lives.
-- Scene stack with polished transitions, HUD overlays, and mobile-friendly scaling.
-- Accessibility-first visuals with a high-contrast color mode (`Shift+C`, persisted per device).
+- `Deterministic loop` keeps physics, audio, and replays in lockstep via a fixed timestep, seeded RNG, and saved session snapshots.
+- `Multi-ball + rewards` stackable power-ups, gamble bricks, and reward wheels keep the power curve fresh each round.
+- `Reactive audio` uses Tone.js transport, MIDI accents, and predictive foreshadowing to telegraph impacts before they land.
+- `Responsive input` supports mouse, touch gestures, and gamepads with adaptive paddle smoothing and accessibility toggles.
+- `HUD & scenes` run on a Pixi scene stack with combo overlays, mobile layout scaling, and quick transitions between menus, gameplay, and recaps.
+
+## Tech Stack
+
+- TypeScript 5 (strict) compiled with Vite 7 and pnpm workspaces.
+- PixiJS 8 for rendering, post-effects, and HUD orchestration.
+- Matter.js 0.19 for deterministic physics simulation and collision contracts.
+- Tone.js 14 for music direction, MIDI scheduling, and audio foreshadowing.
+- Vitest + Playwright for unit, integration, and automation coverage enforced in CI.
 
 ## Getting Started
 
@@ -27,25 +34,41 @@ pnpm install
 pnpm dev
 ```
 
-This starts the Vite dev server. Open the printed URL in your browser. The game automatically resizes to the window; connect a controller if you want to try the new gamepad input.
+`pnpm dev` boots the Vite dev server. Open the printed URL in a desktop or mobile browser—the layout adapts on the fly. Plug in a controller or use touch to feel the input tuning.
 
-### Useful Commands
+### Development Commands
 
-- `pnpm build` – Production bundle.
+- `pnpm build` – Production bundle with cache-busting assets.
 - `pnpm lint` – ESLint across `src/` and `tests/` with `--max-warnings=0`.
-- `pnpm test` – Vitest suite (unit + integration) in watchless mode.
-- `pnpm simulate` – Headless CLI runner for deterministic gameplay scripts.
+- `pnpm test` – Vitest unit + integration suites in watchless mode.
+- `pnpm test:e2e` – Playwright end-to-end coverage (headless by default).
+- `pnpm simulate:verify` – TSX-powered deterministic simulations used in CI.
+- `pnpm run cli:simulate` – Headless CLI runner for deterministic gameplay scripts and tuning bots (requires `pnpm build`).
 
-## Project Structure
+## Project Layout
 
 ```
 src/
-  app/        # Loop, runtime, state, preload
-  audio/      # Music director, scheduler, SFX
-  input/      # Cross-platform input pipeline
-  physics/    # World setup, ball launch, constraints
-  render/     # Pixi scenes, HUD, effects
-  util/       # Shared helpers, scoring, config
+  app/        # Loop, runtime modules, state machines, replays
+  audio/      # Music director, MIDI engine, SFX, foreshadowing
+  cli/        # Headless engine, tuning bots, automation scripts
+  config/     # Gameplay constants, asset registries, themes
+  game/       # Rewards, gamble bricks, achievement logic
+  input/      # Cross-platform input adapters and launch control
+  physics/    # Matter.js world setup, launches, attachments
+  render/     # Pixi scenes, HUD, effects, visual factory
+  scenes/     # Scene stack entries (menu, gameplay, pause, etc.)
+  util/       # Shared helpers (RNG, math, scoring, logs)
 ```
 
-Tests live under `tests/` (unit, integration, CLI). Coverage is enforced in CI; please add or update tests when you touch code.
+Tests live under `tests/` split into `unit/`, `integration/`, `e2e/`, and CLI helpers. Coverage reports publish with the game to GitHub Pages at `/coverage/` on every push to `main`.
+
+## Determinism & Replays
+
+- Session state is driven by seeded RNG; replays capture inputs and layout seeds for frame-perfect playback.
+- The `game/runtime` facade exposes a diagnostics surface for latency, combo momentum, and foreshadow predictions.
+- CLI tooling (`pnpm run cli:simulate` after `pnpm build`, or `pnpm simulate:verify` during development) runs deterministic scenarios for balancing and regression tracking without spinning up Pixi.
+
+## Contributing
+
+We follow conventional TypeScript + Pixi patterns with strict linting and coverage gates. Please include tests when you touch runtime logic, new rewards, or visual/audio systems.

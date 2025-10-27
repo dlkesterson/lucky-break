@@ -67,6 +67,12 @@ jobs:
       - name: Build production bundle
         run: pnpm build
 
+      - name: Copy coverage report into build
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p dist/coverage
+          cp -R coverage/. dist/coverage/
+
       - name: Configure Pages
         if: github.event_name == 'push'
         uses: actions/configure-pages@v5
