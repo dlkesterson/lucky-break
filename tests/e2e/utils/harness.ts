@@ -31,6 +31,12 @@ export interface HarnessInstallOptions {
 }
 
 const harnessStorageKey = 'lucky-break:developer-cheats';
+const defaultSeed = 1337;
+
+export const gotoLuckyBreak = async (page: Page, seed: number = defaultSeed): Promise<void> => {
+    const resolvedSeed = Number.isFinite(seed) ? Math.trunc(seed) : defaultSeed;
+    await page.goto(`/?seed=${encodeURIComponent(String(resolvedSeed))}`);
+};
 
 export const installEventHarness = async (page: Page, options: HarnessInstallOptions = {}): Promise<void> => {
     const enableDeveloperCheats = options.enableDeveloperCheats ?? false;

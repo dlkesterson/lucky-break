@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+    gotoLuckyBreak,
     drainEvents,
     installEventHarness,
     launchBall,
@@ -16,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('player can pause, resume, and quit to the main menu', async ({ page }) => {
-    await page.goto('/');
+    await gotoLuckyBreak(page);
 
     await page.waitForSelector('.lb-preloader[data-state="loading"]');
     await page.waitForSelector('canvas', { state: 'attached' });

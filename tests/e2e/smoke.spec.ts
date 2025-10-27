@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+    gotoLuckyBreak,
     installEventHarness,
     isSceneTransitionEvent,
     readEvents,
@@ -12,7 +13,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('loads the main menu and transitions into gameplay', async ({ page }) => {
-    await page.goto('/');
+    await gotoLuckyBreak(page);
 
     await page.waitForSelector('.lb-preloader[data-state="loading"]');
     await page.waitForSelector('canvas', { state: 'attached' });

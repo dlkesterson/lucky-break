@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+    gotoLuckyBreak,
     drainEvents,
     installEventHarness,
     launchBall,
@@ -14,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('round stays active after the first brick break', async ({ page }) => {
-    await page.goto('/');
+    await gotoLuckyBreak(page);
 
     await page.waitForSelector('.lb-preloader[data-state="loading"]');
     await page.waitForSelector('canvas', { state: 'attached' });

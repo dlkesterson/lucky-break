@@ -149,3 +149,4 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.swp
+repomix-output.xml

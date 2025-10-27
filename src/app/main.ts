@@ -227,7 +227,33 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
     } satisfies LuckyBreakHandle;
 }
 
+const resolveSeedFromQuery = (): number | undefined => {
+    if (typeof window === 'undefined' || typeof window.location?.search !== 'string') {
+        return undefined;
+    }
+
+    const search = window.location.search;
+    if (!search) {
+        return undefined;
+    }
+
+    let seedParam: string | null = null;
+    try {
+        seedParam = new URLSearchParams(search).get('seed');
+    } catch {
+        return undefined;
+    }
+
+    if (!seedParam) {
+        return undefined;
+    }
+
+    const parsed = Number.parseInt(seedParam, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 const appContainer = document.getElementById('app');
 if (appContainer) {
-    bootstrapLuckyBreak({ container: appContainer });
+    const seed = resolveSeedFromQuery();
+    bootstrapLuckyBreak({ container: appContainer, seed });
 }
