@@ -17,127 +17,14 @@ import {
 import { createComboFillEngine } from 'audio/combo-fill';
 import { createSubject, type Subject } from 'util/observable';
 import { resolveViewportSize } from 'render/viewport';
-import { Transport, getContext, getTransport, start as toneStart } from 'tone';
+import { Transport } from 'tone';
+import {
+    ensureToneAudio,
+    getToneAudioContext,
+    isAutoplayBlockedError,
+} from './runtime/audio';
 
-const AUDIO_RESUME_TIMEOUT_MS = 250;
 const IS_TEST_ENV = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-
-const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
-    if (value === null || value === undefined) {
-        return false;
-    }
-    const candidate = value as { then?: unknown };
-    return typeof candidate.then === 'function';
-};
-
-const waitForPromise = async (
-    promiseLike: PromiseLike<unknown>,
-    timeoutMs: number,
-): Promise<void> => {
-    let settled = false;
-    const guarded = Promise.resolve(promiseLike).finally(() => {
-        settled = true;
-    });
-
-    try {
-        await Promise.race([guarded, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
-    } catch (error) {
-        throw error;
-    } finally {
-        if (!settled) {
-            void guarded.catch(() => undefined);
-        }
-    }
-};
-
-const isAutoplayBlockedError = (error: unknown): boolean => {
-    if (!(error instanceof Error)) {
-        return false;
-    }
-
-    if (error.name === 'NotAllowedError') {
-        return true;
-    }
-
-    const message = error.message ?? '';
-    return message.includes('was not allowed to start');
-};
-
-const getToneAudioContext = (): AudioContext => getContext().rawContext as AudioContext;
-
-const resolveToneTransport = () => {
-    try {
-        if (typeof getTransport === 'function') {
-            return getTransport();
-        }
-    } catch {
-        // Fallback handled below by returning static Transport reference.
-    }
-    return Transport;
-};
-
-const ensureToneAudio = async (): Promise<void> => {
-    const context = getToneAudioContext();
-    const attemptToneStart = async () => {
-        try {
-            const result = toneStart();
-            if (isPromiseLike(result)) {
-                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
-            }
-        } catch (error) {
-            if (isAutoplayBlockedError(error)) {
-                throw error;
-            }
-            if (!IS_TEST_ENV) {
-                console.warn('Tone.start failed', error);
-            }
-            throw error;
-        }
-    };
-
-    if (context.state !== 'running') {
-        await attemptToneStart();
-    }
-
-    if (context.state === 'suspended') {
-        try {
-            const result = context.resume();
-            if (isPromiseLike(result)) {
-                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
-            }
-        } catch (error) {
-            if (isAutoplayBlockedError(error)) {
-                throw error;
-            }
-            if (!IS_TEST_ENV) {
-                console.warn('AudioContext.resume failed', error);
-            }
-            throw error;
-        }
-    }
-
-    if (context.state !== 'running' && !IS_TEST_ENV) {
-        console.warn('Audio context is still suspended after resume attempt');
-    }
-
-    const transport = resolveToneTransport();
-    if (transport?.state !== 'started' && typeof transport?.start === 'function') {
-        try {
-            const result = transport.start();
-            if (isPromiseLike(result)) {
-                await waitForPromise(result, AUDIO_RESUME_TIMEOUT_MS);
-            }
-        } catch (error) {
-            if (isAutoplayBlockedError(error)) {
-                throw error;
-            }
-            if (!IS_TEST_ENV) {
-                console.warn('Tone.Transport.start failed', error);
-            }
-            throw error;
-        }
-    }
-};
 
 const clampUnit = (value: number): number => {
     if (!Number.isFinite(value)) {
@@ -187,7 +74,24 @@ export const createGameInitializer = async ({
     pulseControls,
     onAudioBlocked,
 }: GameInitializerOptions): Promise<GameInitializerResult> => {
-    await ensureToneAudio().catch((error) => {
+    const toneWarn = (message: string, details?: { error: unknown }) => {
+        if (IS_TEST_ENV) {
+            return;
+        }
+        if (details?.error !== undefined) {
+            console.warn(message, details.error);
+            return;
+        }
+        if (details !== undefined) {
+            console.warn(message, details);
+            return;
+        }
+        console.warn(message);
+    };
+
+    const ensureToneAudioWithLogging = () => ensureToneAudio({ warn: toneWarn });
+
+    await ensureToneAudioWithLogging().catch((error) => {
         if (isAutoplayBlockedError(error)) {
             onAudioBlocked?.(error);
             return;
@@ -305,7 +209,7 @@ export const createGameInitializer = async ({
                 return;
             }
 
-            void ensureToneAudio()
+            void ensureToneAudioWithLogging()
                 .then(() => {
                     const currentMusicState = musicDirector.getState() ?? { lives: 3, combo: 0 };
                     musicDirector.setState(currentMusicState);
@@ -328,7 +232,7 @@ export const createGameInitializer = async ({
     };
 
     if (!isToneAudioReady()) {
-        void ensureToneAudio().catch((audioInitError) => {
+        void ensureToneAudioWithLogging().catch((audioInitError) => {
             if (!IS_TEST_ENV) {
                 console.warn('Audio context suspended; will retry after the first user interaction.', audioInitError);
             }

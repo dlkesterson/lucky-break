@@ -49,7 +49,3 @@ src/
 ```
 
 Tests live under `tests/` (unit, integration, CLI). Coverage is enforced in CI; please add or update tests when you touch code.
-
-## Contributing
-
-Work is guided by `plan.md`, which tracks open milestones and completed tasks. Pick the top-priority item, implement it with tests and lint passing, then mark it `DONE [YYYY-MM-DD]` in the plan. Open a pull request or share diffs once everything is green.
