@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { spinWheel } from 'game/rewards';
 import { PowerUpManager } from 'util/power-ups';
+import { gameConfig } from 'config/game';
 
-const TOTAL_WEIGHT = 1 + 0.9 + 0.8;
+const segments = gameConfig.rewards.wheelSegments;
+const TOTAL_WEIGHT = segments.reduce((sum, segment) => sum + segment.weight, 0);
 
-const rollForSegment = (targetWeight: number): number => {
-    return targetWeight / TOTAL_WEIGHT;
+const rollForSegment = (type: typeof segments[number]['type']): number => {
+    let cumulative = 0;
+    for (const segment of segments) {
+        const lowerBound = cumulative;
+        cumulative += segment.weight;
+        if (segment.type === type) {
+            const midpoint = lowerBound + segment.weight * 0.5;
+            return midpoint / TOTAL_WEIGHT;
+        }
+    }
+
+    throw new Error(`Unknown reward segment type: ${type}`);
 };
 
 describe('Lucky Draw Reward Wheel', () => {
@@ -24,7 +36,7 @@ describe('Lucky Draw Reward Wheel', () => {
     });
 
     it('applies double points multiplier and resets after the reward duration elapses', () => {
-        const reward = spinWheel(() => rollForSegment(1.2));
+        const reward = spinWheel(() => rollForSegment('double-points'));
         expect(reward.type).toBe('double-points');
         if (reward.type !== 'double-points') {
             throw new Error('Expected double-points reward');
@@ -52,7 +64,7 @@ describe('Lucky Draw Reward Wheel', () => {
     });
 
     it('toggles ghost bricks into sensor mode for the reward duration and restores them afterwards', () => {
-        const reward = spinWheel(() => rollForSegment(2.4));
+        const reward = spinWheel(() => rollForSegment('ghost-brick'));
         expect(reward.type).toBe('ghost-brick');
         if (reward.type !== 'ghost-brick') {
             throw new Error('Expected ghost-brick reward');
@@ -102,5 +114,39 @@ describe('Lucky Draw Reward Wheel', () => {
 
         tick(0.5);
         expect(bricks.some((brick) => brick.isSensor)).toBe(false);
+    });
+    it('charges and releases the laser paddle reward with repeat fire support', () => {
+        const reward = spinWheel(() => rollForSegment('laser-paddle'));
+        expect(reward.type).toBe('laser-paddle');
+        if (reward.type !== 'laser-paddle') {
+            throw new Error('Expected laser-paddle reward');
+        }
+
+        let timeSinceFire = reward.cooldown;
+        let shotsRemaining = reward.pierceCount;
+
+        const canFire = (): boolean => timeSinceFire >= reward.cooldown && shotsRemaining > 0;
+        const fire = () => {
+            if (!canFire()) {
+                return false;
+            }
+            shotsRemaining -= 1;
+            timeSinceFire = 0;
+            return true;
+        };
+
+        expect(fire()).toBe(true);
+        expect(canFire()).toBe(false);
+
+        const advance = (deltaSeconds: number) => {
+            timeSinceFire = Math.min(reward.cooldown, timeSinceFire + deltaSeconds);
+        };
+
+        advance(reward.cooldown * 0.5);
+        expect(fire()).toBe(false);
+
+        advance(reward.cooldown * 0.5);
+        expect(fire()).toBe(true);
+        expect(shotsRemaining).toBeGreaterThanOrEqual(0);
     });
 });

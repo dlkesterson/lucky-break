@@ -1,8 +1,10 @@
 import { Container, Graphics, Text } from 'pixi.js';
+import type { TextStyleOptions } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
 import type { HighScoreEntry } from 'util/high-scores';
+import { getSettings, subscribeSettings, updateSettings } from 'util/settings';
 import {
     GameTheme,
     getActiveThemeName,
@@ -37,11 +39,13 @@ export const createMainMenuScene = (
     let scoreboardHeading: Text | null = null;
     let title: Text | null = null;
     let themeToggleLabel: Text | null = null;
+    let performanceToggleLabel: Text | null = null;
     let overlay: Graphics | null = null;
     let panel: Graphics | null = null;
     let columnDivider: Graphics | null = null;
     let elapsed = 0;
     let unsubscribeTheme: (() => void) | null = null;
+    let unsubscribeSettings: (() => void) | null = null;
     let layoutMode: 'stacked' | 'columns' = 'stacked';
 
     interface ColumnDividerMetrics {
@@ -62,6 +66,26 @@ export const createMainMenuScene = (
 
     let layout: LayoutMetrics | null = null;
     let columnDividerMetrics: ColumnDividerMetrics | null = null;
+
+    const createTextNode = (text: string, style: TextStyleOptions): Text => {
+        return new Text({ text, style });
+    };
+
+    const formatPerformanceLabel = (enabled: boolean): string => `PERFORMANCE MODE: ${enabled ? 'ON' : 'OFF'} (CLICK TO TOGGLE)`;
+
+    let currentSettings = getSettings();
+
+    const refreshPerformanceLabel = () => {
+        const label = performanceToggleLabel;
+        if (label) {
+            label.text = formatPerformanceLabel(currentSettings.performance);
+        }
+    };
+
+    const handlePerformanceToggle = (event: { stopPropagation?: () => void }) => {
+        event.stopPropagation?.();
+        updateSettings({ performance: !currentSettings.performance });
+    };
 
     const handleStart = () => {
         const result = options.onStart();
@@ -174,6 +198,15 @@ export const createMainMenuScene = (
             };
         }
 
+        if (performanceToggleLabel) {
+            performanceToggleLabel.style = {
+                ...performanceToggleLabel.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+            refreshPerformanceLabel();
+        }
+
         if (columnDivider && columnDividerMetrics && layoutMode === 'columns') {
             columnDivider.clear();
             columnDivider.rect(
@@ -195,7 +228,7 @@ export const createMainMenuScene = (
     };
 
     const updateLayout = () => {
-        if (!layout || !title || !promptLabel || !themeToggleLabel) {
+        if (!layout || !title || !promptLabel || !themeToggleLabel || !performanceToggleLabel) {
             return;
         }
 
@@ -295,8 +328,16 @@ export const createMainMenuScene = (
             }
         }
 
-        themeToggleLabel.anchor.set(0.5, 1);
-        themeToggleLabel.position.set(contentCenterX, panelY + panelHeight - Math.max(24, panelPadding / 2));
+        const footerBaseline = panelY + panelHeight - Math.max(24, panelPadding / 2);
+        const footerSpacing = Math.max(16, panelPadding / 3);
+        const themeLabel = themeToggleLabel;
+        const perfLabel = performanceToggleLabel;
+
+        themeLabel.anchor.set(0.5, 1);
+        themeLabel.position.set(contentCenterX, footerBaseline);
+
+        perfLabel.anchor.set(0.5, 1);
+        perfLabel.position.set(contentCenterX, footerBaseline - footerSpacing - themeLabel.height);
 
         if (columnDivider && columnDividerMetrics && layoutMode === 'columns') {
             columnDivider.clear();
@@ -333,37 +374,24 @@ export const createMainMenuScene = (
 
             const displayTitle = (options.title ?? DEFAULT_TITLE).toUpperCase();
 
-            title = new Text({
-                text: displayTitle,
-                style: {
-                    fill: hexToNumber(GameTheme.hud.accent),
-                    fontFamily: GameTheme.font,
-                    fontSize: 96,
-                    fontWeight: '900',
-                    align: 'center',
-                    letterSpacing: 2,
-                    dropShadow: true,
-                    dropShadowAlpha: 0.55,
-                    dropShadowAngle: Math.PI / 2,
-                    dropShadowBlur: 8,
-                    dropShadowDistance: 8,
-                },
+            title = createTextNode(displayTitle, {
+                fill: hexToNumber(GameTheme.hud.accent),
+                fontFamily: GameTheme.font,
+                fontSize: 96,
+                fontWeight: '900',
+                align: 'center',
+                letterSpacing: 2,
+                dropShadow: true,
             });
             title.anchor.set(0.5);
 
-            promptLabel = new Text({
-                text: (options.prompt ?? DEFAULT_PROMPT).toUpperCase(),
-                style: {
-                    fill: hexToNumber(GameTheme.accents.powerUp),
-                    fontFamily: GameTheme.font,
-                    fontSize: 40,
-                    align: 'center',
-                    letterSpacing: 1,
-                    dropShadow: true,
-                    dropShadowAlpha: 0.5,
-                    dropShadowBlur: 6,
-                    dropShadowDistance: 4,
-                },
+            promptLabel = createTextNode((options.prompt ?? DEFAULT_PROMPT).toUpperCase(), {
+                fill: hexToNumber(GameTheme.accents.powerUp),
+                fontFamily: GameTheme.font,
+                fontSize: 40,
+                align: 'center',
+                letterSpacing: 1,
+                dropShadow: true,
             });
             promptLabel.anchor.set(0.5);
 
@@ -374,29 +402,23 @@ export const createMainMenuScene = (
                 'Press SHIFT+C any time for high-contrast colors.',
             ];
 
-            helpHeading = new Text({
-                text: 'HOW TO PLAY',
-                style: {
-                    fill: hexToNumber(GameTheme.hud.accent),
-                    fontFamily: GameTheme.font,
-                    fontSize: 28,
-                    fontWeight: '700',
-                    align: 'center',
-                    letterSpacing: 1,
-                },
+            helpHeading = createTextNode('HOW TO PLAY', {
+                fill: hexToNumber(GameTheme.hud.accent),
+                fontFamily: GameTheme.font,
+                fontSize: 28,
+                fontWeight: '700',
+                align: 'center',
+                letterSpacing: 1,
             });
 
-            helpLabel = new Text({
-                text: helpLines.map((line) => `• ${line}`).join('\n'),
-                style: {
-                    fill: hexToNumber(GameTheme.hud.textSecondary),
-                    fontFamily: GameTheme.monoFont,
-                    fontSize: 22,
-                    align: 'left',
-                    lineHeight: 32,
-                    wordWrap: true,
-                    wordWrapWidth: panelWidth * 0.7,
-                },
+            helpLabel = createTextNode(helpLines.map((line) => `• ${line}`).join('\n'), {
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+                fontSize: 22,
+                align: 'left',
+                lineHeight: 32,
+                wordWrap: true,
+                wordWrapWidth: panelWidth * 0.7,
             });
 
             const highScores = options.highScoresProvider?.() ?? [];
@@ -413,45 +435,54 @@ export const createMainMenuScene = (
                         return `${rank} ${paddedScore} — ${roundLabel} ${name}`;
                     });
 
-            scoreboardHeading = new Text({
-                text: 'HIGH SCORES',
-                style: {
-                    fill: hexToNumber(GameTheme.hud.accent),
-                    fontFamily: GameTheme.font,
-                    fontSize: 28,
-                    fontWeight: '700',
-                    align: 'center',
-                    letterSpacing: 1,
-                },
+            scoreboardHeading = createTextNode('HIGH SCORES', {
+                fill: hexToNumber(GameTheme.hud.accent),
+                fontFamily: GameTheme.font,
+                fontSize: 28,
+                fontWeight: '700',
+                align: 'center',
+                letterSpacing: 1,
             });
 
-            scoreboardLabel = new Text({
-                text: scoreboardLines.join('\n'),
-                style: {
-                    fill: hexToNumber(GameTheme.hud.textPrimary),
-                    fontFamily: GameTheme.monoFont,
-                    fontSize: 20,
-                    align: 'left',
-                    lineHeight: 28,
-                    wordWrap: true,
-                    wordWrapWidth: panelWidth * 0.7,
-                },
+            scoreboardLabel = createTextNode(scoreboardLines.join('\n'), {
+                fill: hexToNumber(GameTheme.hud.textPrimary),
+                fontFamily: GameTheme.monoFont,
+                fontSize: 20,
+                align: 'left',
+                lineHeight: 28,
+                wordWrap: true,
+                wordWrapWidth: panelWidth * 0.7,
             });
 
-            themeToggleLabel = new Text({
-                text: formatThemeLabel(getActiveThemeName()),
-                style: {
-                    fill: hexToNumber(GameTheme.hud.textSecondary),
-                    fontFamily: GameTheme.monoFont,
-                    fontSize: 18,
-                    align: 'center',
-                },
+            themeToggleLabel = createTextNode(formatThemeLabel(getActiveThemeName()), {
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+                fontSize: 18,
+                align: 'center',
             });
             themeToggleLabel.anchor.set(0.5, 1);
             themeToggleLabel.position.set(width / 2, panelY + panelHeight - 24);
             themeToggleLabel.eventMode = 'static';
             themeToggleLabel.cursor = 'pointer';
             themeToggleLabel.on('pointertap', handleThemeToggle);
+
+            performanceToggleLabel = createTextNode(formatPerformanceLabel(currentSettings.performance), {
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+                fontSize: 18,
+                align: 'center',
+            });
+            performanceToggleLabel.anchor.set(0.5, 1);
+            performanceToggleLabel.position.set(width / 2, panelY + panelHeight - 60);
+            performanceToggleLabel.eventMode = 'static';
+            performanceToggleLabel.cursor = 'pointer';
+            performanceToggleLabel.on('pointertap', handlePerformanceToggle);
+
+            unsubscribeSettings = subscribeSettings((nextSettings) => {
+                currentSettings = nextSettings;
+                refreshPerformanceLabel();
+                context.renderStageSoon();
+            });
 
             container.addChild(
                 overlay,
@@ -463,6 +494,7 @@ export const createMainMenuScene = (
                 helpLabel,
                 scoreboardHeading,
                 scoreboardLabel,
+                performanceToggleLabel,
                 themeToggleLabel,
             );
             context.addToLayer('hud', container);
@@ -500,6 +532,8 @@ export const createMainMenuScene = (
             title = null;
             themeToggleLabel?.off('pointertap', handleThemeToggle);
             themeToggleLabel = null;
+            performanceToggleLabel?.off('pointertap', handlePerformanceToggle);
+            performanceToggleLabel = null;
             overlay = null;
             panel = null;
             columnDivider = null;
@@ -507,6 +541,8 @@ export const createMainMenuScene = (
             columnDividerMetrics = null;
             unsubscribeTheme?.();
             unsubscribeTheme = null;
+            unsubscribeSettings?.();
+            unsubscribeSettings = null;
             pushIdleAudioState();
             emitSceneEvent('exit');
             context.renderStageSoon();

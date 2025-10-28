@@ -30,6 +30,7 @@ const REWARD_TYPES: readonly RewardType[] = [
     'multi-ball',
     'slow-time',
     'ghost-brick',
+    'laser-paddle',
 ];
 
 const parseRewardType = (value: string | undefined): RewardType | undefined => {

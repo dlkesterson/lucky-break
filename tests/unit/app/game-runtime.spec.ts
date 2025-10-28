@@ -853,9 +853,14 @@ vi.mock('render/playfield-visuals', () => ({
             addChild: vi.fn(),
             removeChild: vi.fn(),
         },
-        tiling: {
-            tilePosition: { x: 0, y: 0 },
+        tilingSprite: null,
+        overlay: {
+            removeFromParent: vi.fn(),
         },
+        setTint: vi.fn(),
+        setParallaxTarget: vi.fn(),
+        applyBeatPulse: vi.fn(),
+        update: vi.fn(),
     })),
 }));
 
@@ -1426,7 +1431,7 @@ describe('game-runtime internal helpers', () => {
                 max: { x: 14, y: 18 },
             },
         } as const;
-    expect(internalHelpers.resolveBallRadius(toBody(boundsBody))).toBe(6);
+        expect(internalHelpers.resolveBallRadius(toBody(boundsBody))).toBe(6);
 
         const fallbackBody = { bounds: { min: { x: NaN, y: NaN }, max: { x: NaN, y: NaN } } } as const;
         expect(internalHelpers.resolveBallRadius(toBody(fallbackBody))).toBe(10);

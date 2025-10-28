@@ -40,6 +40,18 @@
       "url": "./eurobas.wav",
       "category": "sfx",
       "gain": 0.8
+    },
+    {
+      "id": "laser-fire",
+      "url": "./distorto.wav",
+      "category": "sfx",
+      "gain": 0.7
+    },
+    {
+      "id": "laser-hit",
+      "url": "./smooth-tone.wav",
+      "category": "sfx",
+      "gain": 0.68
     }
   ]
 }

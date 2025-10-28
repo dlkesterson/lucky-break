@@ -24,7 +24,15 @@ export interface BallTrailEffect {
         readonly sources: readonly BallTrailSource[];
     }): void;
     applyTheme(theme: BallTrailTheme): void;
+    configure(options: BallTrailEffectOptions): void;
+    reset(): void;
     destroy(): void;
+}
+
+export interface BallTrailEffectOptions {
+    readonly maxPoints?: number;
+    readonly fadeDuration?: number;
+    readonly enabled?: boolean;
 }
 
 interface TrailPoint {
@@ -42,8 +50,8 @@ interface TrailEntry {
     active: boolean;
 }
 
-const MAX_POINTS = 28;
-const FADE_DURATION = 0.65;
+const DEFAULT_MAX_POINTS = 28;
+const DEFAULT_FADE_DURATION = 0.65;
 const INACTIVE_FADE_ACCELERATION = 1.4;
 
 const createTrailGraphic = (): Graphics => {
@@ -60,6 +68,9 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
 
     const trails = new Map<number, TrailEntry>();
     let activeTheme: BallTrailTheme = { ...theme };
+    let maxPoints = DEFAULT_MAX_POINTS;
+    let fadeDuration = DEFAULT_FADE_DURATION;
+    let enabled = true;
 
     const ensureEntry = (source: BallTrailSource): TrailEntry => {
         const current = trails.get(source.id);
@@ -100,8 +111,8 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         }
 
         entry.points.unshift({ x: position.x, y: position.y, age: 0 });
-        if (entry.points.length > MAX_POINTS) {
-            entry.points.length = MAX_POINTS;
+        if (entry.points.length > maxPoints) {
+            entry.points.length = maxPoints;
         }
     };
 
@@ -125,7 +136,7 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
             const from = points[index];
             const to = points[index - 1];
             const t = points.length <= 1 ? 1 : 1 - index / (points.length - 1);
-            const ageFactor = clampUnit(1 - to.age / FADE_DURATION);
+            const ageFactor = clampUnit(1 - to.age / fadeDuration);
             const width = lerp(baseWidth * 0.4, baseWidth, t);
             const alpha = clampUnit(lerp(tailAlpha, headAlpha, t) * ageFactor);
             if (alpha <= 0.01) {
@@ -155,17 +166,19 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
             entry.active = false;
         });
 
-        sources.forEach((source) => {
-            const entry = ensureEntry(source);
-            pushPoint(entry, source.position);
-        });
+        if (enabled) {
+            sources.forEach((source) => {
+                const entry = ensureEntry(source);
+                pushPoint(entry, source.position);
+            });
+        }
 
         trails.forEach((entry, id) => {
             const fadeAcceleration = entry.active ? 1 : INACTIVE_FADE_ACCELERATION;
             entry.points.forEach((point) => {
                 point.age += deltaSeconds * fadeAcceleration;
             });
-            entry.points = entry.points.filter((point) => point.age <= FADE_DURATION);
+            entry.points = entry.points.filter((point) => point.age <= fadeDuration);
 
             if (!entry.active && entry.points.length === 0) {
                 removeEntry(id);
@@ -181,6 +194,38 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         trails.forEach((entry) => entry.graphic.clear());
     };
 
+    const configure: BallTrailEffect['configure'] = (options) => {
+        if (options.maxPoints !== undefined) {
+            const candidate = Math.max(4, Math.floor(options.maxPoints));
+            maxPoints = Number.isFinite(candidate) ? candidate : maxPoints;
+            trails.forEach((entry) => {
+                if (entry.points.length > maxPoints) {
+                    entry.points.length = maxPoints;
+                }
+            });
+        }
+        if (options.fadeDuration !== undefined) {
+            const candidate = Math.max(0.1, options.fadeDuration);
+            fadeDuration = Number.isFinite(candidate) ? candidate : fadeDuration;
+        }
+        if (options.enabled !== undefined) {
+            enabled = Boolean(options.enabled);
+            if (!enabled) {
+                trails.forEach((entry) => {
+                    entry.active = false;
+                });
+            }
+        }
+    };
+
+    const reset: BallTrailEffect['reset'] = () => {
+        trails.forEach((entry) => {
+            entry.points.length = 0;
+            entry.graphic.clear();
+            entry.active = false;
+        });
+    };
+
     const destroy: BallTrailEffect['destroy'] = () => {
         for (const id of Array.from(trails.keys())) {
             removeEntry(id);
@@ -194,6 +239,8 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         container,
         update,
         applyTheme,
+        configure,
+        reset,
         destroy,
     };
 };

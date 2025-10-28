@@ -1,4 +1,4 @@
-import { Events, Vector as MatterVector, Body as MatterBody } from 'physics/matter';
+import { Events, Vector as MatterVector, Body as MatterBody, Bodies } from 'physics/matter';
 import type { IEventCollision, MatterEngine as Engine, MatterBody as Body } from 'physics/matter';
 import { calculateReflectionData, reflectOffPaddle } from 'util/paddle-reflection';
 import { getMomentumMetrics } from 'util/scoring';
@@ -22,6 +22,13 @@ import type { RuntimeScoringHandle } from './scoring';
 export interface CollisionRuntime {
     wire(): void;
     unwire(): void;
+    applyLaserStrike(options: LaserStrikeOptions): void;
+}
+
+export interface LaserStrikeOptions {
+    readonly brick: Body;
+    readonly origin: { readonly x: number; readonly y: number };
+    readonly impactVelocity?: number;
 }
 
 type SessionSnapshot = ReturnType<GameSessionManager['snapshot']>;
@@ -720,6 +727,20 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
         });
     };
 
+    const applyLaserStrike: CollisionRuntime['applyLaserStrike'] = ({ brick, origin, impactVelocity }) => {
+        const sessionSnapshot = ctx.session.snapshot();
+        const frameTimestampMs = ctx.functions.getFrameTimestampMs();
+        const sessionId = sessionSnapshot.sessionId;
+        const radius = Math.max(4, ctx.ball.radius * 0.9);
+        const syntheticBall = Bodies.circle(origin.x, origin.y, radius, {
+            label: 'ball',
+            isSensor: true,
+        });
+        const velocity = Math.max(0, impactVelocity ?? ctx.functions.getCurrentMaxSpeed());
+        MatterBody.setVelocity(syntheticBall, { x: 0, y: -velocity });
+        handleBallBrickCollision(deps, ctx, sessionSnapshot, frameTimestampMs, sessionId, brick, syntheticBall);
+    };
+
     return {
         wire: () => {
             Events.on(engine, 'collisionStart', handleCollisionStart);
@@ -732,5 +753,6 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
                 candidate.off(engine, 'collisionStart', handleCollisionStart);
             }
         },
+        applyLaserStrike,
     } satisfies CollisionRuntime;
 };

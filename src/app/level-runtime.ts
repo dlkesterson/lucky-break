@@ -580,6 +580,7 @@ export const createLevelRuntime = ({
             'ball-speed': 0xffaa33,
             'multi-ball': 0xff66cc,
             'sticky-paddle': 0x66ff99,
+            laser: 0xff3366,
         };
 
         const visual = new Graphics();

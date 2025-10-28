@@ -104,7 +104,7 @@ export const createEffectRegistry = (): EffectRegistry => {
 export { createAudioWaveBackdrop } from './audio-waves';
 export type { AudioWaveBackdrop, AudioWaveBackdropOptions, AudioWaveBumpOptions, AudioWaveKind } from './audio-waves';
 export { createBallTrailsEffect } from './ball-trails';
-export type { BallTrailEffect, BallTrailSource, BallTrailTheme } from './ball-trails';
+export type { BallTrailEffect, BallTrailSource, BallTrailTheme, BallTrailEffectOptions } from './ball-trails';
 export { createBrickParticleSystem } from './brick-particles';
 export type { BrickParticleSystem, BrickParticleSystemOptions } from './brick-particles';
 export { createComboBloomEffect } from './combo-bloom';
@@ -121,3 +121,5 @@ export { createRoundCountdown } from './round-countdown';
 export type { RoundCountdownDisplay } from './round-countdown';
 export { createSpeedRing } from './speed-ring';
 export type { SpeedRingHandle, SpeedRingOptions, SpeedRingPalette, SpeedRingUpdate } from './speed-ring';
+export { createLaserEffect } from './laser';
+export type { LaserEffect, LaserEffectOptions, LaserFirePayload, LaserBeamPayload } from './laser';

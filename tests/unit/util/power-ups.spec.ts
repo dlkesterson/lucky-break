@@ -22,7 +22,8 @@ describe('power-up helpers', () => {
     });
 
     it('selects random type from deterministic index', () => {
-        expect(selectRandomPowerUpType(() => 0.99)).toBe('sticky-paddle');
+        expect(selectRandomPowerUpType(() => 0.99)).toBe('laser');
+        expect(selectRandomPowerUpType(() => 0.72)).toBe('sticky-paddle');
         expect(selectRandomPowerUpType(() => 0.36)).toBe('ball-speed');
     });
 

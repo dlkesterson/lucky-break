@@ -13,7 +13,7 @@ import {
     type GameThemeDefinition,
 } from 'render/theme';
 import { createPhysicsWorld } from 'physics/world';
-import { createGameLoop } from '../loop';
+import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
 import type { LifeLostCause } from '../events';
 import { createAchievementManager, type AchievementUnlock } from '../achievements';
@@ -51,7 +51,7 @@ import {
 } from 'physics/matter';
 import type { MatterBody as Body } from 'physics/matter';
 import { Transport } from 'tone';
-import type { MusicState } from 'audio/music-director';
+import type { MusicState, MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
 import { createMidiEngine, type MidiEngine } from 'audio/midi-engine';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from '../replay-buffer';
@@ -60,7 +60,7 @@ import { createMultiBallController, type MultiBallColors } from '../multi-ball-c
 import { createLevelRuntime, type BrickLayoutBounds } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
 import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
-import { spinWheel, createReward, type RewardType } from 'game/rewards';
+import { spinWheel, createReward, type RewardType, type LaserPaddleReward } from 'game/rewards';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { rootLogger } from 'util/log';
 import { getHighScores, recordHighScore } from 'util/high-scores';
@@ -76,6 +76,8 @@ import { createRuntimeInput, type RuntimeInput } from './input';
 import { createRuntimeDebug, type RuntimeDebug } from './debug';
 import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
 import type { GameplayRuntimeState } from './types';
+import { getSettings, subscribeSettings } from 'util/settings';
+import { createLaserController, type LaserController } from './laser';
 
 type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
 import {
@@ -350,6 +352,26 @@ export const createRuntimeFacade = async ({
         powerUp: toColorNumber(GameTheme.accents.powerUp),
     };
 
+    let visuals: RuntimeVisuals | null = null;
+
+    const performanceLogger = typeof runtimeLogger.child === 'function'
+        ? runtimeLogger.child('performance')
+        : runtimeLogger;
+    let userPerformancePreference = getSettings().performance;
+    let dynamicPerformanceMode = false;
+    let desiredVisualProfile: 'quality' | 'performance' = userPerformancePreference ? 'performance' : 'quality';
+    let unsubscribeSettings: (() => void) | null = null;
+
+    const applyVisualPerformanceProfile = () => {
+        desiredVisualProfile = userPerformancePreference || dynamicPerformanceMode ? 'performance' : 'quality';
+        visuals?.setEffectProfile(desiredVisualProfile);
+    };
+
+    unsubscribeSettings = subscribeSettings((snapshot) => {
+        userPerformancePreference = snapshot.performance;
+        applyVisualPerformanceProfile();
+    });
+
     const gambleTintArmed = toColorNumber(GAMBLE_TINT_ARMED);
     const gambleTintPrimed = toColorNumber(GAMBLE_TINT_PRIMED);
     const gambleManager = createGambleBrickManager({
@@ -380,7 +402,6 @@ export const createRuntimeFacade = async ({
     });
 
     let ballHueShift = 0;
-    let visuals: RuntimeVisuals | null = null;
     let gambleHighlight: GambleHighlightEffect | null = null;
     let gambleCountdownLastSecond: number | null = null;
     let runtimeDebug: RuntimeDebug | null = null;
@@ -413,6 +434,7 @@ export const createRuntimeFacade = async ({
         backgroundAccentIndex %= backgroundAccentPalette.length;
         backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex] ?? themeAccents.combo;
         bloomAccentColor = backgroundAccentColor;
+        visuals?.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
     };
 
     rebuildBackgroundPalette();
@@ -421,6 +443,7 @@ export const createRuntimeFacade = async ({
         { code: 'Digit2', type: 'ball-speed' },
         { code: 'Digit3', type: 'multi-ball' },
         { code: 'Digit4', type: 'sticky-paddle' },
+        { code: 'Digit5', type: 'laser' },
     ];
     let unsubscribeTheme: (() => void) | null = null;
 
@@ -551,6 +574,54 @@ export const createRuntimeFacade = async ({
         currentLaunchSpeed: BALL_LAUNCH_SPEED,
     };
 
+    const LOW_FPS_THRESHOLD = 45;
+    const RECOVER_FPS_THRESHOLD = 55;
+    const LOW_FPS_TRIGGER_MS = 4_000;
+    const HIGH_FPS_RECOVER_MS = 6_000;
+
+    let accumulatedLowFpsMs = 0;
+    let accumulatedHighFpsMs = 0;
+
+    const handleFrameMetrics: LoopOptions['onFrameMetrics'] = ({ rawDeltaMs }) => {
+        if (!Number.isFinite(rawDeltaMs) || rawDeltaMs <= 0) {
+            return;
+        }
+
+        const clampedDelta = Math.max(0, rawDeltaMs);
+        const fps = clampedDelta > 0 ? 1000 / clampedDelta : Number.POSITIVE_INFINITY;
+
+        if (fps < LOW_FPS_THRESHOLD) {
+            accumulatedLowFpsMs = Math.min(LOW_FPS_TRIGGER_MS, accumulatedLowFpsMs + clampedDelta);
+            accumulatedHighFpsMs = Math.max(0, accumulatedHighFpsMs - clampedDelta * 0.5);
+        } else if (fps >= RECOVER_FPS_THRESHOLD) {
+            accumulatedHighFpsMs = Math.min(HIGH_FPS_RECOVER_MS, accumulatedHighFpsMs + clampedDelta);
+            accumulatedLowFpsMs = Math.max(0, accumulatedLowFpsMs - clampedDelta);
+        } else {
+            accumulatedLowFpsMs = Math.max(0, accumulatedLowFpsMs - clampedDelta * 0.5);
+            accumulatedHighFpsMs = Math.max(0, accumulatedHighFpsMs - clampedDelta);
+        }
+
+        if (!dynamicPerformanceMode && accumulatedLowFpsMs >= LOW_FPS_TRIGGER_MS) {
+            dynamicPerformanceMode = true;
+            accumulatedHighFpsMs = 0;
+            performanceLogger.info('Enabling performance profile due to sustained low FPS', {
+                fps: Number(fps.toFixed(1)),
+            });
+            applyVisualPerformanceProfile();
+        } else if (
+            dynamicPerformanceMode &&
+            !userPerformancePreference &&
+            accumulatedHighFpsMs >= HIGH_FPS_RECOVER_MS
+        ) {
+            dynamicPerformanceMode = false;
+            accumulatedLowFpsMs = 0;
+            performanceLogger.info('Restoring quality profile after sustained recovery', {
+                fps: Number(fps.toFixed(1)),
+            });
+            applyVisualPerformanceProfile();
+        }
+    };
+
     const sessionNow = (): number => Math.max(0, Math.floor(runtimeState.sessionElapsedSeconds * 1000));
 
     const foreshadowScale = deriveForeshadowScale(random.seed());
@@ -672,6 +743,7 @@ export const createRuntimeFacade = async ({
 
     let loop: ReturnType<typeof createGameLoop> | null = null;
     let collisionRuntime: CollisionRuntime | null = null;
+    let laserController: LaserController | null = null;
     let isPaused = false;
 
     const visualBodies = new Map<Body, Container>();
@@ -1053,12 +1125,18 @@ export const createRuntimeFacade = async ({
             backgroundAccentPalette.length;
         backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex];
         bloomAccentColor = backgroundAccentColor;
+        visuals?.playfieldBackground?.setTint(backgroundAccentColor);
     };
 
-    const handleMusicMeasure = () => {
+    const handleMusicMeasure = (_event: MusicMeasureEvent) => {
+        void _event;
         applyBackgroundAccent(1);
     };
-    musicDirector.setBeatCallback(null);
+    const handleMusicBeat = (event: MusicBeatEvent) => {
+        const strength = event.isDownbeat ? 0.85 : 0.45;
+        visuals?.playfieldBackground?.applyBeatPulse(strength);
+    };
+    musicDirector.setBeatCallback(handleMusicBeat);
     musicDirector.setMeasureCallback(handleMusicMeasure);
 
     const bounds = physics.factory.bounds();
@@ -1106,6 +1184,8 @@ export const createRuntimeFacade = async ({
         ballMaxSpeed: BALL_MAX_SPEED,
     });
     visuals = createdVisuals;
+    createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
+    visuals.setEffectProfile(desiredVisualProfile);
     gambleHighlight = createGambleHighlightEffect();
 
     const comboRing = createdVisuals.comboRing;
@@ -1199,6 +1279,14 @@ export const createRuntimeFacade = async ({
         multiBallController.spawnExtraBalls({ currentLaunchSpeed: runtimeState.currentLaunchSpeed, requestedCount });
     };
 
+    let pendingLaserActivation: LaserPaddleReward | null = null;
+    let enableLaserRewardImpl: (reward: LaserPaddleReward) => void = (reward) => {
+        pendingLaserActivation = reward;
+    };
+    let disableLaserRewardImpl: () => void = () => {
+        pendingLaserActivation = null;
+    };
+
     const powerups = createRuntimePowerups({
         logger: runtimeLogger,
         multiBallController,
@@ -1208,6 +1296,8 @@ export const createRuntimeFacade = async ({
         resetGhostBricks,
         applyGhostBrickReward,
         getGhostBrickRemainingDuration,
+        enableLaserReward: (reward) => enableLaserRewardImpl(reward),
+        disableLaserReward: () => disableLaserRewardImpl(),
         defaults: {
             paddleWidthMultiplier: DEFAULT_PADDLE_WIDTH_MULTIPLIER,
             multiBallCapacity: MULTI_BALL_CAPACITY,
@@ -1341,9 +1431,9 @@ export const createRuntimeFacade = async ({
     let lastComboCount = 0;
 
     const refreshHud = () => {
-    const snapshot = session.snapshot();
-    const gambleStatus = gambleManager.snapshot();
-    const hudView = buildHudScoreboard(snapshot, gambleStatus);
+        const snapshot = session.snapshot();
+        const gambleStatus = gambleManager.snapshot();
+        const hudView = buildHudScoreboard(snapshot, gambleStatus);
 
         const prompts = (() => {
             const autoState = roundMachine.getAutoCompleteState();
@@ -1837,6 +1927,40 @@ export const createRuntimeFacade = async ({
     });
     collisionRuntime.wire();
 
+    laserController = createLaserController({
+        collisionRuntime,
+        visuals,
+        levelRuntime,
+        bus,
+        getSessionId: () => session.snapshot().sessionId,
+        computeScheduledAudioTime,
+        scheduleVisualEffect,
+        playfieldTop: 0,
+        getPaddleState: () => ({
+            center: paddleController.getPaddleCenter(paddle),
+            width: paddle.width,
+            height: paddle.height,
+        }),
+    });
+
+    enableLaserRewardImpl = (reward) => {
+        if (laserController) {
+            laserController.activate(reward);
+        } else {
+            pendingLaserActivation = reward;
+        }
+    };
+
+    disableLaserRewardImpl = () => {
+        laserController?.deactivate();
+        pendingLaserActivation = null;
+    };
+
+    if (pendingLaserActivation && laserController) {
+        laserController.activate(pendingLaserActivation);
+        pendingLaserActivation = null;
+    }
+
     const runGameplayUpdate = (deltaSeconds: number): void => {
         const audioTimeSeconds = scheduler.now();
         if (hasPerformanceNow) {
@@ -1853,6 +1977,7 @@ export const createRuntimeFacade = async ({
         runtimeState.frameTimestampMs = sessionNow();
 
         powerups.tick(deltaSeconds);
+        laserController?.update(deltaSeconds);
 
         const slowTimeScale = powerups.getSlowTimeScale();
         const slowTimeRemaining = powerups.getSlowTimeRemaining();
@@ -2146,6 +2271,26 @@ export const createRuntimeFacade = async ({
             accentColor: bloomAccentColor,
         });
 
+        const backgroundLayer = visuals?.playfieldBackground;
+        if (backgroundLayer) {
+            const comboTint = mixColors(backgroundAccentColor, themeBallColors.aura, Math.min(0.45, comboEnergy * 0.35));
+            const accentMix = clampUnit(0.2 + comboEnergy * 0.5);
+            backgroundLayer.setTint(comboTint, { accentMix });
+
+            const normalizedBallX = PLAYFIELD_WIDTH > 0
+                ? clampUnit(ball.physicsBody.position.x / PLAYFIELD_WIDTH)
+                : 0.5;
+            const normalizedBallY = PLAYFIELD_HEIGHT > 0
+                ? clampUnit(ball.physicsBody.position.y / PLAYFIELD_HEIGHT)
+                : 0.5;
+            const parallaxIntensity = clampUnit(0.3 + comboEnergy * 0.5);
+            backgroundLayer.setParallaxTarget(
+                { x: normalizedBallX, y: normalizedBallY },
+                { intensity: parallaxIntensity },
+            );
+            backgroundLayer.update(deltaSeconds);
+        }
+
         const ballTrailsEffect = visuals?.ballTrailsEffect;
         const ballTrailSources = visuals?.ballTrailSources;
         if (ballTrailsEffect && ballTrailSources) {
@@ -2218,6 +2363,9 @@ export const createRuntimeFacade = async ({
         () => {
             refreshHud();
             stage.app.render();
+        },
+        {
+            onFrameMetrics: handleFrameMetrics,
         },
     );
 
@@ -2400,17 +2548,23 @@ export const createRuntimeFacade = async ({
             }
             pendingVisualTimers.clear();
         }
+        unsubscribeSettings?.();
+        unsubscribeSettings = null;
         unsubscribeTheme?.();
         unsubscribeTheme = null;
         visuals?.dispose();
         visuals = null;
-    gambleHighlight?.dispose();
-    gambleHighlight = null;
+        gambleHighlight?.dispose();
+        gambleHighlight = null;
         musicDirector.setBeatCallback(null);
         musicDirector.setMeasureCallback(null);
         runtimeDebug?.resetVisibility();
         runtimeDebug?.updateOverlays({ input: null, physics: null });
         runtimeState.lastPhysicsDebugState = null;
+        dynamicPerformanceMode = false;
+        accumulatedLowFpsMs = 0;
+        accumulatedHighFpsMs = 0;
+        applyVisualPerformanceProfile();
     };
 
     const lifecycle = createRuntimeLifecycle();
@@ -2440,6 +2594,10 @@ export const createRuntimeFacade = async ({
     lifecycle.register(() => {
         collisionRuntime?.unwire();
         collisionRuntime = null;
+    });
+    lifecycle.register(() => {
+        laserController?.dispose();
+        laserController = null;
     });
 
     lifecycle.install();

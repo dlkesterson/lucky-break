@@ -27,6 +27,7 @@ const REWARD_ORDER: readonly RewardType[] = [
     'multi-ball',
     'slow-time',
     'ghost-brick',
+    'laser-paddle',
 ];
 
 type ImportMetaWithEnv = ImportMeta & { env?: { DEV?: boolean } };

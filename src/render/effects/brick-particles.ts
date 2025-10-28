@@ -42,6 +42,7 @@ export interface BrickParticleSystem {
     emit(payload: BrickBurstEmitPayload): void;
     update(deltaSeconds: number): void;
     reset(): void;
+    setBudget(options: { readonly maxParticles?: number; readonly baseBurstCount?: number }): void;
     destroy(): void;
 }
 
@@ -54,9 +55,9 @@ const pick = (min: number, max: number, random: () => number): number => {
 };
 
 export const createBrickParticleSystem = (options: BrickParticleSystemOptions = {}): BrickParticleSystem => {
-    const maxParticles = Math.max(1, Math.floor(options.maxParticles ?? DEFAULT_MAX_PARTICLES));
+    let maxParticles = Math.max(1, Math.floor(options.maxParticles ?? DEFAULT_MAX_PARTICLES));
     const gravity = Math.max(0, options.gravity ?? DEFAULT_GRAVITY);
-    const baseBurstCount = Math.max(4, Math.floor(options.baseBurstCount ?? DEFAULT_BURST_COUNT));
+    let baseBurstCount = Math.max(4, Math.floor(options.baseBurstCount ?? DEFAULT_BURST_COUNT));
     const texture = options.texture ?? Texture.WHITE;
     const random = options.random ?? Math.random;
 
@@ -186,6 +187,23 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
         root.visible = false;
     };
 
+    const setBudget: BrickParticleSystem['setBudget'] = ({ maxParticles: nextMax, baseBurstCount: nextBurst }) => {
+        if (nextMax !== undefined) {
+            const candidate = Math.max(1, Math.floor(nextMax));
+            maxParticles = Number.isFinite(candidate) ? candidate : maxParticles;
+            if (active.length > maxParticles) {
+                const overflow = active.splice(maxParticles);
+                overflow.forEach((particle) => {
+                    releaseParticle(particle);
+                });
+            }
+        }
+        if (nextBurst !== undefined) {
+            const candidate = Math.max(2, Math.floor(nextBurst));
+            baseBurstCount = Number.isFinite(candidate) ? candidate : baseBurstCount;
+        }
+    };
+
     const destroy: BrickParticleSystem['destroy'] = () => {
         reset();
         root.destroy({ children: true });
@@ -197,6 +215,7 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
         emit,
         update,
         reset,
+        setBudget,
         destroy,
     } satisfies BrickParticleSystem;
 };

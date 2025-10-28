@@ -16,6 +16,7 @@ export interface HeatDistortionUpdatePayload {
 export interface HeatDistortionEffect {
     readonly filter: Filter;
     update(payload: HeatDistortionUpdatePayload): void;
+    setEnabled(active: boolean): void;
     destroy(): void;
 }
 
@@ -117,6 +118,7 @@ export const createHeatDistortionEffect = (options: HeatDistortionOptions = {}):
 
     let elapsedTime = 0;
     let currentStrength = 0;
+    let enabled = true;
     const tempBuffer = uniformGroup.uniforms.uSources;
 
     const update = ({ deltaSeconds, comboEnergy, sources }: HeatDistortionUpdatePayload): void => {
@@ -127,6 +129,16 @@ export const createHeatDistortionEffect = (options: HeatDistortionOptions = {}):
         }
         const uniforms = uniformGroup.uniforms;
         uniforms.uTime = elapsedTime;
+
+        if (!enabled) {
+            filter.enabled = false;
+            currentStrength = 0;
+            uniforms.uStrength = 0;
+            uniforms.uSourceCount = 0;
+            tempBuffer.fill(0);
+            uniformGroup.update();
+            return;
+        }
 
         const boundedSources = Math.min(maxSources, Math.max(0, Math.floor(sources.length)));
         uniforms.uSourceCount = boundedSources;
@@ -174,9 +186,17 @@ export const createHeatDistortionEffect = (options: HeatDistortionOptions = {}):
         filter.destroy();
     };
 
+    const setEnabled: HeatDistortionEffect['setEnabled'] = (active) => {
+        enabled = Boolean(active);
+        if (!enabled) {
+            filter.enabled = false;
+        }
+    };
+
     return {
         filter,
         update,
+        setEnabled,
         destroy,
     } satisfies HeatDistortionEffect;
 };

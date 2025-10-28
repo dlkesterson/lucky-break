@@ -74,6 +74,8 @@ const describeReward = (reward: Reward): string => {
             return `Slow Time ${Math.round((1 - reward.timeScale) * 100)}%`; // approx slowdown
         case 'wide-paddle':
             return `Wide Paddle ×${reward.widthMultiplier.toFixed(2)}`;
+        case 'laser-paddle':
+            return `Laser Paddle ${reward.duration.toFixed(0)}s`;
         default:
             return 'Mystery Reward';
     }

@@ -5,6 +5,8 @@ import type {
     BrickHitPayload,
     PaddleHitPayload,
     WallHitPayload,
+    LaserFirePayload,
+    LaserHitPayload,
 } from 'app/events';
 import type { ScheduledEventHandle, ToneScheduler } from './scheduler';
 
@@ -12,8 +14,16 @@ type BrickBreakSource = { readonly event: 'BrickBreak' } & BrickBreakPayload;
 type BrickHitSource = { readonly event: 'BrickHit' } & BrickHitPayload;
 type PaddleHitSource = { readonly event: 'PaddleHit' } & PaddleHitPayload;
 type WallHitSource = { readonly event: 'WallHit' } & WallHitPayload;
+type LaserFireSource = { readonly event: 'LaserFire' } & LaserFirePayload;
+type LaserHitSource = { readonly event: 'LaserHit' } & LaserHitPayload;
 
-type SfxSource = BrickBreakSource | BrickHitSource | PaddleHitSource | WallHitSource;
+type SfxSource =
+    | BrickBreakSource
+    | BrickHitSource
+    | PaddleHitSource
+    | WallHitSource
+    | LaserFireSource
+    | LaserHitSource;
 
 export interface SfxTriggerDescriptor {
     readonly id: string;
@@ -33,6 +43,8 @@ export interface SfxRouterOptions {
     readonly brickImpactSampleId?: string;
     readonly paddleSampleId?: string;
     readonly wallSampleId?: string;
+    readonly laserFireSampleId?: string;
+    readonly laserHitSampleId?: string;
 }
 
 export interface SfxRouter {
@@ -104,6 +116,14 @@ const defaultTrigger = (): void => {
 
 const normalizeBrickPan = (column: number): number => {
     const normalized = (column - 5.5) / 5.5;
+    return clamp(Number(normalized.toFixed(2)), -1, 1);
+};
+
+const normalizeHorizontalPan = (xPosition: number, playfieldWidth = 1280): number => {
+    if (playfieldWidth <= 0) {
+        return 0;
+    }
+    const normalized = (xPosition - playfieldWidth / 2) / (playfieldWidth / 2);
     return clamp(Number(normalized.toFixed(2)), -1, 1);
 };
 
@@ -309,12 +329,64 @@ const buildWallHitDescriptor = (
     } satisfies SfxTriggerDescriptor;
 };
 
+const buildLaserFireDescriptor = (
+    sampleId: string,
+    time: number,
+    payload: LaserFirePayload,
+): SfxTriggerDescriptor => {
+    const originCount = payload.origins.length;
+    const avgX = originCount > 0
+        ? payload.origins.reduce((sum, origin) => sum + (origin?.x ?? 0), 0) / originCount
+        : 0;
+    const pan = normalizeHorizontalPan(avgX);
+    const seed = createSeed(payload.sessionId, 5, Math.round(avgX * 100));
+    const gain = applyGainVariation(0.62, seed, 0.08, 0.4, 0.85);
+
+    return {
+        id: sampleId,
+        time,
+        gain,
+        detune: applyDetuneVariation(0, seed ^ 0x9e3779b9, 6),
+        pan,
+        source: { event: 'LaserFire', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
+
+const buildLaserHitDescriptor = (
+    sampleId: string,
+    time: number,
+    payload: LaserHitPayload,
+): SfxTriggerDescriptor => {
+    const pan = normalizeBrickPan(payload.col);
+    const seed = createSeed(
+        payload.sessionId,
+        6,
+        payload.row,
+        payload.col,
+        Math.round(payload.impactVelocity * 10),
+        payload.pierceIndex,
+    );
+    const gain = applyGainVariation(0.58 + payload.impactVelocity / 40, seed, 0.05, 0.35, 0.92);
+    const detune = applyDetuneVariation(payload.pierceIndex * 70, seed ^ 0x51d7348f, 24);
+
+    return {
+        id: sampleId,
+        time,
+        gain,
+        detune,
+        pan,
+        source: { event: 'LaserHit', ...payload },
+    } satisfies SfxTriggerDescriptor;
+};
+
 export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
     const trigger = options.trigger ?? defaultTrigger;
     const samples = toSampleList(options);
     const brickImpactSampleId = options.brickImpactSampleId;
     const paddleSample = options.paddleSampleId ?? samples[0];
     const wallSample = options.wallSampleId ?? samples[0];
+    const laserFireSample = options.laserFireSampleId ?? 'laser-fire';
+    const laserHitSample = options.laserHitSampleId ?? 'laser-hit';
 
     const pending = new Set<ScheduledEventHandle>();
 
@@ -351,6 +423,12 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
                 case 'WallHit':
                     descriptor = buildWallHitDescriptor(wallSample, resolvedTime, source);
                     break;
+                case 'LaserFire':
+                    descriptor = buildLaserFireDescriptor(laserFireSample, resolvedTime, source);
+                    break;
+                case 'LaserHit':
+                    descriptor = buildLaserHitDescriptor(laserHitSample, resolvedTime, source);
+                    break;
                 default:
                     descriptor = null;
             }
@@ -375,6 +453,12 @@ export const createSfxRouter = (options: SfxRouterOptions): SfxRouter => {
         }),
         options.bus.subscribe('WallHit', (event: EventEnvelope<'WallHit'>) => {
             scheduleSource({ event: 'WallHit', ...event.payload });
+        }),
+        options.bus.subscribe('LaserFire', (event: EventEnvelope<'LaserFire'>) => {
+            scheduleSource({ event: 'LaserFire', ...event.payload });
+        }),
+        options.bus.subscribe('LaserHit', (event: EventEnvelope<'LaserHit'>) => {
+            scheduleSource({ event: 'LaserHit', ...event.payload });
         }),
     ];
 

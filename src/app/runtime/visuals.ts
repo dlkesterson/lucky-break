@@ -6,6 +6,7 @@ import {
     createAudioWaveBackdrop,
     type AudioWaveBackdrop,
     createBallTrailsEffect,
+    type BallTrailEffectOptions,
     type BallTrailSource,
     createBrickParticleSystem,
     type BrickParticleSystem,
@@ -17,6 +18,8 @@ import {
     createRoundCountdown,
     type RoundCountdownDisplay,
     createSpeedRing,
+    createLaserEffect,
+    type LaserEffect,
 } from 'render/effects';
 import { createComboRing } from 'render/combo-ring';
 import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
@@ -63,6 +66,8 @@ export interface RuntimeVisuals {
     readonly physicsDebugOverlay: PhysicsDebugOverlay | null;
     readonly ballTrailSources: BallTrailSource[];
     readonly heatDistortionSources: HeatDistortionSource[];
+    readonly laserEffect: LaserEffect | null;
+    setEffectProfile(profile: 'quality' | 'performance'): void;
     replacePaddleLight(color: number): void;
     dispose(): void;
 }
@@ -175,6 +180,21 @@ export const createRuntimeVisuals = ({
             getActiveRippleCount: () => heatRippleEffect.getActiveRippleCount(),
         };
     }
+
+    const laserEffect = effects.track(
+        createLaserEffect({
+            playfieldTop: 0,
+            playfieldBottom: playfieldDimensions.height,
+            beamColor: themeAccents.powerUp,
+            beamWidth: 6,
+        }),
+        (effect) => {
+            removeFromParent(effect.container);
+            effect.destroy();
+        },
+    );
+    laserEffect.container.zIndex = 54;
+    stage.addToLayer('effects', laserEffect.container);
 
     const brickParticles = effects.track(
         createBrickParticleSystem({
@@ -292,6 +312,65 @@ export const createRuntimeVisuals = ({
         paddleLight = buildPaddleLight(color);
     };
 
+    type EffectProfile = 'quality' | 'performance';
+
+    const trailPresets: Record<EffectProfile, BallTrailEffectOptions> = {
+        quality: {
+            enabled: true,
+            maxPoints: 28,
+            fadeDuration: 0.65,
+        },
+        performance: {
+            enabled: true,
+            maxPoints: 14,
+            fadeDuration: 0.38,
+        },
+    } satisfies Record<EffectProfile, BallTrailEffectOptions>;
+
+    const particlePresets: Record<EffectProfile, { maxParticles: number; baseBurstCount: number }> = {
+        quality: {
+            maxParticles: 24,
+            baseBurstCount: 12,
+        },
+        performance: {
+            maxParticles: 12,
+            baseBurstCount: 6,
+        },
+    } as const;
+
+    const heatDistortionEnabled: Record<EffectProfile, boolean> = {
+        quality: true,
+        performance: false,
+    } as const;
+
+    let currentProfile: EffectProfile = 'quality';
+
+    const setEffectProfile = (profile: EffectProfile) => {
+        if (currentProfile === profile) {
+            return;
+        }
+
+        if (ballTrailsEffect) {
+            ballTrailsEffect.configure(trailPresets[profile]);
+            if (profile === 'performance') {
+                ballTrailsEffect.reset();
+            }
+        }
+
+        if (brickParticles) {
+            brickParticles.setBudget(particlePresets[profile]);
+            if (profile === 'performance') {
+                brickParticles.reset();
+            }
+        }
+
+        heatDistortionEffect?.setEnabled(heatDistortionEnabled[profile]);
+        currentProfile = profile;
+    };
+
+    // Apply baseline profile so effect budgets align with defaults.
+    setEffectProfile(currentProfile);
+
     const dispose = () => {
         effects.disposeAll();
         paddleLight = null;
@@ -326,6 +405,9 @@ export const createRuntimeVisuals = ({
         get heatRippleEffect() {
             return heatRippleEffect;
         },
+        get laserEffect() {
+            return laserEffect;
+        },
         get brickParticles() {
             return brickParticles;
         },
@@ -359,6 +441,7 @@ export const createRuntimeVisuals = ({
         get heatDistortionSources() {
             return heatDistortionSources;
         },
+        setEffectProfile,
         replacePaddleLight,
         dispose,
     } satisfies RuntimeVisuals;

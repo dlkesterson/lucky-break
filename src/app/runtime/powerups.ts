@@ -1,6 +1,6 @@
 import { calculatePaddleWidthScale, PowerUpManager, type PowerUpType } from 'util/power-ups';
 import type { HudPowerUpView, HudRewardView } from 'render/hud-display';
-import type { Reward } from 'game/rewards';
+import { createReward, type LaserPaddleReward, type Reward } from 'game/rewards';
 import { resolveMultiBallReward, resolveSlowTimeReward } from '../reward-stack';
 import type { MultiBallController } from '../multi-ball-controller';
 import type { Logger } from 'util/log';
@@ -15,6 +15,8 @@ const formatPowerUpLabel = (type: PowerUpType): string => {
             return 'Multi Ball';
         case 'sticky-paddle':
             return 'Sticky Paddle';
+        case 'laser':
+            return 'Laser Strike';
         default:
             return type;
     }
@@ -29,6 +31,8 @@ export interface RuntimePowerupsDeps {
     readonly resetGhostBricks: () => void;
     readonly applyGhostBrickReward: (duration: number, ghostCount: number) => void;
     readonly getGhostBrickRemainingDuration: () => number;
+    readonly enableLaserReward: (reward: LaserPaddleReward) => void;
+    readonly disableLaserReward: () => void;
     readonly defaults: {
         readonly paddleWidthMultiplier: number;
         readonly multiBallCapacity: number;
@@ -63,6 +67,8 @@ export const createRuntimePowerups = ({
     applyGhostBrickReward,
     getGhostBrickRemainingDuration,
     defaults,
+    enableLaserReward,
+    disableLaserReward,
 }: RuntimePowerupsDeps): RuntimePowerups => {
     const manager = new PowerUpManager();
 
@@ -74,6 +80,8 @@ export const createRuntimePowerups = ({
     let slowTimeScale = 1;
     let multiBallRewardTimer = 0;
     let widePaddleRewardActive = false;
+    let laserRewardTimer = 0;
+    let activeLaserReward: LaserPaddleReward | null = null;
 
     const resetRewardState = () => {
         doublePointsMultiplier = 1;
@@ -83,6 +91,11 @@ export const createRuntimePowerups = ({
         slowTimeScale = 1;
         multiBallRewardTimer = 0;
         widePaddleRewardActive = false;
+        if (activeLaserReward) {
+            disableLaserReward();
+        }
+        activeLaserReward = null;
+        laserRewardTimer = 0;
     };
 
     const activateReward = (reward: Reward | null) => {
@@ -153,6 +166,11 @@ export const createRuntimePowerups = ({
                 manager.refresh('paddle-width', { defaultDuration: reward.duration });
                 widePaddleRewardActive = true;
                 break;
+            case 'laser-paddle':
+                activeLaserReward = reward;
+                laserRewardTimer = reward.duration;
+                enableLaserReward(reward);
+                break;
         }
     };
 
@@ -186,6 +204,8 @@ export const createRuntimePowerups = ({
                     return 'Slow Time';
                 case 'wide-paddle':
                     return 'Wide Paddle';
+                case 'laser-paddle':
+                    return 'Laser Paddle';
                 default:
                     return 'Lucky Reward';
             }
@@ -229,6 +249,10 @@ export const createRuntimePowerups = ({
                 remainingLabel = remaining > 0 ? `${remaining.toFixed(1)}s` : undefined;
                 break;
             }
+            case 'laser-paddle':
+                remaining = Math.max(0, laserRewardTimer);
+                remainingLabel = remaining > 0 ? `${remaining.toFixed(1)}s` : undefined;
+                break;
             default:
                 remaining = 0;
                 break;
@@ -255,6 +279,8 @@ export const createRuntimePowerups = ({
                     return 0.55;
                 case 'sticky-paddle':
                     return 0.5;
+                case 'laser':
+                    return 0.8;
                 default:
                     return 0.6;
             }
@@ -265,6 +291,11 @@ export const createRuntimePowerups = ({
 
         if (type === 'multi-ball') {
             spawnExtraBalls();
+            return;
+        }
+
+        if (type === 'laser') {
+            activateReward(createReward('laser-paddle'));
         }
     };
 
@@ -311,6 +342,17 @@ export const createRuntimePowerups = ({
                 widePaddleRewardActive = false;
                 rewardPaddleWidthMultiplier = defaults.paddleWidthMultiplier;
                 if (activeReward?.type === 'wide-paddle') {
+                    activeReward = null;
+                }
+            }
+        }
+
+        if (laserRewardTimer > 0) {
+            laserRewardTimer = Math.max(0, laserRewardTimer - deltaSeconds);
+            if (laserRewardTimer === 0) {
+                disableLaserReward();
+                activeLaserReward = null;
+                if (activeReward?.type === 'laser-paddle') {
                     activeReward = null;
                 }
             }

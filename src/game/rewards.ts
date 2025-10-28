@@ -37,13 +37,21 @@ export interface WidePaddleReward extends BaseReward {
     readonly widthMultiplier: number;
 }
 
+export interface LaserPaddleReward extends BaseReward {
+    readonly type: 'laser-paddle';
+    readonly cooldown: number;
+    readonly beamVelocity: number;
+    readonly pierceCount: number;
+}
+
 export type Reward =
     | StickyPaddleReward
     | DoublePointsReward
     | GhostBrickReward
     | MultiBallReward
     | SlowTimeReward
-    | WidePaddleReward;
+    | WidePaddleReward
+    | LaserPaddleReward;
 
 export interface RewardOverride {
     readonly type: RewardType;
@@ -126,6 +134,16 @@ const buildReward = (type: RewardType, overrideDuration?: number): Reward => {
                 duration: overrideDuration ?? duration,
                 widthMultiplier,
             };
+        }
+        case 'laser-paddle': {
+            const { duration, cooldown, beamVelocity, pierceCount } = rewardDefinitions[type];
+            return {
+                type,
+                duration: overrideDuration ?? duration,
+                cooldown,
+                beamVelocity,
+                pierceCount,
+            } satisfies LaserPaddleReward;
         }
         default: {
             const exhaustiveCheck: never = type;

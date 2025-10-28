@@ -59,7 +59,8 @@ export type RewardKey =
     | 'ghost-brick'
     | 'multi-ball'
     | 'slow-time'
-    | 'wide-paddle';
+    | 'wide-paddle'
+    | 'laser-paddle';
 
 interface StickyPaddleRewardDefinition {
     readonly duration: number;
@@ -90,6 +91,13 @@ interface WidePaddleRewardDefinition {
     readonly widthMultiplier: number;
 }
 
+interface LaserPaddleRewardDefinition {
+    readonly duration: number;
+    readonly cooldown: number;
+    readonly beamVelocity: number;
+    readonly pierceCount: number;
+}
+
 interface RewardDefinitionMap {
     readonly 'sticky-paddle': StickyPaddleRewardDefinition;
     readonly 'double-points': DoublePointsRewardDefinition;
@@ -97,6 +105,7 @@ interface RewardDefinitionMap {
     readonly 'multi-ball': MultiBallRewardDefinition;
     readonly 'slow-time': SlowTimeRewardDefinition;
     readonly 'wide-paddle': WidePaddleRewardDefinition;
+    readonly 'laser-paddle': LaserPaddleRewardDefinition;
 }
 
 interface RewardWheelSegment {
@@ -200,6 +209,7 @@ const rewardDefinitions = {
     'multi-ball': { duration: 8, extraBalls: 2 },
     'slow-time': { duration: 6, timeScale: 0.5 },
     'wide-paddle': { duration: 18, widthMultiplier: 1.85 },
+    'laser-paddle': { duration: 10, cooldown: 0.75, beamVelocity: 26, pierceCount: 2 },
 } as const satisfies RewardDefinitionMap;
 
 const rewardWheelSegments = [
@@ -209,6 +219,7 @@ const rewardWheelSegments = [
     { weight: 0.78, type: 'multi-ball' },
     { weight: 0.72, type: 'slow-time' },
     { weight: 0.65, type: 'ghost-brick' },
+    { weight: 0.42, type: 'laser-paddle' },
 ] as const satisfies readonly RewardWheelSegment[];
 
 /**

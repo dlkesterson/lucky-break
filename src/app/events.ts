@@ -64,6 +64,22 @@ export interface RoundCompletedPayload {
     readonly durationMs: number;
 }
 
+export interface LaserFirePayload {
+    readonly sessionId: string;
+    readonly origins: readonly VectorLike[];
+    readonly scheduledTime?: number;
+}
+
+export interface LaserHitPayload {
+    readonly sessionId: string;
+    readonly row: number;
+    readonly col: number;
+    readonly brickType: BrickType;
+    readonly impactVelocity: number;
+    readonly pierceIndex: number;
+    readonly scheduledTime?: number;
+}
+
 export interface ComboMilestonePayload {
     readonly sessionId: string;
     readonly combo: number;
@@ -90,6 +106,8 @@ export interface LuckyBreakEventMap {
     readonly RoundCompleted: RoundCompletedPayload;
     readonly ComboMilestoneReached: ComboMilestonePayload;
     readonly UiSceneTransition: UiSceneTransitionPayload;
+    readonly LaserFire: LaserFirePayload;
+    readonly LaserHit: LaserHitPayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;

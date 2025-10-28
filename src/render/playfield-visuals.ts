@@ -154,6 +154,10 @@ export interface PlayfieldBackgroundLayer {
     readonly container: Container;
     readonly tilingSprite: TilingSprite | null;
     readonly overlay: Graphics;
+    setTint(color: number, options?: { immediate?: boolean; accentMix?: number }): void;
+    setParallaxTarget(position: { readonly x: number; readonly y: number }, options?: { intensity?: number }): void;
+    applyBeatPulse(intensity?: number): void;
+    update(deltaSeconds: number): void;
 }
 
 export const createPlayfieldBackgroundLayer = (
@@ -163,6 +167,19 @@ export const createPlayfieldBackgroundLayer = (
     const container = new Container();
     container.eventMode = 'none';
     container.zIndex = -100;
+
+    const applyTileOffset = (sprite: TilingSprite, x: number, y: number) => {
+        const position = sprite.tileTransform?.position as { set?: (nx: number, ny: number) => void; x: number; y: number } | undefined;
+        if (!position) {
+            return;
+        }
+        if (typeof position.set === 'function') {
+            position.set(x, y);
+        } else {
+            position.x = x;
+            position.y = y;
+        }
+    };
 
     let tilingSprite: TilingSprite | null = null;
     if (texture) {
@@ -174,6 +191,7 @@ export const createPlayfieldBackgroundLayer = (
         tilingSprite.eventMode = 'none';
         tilingSprite.alpha = 0.78;
         tilingSprite.tileScale.set(0.45);
+        applyTileOffset(tilingSprite, 0, 0);
         container.addChild(tilingSprite);
     }
 
@@ -193,10 +211,109 @@ export const createPlayfieldBackgroundLayer = (
 
     container.addChild(overlay);
 
+    let currentTint = 0x0f1628;
+    let targetTint = currentTint;
+    let currentAccentMix = 0.18;
+    let targetAccentMix = currentAccentMix;
+    let beatPulse = 0;
+    let driftPhase = 0;
+
+    const maxParallaxX = Math.max(12, Math.min(42, dimensions.width * 0.075));
+    const maxParallaxY = Math.max(16, Math.min(56, dimensions.height * 0.085));
+    const parallax = { x: 0, y: 0 };
+    let parallaxTarget = { x: 0, y: 0 };
+    let parallaxIntensity = 0.4;
+    let parallaxIntensityTarget = parallaxIntensity;
+
+    const setTint: PlayfieldBackgroundLayer['setTint'] = (color, options) => {
+        targetTint = color >>> 0;
+        if (options?.accentMix !== undefined) {
+            targetAccentMix = clampUnit(options.accentMix);
+        }
+        if (options?.immediate) {
+            currentTint = targetTint;
+            if (options.accentMix !== undefined) {
+                currentAccentMix = targetAccentMix;
+            }
+            const immediateOverlayTint = mixColors(currentTint, 0xffffff, currentAccentMix * 0.4 + 0.12);
+            overlay.tint = immediateOverlayTint;
+            if (tilingSprite) {
+                const tileTint = mixColors(currentTint, 0xffffff, currentAccentMix * 0.35 + 0.18);
+                tilingSprite.tint = tileTint;
+            }
+        }
+    };
+
+    const setParallaxTarget: PlayfieldBackgroundLayer['setParallaxTarget'] = (position, options) => {
+        const intensity = options?.intensity !== undefined ? clampUnit(options.intensity) : parallaxIntensityTarget;
+        parallaxIntensityTarget = intensity;
+        const normalizedX = clampUnit(position.x) - 0.5;
+        const normalizedY = clampUnit(position.y) - 0.5;
+        parallaxTarget = {
+            x: normalizedX * maxParallaxX,
+            y: normalizedY * maxParallaxY,
+        };
+    };
+
+    const applyBeatPulse: PlayfieldBackgroundLayer['applyBeatPulse'] = (intensity = 1) => {
+        if (!Number.isFinite(intensity) || intensity <= 0) {
+            return;
+        }
+        beatPulse = Math.min(2, beatPulse + intensity);
+    };
+
+    const update: PlayfieldBackgroundLayer['update'] = (deltaSeconds) => {
+        if (!(deltaSeconds > 0)) {
+            return;
+        }
+
+        const tintLerp = 1 - Math.exp(-3.2 * deltaSeconds);
+        currentTint = mixColors(currentTint, targetTint, tintLerp);
+        currentAccentMix += (targetAccentMix - currentAccentMix) * tintLerp;
+        parallaxIntensity += (parallaxIntensityTarget - parallaxIntensity) * tintLerp;
+
+        beatPulse = Math.max(0, beatPulse - deltaSeconds * 1.8);
+        driftPhase = (driftPhase + deltaSeconds * (0.24 + currentAccentMix * 0.6 + beatPulse * 0.4)) % (Math.PI * 2);
+        const driftWave = Math.sin(driftPhase);
+        const driftMagnitude = Math.abs(driftWave);
+
+        const highlightMix = clampUnit(currentAccentMix * 0.5 + 0.1 + Math.max(0, driftWave) * 0.2 + beatPulse * 0.2);
+        const shadeMix = clampUnit(currentAccentMix * 0.2 + Math.max(0, -driftWave) * 0.2);
+        const overlayTint = mixColors(
+            mixColors(currentTint, 0xffffff, highlightMix),
+            mixColors(currentTint, 0x03070f, shadeMix),
+            0.45,
+        );
+        overlay.tint = overlayTint;
+        overlay.alpha = Math.min(1, 0.9 + currentAccentMix * 0.05 + beatPulse * 0.08 + driftMagnitude * 0.04);
+
+        if (tilingSprite) {
+            const parallaxLerp = 1 - Math.exp(-6 * deltaSeconds);
+            const offsetX = parallaxTarget.x * parallaxIntensity;
+            const offsetY = parallaxTarget.y * parallaxIntensity;
+            parallax.x += (offsetX - parallax.x) * parallaxLerp;
+            parallax.y += (offsetY - parallax.y) * parallaxLerp;
+            applyTileOffset(tilingSprite, parallax.x, parallax.y);
+
+            const spriteHighlightMix = clampUnit(currentAccentMix * 0.35 + 0.12 + beatPulse * 0.18);
+            tilingSprite.tint = mixColors(currentTint, 0xffffff, spriteHighlightMix);
+            tilingSprite.alpha = Math.min(
+                1,
+                0.72 + currentAccentMix * 0.3 + beatPulse * 0.14 + driftMagnitude * 0.06,
+            );
+        }
+    };
+
+    setTint(currentTint, { immediate: true, accentMix: currentAccentMix });
+
     return {
         container,
         tilingSprite,
         overlay,
+        setTint,
+        setParallaxTarget,
+        applyBeatPulse,
+        update,
     };
 };
 

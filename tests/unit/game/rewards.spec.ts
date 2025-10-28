@@ -41,7 +41,7 @@ describe('spinWheel', () => {
     });
 
     it('returns a slow time reward when landing late on the wheel', () => {
-        const reward = select(0.8);
+        const reward = select(0.79);
         expect(reward.type).toBe('slow-time');
         if (reward.type === 'slow-time') {
             expect(reward.timeScale).toBeGreaterThan(0);
@@ -50,10 +50,19 @@ describe('spinWheel', () => {
     });
 
     it('returns a ghost brick reward for high rolls', () => {
-        const reward = select(0.95);
+        const reward = select(0.9);
         expect(reward.type).toBe('ghost-brick');
         if (reward.type === 'ghost-brick') {
             expect(reward.ghostCount).toBeGreaterThan(0);
+        }
+    });
+
+    it('returns a laser paddle reward for extreme rolls', () => {
+        const reward = select(0.98);
+        expect(reward.type).toBe('laser-paddle');
+        if (reward.type === 'laser-paddle') {
+            expect(reward.cooldown).toBeGreaterThan(0);
+            expect(reward.beamVelocity).toBeGreaterThan(0);
         }
     });
 

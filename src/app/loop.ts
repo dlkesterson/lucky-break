@@ -76,6 +76,12 @@ export interface LoopOptions {
         readonly pendingSteps: number;
         readonly remainingMs: number;
     }) => void;
+    readonly onFrameMetrics?: (details: {
+        readonly rawDeltaMs: number;
+        readonly appliedDeltaMs: number;
+        readonly stepsExecuted: number;
+        readonly interpolation: number;
+    }) => void;
 }
 
 export interface GameLoop {
@@ -106,6 +112,8 @@ export class FixedStepLoop implements GameLoop {
 
     private readonly onStepOverflow?: LoopOptions['onStepOverflow'];
 
+    private readonly onFrameMetrics?: LoopOptions['onFrameMetrics'];
+
     private accumulatorMs = 0;
 
     private lastTime = 0;
@@ -133,6 +141,7 @@ export class FixedStepLoop implements GameLoop {
         this.cancelRaf = resolveCancelRaf(options);
         this.onFrameClamp = options.onFrameClamp;
         this.onStepOverflow = options.onStepOverflow;
+        this.onFrameMetrics = options.onFrameMetrics;
     }
 
     start(): void {
@@ -211,6 +220,13 @@ export class FixedStepLoop implements GameLoop {
 
         const interpolation = Math.min(1, this.accumulatorMs / this.stepMs);
         this.render(interpolation);
+
+        this.onFrameMetrics?.({
+            rawDeltaMs,
+            appliedDeltaMs: frameDeltaMs,
+            stepsExecuted: steps,
+            interpolation,
+        });
 
         this.scheduleNext();
     };
