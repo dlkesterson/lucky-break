@@ -1,7 +1,7 @@
 import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
 
 export interface HudScoreboardEntry {
-    readonly id: 'score' | 'coins' | 'lives' | 'bricks' | 'entropy' | 'momentum' | 'audio';
+    readonly id: 'score' | 'coins' | 'gamble' | 'lives' | 'bricks' | 'entropy' | 'momentum' | 'audio';
     readonly label: string;
     readonly value: string;
 }
@@ -17,6 +17,14 @@ export interface HudScoreboardView {
     readonly summaryLine: string;
     readonly entries: readonly HudScoreboardEntry[];
     readonly prompts: readonly HudScoreboardPrompt[];
+}
+
+export interface HudGambleStatus {
+    readonly armedCount: number;
+    readonly primedCount: number;
+    readonly nextExpirationSeconds: number | null;
+    readonly timerSeconds: number;
+    readonly rewardMultiplier: number;
 }
 
 type NumberFormatter = Intl.NumberFormat;
@@ -53,6 +61,57 @@ const formatBrickProgress = (remaining: number, total: number): string => {
 const clampUnit = (value: number): number => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 
 const formatPercent = (value: number): string => `${Math.round(clampUnit(value) * 100)}%`;
+
+const formatSeconds = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '0s';
+    }
+    if (value >= 10) {
+        return `${Math.round(value)}s`;
+    }
+    return `${value.toFixed(1)}s`;
+};
+
+const formatMultiplier = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '×1';
+    }
+    const rounded = Math.round(value);
+    if (Math.abs(value - rounded) < 0.01) {
+        return `×${rounded}`;
+    }
+    const formatted = value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
+    return `×${formatted}`;
+};
+
+const formatGamble = (gamble: HudGambleStatus): string => {
+    const parts: string[] = [];
+    const primedCount = Math.max(0, gamble.primedCount);
+    const armedCount = Math.max(0, gamble.armedCount);
+
+    if (primedCount > 0) {
+        parts.push(`Primed ${primedCount}`);
+        if (armedCount > 0) {
+            parts.push(`Armed ${armedCount}`);
+        }
+        if (gamble.nextExpirationSeconds !== null) {
+            parts.push(`Next ${formatSeconds(gamble.nextExpirationSeconds)}`);
+        }
+    } else if (armedCount > 0) {
+        parts.push(`Armed ${armedCount}`);
+        if (gamble.timerSeconds > 0) {
+            parts.push(`Window ${formatSeconds(gamble.timerSeconds)}`);
+        }
+    } else {
+        parts.push('Idle');
+        if (gamble.timerSeconds > 0) {
+            parts.push(`Window ${formatSeconds(gamble.timerSeconds)}`);
+        }
+    }
+
+    parts.push(formatMultiplier(gamble.rewardMultiplier));
+    return parts.join(' · ');
+};
 
 const formatMomentum = (
     momentum: GameSessionSnapshot['hud']['momentum'],
@@ -108,10 +167,15 @@ const toPromptView = (snapshot: GameSessionSnapshot): readonly HudScoreboardProm
         message: prompt.message,
     }));
 
-export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboardView => {
+export const buildHudScoreboard = (
+    snapshot: GameSessionSnapshot,
+    gamble?: HudGambleStatus,
+): HudScoreboardView => {
     const statusText = `Round ${snapshot.hud.round} — ${capitalize(snapshot.status)}`;
 
-    const entries: HudScoreboardEntry[] = [
+    const entries: HudScoreboardEntry[] = [];
+
+    entries.push(
         {
             id: 'score',
             label: 'Score',
@@ -122,6 +186,17 @@ export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboard
             label: 'Coins',
             value: formatCoins(snapshot.hud.coins),
         },
+    );
+
+    if (gamble && (gamble.armedCount > 0 || gamble.primedCount > 0)) {
+        entries.push({
+            id: 'gamble',
+            label: 'Gamble',
+            value: formatGamble(gamble),
+        });
+    }
+
+    entries.push(
         {
             id: 'lives',
             label: 'Lives',
@@ -147,7 +222,7 @@ export const buildHudScoreboard = (snapshot: GameSessionSnapshot): HudScoreboard
             label: 'Audio',
             value: formatAudio(snapshot.preferences.muted, snapshot.preferences.masterVolume),
         },
-    ];
+    );
 
     return {
         statusText,

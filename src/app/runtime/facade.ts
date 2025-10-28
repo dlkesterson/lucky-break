@@ -68,6 +68,7 @@ import type { GameSceneServices } from '../scene-services';
 import { developerCheats } from '../developer-cheats';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { createRuntimeVisuals, type ForeshadowInstrument } from './visuals';
+import { createGambleHighlightEffect, type GambleHighlightEffect } from 'render/effects';
 import { createRuntimeScoring, type RuntimeScoringHandle } from './scoring';
 import { createRoundMachine, type RoundMachine } from './round-machine';
 import { createRuntimePowerups, type RuntimePowerups } from './powerups';
@@ -136,6 +137,7 @@ const GAMBLE_PRIME_RESET_HP = config.levels.gamble.primeResetHp;
 const GAMBLE_FAIL_PENALTY_HP = config.levels.gamble.failPenaltyHp;
 const GAMBLE_TINT_ARMED = config.levels.gamble.tintArmed;
 const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
+const GAMBLE_COUNTDOWN_AUDIO_THRESHOLD = Math.min(5, Math.max(1, Math.ceil(GAMBLE_TIMER_SECONDS)));
 const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
 const PRESET_OFFSET_SALT = 0x1f123bb5;
@@ -379,6 +381,8 @@ export const createRuntimeFacade = async ({
 
     let ballHueShift = 0;
     let visuals: RuntimeVisuals | null = null;
+    let gambleHighlight: GambleHighlightEffect | null = null;
+    let gambleCountdownLastSecond: number | null = null;
     let runtimeDebug: RuntimeDebug | null = null;
 
     const flashBallLight = (intensity: number) => {
@@ -691,6 +695,10 @@ export const createRuntimeFacade = async ({
             return;
         }
 
+        if (visual instanceof Sprite && gambleHighlight) {
+            gambleHighlight.reset(visual);
+        }
+
         if (visual.parent) {
             visual.parent.removeChild(visual);
         }
@@ -900,10 +908,21 @@ export const createRuntimeFacade = async ({
         const state = gambleManager.getState(body);
         if (state === 'primed') {
             visual.tint = gambleTintPrimed;
+            if (gambleHighlight) {
+                const remaining = gambleManager.getRemainingTimer(body);
+                const urgency = remaining !== null && Number.isFinite(remaining)
+                    ? clampUnit(1 - remaining / Math.max(0.001, GAMBLE_TIMER_SECONDS))
+                    : 0;
+                gambleHighlight.apply(visual, 'primed', urgency);
+            }
         } else if (state === 'armed') {
             visual.tint = gambleTintArmed;
+            gambleHighlight?.apply(visual, 'armed', 0);
         } else {
             visual.tint = 0xffffff;
+            if (gambleHighlight) {
+                gambleHighlight.reset(visual);
+            }
         }
     };
 
@@ -940,8 +959,38 @@ export const createRuntimeFacade = async ({
         applyGambleAppearance(brick);
     };
 
+    const updateGambleCountdownAudio = (nextExpirationSeconds: number | null): void => {
+        if (nextExpirationSeconds === null || !Number.isFinite(nextExpirationSeconds)) {
+            gambleCountdownLastSecond = null;
+            return;
+        }
+        const remaining = Math.max(0, nextExpirationSeconds);
+        if (remaining > GAMBLE_COUNTDOWN_AUDIO_THRESHOLD) {
+            gambleCountdownLastSecond = null;
+            return;
+        }
+        const marker = Math.max(0, Math.ceil(remaining));
+        if (gambleCountdownLastSecond === marker) {
+            return;
+        }
+        gambleCountdownLastSecond = marker;
+        const urgency = clampUnit(1 - remaining / Math.max(0.001, GAMBLE_TIMER_SECONDS));
+        midiEngine.triggerGambleCountdown({
+            second: marker,
+            urgency,
+        });
+        musicDirector.triggerGambleCountdown({
+            urgency,
+        });
+    };
+
     const tickGambleBricks = (deltaSeconds: number): void => {
+        if (gambleHighlight) {
+            gambleHighlight.update(deltaSeconds);
+        }
         const expirations = gambleManager.tick(deltaSeconds);
+        const summary = gambleManager.snapshot();
+        updateGambleCountdownAudio(summary.nextExpirationSeconds);
         if (expirations.length === 0) {
             return;
         }
@@ -1057,6 +1106,7 @@ export const createRuntimeFacade = async ({
         ballMaxSpeed: BALL_MAX_SPEED,
     });
     visuals = createdVisuals;
+    gambleHighlight = createGambleHighlightEffect();
 
     const comboRing = createdVisuals.comboRing;
     const gameContainer = createdVisuals.gameContainer;
@@ -1291,8 +1341,9 @@ export const createRuntimeFacade = async ({
     let lastComboCount = 0;
 
     const refreshHud = () => {
-        const snapshot = session.snapshot();
-        const hudView = buildHudScoreboard(snapshot);
+    const snapshot = session.snapshot();
+    const gambleStatus = gambleManager.snapshot();
+    const hudView = buildHudScoreboard(snapshot, gambleStatus);
 
         const prompts = (() => {
             const autoState = roundMachine.getAutoCompleteState();
@@ -2353,6 +2404,8 @@ export const createRuntimeFacade = async ({
         unsubscribeTheme = null;
         visuals?.dispose();
         visuals = null;
+    gambleHighlight?.dispose();
+    gambleHighlight = null;
         musicDirector.setBeatCallback(null);
         musicDirector.setMeasureCallback(null);
         runtimeDebug?.resetVisibility();

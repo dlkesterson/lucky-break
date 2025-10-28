@@ -109,6 +109,8 @@ export { createBrickParticleSystem } from './brick-particles';
 export type { BrickParticleSystem, BrickParticleSystemOptions } from './brick-particles';
 export { createComboBloomEffect } from './combo-bloom';
 export type { ComboBloomEffect, ComboBloomOptions } from './combo-bloom';
+export { createGambleHighlightEffect } from './gamble-highlight';
+export type { GambleHighlightEffect } from './gamble-highlight';
 export { createDynamicLight } from './dynamic-light';
 export type { DynamicLight, DynamicLightOptions, DynamicLightUpdate } from './dynamic-light';
 export { createHeatDistortionEffect } from './heat-distortion';

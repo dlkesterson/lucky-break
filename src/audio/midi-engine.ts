@@ -46,10 +46,17 @@ export interface MidiPowerUpOptions {
     readonly sparkle?: number;
 }
 
+export interface MidiGambleCountdownOptions {
+    readonly time?: number;
+    readonly urgency?: number;
+    readonly second?: number;
+}
+
 export interface MidiEngine {
     readonly triggerWallHit: (options?: MidiWallHitOptions) => void;
     readonly triggerBrickAccent: (options: MidiBrickAccentOptions) => void;
     readonly triggerPowerUp: (options?: MidiPowerUpOptions) => void;
+    readonly triggerGambleCountdown: (options?: MidiGambleCountdownOptions) => void;
     readonly dispose: () => void;
 }
 
@@ -253,6 +260,38 @@ export const createMidiEngine = (): MidiEngine => {
         }
     };
 
+    const triggerGambleCountdown: MidiEngine['triggerGambleCountdown'] = (options) => {
+        if (disposed) {
+            return;
+        }
+        const baseTime = resolveTime(options?.time);
+        const urgency = clamp01(options?.urgency ?? 0);
+        const second = Math.max(0, Math.floor(options?.second ?? 0));
+        const pitchOffset = Math.min(8, Math.round(urgency * 8) + (second <= 1 ? 2 : 0));
+        const rootNote = 78 + pitchOffset;
+        const velocity = resolveVelocity(0.35 + urgency * 0.45, 0.3, 0.95);
+        const duration = urgency > 0.6 ? '16n' : '32n';
+
+        try {
+            chimeHandle.triggerAttackRelease(midiToFrequency(rootNote), duration, baseTime, velocity);
+        } catch {
+            // Ignore playback failures; countdown cue is best-effort.
+        }
+
+        const accentDelay = Math.max(0.04, 0.12 - urgency * 0.05);
+        const accentNote = rootNote + 3;
+        try {
+            chimeHandle.triggerAttackRelease(
+                midiToFrequency(accentNote),
+                duration,
+                baseTime + accentDelay,
+                Math.min(0.95, velocity * 0.9 + urgency * 0.1),
+            );
+        } catch {
+            // Secondary accent can fail silently.
+        }
+    };
+
     const dispose = () => {
         if (disposed) {
             return;
@@ -267,6 +306,7 @@ export const createMidiEngine = (): MidiEngine => {
         triggerWallHit,
         triggerBrickAccent,
         triggerPowerUp,
+        triggerGambleCountdown,
         dispose,
     };
 };

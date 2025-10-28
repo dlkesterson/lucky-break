@@ -47,6 +47,14 @@ interface InternalState {
     timer: number;
 }
 
+export interface GambleBrickSummary {
+    readonly armedCount: number;
+    readonly primedCount: number;
+    readonly nextExpirationSeconds: number | null;
+    readonly timerSeconds: number;
+    readonly rewardMultiplier: number;
+}
+
 export interface GambleBrickManager {
     readonly register: (brick: Body) => void;
     readonly unregister: (brick: Body) => void;
@@ -54,7 +62,9 @@ export interface GambleBrickManager {
     readonly onHit: (brick: Body) => GambleHitResult;
     readonly tick: (deltaSeconds: number) => readonly GambleExpiryResult[];
     readonly getState: (brick: Body) => GambleBrickState | null;
+    readonly getRemainingTimer: (brick: Body) => number | null;
     readonly forEach: (callback: (brick: Body, state: GambleBrickState) => void) => void;
+    readonly snapshot: () => GambleBrickSummary;
 }
 
 export const createGambleBrickManager = (
@@ -116,10 +126,50 @@ export const createGambleBrickManager = (
 
     const getState: GambleBrickManager['getState'] = (brick) => entries.get(brick)?.status ?? null;
 
+    const getRemainingTimer: GambleBrickManager['getRemainingTimer'] = (brick) => {
+        const entry = entries.get(brick);
+        if (!entry) {
+            return null;
+        }
+        if (entry.status === 'primed') {
+            return Math.max(0, entry.timer);
+        }
+        return timerSeconds;
+    };
+
     const forEach: GambleBrickManager['forEach'] = (callback) => {
         entries.forEach((state, brick) => {
             callback(brick, state.status);
         });
+    };
+
+    const snapshot: GambleBrickManager['snapshot'] = () => {
+        let armedCount = 0;
+        let primedCount = 0;
+        let shortestTimer = Number.POSITIVE_INFINITY;
+
+        entries.forEach((state) => {
+            if (state.status === 'primed') {
+                primedCount += 1;
+                if (Number.isFinite(state.timer) && state.timer < shortestTimer) {
+                    shortestTimer = state.timer;
+                }
+            } else {
+                armedCount += 1;
+            }
+        });
+
+        const nextExpirationSeconds = primedCount > 0 && Number.isFinite(shortestTimer)
+            ? Math.max(0, shortestTimer)
+            : null;
+
+        return {
+            armedCount,
+            primedCount,
+            nextExpirationSeconds,
+            timerSeconds,
+            rewardMultiplier,
+        } satisfies GambleBrickSummary;
     };
 
     return {
@@ -129,6 +179,8 @@ export const createGambleBrickManager = (
         onHit,
         tick,
         getState,
+        getRemainingTimer,
         forEach,
+        snapshot,
     };
 };

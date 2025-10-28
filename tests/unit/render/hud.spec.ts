@@ -101,6 +101,25 @@ describe('buildHudScoreboard', () => {
             label: 'Momentum',
             value: 'Heat 70% · Volley 9 · Speed 62% · Field 33%',
         });
+        expect(view.entries.find((entry) => entry.id === 'gamble')).toBeUndefined();
+    });
+
+    it('formats gamble hints when primed bricks are active', () => {
+        const snapshot = createSnapshot();
+
+        const view = buildHudScoreboard(snapshot, {
+            armedCount: 1,
+            primedCount: 2,
+            nextExpirationSeconds: 4.25,
+            timerSeconds: 8,
+            rewardMultiplier: 2.5,
+        });
+
+        expect(view.entries).toContainEqual({
+            id: 'gamble',
+            label: 'Gamble',
+            value: 'Primed 2 · Armed 1 · Next 4.3s · ×2.5',
+        });
     });
 
     it('surfaces completed status and prompts when the round ends', () => {

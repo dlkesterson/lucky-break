@@ -89,6 +89,7 @@ export interface MusicDirector {
     readonly setBeatCallback: (callback: ((event: MusicBeatEvent) => void) | null) => void;
     readonly setMeasureCallback: (callback: ((event: MusicMeasureEvent) => void) | null) => void;
     readonly triggerComboAccent: (options?: ComboAccentOptions) => void;
+    readonly triggerGambleCountdown: (options?: GambleCountdownOptions) => void;
     readonly dispose: () => void;
 }
 
@@ -110,6 +111,10 @@ export interface ComboAccentOptions {
     readonly holdSeconds?: number;
     readonly releaseSeconds?: number;
     readonly targets?: readonly MusicLayerId[];
+}
+
+export interface GambleCountdownOptions {
+    readonly urgency?: number;
 }
 
 const DEFAULT_LAYER_DEFINITIONS: Record<MusicLayerId, MusicLayerDefinition> = {
@@ -783,6 +788,38 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         scheduleDuckRelease(holdSeconds, activeDuck.releaseSeconds);
     };
 
+    const triggerGambleCountdown: MusicDirector['triggerGambleCountdown'] = (options = {}) => {
+        if (disposed || !enabled) {
+            return;
+        }
+
+        const urgency = clamp01(options.urgency ?? 0);
+        const attackSeconds = Math.max(0.02, 0.1 - urgency * 0.03);
+        const holdSeconds = 0.08 + urgency * 0.2;
+        const releaseSeconds = 0.35 + urgency * 0.45;
+
+        const intenseBoost = clamp01(definitions.intense.baseLevel * (0.85 + urgency * 0.4));
+        if (intenseBoost > desiredLevels.intense) {
+            desiredLevels.intense = intenseBoost;
+        }
+
+        const melodyBoost = clamp01(definitions.melody.baseLevel * (0.65 + urgency * 0.3));
+        if (melodyBoost > desiredLevels.melody) {
+            desiredLevels.melody = melodyBoost;
+        }
+
+        const depth = clamp01(0.28 + urgency * 0.5);
+        triggerComboAccent({
+            depth,
+            attackSeconds,
+            holdSeconds,
+            releaseSeconds,
+            targets: ['calm'],
+        });
+
+        requestMixUpdate(false);
+    };
+
     const dispose: MusicDirector['dispose'] = () => {
         if (disposed) {
             return;
@@ -831,6 +868,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         setBeatCallback,
         setMeasureCallback,
         triggerComboAccent,
+        triggerGambleCountdown,
         dispose,
     };
 };
