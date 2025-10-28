@@ -1,5 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
-import { clampUnit, mixColors } from 'render/playfield-visuals';
+import { mixColors } from 'render/playfield-visuals';
+import { clampUnit, lerp } from 'util/math';
 
 export interface BallTrailSource {
     readonly id: number;
@@ -44,8 +45,6 @@ interface TrailEntry {
 const MAX_POINTS = 28;
 const FADE_DURATION = 0.65;
 const INACTIVE_FADE_ACCELERATION = 1.4;
-
-const lerp = (from: number, to: number, t: number): number => from + (to - from) * t;
 
 const createTrailGraphic = (): Graphics => {
     const graphic = new Graphics();

@@ -1,12 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-
-const clamp = (value: number, min: number, max: number): number => {
-    return Math.max(min, Math.min(max, value));
-};
-
-const lerp = (start: number, end: number, alpha: number): number => {
-    return start + (end - start) * alpha;
-};
+import { clamp, lerp } from 'util/math';
 
 export interface DynamicLightOptions {
     readonly color?: number;

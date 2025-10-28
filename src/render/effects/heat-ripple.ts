@@ -1,17 +1,5 @@
 import { Filter } from 'pixi.js';
-
-const clamp01 = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
+import { clampUnit } from 'util/math';
 
 export interface HeatRippleOptions {
     readonly maxRipples?: number;
@@ -74,7 +62,7 @@ const updateUniformEntry = (uniforms: RippleUniforms, index: number, ripple: Rip
     const offset = index * 4;
     const t = ripple.elapsed / ripple.duration;
     const amplitude = ripple.maxAmplitude * Math.max(0, 1 - t);
-    const radius = ripple.startRadius + (ripple.endRadius - ripple.startRadius) * clamp01(t);
+    const radius = ripple.startRadius + (ripple.endRadius - ripple.startRadius) * clampUnit(t);
 
     uniforms.uRipples[offset + 0] = ripple.centerX;
     uniforms.uRipples[offset + 1] = ripple.centerY;
@@ -159,7 +147,7 @@ export const createHeatRippleEffect = (options: HeatRippleOptions = {}): HeatRip
         startRadius,
         endRadius,
     }) => {
-        const clampedIntensity = clamp01(intensity);
+        const clampedIntensity = clampUnit(intensity);
         const amplitudeRange = merged.maxAmplitude - merged.minAmplitude;
         const durationRange = merged.maxDuration - merged.minDuration;
 
@@ -170,8 +158,8 @@ export const createHeatRippleEffect = (options: HeatRippleOptions = {}): HeatRip
             id: ++rippleId,
             duration: Math.max(0.05, rippleDuration),
             elapsed: 0,
-            centerX: clamp01(position.x),
-            centerY: clamp01(position.y),
+            centerX: clampUnit(position.x),
+            centerY: clampUnit(position.y),
             startRadius: Math.max(0, startRadius),
             endRadius: Math.max(Math.max(0, startRadius), endRadius),
             maxAmplitude: Math.max(0, rippleAmplitude),

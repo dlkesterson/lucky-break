@@ -2,21 +2,9 @@ import { Container, FillGradient, Graphics, Text, type Filter } from 'pixi.js';
 import { GlowFilter } from '@pixi/filter-glow';
 import type { GameThemeDefinition } from 'render/theme';
 import { mixColors, toColorNumber } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 
 const resolveColor = (value: string | number): number => (typeof value === 'number' ? value : toColorNumber(value));
-
-const clampUnit = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
 
 const easeOutCubic = (value: number): number => {
     const t = clampUnit(value);

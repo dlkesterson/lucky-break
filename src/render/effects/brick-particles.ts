@@ -1,17 +1,5 @@
 import { Container, Sprite, Texture } from 'pixi.js';
-
-const clampUnit = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
+import { clampUnit, lerp } from 'util/math';
 
 const DEFAULT_BURST_COUNT = 12;
 const DEFAULT_MAX_PARTICLES = 24;
@@ -57,7 +45,6 @@ export interface BrickParticleSystem {
     destroy(): void;
 }
 
-const lerp = (start: number, end: number, alpha: number): number => start + (end - start) * alpha;
 const pick = (min: number, max: number, random: () => number): number => {
     if (min >= max) {
         return min;

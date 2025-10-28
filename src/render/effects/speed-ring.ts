@@ -1,9 +1,5 @@
 import { Container, Graphics } from 'pixi.js';
-import { clampUnit } from 'render/playfield-visuals';
-
-const clamp = (value: number, min: number, max: number): number => {
-    return Math.max(min, Math.min(max, value));
-};
+import { clamp, clampUnit } from 'util/math';
 
 export interface SpeedRingPalette {
     readonly ringColor: number;

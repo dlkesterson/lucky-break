@@ -1,16 +1,24 @@
 import { Container } from 'pixi.js';
 import { GameTheme } from 'render/theme';
 import { createPlayfieldBackgroundLayer } from 'render/playfield-visuals';
-import { createComboBloomEffect } from 'render/effects/combo-bloom';
-import { createBallTrailsEffect, type BallTrailSource } from 'render/effects/ball-trails';
-import { createHeatDistortionEffect, type HeatDistortionSource } from 'render/effects/heat-distortion';
-import { createHeatRippleEffect } from 'render/effects/heat-ripple';
-import { createAudioWaveBackdrop, type AudioWaveBackdrop } from 'render/effects/audio-waves';
-import { createRoundCountdown, type RoundCountdownDisplay } from 'render/effects/round-countdown';
+import {
+    createEffectRegistry,
+    createAudioWaveBackdrop,
+    type AudioWaveBackdrop,
+    createBallTrailsEffect,
+    type BallTrailSource,
+    createBrickParticleSystem,
+    type BrickParticleSystem,
+    createComboBloomEffect,
+    createDynamicLight,
+    createHeatDistortionEffect,
+    type HeatDistortionSource,
+    createHeatRippleEffect,
+    createRoundCountdown,
+    type RoundCountdownDisplay,
+    createSpeedRing,
+} from 'render/effects';
 import { createComboRing } from 'render/combo-ring';
-import { createBrickParticleSystem, type BrickParticleSystem } from 'render/effects/brick-particles';
-import { createDynamicLight } from 'render/effects/dynamic-light';
-import { createSpeedRing } from 'render/effects/speed-ring';
 import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
 import type { StageHandle } from 'render/stage';
 import type { Ball } from 'physics/contracts';
@@ -74,6 +82,7 @@ export const createRuntimeVisuals = ({
 }: RuntimeVisualsDeps): RuntimeVisuals => {
     const ballTrailSources: BallTrailSource[] = [];
     const heatDistortionSources: HeatDistortionSource[] = [];
+    const effects = createEffectRegistry();
 
     const removeFromParent = (display: { removeFromParent?: () => void; parent?: { removeChild(child: unknown): unknown } | null }) => {
         if (typeof display.removeFromParent === 'function') {
@@ -103,33 +112,60 @@ export const createRuntimeVisuals = ({
 
     const playfieldBackground = createPlayfieldBackgroundLayer(playfieldDimensions);
     stage.addToLayer('playfield', playfieldBackground.container);
+    effects.trackContainer(playfieldBackground.container, { destroy: { children: true } });
 
-    const audioWaveBackdrop = createAudioWaveBackdrop({
-        width: playfieldDimensions.width,
-        height: playfieldDimensions.height,
-    });
+    const audioWaveBackdrop = effects.track(
+        createAudioWaveBackdrop({
+            width: playfieldDimensions.width,
+            height: playfieldDimensions.height,
+        }),
+        (backdrop) => {
+            removeFromParent(backdrop.container);
+            backdrop.destroy();
+        },
+    );
     audioWaveBackdrop.container.zIndex = 2;
     audioWaveBackdrop.setVisible(false);
     stage.addToLayer('playfield', audioWaveBackdrop.container);
 
-    const comboBloomEffect = createComboBloomEffect({ baseColor: themeAccents.combo });
-    if (comboBloomEffect) {
-        attachPlayfieldFilter(comboBloomEffect.filter);
-    }
+    const comboBloomEffect = effects.track(
+        createComboBloomEffect({ baseColor: themeAccents.combo }),
+        (effect) => {
+            detachPlayfieldFilter(effect.filter);
+            effect.destroy();
+        },
+    );
+    attachPlayfieldFilter(comboBloomEffect.filter);
 
-    const ballTrailsEffect = createBallTrailsEffect({
-        coreColor: themeBallColors.core,
-        auraColor: themeBallColors.aura,
-        accentColor: themeAccents.combo,
-    });
+    const ballTrailsEffect = effects.track(
+        createBallTrailsEffect({
+            coreColor: themeBallColors.core,
+            auraColor: themeBallColors.aura,
+            accentColor: themeAccents.combo,
+        }),
+        (effect) => {
+            removeFromParent(effect.container);
+            effect.destroy();
+        },
+    );
     stage.addToLayer('effects', ballTrailsEffect.container);
 
-    const heatDistortionEffect = createHeatDistortionEffect();
-    if (heatDistortionEffect) {
-        attachPlayfieldFilter(heatDistortionEffect.filter);
-    }
+    const heatDistortionEffect = effects.track(
+        createHeatDistortionEffect(),
+        (effect) => {
+            detachPlayfieldFilter(effect.filter);
+            effect.destroy();
+        },
+    );
+    attachPlayfieldFilter(heatDistortionEffect.filter);
 
-    const heatRippleEffect = createHeatRippleEffect();
+    const heatRippleEffect = effects.track(
+        createHeatRippleEffect(),
+        (effect) => {
+            detachPlayfieldFilter(effect.filter);
+            effect.destroy();
+        },
+    );
     attachPlayfieldFilter(heatRippleEffect.filter);
     if (import.meta.env.DEV && typeof window !== 'undefined') {
         const globalRef = window as typeof window & {
@@ -140,9 +176,15 @@ export const createRuntimeVisuals = ({
         };
     }
 
-    const brickParticles = createBrickParticleSystem({
-        random: random.random,
-    });
+    const brickParticles = effects.track(
+        createBrickParticleSystem({
+            random: random.random,
+        }),
+        (system) => {
+            removeFromParent(system.container);
+            system.destroy();
+        },
+    );
     brickParticles.container.zIndex = 42;
     stage.addToLayer('effects', brickParticles.container);
 
@@ -151,18 +193,24 @@ export const createRuntimeVisuals = ({
         theme: GameTheme,
     });
     stage.addToLayer('playfield', roundCountdownDisplay.container);
+    effects.trackContainer(roundCountdownDisplay.container, { destroy: { children: true } });
 
     const gameContainer = new Container();
     gameContainer.zIndex = 10;
     gameContainer.visible = false;
     gameContainer.sortableChildren = true;
     stage.addToLayer('playfield', gameContainer);
+    effects.trackContainer(gameContainer, { destroy: { children: true } });
 
-    const ballLight = createDynamicLight({
+    const ballLightSetup = createDynamicLight({
         speedForMaxIntensity: ballMaxSpeed * 1.1,
     });
-    ballLight.container.zIndex = 5;
-    stage.addToLayer('effects', ballLight.container);
+    ballLightSetup.container.zIndex = 5;
+    stage.addToLayer('effects', ballLightSetup.container);
+    const ballLight = effects.track(ballLightSetup, (light) => {
+        removeFromParent(light.container);
+        light.destroy();
+    });
 
     const buildPaddleLight = (color: number) => {
         const handle = createDynamicLight({
@@ -179,16 +227,23 @@ export const createRuntimeVisuals = ({
         handle.container.zIndex = 4;
         handle.container.alpha = 0.9;
         stage.addToLayer('effects', handle.container);
-        return handle;
+        return effects.track(handle, (light) => {
+            removeFromParent(light.container);
+            light.destroy();
+        });
     };
 
     let paddleLight: ReturnType<typeof createDynamicLight> | null = buildPaddleLight(themeAccents.powerUp);
 
-    const comboRing = createComboRing(stage.app.renderer);
-    comboRing.container.zIndex = 40;
-    gameContainer.addChild(comboRing.container);
+    const comboRingSetup = createComboRing(stage.app.renderer);
+    comboRingSetup.container.zIndex = 40;
+    gameContainer.addChild(comboRingSetup.container);
+    const comboRing = effects.track(comboRingSetup, (ring) => {
+        removeFromParent(ring.container);
+        ring.dispose();
+    });
 
-    const ballSpeedRing = createSpeedRing({
+    const ballSpeedRingSetup = createSpeedRing({
         minRadius: ball.radius + 6,
         maxRadius: ball.radius + 28,
         haloRadiusOffset: 14,
@@ -198,10 +253,14 @@ export const createRuntimeVisuals = ({
             haloColor: themeBallColors.aura,
         },
     });
-    ballSpeedRing.container.zIndex = 49;
-    gameContainer.addChild(ballSpeedRing.container);
+    ballSpeedRingSetup.container.zIndex = 49;
+    gameContainer.addChild(ballSpeedRingSetup.container);
+    const ballSpeedRing = effects.track(ballSpeedRingSetup, (ring) => {
+        removeFromParent(ring.container);
+        ring.destroy();
+    });
 
-    const inputDebugOverlay = new InputDebugOverlay({
+    const inputDebugOverlaySetup = new InputDebugOverlay({
         inputManager,
         paddleController,
         ballController,
@@ -209,59 +268,33 @@ export const createRuntimeVisuals = ({
         ball,
         stage,
     });
-    stage.layers.hud.addChild(inputDebugOverlay.getContainer());
+    stage.layers.hud.addChild(inputDebugOverlaySetup.getContainer());
+    const inputDebugOverlay = effects.track(inputDebugOverlaySetup, (overlay) => {
+        const inputContainer = overlay.getContainer();
+        removeFromParent(inputContainer);
+        overlay.destroy();
+    });
 
-    const physicsDebugOverlay = new PhysicsDebugOverlay();
-    stage.layers.hud.addChild(physicsDebugOverlay.getContainer());
-    physicsDebugOverlay.setVisible(false);
+    const physicsDebugOverlaySetup = new PhysicsDebugOverlay();
+    stage.layers.hud.addChild(physicsDebugOverlaySetup.getContainer());
+    physicsDebugOverlaySetup.setVisible(false);
+    const physicsDebugOverlay = effects.track(physicsDebugOverlaySetup, (overlay) => {
+        const container = overlay.getContainer();
+        removeFromParent(container);
+        overlay.destroy();
+    });
 
     const replacePaddleLight = (color: number) => {
         if (paddleLight) {
-            const parent = paddleLight.container.parent;
-            if (parent) {
-                parent.removeChild(paddleLight.container);
-            }
+            removeFromParent(paddleLight.container);
             paddleLight.destroy();
         }
         paddleLight = buildPaddleLight(color);
     };
 
     const dispose = () => {
-        if (comboBloomEffect) {
-            detachPlayfieldFilter(comboBloomEffect.filter);
-            comboBloomEffect.destroy();
-        }
-        detachPlayfieldFilter(heatRippleEffect.filter);
-        heatRippleEffect.destroy();
-        if (heatDistortionEffect) {
-            detachPlayfieldFilter(heatDistortionEffect.filter);
-            heatDistortionEffect.destroy();
-        }
-        ballTrailsEffect.destroy();
-        removeFromParent(audioWaveBackdrop.container);
-        audioWaveBackdrop.destroy();
-        removeFromParent(brickParticles.container);
-        brickParticles.destroy();
-        removeFromParent(roundCountdownDisplay.container);
-        removeFromParent(comboRing.container);
-        comboRing.dispose();
-        removeFromParent(ballSpeedRing.container);
-        ballSpeedRing.destroy();
-        removeFromParent(ballLight.container);
-        ballLight.destroy();
-        if (paddleLight) {
-            removeFromParent(paddleLight.container);
-            paddleLight.destroy();
-            paddleLight = null;
-        }
-        const inputContainer = inputDebugOverlay.getContainer();
-        removeFromParent(inputContainer);
-        inputDebugOverlay.destroy();
-        const physicsContainer = physicsDebugOverlay.getContainer();
-        removeFromParent(physicsContainer);
-        physicsDebugOverlay.destroy();
-        removeFromParent(gameContainer);
-        removeFromParent(playfieldBackground.container);
+        effects.disposeAll();
+        paddleLight = null;
         if (import.meta.env.DEV && typeof window !== 'undefined') {
             const globalRef = window as typeof window & {
                 __LBHeatRipple?: { getActiveRippleCount: () => number };

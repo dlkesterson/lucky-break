@@ -1,9 +1,10 @@
 import { Container, FillGradient, Graphics, Texture, TilingSprite } from 'pixi.js';
 import type { BrickForm } from 'util/levels';
+import { clampUnit } from 'util/math';
 
 export const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
-export const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+export { clampUnit };
 
 export interface BallVisualPalette {
     readonly baseColor: number;

@@ -1,19 +1,6 @@
 import { GlowFilter } from '@pixi/filter-glow';
 import type { Filter } from 'pixi.js';
-
-const clamp01 = (value: number): number => {
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
-
-const lerp = (start: number, end: number, t: number): number => {
-    return start + (end - start) * t;
-};
+import { clampUnit, lerp } from 'util/math';
 
 export interface ComboBloomOptions {
     readonly baseColor: number;
@@ -64,7 +51,7 @@ export const createComboBloomEffect = (options: ComboBloomOptions): ComboBloomEf
     let themeColor = baseColor;
 
     const update = (payload: ComboBloomUpdatePayload): void => {
-        const comboEnergy = clamp01(payload.comboEnergy);
+        const comboEnergy = clampUnit(payload.comboEnergy);
         if (payload.accentColor !== undefined && payload.accentColor !== themeColor) {
             themeColor = payload.accentColor;
             glow.color = themeColor;
@@ -72,7 +59,7 @@ export const createComboBloomEffect = (options: ComboBloomOptions): ComboBloomEf
 
         const comboBias = comboEnergy ** 1.35;
         targetStrength = minStrength + (maxStrength - minStrength) * comboBias;
-        const blend = clamp01(payload.deltaSeconds * responsiveness);
+        const blend = clampUnit(payload.deltaSeconds * responsiveness);
         currentStrength = lerp(currentStrength, targetStrength, blend);
         const enabled = currentStrength > minStrength * 0.15;
 

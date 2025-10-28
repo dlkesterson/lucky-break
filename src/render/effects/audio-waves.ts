@@ -1,5 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
-import { clampUnit, mixColors } from 'render/playfield-visuals';
+import { mixColors } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 
 export type AudioWaveKind = 'foreshadow' | 'sfx' | 'music';
 export type AudioWaveAccent = 'schedule' | 'note' | 'cancel';

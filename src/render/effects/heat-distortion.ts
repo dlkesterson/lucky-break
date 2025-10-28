@@ -1,18 +1,5 @@
 import { Filter, defaultFilterVert } from 'pixi.js';
-
-const clamp01 = (value: number): number => {
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
-
-const lerp = (start: number, end: number, t: number): number => {
-    return start + (end - start) * t;
-};
+import { clampUnit, lerp } from 'util/math';
 
 export interface HeatDistortionSource {
     readonly position: { readonly x: number; readonly y: number };
@@ -150,9 +137,9 @@ export const createHeatDistortionEffect = (options: HeatDistortionOptions = {}):
                 const offset = index * 4;
                 if (index < boundedSources) {
                     const source = sources[index];
-                    const clampedX = clamp01(source.position.x);
-                    const clampedY = clamp01(source.position.y);
-                    const intensity = clamp01(source.intensity);
+                    const clampedX = clampUnit(source.position.x);
+                    const clampedY = clampUnit(source.position.y);
+                    const intensity = clampUnit(source.intensity);
                     const swirl = Math.max(0.5, source.swirl);
                     tempBuffer[offset] = clampedX;
                     tempBuffer[offset + 1] = clampedY;
@@ -170,11 +157,11 @@ export const createHeatDistortionEffect = (options: HeatDistortionOptions = {}):
             tempBuffer.fill(0);
         }
 
-        const comboInfluence = clamp01(comboEnergy) * comboContribution;
+        const comboInfluence = clampUnit(comboEnergy) * comboContribution;
         const targetStrength = boundedSources > 0
             ? baseStrength + aggregatedIntensity * strengthScale + comboInfluence
             : 0;
-        const blend = clamp01(safeDelta * responsiveness);
+        const blend = clampUnit(safeDelta * responsiveness);
         currentStrength = lerp(currentStrength, targetStrength, blend);
 
         uniforms.uStrength = currentStrength;
