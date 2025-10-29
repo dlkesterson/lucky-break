@@ -22,6 +22,12 @@ import { mixColors } from 'render/playfield-visuals';
 import { createBrickTextureCache, type BrickTextureOverrides } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
+import {
+    createGravityWellHazard,
+    createMovingBumperHazard,
+    createPortalHazard,
+    type PhysicsHazard,
+} from 'physics/hazards';
 import type { RandomSource } from 'util/random';
 
 type BrickHpLabel = Container & { text?: string };
@@ -60,11 +66,38 @@ export interface SpawnCoinOptions {
     readonly fallSpeed?: number;
 }
 
+export type LevelHazardDescriptor =
+    | {
+        readonly id: string;
+        readonly type: 'gravity-well';
+        readonly position: { x: number; y: number };
+        readonly radius: number;
+        readonly strength: number;
+        readonly falloff: 'none' | 'linear';
+    }
+    | {
+        readonly id: string;
+        readonly type: 'moving-bumper';
+        readonly position: { x: number; y: number };
+        readonly radius: number;
+        readonly impulse: number;
+        readonly direction: { x: number; y: number };
+    }
+    | {
+        readonly id: string;
+        readonly type: 'portal';
+        readonly position: { x: number; y: number };
+        readonly radius: number;
+        readonly exit: { x: number; y: number };
+        readonly cooldownSeconds: number;
+    };
+
 export interface LevelLoadResult {
     readonly breakableBricks: number;
     readonly powerUpChanceMultiplier: number;
     readonly difficultyMultiplier: number;
     readonly layoutBounds: BrickLayoutBounds | null;
+    readonly hazards: readonly LevelHazardDescriptor[];
 }
 
 export interface LevelRuntimeOptions {
@@ -113,6 +146,9 @@ export interface LevelRuntimeHandle {
     updateGhostBricks(deltaSeconds: number): number;
     getGhostBrickRemainingDuration(): number;
     forceClearBreakableBricks(): number;
+    clearActiveHazards(): void;
+    getActiveHazards(): readonly LevelHazardDescriptor[];
+    findHazard(body: Body): LevelHazardDescriptor | null;
 }
 
 export const createLevelRuntime = ({
@@ -149,6 +185,14 @@ export const createLevelRuntime = ({
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
     const activeCoins: FallingCoin[] = [];
+    interface ActiveHazardEntry {
+        readonly descriptor: LevelHazardDescriptor;
+        readonly hazard: PhysicsHazard;
+        readonly body: Body | null;
+        readonly visuals: readonly Graphics[];
+    }
+    const activeHazards: ActiveHazardEntry[] = [];
+    const hazardByBody = new Map<Body, LevelHazardDescriptor>();
     const brickTextures = createBrickTextureCache(stage.app.renderer);
     const ensureHpLabel = (
         visual: Sprite,
@@ -396,6 +440,7 @@ export const createLevelRuntime = ({
         clearBricks();
         clearActivePowerUps();
         clearActiveCoins();
+        clearActiveHazards();
 
         let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
         const loopCount = Math.floor(levelIndex / presetLevelCount);
@@ -432,6 +477,7 @@ export const createLevelRuntime = ({
                 powerUpChanceMultiplier: chanceMultiplier,
                 difficultyMultiplier,
                 layoutBounds: null,
+                hazards: [],
             } satisfies LevelLoadResult;
         }
 
@@ -439,6 +485,7 @@ export const createLevelRuntime = ({
         let maxX = Number.NEGATIVE_INFINITY;
         let minY = Number.POSITIVE_INFINITY;
         let maxY = Number.NEGATIVE_INFINITY;
+        const hazardSummaries: LevelHazardDescriptor[] = [];
 
         layout.bricks.forEach((brickSpec) => {
             const brickForm = brickSpec.form ?? 'rectangle';
@@ -509,6 +556,184 @@ export const createLevelRuntime = ({
             maxY = Math.max(maxY, brickSpec.y + brickSize.height / 2);
         });
 
+        if (layout.breakableCount > 0 && Number.isFinite(minX) && Number.isFinite(maxX) && Number.isFinite(minY) && Number.isFinite(maxY)) {
+            const layoutWidth = Math.max(0, maxX - minX);
+            const layoutHeight = Math.max(0, maxY - minY);
+            const shouldSpawnGravityWell = loopCount >= 1 && (layoutWidth > 0 || layoutHeight > 0);
+
+            if (shouldSpawnGravityWell) {
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                const baseRadius = Math.max(layoutWidth, layoutHeight) * 0.35;
+                const minRadius = Math.max(brickSize.width, brickSize.height) * 2.5;
+                const maxRadius = Math.max(playfieldWidth, Math.max(brickSize.width, brickSize.height) * 10) * 0.45;
+                const radius = Math.max(minRadius, Math.min(maxRadius, baseRadius));
+                const strength = 0.0012 + loopCount * 0.00035;
+
+                const hazard = createGravityWellHazard({
+                    id: `gravity-well-${levelIndex}`,
+                    position: { x: centerX, y: centerY },
+                    radius,
+                    strength,
+                    falloff: 'linear',
+                });
+
+                physics.addHazard(hazard);
+
+                const visual = new Graphics();
+                visual.circle(0, 0, radius);
+                visual.stroke({ color: 0x6ec1ff, width: 4, alpha: 0.55 });
+                visual.fill({ color: 0x6ec1ff, alpha: 0.08 });
+                visual.position.set(centerX, centerY);
+                visual.zIndex = 4;
+                visual.eventMode = 'none';
+                stage.addToLayer('effects', visual);
+
+                const descriptor: LevelHazardDescriptor = {
+                    id: hazard.id,
+                    type: 'gravity-well',
+                    position: { x: centerX, y: centerY },
+                    radius,
+                    strength,
+                    falloff: hazard.falloff,
+                };
+
+                const hazardBody = hazard.body ?? null;
+                activeHazards.push({
+                    descriptor,
+                    hazard,
+                    body: hazardBody,
+                    visuals: [visual],
+                });
+                if (hazardBody) {
+                    hazardByBody.set(hazardBody, descriptor);
+                }
+                hazardSummaries.push(descriptor);
+            }
+
+            const shouldSpawnMovingBumper = loopCount >= 2 && layoutWidth > 120;
+            if (shouldSpawnMovingBumper) {
+                const bumperRadius = Math.max(brickSize.width, brickSize.height) * 0.6;
+                const bumperPadding = Math.max(bumperRadius + 24, brickSize.width * 0.75);
+                const travelStartX = minX + bumperPadding;
+                const travelEndX = maxX - bumperPadding;
+                if (travelEndX - travelStartX >= bumperRadius * 0.5) {
+                    const centerY = (minY + maxY) / 2;
+                    const bumperVisual = new Graphics();
+                    bumperVisual.circle(0, 0, bumperRadius);
+                    bumperVisual.fill({ color: 0xff9f1c, alpha: 0.85 });
+                    bumperVisual.stroke({ color: 0xffffff, width: 4, alpha: 0.7 });
+                    bumperVisual.position.set(travelStartX, centerY);
+                    bumperVisual.zIndex = 6;
+                    bumperVisual.eventMode = 'none';
+                    stage.addToLayer('effects', bumperVisual);
+
+                    const descriptorDirection = { x: 0, y: 0 };
+
+                    const movingBumper = createMovingBumperHazard({
+                        id: `moving-bumper-${levelIndex}`,
+                        start: { x: travelStartX, y: centerY },
+                        end: { x: travelEndX, y: centerY },
+                        radius: bumperRadius,
+                        speed: Math.max(80, layoutWidth / 2),
+                        impulse: 4 + loopCount * 0.6,
+                        onPositionChange: (pos, direction) => {
+                            bumperVisual.position.set(pos.x, pos.y);
+                            descriptorDirection.x = direction.x;
+                            descriptorDirection.y = direction.y;
+                        },
+                    });
+
+                    physics.addHazard(movingBumper);
+
+                    const descriptor: LevelHazardDescriptor = {
+                        id: movingBumper.id,
+                        type: 'moving-bumper',
+                        position: movingBumper.position,
+                        radius: movingBumper.radius,
+                        impulse: movingBumper.impulse,
+                        direction: descriptorDirection,
+                    };
+
+                    descriptorDirection.x = movingBumper.direction.x;
+                    descriptorDirection.y = movingBumper.direction.y;
+
+                    activeHazards.push({
+                        descriptor,
+                        hazard: movingBumper,
+                        body: movingBumper.body ?? null,
+                        visuals: [bumperVisual],
+                    });
+
+                    if (movingBumper.body) {
+                        hazardByBody.set(movingBumper.body, descriptor);
+                    }
+                    hazardSummaries.push(descriptor);
+                }
+            }
+
+            const shouldSpawnPortal = loopCount >= 3 && layoutWidth > 100 && layoutHeight > 80;
+            if (shouldSpawnPortal) {
+                const portalRadius = Math.max(brickSize.width, brickSize.height) * 0.8;
+                const centerX = (minX + maxX) / 2;
+                const entryY = Math.min(maxY - portalRadius, minY + layoutHeight * 0.4);
+                const exitYBase = Math.max(minY - portalRadius * 2, portalRadius + 40);
+                const exitY = Math.min(gameConfig.playfield.height - portalRadius - 40, Math.max(exitYBase, maxY + portalRadius * 2));
+                const portalExit = { x: centerX, y: exitY };
+
+                const entryVisual = new Graphics();
+                entryVisual.circle(0, 0, portalRadius);
+                entryVisual.stroke({ color: 0x6c63ff, width: 5, alpha: 0.9 });
+                entryVisual.fill({ color: 0x6c63ff, alpha: 0.15 });
+                entryVisual.position.set(centerX, entryY);
+                entryVisual.zIndex = 5;
+                entryVisual.eventMode = 'none';
+                stage.addToLayer('effects', entryVisual);
+
+                const exitVisual = new Graphics();
+                exitVisual.circle(0, 0, portalRadius * 0.85);
+                exitVisual.stroke({ color: 0x00c5ff, width: 4, alpha: 0.7 });
+                exitVisual.fill({ color: 0x00c5ff, alpha: 0.12 });
+                exitVisual.position.set(portalExit.x, portalExit.y);
+                exitVisual.zIndex = 5;
+                exitVisual.eventMode = 'none';
+                stage.addToLayer('effects', exitVisual);
+
+                const portalHazard = createPortalHazard({
+                    id: `portal-${levelIndex}`,
+                    entry: { x: centerX, y: entryY },
+                    exit: portalExit,
+                    radius: portalRadius,
+                    cooldownSeconds: 0.45,
+                });
+
+                physics.addHazard(portalHazard);
+
+                const descriptor: LevelHazardDescriptor = {
+                    id: portalHazard.id,
+                    type: 'portal',
+                    position: portalHazard.position,
+                    radius: portalHazard.radius,
+                    exit: portalHazard.exit,
+                    cooldownSeconds: portalHazard.cooldownSeconds,
+                };
+
+                const visuals: Graphics[] = [entryVisual, exitVisual];
+
+                activeHazards.push({
+                    descriptor,
+                    hazard: portalHazard,
+                    body: portalHazard.body ?? null,
+                    visuals,
+                });
+
+                if (portalHazard.body) {
+                    hazardByBody.set(portalHazard.body, descriptor);
+                }
+                hazardSummaries.push(descriptor);
+            }
+        }
+
         return {
             breakableBricks: layout.breakableCount,
             powerUpChanceMultiplier: chanceMultiplier,
@@ -519,6 +744,7 @@ export const createLevelRuntime = ({
                 minY,
                 maxY,
             },
+            hazards: hazardSummaries,
         } satisfies LevelLoadResult;
     };
 
@@ -663,6 +889,36 @@ export const createLevelRuntime = ({
         }
     };
 
+    const detachHazardVisual = (visual: Graphics) => {
+        const parent = visual.parent;
+        if (parent && typeof parent.removeChild === 'function') {
+            parent.removeChild(visual);
+        }
+        visual.destroy();
+    };
+
+    const clearActiveHazards: LevelRuntimeHandle['clearActiveHazards'] = () => {
+        while (activeHazards.length > 0) {
+            const entry = activeHazards.pop();
+            if (!entry) {
+                continue;
+            }
+            physics.removeHazard(entry.hazard.id);
+            if (entry.body) {
+                hazardByBody.delete(entry.body);
+            }
+            entry.visuals.forEach(detachHazardVisual);
+        }
+    };
+
+    const getActiveHazards: LevelRuntimeHandle['getActiveHazards'] = () => {
+        return activeHazards.map((entry) => entry.descriptor);
+    };
+
+    const findHazard: LevelRuntimeHandle['findHazard'] = (body) => {
+        return hazardByBody.get(body) ?? null;
+    };
+
     const resetGhostBricks: LevelRuntimeHandle['resetGhostBricks'] = () => {
         while (ghostBrickEffects.length > 0) {
             ghostBrickEffects.pop()?.restore();
@@ -678,6 +934,7 @@ export const createLevelRuntime = ({
     };
 
     const forceClearBreakableBricks: LevelRuntimeHandle['forceClearBreakableBricks'] = () => {
+        clearActiveHazards();
         let removed = 0;
         const bodies = Array.from(brickHealth.keys());
         bodies.forEach((body) => {
@@ -784,6 +1041,9 @@ export const createLevelRuntime = ({
         findCoin,
         removeCoin,
         clearActiveCoins,
+        clearActiveHazards,
+        getActiveHazards,
+        findHazard,
         resetGhostBricks,
         clearGhostEffect,
         applyGhostBrickReward,

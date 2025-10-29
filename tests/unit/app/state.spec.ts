@@ -417,4 +417,29 @@ describe('createGameSessionManager', () => {
             storedAfter: after,
         });
     });
+
+    it('grants stored entropy when idle rewards are applied', () => {
+        const { manager } = createSnapshot();
+
+        const before = manager.getEntropyState();
+        expect(before.stored).toBe(0);
+
+        const stored = manager.grantStoredEntropy(28);
+
+        expect(stored).toBeGreaterThan(0);
+        const after = manager.getEntropyState();
+        expect(after.stored).toBe(stored);
+        expect(after.trend).toBe('rising');
+    });
+
+    it('ignores non-positive idle reward grants', () => {
+        const { manager } = createSnapshot();
+
+        const before = manager.getEntropyState();
+        manager.grantStoredEntropy(0);
+        manager.grantStoredEntropy(-12);
+
+        const after = manager.getEntropyState();
+        expect(after.stored).toBe(before.stored);
+    });
 });

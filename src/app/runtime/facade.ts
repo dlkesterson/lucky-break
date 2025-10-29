@@ -17,6 +17,7 @@ import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
 import type { EntropyActionType, LifeLostCause, RewardWheelInteractionType } from '../events';
 import { createAchievementManager, type AchievementUnlock } from '../achievements';
+import { createFateLedger } from '../fate-ledger';
 import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
@@ -34,6 +35,7 @@ import {
     type BiasPhaseSceneOption,
     type BiasPhaseSessionSummary,
 } from 'scenes/bias-phase';
+import { createFateLedgerScene } from 'scenes/fate-ledger';
 import { createGameOverScene } from 'scenes/game-over';
 import { createPauseScene } from 'scenes/pause';
 import { gameConfig, type GameConfig } from 'config/game';
@@ -105,6 +107,7 @@ import type { GameplayRuntimeState, SyncDriftSample } from './types';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
 import { createRuntimeModifiers, type RuntimeModifierSnapshot, type RuntimeModifiers } from './modifiers';
+import { createIdleSimulation, type IdleSimulationResultSummary } from './idle';
 
 type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
 import {
@@ -382,6 +385,7 @@ const ENTROPY_ACTION_BINDINGS: Record<EntropyActionType, { key: string; hotkey: 
 const ENTROPY_ACTION_SEQUENCE: readonly EntropyActionType[] = ['reroll', 'shield', 'bailout'];
 
 const achievements = createAchievementManager();
+const fateLedger = createFateLedger();
 
 let upgradeSnapshot = achievements.getUpgradeSnapshot();
 let comboDecayWindow = BASE_COMBO_DECAY_WINDOW * upgradeSnapshot.comboDecayMultiplier;
@@ -945,6 +949,7 @@ export const createRuntimeFacade = async ({
         random,
         replayBuffer,
         renderStageSoon,
+        fateLedger,
     };
 
     const provideSceneServices = (): GameSceneServices => sharedSceneServices;
@@ -3265,6 +3270,10 @@ export const createRuntimeFacade = async ({
         { provideContext: provideSceneServices },
     );
 
+    stage.register('fate-ledger', (context) => createFateLedgerScene(context), {
+        provideContext: provideSceneServices,
+    });
+
     stage.register('gameplay', (context) =>
         createGameplayScene(context, {
             onUpdate: runGameplayUpdate,
@@ -3460,6 +3469,14 @@ export const createRuntimeFacade = async ({
 
     const lifecycle = createRuntimeLifecycle();
 
+    const idleSimulation = createIdleSimulation({
+        session,
+        random,
+        fateLedger,
+        lifecycle,
+    });
+    let idleResumeSummary: IdleSimulationResultSummary | null = null;
+
     lifecycle.register(() => {
         midiEngine.dispose();
     });
@@ -3518,6 +3535,14 @@ export const createRuntimeFacade = async ({
         input: visuals?.inputDebugOverlay ?? null,
         physics: visuals?.physicsDebugOverlay ?? null,
     });
+
+    idleResumeSummary = idleSimulation.resumeIfNeeded();
+    idleSimulation.persistSnapshot();
+    if (idleResumeSummary) {
+        refreshHud();
+        hudDisplay.pulseCombo(0.35);
+        renderStageSoon();
+    }
 
     const handle: GameRuntimeHandle = {
         getSessionElapsedSeconds: () => runtimeState.sessionElapsedSeconds,

@@ -47,6 +47,10 @@ vi.mock('pixi.js', () => {
                 (item as { parent?: any }).parent = null;
             }
         }
+
+        destroy(): void {
+            this.children.length = 0;
+        }
     }
 
     class MockGraphics extends MockContainer {
@@ -56,6 +60,14 @@ vi.mock('pixi.js', () => {
 
         fill(): this {
             return this;
+        }
+
+        stroke(): this {
+            return this;
+        }
+
+        destroy(): void {
+            super.destroy();
         }
     }
 
@@ -87,6 +99,9 @@ const matterState = vi.hoisted(() => {
     const setVelocityMock = vi.fn((body: any, velocity: { x: number; y: number }) => {
         body.velocity = velocity;
     });
+    const setPositionMock = vi.fn((body: any, position: { x: number; y: number }) => {
+        body.position = { x: position.x, y: position.y };
+    });
     const circleMock = vi.fn((x: number, y: number, radius: number, options: any = {}) => ({
         id: nextId++,
         label: options.label ?? 'circle',
@@ -96,10 +111,12 @@ const matterState = vi.hoisted(() => {
     }));
     return {
         setVelocityMock,
+        setPositionMock,
         circleMock,
         reset() {
             nextId = 1;
             setVelocityMock.mockClear();
+            setPositionMock.mockClear();
             circleMock.mockClear();
         },
     };
@@ -107,7 +124,7 @@ const matterState = vi.hoisted(() => {
 
 vi.mock('physics/matter', () => {
     const exports = {
-        Body: { setVelocity: matterState.setVelocityMock },
+        Body: { setVelocity: matterState.setVelocityMock, setPosition: matterState.setPositionMock },
         Bodies: { circle: matterState.circleMock },
     };
 
@@ -221,6 +238,7 @@ const createStage = () => {
 
 const createPhysics = () => {
     let nextIdValue = 100;
+    const hazards: any[] = [];
     return {
         factory: {
             brick: vi.fn(({ position }: { position: { x: number; y: number } }) => ({
@@ -232,6 +250,20 @@ const createPhysics = () => {
         },
         add: vi.fn(),
         remove: vi.fn(),
+        hazards,
+        addHazard: vi.fn((hazard: any) => {
+            hazards.push(hazard);
+        }),
+        removeHazard: vi.fn((hazardId: string) => {
+            const index = hazards.findIndex((entry) => entry?.id === hazardId);
+            if (index >= 0) {
+                hazards.splice(index, 1);
+            }
+        }),
+        clearHazards: vi.fn(() => {
+            hazards.length = 0;
+        }),
+        getHazards: vi.fn(() => [...hazards]),
     };
 };
 
@@ -478,5 +510,63 @@ describe('createLevelRuntime', () => {
         expect(remixLevelMock).toHaveBeenCalledWith(expect.anything(), 3);
         expect(loopResult.powerUpChanceMultiplier).toBe(1);
         expect(loopResult.difficultyMultiplier).toBeCloseTo(1.3);
+    });
+
+    it('spawns gravity well hazards on looped levels', () => {
+        const layout = {
+            bricks: [
+                { row: 0, col: 0, x: 140, y: 120, hp: 1 },
+                { row: 0, col: 1, x: 200, y: 120, hp: 1 },
+            ],
+            breakableCount: 2,
+            spec: { powerUpChanceMultiplier: 1 },
+        };
+
+        const { runtime, physics, stage } = createRuntime({ layout, presetCount: 5 });
+        const result = runtime.loadLevel(5);
+
+        expect(physics.addHazard).toHaveBeenCalledTimes(1);
+        expect(result.hazards).toHaveLength(1);
+        const [hazard] = result.hazards;
+        expect(hazard.type).toBe('gravity-well');
+        expect(stage.layers.effects.addChild).toHaveBeenCalled();
+        expect(runtime.getActiveHazards()).toHaveLength(1);
+
+        runtime.forceClearBreakableBricks();
+        expect(physics.removeHazard).toHaveBeenCalledWith(hazard.id);
+        expect(runtime.getActiveHazards()).toHaveLength(0);
+        expect(stage.layers.effects.removeChild).toHaveBeenCalled();
+    });
+
+    it('spawns moving bumpers and portals on deeper loops and cleans them up', () => {
+        const layout = {
+            bricks: [
+                { row: 0, col: 0, x: 120, y: 90, hp: 1 },
+                { row: 0, col: 2, x: 280, y: 90, hp: 1 },
+                { row: 3, col: 1, x: 200, y: 180, hp: 1 },
+                { row: 5, col: 1, x: 200, y: 260, hp: 1 },
+            ],
+            breakableCount: 4,
+            spec: { powerUpChanceMultiplier: 1 },
+        };
+
+        const { runtime, physics, stage } = createRuntime({ layout, presetCount: 1, playfieldWidth: 480 });
+        const result = runtime.loadLevel(4);
+
+        expect(physics.addHazard).toHaveBeenCalledTimes(3);
+        const hazardTypes = result.hazards.map((hazard) => hazard.type).sort();
+        expect(hazardTypes).toEqual(['gravity-well', 'moving-bumper', 'portal']);
+        expect(stage.layers.effects.addChild).toHaveBeenCalled();
+        const addCallCount = stage.layers.effects.addChild.mock.calls.length;
+        expect(addCallCount).toBeGreaterThanOrEqual(3);
+        expect(runtime.getActiveHazards()).toHaveLength(3);
+
+        const hazardIds = result.hazards.map((hazard) => hazard.id);
+        runtime.forceClearBreakableBricks();
+        hazardIds.forEach((id) => {
+            expect(physics.removeHazard).toHaveBeenCalledWith(id);
+        });
+        expect(runtime.getActiveHazards()).toHaveLength(0);
+        expect(stage.layers.effects.removeChild).toHaveBeenCalled();
     });
 });

@@ -187,6 +187,16 @@ const toPowerUpPaddlePair = toSpecificPair('powerup', 'paddle');
 const toCoinPaddlePair = toSpecificPair('coin', 'paddle');
 const toPowerUpBottomPair = toSpecificPair('powerup', 'wall-bottom');
 const toCoinBottomPair = toSpecificPair('coin', 'wall-bottom');
+const toHazardBallPair = (bodyA: Body, bodyB: Body): { hazardBody: Body; ballBody: Body } | null => {
+    const isHazard = (body: Body) => body.label.startsWith('hazard-');
+    if (isHazard(bodyA) && isBall(bodyB)) {
+        return { hazardBody: bodyA, ballBody: bodyB };
+    }
+    if (isHazard(bodyB) && isBall(bodyA)) {
+        return { hazardBody: bodyB, ballBody: bodyA };
+    }
+    return null;
+};
 
 const handleBallBrickCollision = (
     deps: CollisionRuntimeDeps,
@@ -683,8 +693,118 @@ const handleCoinMissed = (ctx: CollisionContext, coinBody: Body): void => {
     }
 };
 
+const handleHazardBallCollision = (
+    ctx: CollisionContext,
+    hazardBody: Body,
+    ballBody: Body,
+    portalCooldowns: Map<string, Map<number, number>>,
+): void => {
+    const descriptor = ctx.levelRuntime.findHazard(hazardBody);
+    if (!descriptor) {
+        return;
+    }
+
+    const fx = ctx.functions;
+    const dims = ctx.dimensions;
+    const normalizedX = getNormalizedPosition(descriptor.position.x, dims.playfieldWidth);
+    const normalizedY = getNormalizedPosition(descriptor.position.y, dims.playfieldHeight);
+    const normalizedRadius = Math.min(0.6, Math.max(0.04, descriptor.radius / Math.max(1, dims.playfieldSizeMax)));
+
+    if (descriptor.type === 'gravity-well') {
+        fx.spawnHeatRipple({
+            position: { x: normalizedX, y: normalizedY },
+            intensity: 0.35,
+            startRadius: Math.max(0.02, normalizedRadius * 0.55),
+            endRadius: Math.min(0.5, normalizedRadius * 1.35 + 0.08),
+        });
+        fx.flashBallLight(0.28);
+        return;
+    }
+
+    if (descriptor.type === 'moving-bumper') {
+        fx.spawnHeatRipple({
+            position: { x: normalizedX, y: normalizedY },
+            intensity: 0.24,
+            startRadius: Math.max(0.018, normalizedRadius * 0.45),
+            endRadius: Math.min(0.45, normalizedRadius * 1.1 + 0.06),
+        });
+
+        const offsetX = ballBody.position.x - descriptor.position.x;
+        const offsetY = ballBody.position.y - descriptor.position.y;
+        const distance = Math.hypot(offsetX, offsetY);
+        const direction = distance > 0 && Number.isFinite(distance)
+            ? { x: offsetX / distance, y: offsetY / distance }
+            : descriptor.direction;
+
+        const impulse = descriptor.impulse;
+        const velocity = {
+            x: ballBody.velocity.x + direction.x * impulse,
+            y: ballBody.velocity.y + direction.y * impulse,
+        };
+        MatterBody.setVelocity(ballBody, velocity);
+        fx.flashBallLight(0.38);
+        return;
+    }
+
+    if (descriptor.type === 'portal') {
+        const nowMs = fx.getFrameTimestampMs();
+        const cooldownMs = Math.max(0, descriptor.cooldownSeconds) * 1000;
+        let entryCooldown = portalCooldowns.get(descriptor.id);
+        if (!entryCooldown) {
+            entryCooldown = new Map<number, number>();
+            portalCooldowns.set(descriptor.id, entryCooldown);
+        }
+
+        const lastTrigger = entryCooldown.get(ballBody.id);
+        if (typeof lastTrigger === 'number' && nowMs - lastTrigger < cooldownMs) {
+            return;
+        }
+
+        entryCooldown.set(ballBody.id, nowMs);
+
+        fx.spawnHeatRipple({
+            position: { x: normalizedX, y: normalizedY },
+            intensity: 0.32,
+            startRadius: Math.max(0.02, normalizedRadius * 0.5),
+            endRadius: Math.min(0.55, normalizedRadius * 1.4 + 0.1),
+        });
+
+        const exitNormalizedX = getNormalizedPosition(descriptor.exit.x, dims.playfieldWidth);
+        const exitNormalizedY = getNormalizedPosition(descriptor.exit.y, dims.playfieldHeight);
+        fx.spawnHeatRipple({
+            position: { x: exitNormalizedX, y: exitNormalizedY },
+            intensity: 0.46,
+            startRadius: Math.max(0.025, normalizedRadius * 0.6),
+            endRadius: Math.min(0.62, normalizedRadius * 1.55 + 0.15),
+        });
+
+        const travelVector = {
+            x: descriptor.exit.x - descriptor.position.x,
+            y: descriptor.exit.y - descriptor.position.y,
+        };
+        const travelLength = Math.hypot(travelVector.x, travelVector.y);
+        const travelDirection = travelLength > 0 && Number.isFinite(travelLength)
+            ? { x: travelVector.x / travelLength, y: travelVector.y / travelLength }
+            : { x: 0, y: -1 };
+        const safeOffset = Math.max(ctx.ball.radius * 1.75, descriptor.radius * 0.65 + 8);
+        const nextPosition = {
+            x: descriptor.exit.x + travelDirection.x * safeOffset,
+            y: descriptor.exit.y + travelDirection.y * safeOffset,
+        };
+        MatterBody.setPosition(ballBody, nextPosition);
+
+        const exitVelocity = {
+            x: ballBody.velocity.x * 0.85 + travelDirection.x * 2.2,
+            y: ballBody.velocity.y * 0.85 + travelDirection.y * 2.2,
+        };
+        MatterBody.setVelocity(ballBody, exitVelocity);
+        fx.flashBallLight(0.55);
+    }
+};
+
 export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRuntime => {
     const { engine, context: ctx } = deps;
+    const portalCooldowns = new Map<string, Map<number, number>>();
 
     const handleCollisionStart = (event: IEventCollision<Engine>) => {
         event.pairs.forEach((pair) => {
@@ -718,6 +838,12 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
             const powerUpPaddle = toPowerUpPaddlePair(bodyA, bodyB);
             if (powerUpPaddle) {
                 handlePowerUpPaddleCollision(deps, ctx, powerUpPaddle.primary);
+                return;
+            }
+
+            const hazardBall = toHazardBallPair(bodyA, bodyB);
+            if (hazardBall) {
+                handleHazardBallCollision(ctx, hazardBall.hazardBody, hazardBall.ballBody, portalCooldowns);
                 return;
             }
 

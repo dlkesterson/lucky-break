@@ -74,6 +74,7 @@ import type { Subject } from 'util/observable';
 import type { MusicDirector } from 'audio/music-director';
 import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from 'app/replay-buffer';
+import type { FateLedger, FateLedgerSnapshot } from 'app/fate-ledger';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createPauseScene } from 'scenes/pause';
 import { createGameplayScene } from 'scenes/gameplay';
@@ -140,6 +141,7 @@ const createSceneHarness = (): SceneTestHarness => {
         setBeatCallback: vi.fn(),
         setMeasureCallback: vi.fn(),
         triggerComboAccent: vi.fn(),
+        triggerGambleCountdown: vi.fn(),
     };
 
     const random: RandomManager = {
@@ -157,6 +159,7 @@ const createSceneHarness = (): SceneTestHarness => {
         recordSeed: vi.fn(),
         recordPaddleTarget: vi.fn(),
         recordLaunch: vi.fn(),
+        recordBiasChoice: vi.fn(),
         markTime: vi.fn(),
         snapshot: vi.fn().mockReturnValue({
             version: 1,
@@ -172,6 +175,28 @@ const createSceneHarness = (): SceneTestHarness => {
         }),
     };
 
+    const fateLedgerSnapshot: FateLedgerSnapshot = {
+        version: 1,
+        entries: [],
+        totalIdleRolls: 0,
+        totals: {
+            durationMs: 0,
+            entropyEarned: 0,
+            certaintyDustEarned: 0,
+        },
+        latestEntryTimestamp: null,
+    };
+
+    const fateLedger: FateLedger = {
+        recordIdleRoll: vi.fn(),
+        getSnapshot: vi.fn().mockReturnValue(fateLedgerSnapshot),
+        clear: vi.fn(),
+        subscribe: vi.fn().mockImplementation((listener: (snapshot: FateLedgerSnapshot) => void) => {
+            listener(fateLedgerSnapshot);
+            return vi.fn();
+        }),
+    };
+
     const services: GameSceneServices = {
         bus,
         scheduler,
@@ -180,6 +205,7 @@ const createSceneHarness = (): SceneTestHarness => {
         random,
         replayBuffer,
         renderStageSoon,
+        fateLedger,
     };
 
     const context: SceneContext<GameSceneServices> = {

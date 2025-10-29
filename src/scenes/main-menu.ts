@@ -40,6 +40,7 @@ export const createMainMenuScene = (
     let title: Text | null = null;
     let themeToggleLabel: Text | null = null;
     let performanceToggleLabel: Text | null = null;
+    let ledgerLabel: Text | null = null;
     let overlay: Graphics | null = null;
     let panel: Graphics | null = null;
     let columnDivider: Graphics | null = null;
@@ -85,6 +86,11 @@ export const createMainMenuScene = (
     const handlePerformanceToggle = (event: { stopPropagation?: () => void }) => {
         event.stopPropagation?.();
         updateSettings({ performance: !currentSettings.performance });
+    };
+
+    const handleOpenFateLedger = (event: { stopPropagation?: () => void }) => {
+        event.stopPropagation?.();
+        void context.pushScene('fate-ledger').catch(() => undefined);
     };
 
     const handleStart = () => {
@@ -207,6 +213,15 @@ export const createMainMenuScene = (
             refreshPerformanceLabel();
         }
 
+        if (ledgerLabel) {
+            const label = ledgerLabel;
+            label.style = {
+                ...label.style,
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+            };
+        }
+
         if (columnDivider && columnDividerMetrics && layoutMode === 'columns') {
             columnDivider.clear();
             columnDivider.rect(
@@ -228,7 +243,7 @@ export const createMainMenuScene = (
     };
 
     const updateLayout = () => {
-        if (!layout || !title || !promptLabel || !themeToggleLabel || !performanceToggleLabel) {
+        if (!layout || !title || !promptLabel || !themeToggleLabel || !performanceToggleLabel || !ledgerLabel) {
             return;
         }
 
@@ -331,13 +346,17 @@ export const createMainMenuScene = (
         const footerBaseline = panelY + panelHeight - Math.max(24, panelPadding / 2);
         const footerSpacing = Math.max(16, panelPadding / 3);
         const themeLabel = themeToggleLabel;
+        const ledger = ledgerLabel;
         const perfLabel = performanceToggleLabel;
 
         themeLabel.anchor.set(0.5, 1);
         themeLabel.position.set(contentCenterX, footerBaseline);
 
+        ledger.anchor.set(0.5, 1);
+        ledger.position.set(contentCenterX, footerBaseline - footerSpacing - themeLabel.height);
+
         perfLabel.anchor.set(0.5, 1);
-        perfLabel.position.set(contentCenterX, footerBaseline - footerSpacing - themeLabel.height);
+        perfLabel.position.set(contentCenterX, ledger.position.y - footerSpacing - ledger.height);
 
         if (columnDivider && columnDividerMetrics && layoutMode === 'columns') {
             columnDivider.clear();
@@ -478,6 +497,19 @@ export const createMainMenuScene = (
             performanceToggleLabel.cursor = 'pointer';
             performanceToggleLabel.on('pointertap', handlePerformanceToggle);
 
+            ledgerLabel = createTextNode('VIEW FATE LEDGER', {
+                fill: hexToNumber(GameTheme.hud.textSecondary),
+                fontFamily: GameTheme.monoFont,
+                fontSize: 18,
+                align: 'center',
+                letterSpacing: 0.5,
+            });
+            ledgerLabel.anchor.set(0.5, 1);
+            ledgerLabel.position.set(width / 2, panelY + panelHeight - 88);
+            ledgerLabel.eventMode = 'static';
+            ledgerLabel.cursor = 'pointer';
+            ledgerLabel.on('pointertap', handleOpenFateLedger);
+
             unsubscribeSettings = subscribeSettings((nextSettings) => {
                 currentSettings = nextSettings;
                 refreshPerformanceLabel();
@@ -495,6 +527,7 @@ export const createMainMenuScene = (
                 scoreboardHeading,
                 scoreboardLabel,
                 performanceToggleLabel,
+                ledgerLabel,
                 themeToggleLabel,
             );
             context.addToLayer('hud', container);
@@ -534,6 +567,8 @@ export const createMainMenuScene = (
             themeToggleLabel = null;
             performanceToggleLabel?.off('pointertap', handlePerformanceToggle);
             performanceToggleLabel = null;
+            ledgerLabel?.off('pointertap', handleOpenFateLedger);
+            ledgerLabel = null;
             overlay = null;
             panel = null;
             columnDivider = null;

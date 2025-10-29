@@ -3,6 +3,7 @@ import type { MatterVector, MatterBody as BodyType, MatterEngine as EngineType, 
 import type { BrickForm } from 'util/levels';
 import { rootLogger } from 'util/log';
 import type { Vector2, BallAttachment } from '../types';
+import type { PhysicsHazard } from './hazards';
 
 type PhysicsVector = MatterVector;
 type PhysicsBody = BodyType;
@@ -74,6 +75,10 @@ export interface PhysicsWorldHandle {
     readonly updateBallAttachment: (ball: PhysicsBody, paddlePosition: Vector2) => void;
     readonly isBallAttached: (ball: PhysicsBody) => boolean;
     readonly getBallAttachment: (ball: PhysicsBody) => BallAttachment | null;
+    readonly addHazard: (hazard: PhysicsHazard) => void;
+    readonly removeHazard: (hazardId: string) => void;
+    readonly clearHazards: () => void;
+    readonly getHazards: () => readonly PhysicsHazard[];
 }
 
 const withDefaultVector = (vector: PhysicsVector | undefined, fallback: PhysicsVector): PhysicsVector => vector ?? fallback;
@@ -237,6 +242,8 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
     // Ball attachment tracking
     const ballAttachments = new Map<number, BallAttachment>();
     const orphanedAttachmentWarnings = new Set<number>();
+    const hazards = new Map<string, PhysicsHazard>();
+    const hazardBodies = new Map<string, PhysicsBody>();
 
     const attachBallToPaddle: PhysicsWorldHandle['attachBallToPaddle'] = (ball, paddle, offset = { x: 0, y: -ball.circleRadius! - paddle.circleRadius! }) => {
         orphanedAttachmentWarnings.delete(ball.id);
@@ -336,10 +343,23 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
             });
         }
 
+        const deltaSeconds = Number.isFinite(deltaMs) && deltaMs > 0 ? deltaMs / 1000 : timeStep / 1000;
+        hazards.forEach((hazard) => {
+            try {
+                hazard.update({ engine, deltaSeconds });
+            } catch (error) {
+                physicsLogger.warn('Hazard update failed', {
+                    hazardId: hazard.id,
+                    error,
+                });
+            }
+        });
+
         Engine.update(engine, deltaMs);
     };
 
     const dispose: PhysicsWorldHandle['dispose'] = () => {
+        clearHazards();
         Composite.clear(engine.world, false);
         Engine.clear(engine);
         ballAttachments.clear();
@@ -353,6 +373,48 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
     };
 
     const getGravity: PhysicsWorldHandle['getGravity'] = () => currentGravity;
+
+    const addHazard: PhysicsWorldHandle['addHazard'] = (hazard) => {
+        if (!hazard || hazards.has(hazard.id)) {
+            return;
+        }
+
+        hazards.set(hazard.id, hazard);
+        const body = hazard.body;
+        if (body) {
+            hazardBodies.set(hazard.id, body);
+            Composite.add(engine.world, body);
+        }
+    };
+
+    const removeHazard: PhysicsWorldHandle['removeHazard'] = (hazardId) => {
+        const hazard = hazards.get(hazardId);
+        if (!hazard) {
+            return;
+        }
+
+        const body = hazardBodies.get(hazardId);
+        if (body) {
+            Composite.remove(engine.world, body);
+            hazardBodies.delete(hazardId);
+        }
+
+        hazard.dispose?.();
+        hazards.delete(hazardId);
+    };
+
+    const clearHazards: PhysicsWorldHandle['clearHazards'] = () => {
+        hazardBodies.forEach((body) => {
+            Composite.remove(engine.world, body);
+        });
+        hazardBodies.clear();
+        hazards.forEach((hazard) => hazard.dispose?.());
+        hazards.clear();
+    };
+
+    const getHazards: PhysicsWorldHandle['getHazards'] = () => {
+        return Array.from(hazards.values());
+    };
 
     return {
         engine,
@@ -369,5 +431,9 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
         updateBallAttachment,
         isBallAttached,
         getBallAttachment,
+        addHazard,
+        removeHazard,
+        clearHazards,
+        getHazards,
     };
 };

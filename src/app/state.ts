@@ -31,7 +31,8 @@ export type EntropyEventType =
     | 'round-complete'
     | 'combo-reset'
     | 'coin-collect'
-    | 'entropy-spend';
+    | 'entropy-spend'
+    | 'idle-reward';
 
 export interface EntropyEvent {
     readonly type: EntropyEventType;
@@ -40,6 +41,7 @@ export interface EntropyEvent {
     readonly impactVelocity?: number;
     readonly coinValue?: number;
     readonly amountSpent?: number;
+    readonly amountGranted?: number;
 }
 
 export interface EntropySnapshot {
@@ -158,6 +160,7 @@ export interface GameSessionManager {
     readonly getEntropyState: () => EntropySnapshot;
     readonly updateMomentum: (snapshot: MomentumSnapshot) => void;
     readonly spendStoredEntropy: (options: EntropySpendOptions) => EntropySpendResult;
+    readonly grantStoredEntropy: (amount: number) => number;
 }
 
 export interface GameSessionOptions {
@@ -484,6 +487,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
                 entropy.updatedAt = timestamp;
                 return;
             }
+            case 'idle-reward': {
+                const amount = Number.isFinite(event.amountGranted) ? Number(event.amountGranted) : 0;
+                if (amount > 0) {
+                    applyStoredDelta(amount, timestamp);
+                    entropy.trend = 'rising';
+                } else {
+                    entropy.trend = 'stable';
+                }
+                entropy.lastEvent = event.type;
+                entropy.updatedAt = timestamp;
+                return;
+            }
         }
     };
 
@@ -758,6 +773,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         } satisfies EntropySpendResult;
     };
 
+    const grantStoredEntropy: GameSessionManager['grantStoredEntropy'] = (amount) => {
+        if (!Number.isFinite(amount)) {
+            return entropy.stored;
+        }
+        const normalized = Math.max(0, amount);
+        if (normalized <= 0) {
+            return entropy.stored;
+        }
+        emitEntropyEvent({ type: 'idle-reward', amountGranted: normalized });
+        return entropy.stored;
+    };
+
     return {
         snapshot,
         startRound,
@@ -770,5 +797,6 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         getEntropyState,
         updateMomentum,
         spendStoredEntropy,
+        grantStoredEntropy,
     } satisfies GameSessionManager;
 };

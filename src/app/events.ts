@@ -121,7 +121,14 @@ export interface ComboMilestonePayload {
     readonly totalScore: number;
 }
 
-export type UiSceneName = 'main-menu' | 'gameplay' | 'pause' | 'level-complete' | 'bias-phase' | 'game-over';
+export type UiSceneName =
+    | 'main-menu'
+    | 'gameplay'
+    | 'pause'
+    | 'level-complete'
+    | 'bias-phase'
+    | 'game-over'
+    | 'fate-ledger';
 export type UiSceneTransitionAction = 'enter' | 'exit' | 'suspend' | 'resume';
 
 export interface UiSceneTransitionPayload {
