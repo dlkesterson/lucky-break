@@ -1,5 +1,8 @@
 import type { Page } from '@playwright/test';
 import type { LifeLostCause, UiSceneTransitionPayload } from '../../../src/app/events';
+import type { BiasPhaseState } from '../../../src/app/runtime/round-machine';
+import type { RuntimeModifierSnapshot } from '../../../src/app/runtime/modifiers';
+import type { ReplayRecording } from '../../../src/app/replay-buffer';
 
 export interface RecordedEvent {
     readonly type?: unknown;
@@ -245,4 +248,25 @@ export interface RuntimeStateSnapshot {
     readonly livesRemaining: number;
 }
 
+export interface RoundMachineSnapshot {
+    readonly levelIndex: number;
+    readonly difficultyMultiplier: number;
+    readonly powerUpChanceMultiplier: number;
+}
+
 export const getRuntimeState = (page: Page): Promise<RuntimeStateSnapshot> => callHarness(page, 'getRuntimeState');
+
+export const getBiasPhaseState = (page: Page): Promise<BiasPhaseState> => callHarness(page, 'getBiasPhaseState');
+
+export const commitBiasSelection = (page: Page, optionId: string): Promise<boolean> =>
+    callHarness(page, 'commitBiasSelection', [optionId]);
+
+export const skipBiasPhase = (page: Page): Promise<boolean> => callHarness(page, 'skipBiasPhase');
+
+export const getRoundMachineSnapshot = (page: Page): Promise<RoundMachineSnapshot> =>
+    callHarness(page, 'getRoundMachineSnapshot');
+
+export const getRuntimeModifiers = (page: Page): Promise<RuntimeModifierSnapshot> =>
+    callHarness(page, 'getRuntimeModifiers');
+
+export const getReplaySnapshot = (page: Page): Promise<ReplayRecording> => callHarness(page, 'getReplaySnapshot');

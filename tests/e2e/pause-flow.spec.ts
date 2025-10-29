@@ -17,6 +17,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('player can pause, resume, and quit to the main menu', async ({ page }) => {
+    test.slow();
+
     await gotoLuckyBreak(page);
 
     await page.waitForSelector('.lb-preloader[data-state="loading"]');

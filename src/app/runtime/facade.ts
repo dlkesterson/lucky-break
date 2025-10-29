@@ -65,7 +65,7 @@ import { Transport } from 'tone';
 import type { MusicState, MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
 import { createMidiEngine, type MidiEngine } from 'audio/midi-engine';
 import { mulberry32, type RandomManager } from 'util/random';
-import type { ReplayBuffer } from '../replay-buffer';
+import type { ReplayBuffer, ReplayRecording } from '../replay-buffer';
 import { createGameInitializer } from '../game-initializer';
 import { createMultiBallController, type MultiBallColors } from '../multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from '../level-runtime';
@@ -93,6 +93,7 @@ import {
     type BiasOptionRisk,
     type BiasPhaseEffects,
     type BiasPhaseOption,
+    type BiasPhaseState,
     type EntropyActionState,
     type RoundMachine,
 } from './round-machine';
@@ -103,7 +104,7 @@ import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
 import type { GameplayRuntimeState, SyncDriftSample } from './types';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
-import { createRuntimeModifiers, type RuntimeModifiers } from './modifiers';
+import { createRuntimeModifiers, type RuntimeModifierSnapshot, type RuntimeModifiers } from './modifiers';
 
 type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
 import {
@@ -116,6 +117,11 @@ import {
 import { createCollisionRuntime, type CollisionRuntime, type CollisionContext } from './collisions';
 
 const runtimeLogger = rootLogger.child('game-runtime');
+
+interface BiasPhaseAutomation {
+    readonly select: (optionId: string) => void;
+    readonly skip: () => void;
+}
 
 const ensureToneAudio = () =>
     ensureToneAudioBase({
@@ -517,6 +523,8 @@ export const createRuntimeFacade = async ({
     let gambleHighlight: GambleHighlightEffect | null = null;
     let gambleCountdownLastSecond: number | null = null;
     let runtimeDebug: RuntimeDebug | null = null;
+
+    let biasPhaseAutomation: BiasPhaseAutomation | null = null;
 
     const flashBallLight = (intensity: number) => {
         visuals?.ballLight?.flash(intensity);
@@ -2240,6 +2248,12 @@ export const createRuntimeFacade = async ({
         readonly livesRemaining: number;
     }
 
+    interface E2ERoundMachineSnapshot {
+        readonly levelIndex: number;
+        readonly difficultyMultiplier: number;
+        readonly powerUpChanceMultiplier: number;
+    }
+
     interface E2EHarnessControls {
         startGameplay?: () => Promise<void> | void;
         skipLevel?: () => Promise<void> | void;
@@ -2250,6 +2264,12 @@ export const createRuntimeFacade = async ({
         quitToMenu?: () => Promise<void> | void;
         launchBall?: (direction?: { x: number; y: number }) => Promise<void> | void;
         getRuntimeState?: () => E2EHarnessRuntimeState;
+        getBiasPhaseState?: () => BiasPhaseState;
+        commitBiasSelection?: (optionId: string) => boolean;
+        skipBiasPhase?: () => boolean;
+        getRuntimeModifiers?: () => RuntimeModifierSnapshot;
+        getRoundMachineSnapshot?: () => E2ERoundMachineSnapshot;
+        getReplaySnapshot?: () => ReplayRecording;
     }
 
     const registerE2EHarnessControls = (): void => {
@@ -2366,6 +2386,31 @@ export const createRuntimeFacade = async ({
                 livesRemaining: snapshot.livesRemaining,
             } satisfies E2EHarnessRuntimeState;
         };
+        controls.getBiasPhaseState = () => roundMachine.getBiasPhaseState();
+        controls.commitBiasSelection = (optionId?: string) => {
+            if (typeof optionId !== 'string' || optionId.length === 0) {
+                return false;
+            }
+            if (biasPhaseAutomation === null) {
+                return false;
+            }
+            biasPhaseAutomation.select(optionId);
+            return true;
+        };
+        controls.skipBiasPhase = () => {
+            if (biasPhaseAutomation === null) {
+                return false;
+            }
+            biasPhaseAutomation.skip();
+            return true;
+        };
+        controls.getRuntimeModifiers = () => runtimeModifiers.getState();
+        controls.getRoundMachineSnapshot = () => ({
+            levelIndex: roundMachine.getCurrentLevelIndex(),
+            difficultyMultiplier: roundMachine.getLevelDifficultyMultiplier(),
+            powerUpChanceMultiplier: roundMachine.getPowerUpChanceMultiplier(),
+        } satisfies E2ERoundMachineSnapshot);
+        controls.getReplaySnapshot = () => replayBuffer.snapshot();
     };
 
     const startLevel = (levelIndex: number, options: { resetScore?: boolean } = {}): void => {
@@ -2427,6 +2472,7 @@ export const createRuntimeFacade = async ({
         const options = generateBiasPhaseOptions(upcomingLevelIndex);
 
         if (options.length === 0) {
+            biasPhaseAutomation = null;
             const nextLevelIndex = roundMachine.incrementLevelIndex();
             startLevel(nextLevelIndex);
             loop?.start();
@@ -2437,6 +2483,7 @@ export const createRuntimeFacade = async ({
         roundMachine.setBiasPhaseOptions(options);
 
         const advance = (selection: BiasPhaseOption | null) => {
+            biasPhaseAutomation = null;
             if (!selection) {
                 roundMachine.setBiasPhaseOptions([]);
             }
@@ -2472,6 +2519,15 @@ export const createRuntimeFacade = async ({
             },
             onSkip: handleSkip,
         } satisfies BiasPhasePayload;
+
+        biasPhaseAutomation = {
+            select: (optionId: string) => {
+                handleSelection(optionId);
+            },
+            skip: () => {
+                handleSkip();
+            },
+        } satisfies BiasPhaseAutomation;
 
         void stage.push('bias-phase', payload)
             .then(() => {
