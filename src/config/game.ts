@@ -3,6 +3,11 @@ interface NumericRange {
     readonly max: number;
 }
 
+interface ModifierRange extends NumericRange {
+    readonly step: number;
+    readonly default: number;
+}
+
 interface LevelLoopProgressionStep {
     readonly speedMultiplier: number;
     readonly brickHpMultiplier: number;
@@ -51,6 +56,12 @@ interface LevelAutoCompleteConfig {
     readonly enabled: boolean;
     readonly countdownSeconds: number;
     readonly triggerRemainingBricks: number;
+}
+
+interface EntropySpendConfig {
+    readonly rerollCost: number;
+    readonly shieldCost: number;
+    readonly bailoutCost: number;
 }
 
 export type RewardKey =
@@ -195,10 +206,20 @@ export interface GameConfig {
             readonly type: RewardKey;
             readonly duration: number;
         };
+        readonly lockCoinCost: number;
         readonly stackLimits: {
             readonly slowTimeMaxDuration: number;
             readonly multiBallMaxDuration: number;
         };
+    };
+    readonly entropy: {
+        readonly spend: EntropySpendConfig;
+    };
+    readonly modifiers: {
+        readonly gravity: ModifierRange;
+        readonly restitution: ModifierRange;
+        readonly paddleWidth: ModifierRange;
+        readonly speedGovernor: ModifierRange;
     };
 }
 
@@ -344,10 +365,24 @@ export const gameConfig = {
         definitions: rewardDefinitions,
         wheelSegments: rewardWheelSegments,
         fallback: { type: 'sticky-paddle', duration: 10 },
+        lockCoinCost: 120,
         stackLimits: {
             slowTimeMaxDuration: 12,
             multiBallMaxDuration: 16,
         },
+    },
+    entropy: {
+        spend: {
+            rerollCost: 30,
+            shieldCost: 48,
+            bailoutCost: 36,
+        },
+    },
+    modifiers: {
+        gravity: { min: -0.6, max: 0.6, default: 0, step: 0.05 },
+        restitution: { min: 0.85, max: 1.15, default: 0.98, step: 0.01 },
+        paddleWidth: { min: 0.85, max: 1.35, default: 1, step: 0.05 },
+        speedGovernor: { min: 0.75, max: 1.35, default: 1, step: 0.05 },
     },
 } as const satisfies GameConfig;
 

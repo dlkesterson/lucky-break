@@ -35,6 +35,7 @@ export interface RuntimeInput {
     consumeLaunchIntent(): LaunchIntent | null;
     resolveTarget(): ResolvedInputTarget;
     computeNextX(context: PaddleMovementContext): number;
+    consumeKeyPress(code: string): boolean;
 }
 
 const clamp = (value: number, min: number, max: number): number => {
@@ -107,5 +108,6 @@ export const createRuntimeInput = ({
         consumeLaunchIntent: () => manager.consumeLaunchIntent(),
         resolveTarget,
         computeNextX,
+        consumeKeyPress: (code) => manager.consumeKeyPress(code),
     } satisfies RuntimeInput;
 };

@@ -1,7 +1,8 @@
+import type { EntropyActionType } from 'app/events';
 import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
 
 export interface HudScoreboardEntry {
-    readonly id: 'score' | 'coins' | 'gamble' | 'lives' | 'bricks' | 'entropy' | 'momentum' | 'audio';
+    readonly id: 'score' | 'coins' | 'gamble' | 'lives' | 'bricks' | 'entropy' | 'entropy-actions' | 'momentum' | 'audio';
     readonly label: string;
     readonly value: string;
 }
@@ -17,6 +18,20 @@ export interface HudScoreboardView {
     readonly summaryLine: string;
     readonly entries: readonly HudScoreboardEntry[];
     readonly prompts: readonly HudScoreboardPrompt[];
+}
+
+export interface HudEntropyActionDescriptor {
+    readonly action: EntropyActionType;
+    readonly label: string;
+    readonly hotkey: string;
+    readonly cost: number;
+    readonly charges: number;
+    readonly affordable: boolean;
+    readonly lastActionTimestamp?: number;
+}
+
+export interface BuildHudScoreboardOptions {
+    readonly entropyActions?: readonly HudEntropyActionDescriptor[];
 }
 
 export interface HudGambleStatus {
@@ -141,6 +156,24 @@ const formatAudio = (muted: boolean, masterVolume: number): string => {
     return `Master ${pct}%`;
 };
 
+const formatEntropyActions = (entries: readonly HudEntropyActionDescriptor[]): string => {
+    if (entries.length === 0) {
+        return '—';
+    }
+
+    const formatCost = (cost: number): string => `${Math.max(0, Math.round(cost))}%`;
+    return entries
+        .map((entry) => {
+            const status = entry.charges > 0
+                ? `×${entry.charges}`
+                : entry.affordable
+                    ? 'Ready'
+                    : 'Locked';
+            return `${entry.hotkey}) ${entry.label} ${formatCost(entry.cost)} ${status}`;
+        })
+        .join(' · ');
+};
+
 const formatSummary = (snapshot: GameSessionSnapshot): string => {
     const outcome = snapshot.lastOutcome;
     if (!outcome) {
@@ -170,7 +203,9 @@ const toPromptView = (snapshot: GameSessionSnapshot): readonly HudScoreboardProm
 export const buildHudScoreboard = (
     snapshot: GameSessionSnapshot,
     gamble?: HudGambleStatus,
+    options: BuildHudScoreboardOptions = {},
 ): HudScoreboardView => {
+    const entropyActions = options.entropyActions ?? [];
     const statusText = `Round ${snapshot.hud.round} — ${capitalize(snapshot.status)}`;
 
     const entries: HudScoreboardEntry[] = [];
@@ -212,6 +247,17 @@ export const buildHudScoreboard = (
             label: 'Entropy',
             value: formatEntropy(snapshot.hud.entropy),
         },
+    );
+
+    if (entropyActions.length > 0) {
+        entries.push({
+            id: 'entropy-actions',
+            label: 'Entropy Plays',
+            value: formatEntropyActions(entropyActions),
+        });
+    }
+
+    entries.push(
         {
             id: 'momentum',
             label: 'Momentum',

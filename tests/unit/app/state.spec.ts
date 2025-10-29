@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEventBus } from 'app/events';
+import { createEventBus, type EntropyActionPayload } from 'app/events';
 import { createGameSessionManager, type GameSessionSnapshot } from 'app/state';
 
 interface FakeClock {
@@ -368,5 +368,53 @@ describe('createGameSessionManager', () => {
         const entropyState = manager.getEntropyState();
         expect(entropyState.charge).toBeCloseTo(snapshot.entropy.charge, 5);
         expect(entropyState.stored).toBe(snapshot.entropy.stored);
+    });
+
+    it('rejects entropy spends when stored entropy is insufficient', () => {
+        const { manager } = createSnapshot();
+
+        const result = manager.spendStoredEntropy({ action: 'bailout', cost: 10 });
+
+        expect(result.success).toBe(false);
+        expect(result.reason).toBe('insufficient');
+        expect(manager.getEntropyState().stored).toBe(0);
+    });
+
+    it('spends stored entropy and emits telemetry when successful', () => {
+        const bus = createEventBus();
+        const entropyEvents: EntropyActionPayload[] = [];
+        bus.subscribe('EntropyAction', (event) => {
+            entropyEvents.push(event.payload);
+        });
+
+        const clock = createFakeClock();
+        const manager = createGameSessionManager({
+            sessionId: 'entropy-spend',
+            now: clock.now,
+            eventBus: bus,
+        });
+
+        for (let index = 0; index < 40; index += 1) {
+            manager.recordEntropyEvent({ type: 'brick-break', comboHeat: 18, speed: 24 });
+        }
+        manager.recordEntropyEvent({ type: 'round-complete' });
+
+        const before = manager.getEntropyState().stored;
+        expect(before).toBeGreaterThan(0);
+
+        const spendCost = Math.min(20, before);
+        const result = manager.spendStoredEntropy({ action: 'shield', cost: spendCost });
+
+        expect(result.success).toBe(true);
+        expect(result.action).toBe('shield');
+        const after = manager.getEntropyState().stored;
+        expect(after).toBeLessThan(before);
+        expect(entropyEvents).toHaveLength(1);
+        expect(entropyEvents[0]).toMatchObject({
+            action: 'shield',
+            cost: result.cost,
+            storedBefore: before,
+            storedAfter: after,
+        });
     });
 });

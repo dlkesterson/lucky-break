@@ -5,3 +5,4 @@ export type {
     RuntimeFacade,
     RuntimeFacadeModules,
 } from './runtime/facade';
+export type { RuntimeModifiers, RuntimeModifierSnapshot } from './runtime/modifiers';

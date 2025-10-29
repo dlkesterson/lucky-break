@@ -16,4 +16,8 @@ export interface GameplayRuntimeState {
     currentBaseSpeed: number;
     currentMaxSpeed: number;
     currentLaunchSpeed: number;
+    gravity: number;
+    ballRestitution: number;
+    paddleBaseWidth: number;
+    speedGovernorMultiplier: number;
 }

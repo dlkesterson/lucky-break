@@ -1,5 +1,6 @@
 import {
     type BrickType,
+    type EntropyActionType,
     type LifeLostCause,
     type LuckyBreakEventBus,
     createScoringEventEmitter,
@@ -29,7 +30,8 @@ export type EntropyEventType =
     | 'life-loss'
     | 'round-complete'
     | 'combo-reset'
-    | 'coin-collect';
+    | 'coin-collect'
+    | 'entropy-spend';
 
 export interface EntropyEvent {
     readonly type: EntropyEventType;
@@ -37,6 +39,7 @@ export interface EntropyEvent {
     readonly speed?: number;
     readonly impactVelocity?: number;
     readonly coinValue?: number;
+    readonly amountSpent?: number;
 }
 
 export interface EntropySnapshot {
@@ -151,8 +154,10 @@ export interface GameSessionManager {
     readonly completeRound: () => void;
     readonly recordEntropyEvent: (event: EntropyEvent) => void;
     readonly collectCoins: (amount: number) => void;
+    readonly spendCoins: (amount: number) => boolean;
     readonly getEntropyState: () => EntropySnapshot;
     readonly updateMomentum: (snapshot: MomentumSnapshot) => void;
+    readonly spendStoredEntropy: (options: EntropySpendOptions) => EntropySpendResult;
 }
 
 export interface GameSessionOptions {
@@ -162,6 +167,20 @@ export interface GameSessionOptions {
     readonly preferences?: Partial<PlayerPreferences>;
     readonly eventBus?: LuckyBreakEventBus;
     readonly random?: RandomSource;
+}
+
+export interface EntropySpendOptions {
+    readonly action: EntropyActionType;
+    readonly cost: number;
+}
+
+export interface EntropySpendResult {
+    readonly success: boolean;
+    readonly action: EntropyActionType;
+    readonly cost: number;
+    readonly storedRemaining: number;
+    readonly chargeRemaining: number;
+    readonly reason?: 'insufficient' | 'invalid-cost';
 }
 
 const DEFAULT_LIVES = 3;
@@ -456,6 +475,15 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
                 applyChargeDelta(delta, timestamp, event.type);
                 return;
             }
+            case 'entropy-spend': {
+                if (event.amountSpent !== undefined) {
+                    applyStoredDelta(-Math.abs(event.amountSpent), timestamp);
+                }
+                entropy.trend = 'falling';
+                entropy.lastEvent = event.type;
+                entropy.updatedAt = timestamp;
+                return;
+            }
         }
     };
 
@@ -650,6 +678,24 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         score = Math.max(0, score + safeAmount);
     };
 
+    const spendCoins: GameSessionManager['spendCoins'] = (amount) => {
+        if (!Number.isFinite(amount)) {
+            return false;
+        }
+
+        const safeAmount = Math.floor(amount);
+        if (safeAmount <= 0) {
+            return true;
+        }
+
+        if (coins < safeAmount) {
+            return false;
+        }
+
+        coins = Math.max(0, coins - safeAmount);
+        return true;
+    };
+
     const recordEntropyEvent: GameSessionManager['recordEntropyEvent'] = (event) => {
         emitEntropyEvent(event);
     };
@@ -660,6 +706,58 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         commitMomentumSnapshot(snapshot, now());
     };
 
+    const spendStoredEntropy: GameSessionManager['spendStoredEntropy'] = ({ action, cost }) => {
+        const timestamp = now();
+        const normalizedCost = Number.isFinite(cost) && cost > 0 ? Math.min(cost, ENTROPY_MAX_STORED) : 0;
+        if (normalizedCost <= 0) {
+            return {
+                success: false,
+                action,
+                cost: normalizedCost,
+                storedRemaining: entropy.stored,
+                chargeRemaining: entropy.charge,
+                reason: 'invalid-cost',
+            } satisfies EntropySpendResult;
+        }
+
+        if (entropy.stored < normalizedCost) {
+            return {
+                success: false,
+                action,
+                cost: normalizedCost,
+                storedRemaining: entropy.stored,
+                chargeRemaining: entropy.charge,
+                reason: 'insufficient',
+            } satisfies EntropySpendResult;
+        }
+
+        const storedBefore = entropy.stored;
+        applyStoredDelta(-normalizedCost, timestamp);
+        entropy.trend = 'falling';
+        entropy.lastEvent = 'entropy-spend';
+        entropy.updatedAt = timestamp;
+
+        options.eventBus?.publish(
+            'EntropyAction',
+            {
+                sessionId,
+                action,
+                cost: normalizedCost,
+                storedBefore,
+                storedAfter: entropy.stored,
+            },
+            timestamp,
+        );
+
+        return {
+            success: true,
+            action,
+            cost: normalizedCost,
+            storedRemaining: entropy.stored,
+            chargeRemaining: entropy.charge,
+        } satisfies EntropySpendResult;
+    };
+
     return {
         snapshot,
         startRound,
@@ -668,7 +766,9 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         completeRound,
         recordEntropyEvent,
         collectCoins,
+        spendCoins,
         getEntropyState,
         updateMomentum,
+        spendStoredEntropy,
     } satisfies GameSessionManager;
 };

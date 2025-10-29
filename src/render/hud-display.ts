@@ -1,5 +1,6 @@
-import { Container, Graphics, Text } from 'pixi.js';
-import type { HudScoreboardEntry, HudScoreboardPrompt, HudScoreboardView } from './hud';
+import { Container, Graphics, Rectangle, Text } from 'pixi.js';
+import type { EntropyActionType } from 'app/events';
+import type { HudEntropyActionDescriptor, HudScoreboardEntry, HudScoreboardPrompt, HudScoreboardView } from './hud';
 import type { GameThemeDefinition } from './theme';
 import type { HudSnapshot } from 'app/state';
 
@@ -21,6 +22,7 @@ export interface HudDisplayUpdate {
     readonly activePowerUps: readonly HudPowerUpView[];
     readonly reward?: HudRewardView | null;
     readonly momentum: HudSnapshot['momentum'];
+    readonly entropyActions?: readonly HudEntropyActionDescriptor[];
 }
 
 export interface HudDisplay {
@@ -30,6 +32,7 @@ export interface HudDisplay {
     update(payload: HudDisplayUpdate): void;
     pulseCombo(intensity?: number): void;
     setTheme(theme: GameThemeDefinition): void;
+    setEntropyActionHandler(handler: ((action: EntropyActionType) => void) | null): void;
 }
 
 const PANEL_WIDTH = 480;
@@ -42,8 +45,13 @@ const MOMENTUM_SECTION_MARGIN = 16;
 const MOMENTUM_BAR_HEIGHT = 8;
 const MOMENTUM_BAR_RADIUS = 4;
 const MOMENTUM_BAR_VERTICAL_GAP = 16;
+const ENTROPY_BUTTON_HEIGHT = 46;
+const ENTROPY_BUTTON_RADIUS = 10;
+const ENTROPY_BUTTON_GAP = 10;
+const ENTROPY_SECTION_GAP = 8;
 
 type HudMomentum = HudSnapshot['momentum'];
+type EntropyActionHandler = (action: EntropyActionType) => void;
 
 const parseColor = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -93,10 +101,20 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         readonly fill: Graphics;
     }
 
+    interface EntropyActionButtonView {
+        readonly container: Container;
+        readonly background: Graphics;
+        readonly label: Text;
+        readonly detail: Text;
+        action: EntropyActionType;
+        enabled: boolean;
+    }
+    let entropyActionHandler: EntropyActionHandler | null = null;
+
     let momentumBarBackgroundColor = parseColor(activeTheme.hud.panelLine);
 
     const container = new Container();
-    container.eventMode = 'none';
+    container.eventMode = 'passive';
     container.sortableChildren = true;
 
     const momentumContainer = new Container();
@@ -160,7 +178,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     summaryText.alpha = 0.92;
     container.addChild(summaryText);
 
-    const entryOrder: readonly HudScoreboardEntry['id'][] = ['score', 'coins', 'gamble', 'lives', 'bricks', 'entropy', 'momentum', 'audio'];
+    const entryOrder: readonly HudScoreboardEntry['id'][] = ['score', 'coins', 'gamble', 'lives', 'bricks', 'entropy', 'entropy-actions', 'momentum', 'audio'];
     const entryLabelTexts = new Map<HudScoreboardEntry['id'], Text>();
     const entryValueTexts = new Map<HudScoreboardEntry['id'], Text>();
 
@@ -210,6 +228,66 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
     comboTimerText.x = PANEL_PADDING + 6;
     comboTimerText.visible = false;
     container.addChild(comboTimerText);
+
+    const entropyHeader = createText('Entropy Actions', {
+        fill: colorSecondary,
+        fontSize: 16,
+        fontFamily: fontFamilyPrimary,
+        letterSpacing: 0.5,
+    });
+    entropyHeader.x = PANEL_PADDING;
+    entropyHeader.visible = false;
+    container.addChild(entropyHeader);
+
+    const entropyButtons: EntropyActionButtonView[] = [];
+
+    const ensureEntropyButton = (index: number): EntropyActionButtonView => {
+        if (entropyButtons[index]) {
+            return entropyButtons[index];
+        }
+
+        const buttonContainer = new Container();
+        buttonContainer.visible = false;
+        buttonContainer.x = PANEL_PADDING;
+        buttonContainer.eventMode = 'none';
+        buttonContainer.name = '';
+        container.addChild(buttonContainer);
+
+        const background = new Graphics();
+        background.eventMode = 'none';
+        buttonContainer.addChild(background);
+
+        const label = createText('', {
+            fill: colorPrimary,
+            fontSize: 18,
+            fontFamily: fontFamilyPrimary,
+            letterSpacing: 0.5,
+        });
+        label.x = 16;
+        label.y = 8;
+        buttonContainer.addChild(label);
+
+        const detail = createText('', {
+            fill: colorSecondary,
+            fontSize: 14,
+            fontFamily: fontFamilyMono,
+        });
+        detail.x = 16;
+        detail.y = 26;
+        buttonContainer.addChild(detail);
+
+        const view: EntropyActionButtonView = {
+            container: buttonContainer,
+            background,
+            label,
+            detail,
+            action: 'reroll',
+            enabled: false,
+        };
+
+        entropyButtons[index] = view;
+        return view;
+    };
 
     const powerUpHeader = createText('Power-Ups', { fill: colorSecondary, fontSize: 16, fontFamily: fontFamilyPrimary, letterSpacing: 0.5 });
     powerUpHeader.x = PANEL_PADDING;
@@ -329,6 +407,97 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         return cursor;
     };
 
+    const formatEntropyDetail = (descriptor: HudEntropyActionDescriptor): string => {
+        const cost = Math.max(0, Math.round(descriptor.cost));
+        const status = descriptor.charges > 0
+            ? `Charges ×${descriptor.charges}`
+            : descriptor.affordable
+                ? 'Ready'
+                : 'Locked';
+        return `${descriptor.hotkey.toUpperCase()} · Cost ${cost}% · ${status}`;
+    };
+
+    const updateEntropyActions = (actions: readonly HudEntropyActionDescriptor[], startY: number): number => {
+        entropyHeader.visible = actions.length > 0;
+        entropyHeader.y = startY;
+
+        const buttonWidth = PANEL_WIDTH - PANEL_PADDING * 2;
+        if (actions.length === 0) {
+            entropyButtons.forEach((view) => {
+                view.container.visible = false;
+                view.enabled = false;
+                view.container.eventMode = 'none';
+                if ('cursor' in view.container) {
+                    (view.container as { cursor?: string }).cursor = undefined;
+                }
+                view.container.hitArea = null;
+                view.container.removeAllListeners?.();
+            });
+            return startY;
+        }
+
+        let cursor = entropyHeader.y + entropyHeader.height + ENTROPY_SECTION_GAP;
+
+        actions.forEach((descriptor, index) => {
+            const view = ensureEntropyButton(index);
+            const { container: buttonContainer, background, label, detail } = view;
+            const enabled = descriptor.charges > 0 || descriptor.affordable;
+
+            buttonContainer.visible = true;
+            buttonContainer.y = cursor;
+            buttonContainer.name = `entropy-action-${descriptor.action}`;
+            view.action = descriptor.action;
+            view.enabled = enabled;
+
+            background.clear();
+            background.roundRect(0, 0, buttonWidth, ENTROPY_BUTTON_HEIGHT, ENTROPY_BUTTON_RADIUS);
+            background.fill({ color: enabled ? colorPrimary : colorSecondary, alpha: enabled ? 0.18 : 0.08 });
+            background.stroke({ color: enabled ? colorPrimary : colorSecondary, alpha: enabled ? 0.52 : 0.22, width: 1 });
+
+            buttonContainer.eventMode = enabled ? 'static' : 'none';
+            if ('cursor' in buttonContainer) {
+                (buttonContainer as { cursor?: string }).cursor = enabled ? 'pointer' : 'not-allowed';
+            }
+            buttonContainer.hitArea = enabled ? new Rectangle(0, 0, buttonWidth, ENTROPY_BUTTON_HEIGHT) : null;
+            buttonContainer.removeAllListeners?.();
+            if (enabled) {
+                buttonContainer.on?.('pointertap', () => {
+                    const handler = entropyActionHandler;
+                    if (handler) {
+                        handler(view.action);
+                    }
+                });
+            }
+
+            label.style.fill = enabled ? colorPrimary : colorSecondary;
+            label.style.fontFamily = fontFamilyPrimary;
+            label.text = descriptor.label;
+            label.alpha = enabled ? 1 : 0.85;
+
+            detail.style.fill = colorSecondary;
+            detail.style.fontFamily = fontFamilyMono;
+            detail.text = formatEntropyDetail(descriptor);
+            detail.alpha = enabled ? 0.92 : 0.6;
+
+            cursor += ENTROPY_BUTTON_HEIGHT + ENTROPY_BUTTON_GAP;
+        });
+
+        for (let index = actions.length; index < entropyButtons.length; index += 1) {
+            const view = entropyButtons[index];
+            view.container.visible = false;
+            view.enabled = false;
+            view.container.eventMode = 'none';
+            if ('cursor' in view.container) {
+                (view.container as { cursor?: string }).cursor = undefined;
+            }
+            view.container.hitArea = null;
+            view.container.removeAllListeners?.();
+        }
+
+        cursor -= ENTROPY_BUTTON_GAP;
+        return cursor + ENTROPY_SECTION_GAP;
+    };
+
     const updatePowerUps = (powerUps: readonly HudPowerUpView[], startY: number): number => {
         powerUpHeader.visible = powerUps.length > 0;
         powerUpHeader.y = startY;
@@ -408,6 +577,7 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
             comboLabel.scale.set(1);
         }
 
+        cursor = updateEntropyActions(payload.entropyActions ?? [], cursor);
         cursor = updatePowerUps(payload.activePowerUps, cursor);
 
         if (payload.reward) {
@@ -460,6 +630,15 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         comboLabel.style.fontFamily = fontFamilyPrimary;
         comboTimerText.style.fill = colorSecondary;
         comboTimerText.style.fontFamily = fontFamilyMono;
+        entropyHeader.style.fill = colorSecondary;
+        entropyHeader.style.fontFamily = fontFamilyPrimary;
+        entropyButtons.forEach((button) => {
+            button.label.style.fontFamily = fontFamilyPrimary;
+            button.label.style.fill = button.enabled ? colorPrimary : colorSecondary;
+            button.detail.style.fontFamily = fontFamilyMono;
+            button.detail.style.fill = colorSecondary;
+        });
+
         powerUpHeader.style.fill = colorSecondary;
         powerUpHeader.style.fontFamily = fontFamilyPrimary;
         powerUpTexts.forEach((text) => {
@@ -484,6 +663,10 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         });
     };
 
+    const setEntropyHandler = (handler: EntropyActionHandler | null): void => {
+        entropyActionHandler = handler;
+    };
+
     return {
         container,
         width: PANEL_WIDTH,
@@ -491,5 +674,6 @@ export const createHudDisplay = (theme: GameThemeDefinition): HudDisplay => {
         update,
         pulseCombo,
         setTheme,
+        setEntropyActionHandler: setEntropyHandler,
     } satisfies HudDisplay;
 };

@@ -1,5 +1,29 @@
 import type { AchievementUnlock } from '../achievements';
+import type { EntropyActionType } from '../events';
 import type { Reward } from 'game/rewards';
+import type { RuntimeModifierSnapshot } from './modifiers';
+
+export type BiasOptionRisk = 'safe' | 'bold' | 'volatile';
+
+export interface BiasPhaseEffects {
+    readonly modifiers?: Partial<RuntimeModifierSnapshot>;
+    readonly difficultyMultiplier?: number;
+    readonly powerUpChanceMultiplier?: number;
+}
+
+export interface BiasPhaseOption {
+    readonly id: string;
+    readonly label: string;
+    readonly description: string;
+    readonly risk: BiasOptionRisk;
+    readonly effects: BiasPhaseEffects;
+}
+
+export interface BiasPhaseState {
+    readonly options: readonly BiasPhaseOption[];
+    readonly pendingSelection: BiasPhaseOption | null;
+    readonly lastSelection: BiasPhaseOption | null;
+}
 
 export interface RoundMachineOptions {
     readonly autoCompleteEnabled: boolean;
@@ -57,6 +81,26 @@ export interface RoundMachine {
     getRoundCoinBaseline(): number;
     enqueueAchievementUnlocks(unlocks: readonly AchievementUnlock[]): void;
     consumeAchievementNotifications(): readonly AchievementUnlock[];
+    grantEntropyAction(action: EntropyActionType, timestamp: number): void;
+    consumeRerollToken(timestamp: number): boolean;
+    consumeShieldCharge(timestamp: number): boolean;
+    recordBailoutActivation(timestamp: number): void;
+    getEntropyActionState(): EntropyActionState;
+    lockPendingReward(): boolean;
+    isPendingRewardLocked(): boolean;
+    setBiasPhaseOptions(options: readonly BiasPhaseOption[]): void;
+    commitBiasSelection(optionId: string): BiasPhaseOption | null;
+    consumePendingBiasSelection(): BiasPhaseOption | null;
+    getBiasPhaseState(): BiasPhaseState;
+}
+
+export interface EntropyActionState {
+    readonly rerollTokens: number;
+    readonly shieldCharges: number;
+    readonly lastAction: {
+        readonly action: EntropyActionType;
+        readonly timestamp: number;
+    } | null;
 }
 
 export const createRoundMachine = ({
@@ -79,7 +123,72 @@ export const createRoundMachine = ({
     let levelDifficultyMultiplier = 1;
     let powerUpChanceMultiplier = 1;
     let pendingReward: Reward | null = null;
+    let rewardLocked = false;
     const pendingAchievementNotifications: AchievementUnlock[] = [];
+    let rerollTokens = 0;
+    let shieldCharges = 0;
+    let lastEntropyAction: EntropyActionState['lastAction'] = null;
+    let biasOptions: readonly BiasPhaseOption[] = [];
+    let pendingBiasSelection: BiasPhaseOption | null = null;
+    let lastBiasSelection: BiasPhaseOption | null = null;
+
+    const MAX_STORED_ACTIONS = 3;
+
+    const normalizeTimestamp = (timestamp: number): number => (Number.isFinite(timestamp) ? timestamp : Date.now());
+
+    const markEntropyAction = (action: EntropyActionType, timestamp: number): void => {
+        lastEntropyAction = {
+            action,
+            timestamp: normalizeTimestamp(timestamp),
+        } satisfies EntropyActionState['lastAction'];
+    };
+
+    const grantEntropyAction = (action: EntropyActionType, timestamp: number): void => {
+        markEntropyAction(action, timestamp);
+        if (action === 'reroll') {
+            rerollTokens = Math.min(MAX_STORED_ACTIONS, rerollTokens + 1);
+        } else if (action === 'shield') {
+            shieldCharges = Math.min(MAX_STORED_ACTIONS, shieldCharges + 1);
+        }
+    };
+
+    const consumeRerollToken = (timestamp: number): boolean => {
+        if (rerollTokens <= 0 || rewardLocked) {
+            return false;
+        }
+        rerollTokens -= 1;
+        markEntropyAction('reroll', timestamp);
+        return true;
+    };
+
+    const consumeShieldCharge = (timestamp: number): boolean => {
+        if (shieldCharges <= 0) {
+            return false;
+        }
+        shieldCharges -= 1;
+        markEntropyAction('shield', timestamp);
+        return true;
+    };
+
+    const recordBailoutActivation = (timestamp: number): void => {
+        markEntropyAction('bailout', timestamp);
+    };
+
+    const getEntropyActionState = (): EntropyActionState => ({
+        rerollTokens,
+        shieldCharges,
+        lastAction: lastEntropyAction,
+    });
+
+    const lockPendingReward = (): boolean => {
+        if (!pendingReward || rewardLocked) {
+            return false;
+        }
+        rewardLocked = true;
+        return true;
+    };
+
+    const isPendingRewardLocked = (): boolean => rewardLocked;
 
     const getAutoCompleteState = (): AutoCompleteState => ({
         enabled: autoCompleteEnabled,
@@ -169,6 +278,50 @@ export const createRoundMachine = ({
         return notifications;
     };
 
+    const cloneBiasOption = (option: BiasPhaseOption): BiasPhaseOption => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        risk: option.risk,
+        effects: {
+            modifiers: option.effects.modifiers ? { ...option.effects.modifiers } : undefined,
+            difficultyMultiplier: option.effects.difficultyMultiplier,
+            powerUpChanceMultiplier: option.effects.powerUpChanceMultiplier,
+        },
+    });
+
+    const setBiasPhaseOptions = (options: readonly BiasPhaseOption[]) => {
+        biasOptions = options.map(cloneBiasOption);
+        pendingBiasSelection = null;
+    };
+
+    const commitBiasSelection = (optionId: string): BiasPhaseOption | null => {
+        const option = biasOptions.find((candidate) => candidate.id === optionId);
+        if (!option) {
+            return null;
+        }
+        const committed = cloneBiasOption(option);
+        pendingBiasSelection = committed;
+        lastBiasSelection = committed;
+        biasOptions = [];
+        return cloneBiasOption(committed);
+    };
+
+    const consumePendingBiasSelection = (): BiasPhaseOption | null => {
+        if (!pendingBiasSelection) {
+            return null;
+        }
+        const selection = cloneBiasOption(pendingBiasSelection);
+        pendingBiasSelection = null;
+        return selection;
+    };
+
+    const getBiasPhaseState = (): BiasPhaseState => ({
+        options: biasOptions.map(cloneBiasOption),
+        pendingSelection: pendingBiasSelection ? cloneBiasOption(pendingBiasSelection) : null,
+        lastSelection: lastBiasSelection ? cloneBiasOption(lastBiasSelection) : null,
+    });
+
     return {
         resetForNewSession: () => {
             currentLevelIndex = 0;
@@ -182,7 +335,14 @@ export const createRoundMachine = ({
             levelDifficultyMultiplier = 1;
             powerUpChanceMultiplier = 1;
             pendingReward = null;
+            rewardLocked = false;
             pendingAchievementNotifications.length = 0;
+            rerollTokens = 0;
+            shieldCharges = 0;
+            lastEntropyAction = null;
+            biasOptions = [];
+            pendingBiasSelection = null;
+            lastBiasSelection = null;
         },
         startLevel: (levelIndex, { combo, score, coins }) => {
             currentLevelIndex = levelIndex;
@@ -215,6 +375,7 @@ export const createRoundMachine = ({
         getPendingReward: () => pendingReward,
         setPendingReward: (reward) => {
             pendingReward = reward;
+            rewardLocked = false;
         },
         getLevelDifficultyMultiplier: () => levelDifficultyMultiplier,
         setLevelDifficultyMultiplier: (value: number) => {
@@ -246,5 +407,16 @@ export const createRoundMachine = ({
         getRoundCoinBaseline: () => roundCoinBaseline,
         enqueueAchievementUnlocks,
         consumeAchievementNotifications,
+        grantEntropyAction,
+        consumeRerollToken,
+        consumeShieldCharge,
+        recordBailoutActivation,
+        getEntropyActionState,
+        lockPendingReward,
+        isPendingRewardLocked,
+        setBiasPhaseOptions,
+        commitBiasSelection,
+        consumePendingBiasSelection,
+        getBiasPhaseState,
     } satisfies RoundMachine;
 };

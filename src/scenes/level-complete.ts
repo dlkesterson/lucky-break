@@ -26,12 +26,47 @@ export interface LevelCompletePayload {
     readonly achievements?: readonly AchievementUnlock[];
     readonly recap: RoundRecapMetrics;
     readonly milestones?: readonly string[];
+    readonly rewardWheel?: LevelCompleteRewardWheelPayload;
 }
 
 export interface LevelCompleteSceneOptions {
     readonly title?: (payload: LevelCompletePayload) => string;
     readonly scoreLabel?: (payload: LevelCompletePayload) => string;
     readonly prompt?: string;
+}
+
+export interface RewardWheelOddsEntry {
+    readonly reward: Reward;
+    readonly chance: number;
+    readonly weight: number;
+}
+
+export interface RewardWheelState {
+    readonly reward: Reward | null;
+    readonly locked: boolean;
+    readonly entropyStored: number;
+    readonly coins: number;
+    readonly rerollCost: number;
+    readonly lockCost: number;
+    readonly canReroll: boolean;
+    readonly canLock: boolean;
+}
+
+export interface RewardWheelUpdateResult {
+    readonly success: boolean;
+    readonly message?: string;
+    readonly state: RewardWheelState;
+}
+
+export interface RewardWheelActions {
+    readonly reroll?: () => Promise<RewardWheelUpdateResult>;
+    readonly lock?: () => Promise<RewardWheelUpdateResult>;
+}
+
+export interface LevelCompleteRewardWheelPayload {
+    readonly odds: readonly RewardWheelOddsEntry[];
+    readonly state: RewardWheelState;
+    readonly actions: RewardWheelActions;
 }
 
 const DEFAULT_PROMPT = 'Tap to continue';
@@ -189,10 +224,36 @@ export const createLevelCompleteScene = (
             score.anchor.set(0.5);
             score.position.set(contentCenterX, title.y + 68);
 
+            const wheelPayload = payload.rewardWheel ?? null;
+            let wheelState: RewardWheelState | null = wheelPayload?.state ?? null;
+            const wheelActions = wheelPayload?.actions ?? {};
+            let wheelResourceLabel: Text | null = null;
+            let wheelStatusLabel: Text | null = null;
+            interface WheelButtonHandle {
+                readonly root: Container;
+                readonly label: Text;
+                readonly background: Graphics;
+            }
+            const wheelButtons: { reroll: WheelButtonHandle | null; lock: WheelButtonHandle | null } = {
+                reroll: null,
+                lock: null,
+            };
+            let wheelBusy = false;
+
+            const formatRewardLabel = (reward: Reward | null, locked: boolean): string => {
+                if (!reward) {
+                    return locked ? 'No Reward (Locked)' : 'Pending Reward';
+                }
+                const descriptor = describeReward(reward);
+                return locked ? `${descriptor} (Locked)` : descriptor;
+            };
+
             let rewardText: Text | null = null;
-            if (payload.reward) {
+            const initialReward = payload.reward ?? wheelState?.reward ?? null;
+            const initialLocked = wheelState?.locked ?? false;
+            if (initialReward || wheelPayload) {
                 rewardText = new Text({
-                    text: `Reward: ${describeReward(payload.reward)}`,
+                    text: `Reward: ${formatRewardLabel(initialReward, initialLocked)}`,
                     style: {
                         fill: hexToNumber(GameTheme.accents.powerUp),
                         fontFamily: GameTheme.font,
@@ -205,9 +266,280 @@ export const createLevelCompleteScene = (
                 rewardText.position.set(contentCenterX, score.y + 52);
             }
 
+            const updateRewardDisplay = (state: RewardWheelState | null) => {
+                if (!rewardText) {
+                    return;
+                }
+                const reward = state?.reward ?? initialReward ?? null;
+                const locked = state?.locked ?? false;
+                rewardText.text = `Reward: ${formatRewardLabel(reward, locked)}`;
+            };
+
+            const setWheelStatus = (message: string | null, severity: 'neutral' | 'success' | 'error' = 'neutral') => {
+                if (!wheelStatusLabel) {
+                    return;
+                }
+                const fill = severity === 'success'
+                    ? hexToNumber(GameTheme.accents.combo)
+                    : severity === 'error'
+                        ? hexToNumber(GameTheme.accents.powerUp)
+                        : hexToNumber(GameTheme.hud.textSecondary);
+                wheelStatusLabel.style.fill = fill;
+                wheelStatusLabel.text = message ?? '';
+                wheelStatusLabel.alpha = message ? 1 : 0;
+            };
+
+            const setButtonEnabled = (handle: WheelButtonHandle | null, enabled: boolean) => {
+                if (!handle) {
+                    return;
+                }
+                handle.root.eventMode = enabled ? 'static' : 'none';
+                handle.root.cursor = enabled ? 'pointer' : 'default';
+                handle.root.alpha = enabled ? 1 : 0.45;
+            };
+
+            const updateResourceLabel = (state: RewardWheelState | null) => {
+                if (!wheelResourceLabel) {
+                    return;
+                }
+                if (!state) {
+                    wheelResourceLabel.text = '';
+                    wheelResourceLabel.alpha = 0;
+                    return;
+                }
+                wheelResourceLabel.alpha = 1;
+                const segments = [
+                    `Entropy ${state.entropyStored} (Cost ${state.rerollCost})`,
+                    state.lockCost > 0
+                        ? `Coins ${state.coins} (Cost ${state.lockCost})`
+                        : `Coins ${state.coins}`,
+                ];
+                wheelResourceLabel.text = segments.join(' · ');
+            };
+
+            const refreshButtons = (state: RewardWheelState | null) => {
+                if (!state) {
+                    setButtonEnabled(wheelButtons.reroll, false);
+                    setButtonEnabled(wheelButtons.lock, false);
+                    return;
+                }
+                if (wheelButtons.reroll) {
+                    wheelButtons.reroll.label.text = state.locked
+                        ? 'Reroll (Locked)'
+                        : `Reroll (-${state.rerollCost} Entropy)`;
+                }
+                if (wheelButtons.lock) {
+                    wheelButtons.lock.label.text = state.locked
+                        ? 'Locked In'
+                        : `Lock (-${state.lockCost} Coins)`;
+                }
+                setButtonEnabled(wheelButtons.reroll, !wheelBusy && state.canReroll && !state.locked);
+                setButtonEnabled(wheelButtons.lock, !wheelBusy && !state.locked && state.canLock);
+            };
+
+            const applyWheelState = (
+                state: RewardWheelState,
+                message?: { readonly text?: string; readonly severity?: 'neutral' | 'success' | 'error' },
+            ) => {
+                wheelState = state;
+                updateRewardDisplay(state);
+                updateResourceLabel(state);
+                refreshButtons(state);
+                if (message?.text !== undefined) {
+                    setWheelStatus(message.text, message.severity ?? 'neutral');
+                } else {
+                    setWheelStatus(null);
+                }
+                context.renderStageSoon();
+            };
+
+            const createWheelButton = (name: string, label: string, onTap: () => void): WheelButtonHandle => {
+                const availableWidth = contentRight - contentLeft;
+                const width = Math.min(240, Math.max(180, availableWidth * 0.42));
+                const height = 56;
+
+                const root = new Container();
+                root.name = name;
+                root.eventMode = 'static';
+                root.cursor = 'pointer';
+
+                const background = new Graphics();
+                background.roundRect(0, 0, width, height, 16)
+                    .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.92 })
+                    .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 3, alignment: 0.5 });
+
+                const text = new Text({
+                    text: label,
+                    style: {
+                        fill: hexToNumber(GameTheme.hud.textPrimary),
+                        fontFamily: GameTheme.monoFont,
+                        fontSize: 20,
+                        align: 'center',
+                    },
+                });
+                text.anchor.set(0.5);
+                text.position.set(width / 2, height / 2);
+
+                root.on('pointertap', () => {
+                    onTap();
+                });
+
+                root.addChild(background, text);
+
+                return { root, label: text, background };
+            };
+
+            const runWheelAction = async (action: 'reroll' | 'lock') => {
+                if (!wheelPayload) {
+                    return;
+                }
+                const handler = wheelActions[action];
+                if (!handler) {
+                    setWheelStatus('Action unavailable', 'error');
+                    return;
+                }
+                if (!wheelState) {
+                    setWheelStatus('No reward to adjust', 'error');
+                    return;
+                }
+
+                if ((action === 'reroll' && (!wheelState.canReroll || wheelState.locked)) || (action === 'lock' && (wheelState.locked || !wheelState.canLock))) {
+                    setWheelStatus('Requirements not met', 'error');
+                    return;
+                }
+
+                wheelBusy = true;
+                refreshButtons(wheelState);
+                setWheelStatus(action === 'reroll' ? 'Rerolling…' : 'Locking…', 'neutral');
+
+                try {
+                    const result = await handler();
+                    const defaultMessage = action === 'reroll'
+                        ? result.success
+                            ? 'Reward rerolled'
+                            : 'Reroll failed'
+                        : result.success
+                            ? 'Reward locked'
+                            : 'Lock failed';
+                    applyWheelState(result.state, {
+                        text: result.message ?? defaultMessage,
+                        severity: result.success ? 'success' : 'error',
+                    });
+                } catch {
+                    setWheelStatus('Action failed', 'error');
+                } finally {
+                    wheelBusy = false;
+                    refreshButtons(wheelState);
+                }
+            };
+
             const host = container;
             if (!host) {
                 throw new Error('LevelCompleteScene container not initialized');
+            }
+
+            updateRewardDisplay(wheelState);
+
+            let wheelSectionBottom = rewardText?.y ?? score.y;
+            if (wheelPayload) {
+                const wheelHost = new Container();
+                const wheelTop = (rewardText?.y ?? score.y) + 52;
+                wheelHost.position.set(contentLeft, wheelTop);
+
+                const oddsHeading = new Text({
+                    text: 'Reward Wheel Odds',
+                    style: {
+                        fill: hexToNumber(GameTheme.accents.combo),
+                        fontFamily: GameTheme.font,
+                        fontSize: 34,
+                        fontWeight: '700',
+                        align: 'left',
+                        letterSpacing: 1,
+                    },
+                });
+                oddsHeading.anchor.set(0, 0.5);
+                oddsHeading.position.set(0, 0);
+                wheelHost.addChild(oddsHeading);
+
+                let wheelCursorY = oddsHeading.y + 36;
+                const oddsStyle = {
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 22,
+                    align: 'left',
+                } as const;
+
+                wheelPayload.odds.forEach((entry) => {
+                    const oddsText = new Text({
+                        text: `${describeReward(entry.reward)} — ${formatPercentage(entry.chance)}`,
+                        style: oddsStyle,
+                    });
+                    oddsText.anchor.set(0, 0.5);
+                    oddsText.position.set(0, wheelCursorY);
+                    wheelHost.addChild(oddsText);
+                    wheelCursorY += 28;
+                });
+
+                wheelCursorY += 16;
+
+                const buttonsRow = new Container();
+                const rerollHandle = createWheelButton('reward-wheel-reroll', 'Reroll', () => {
+                    void runWheelAction('reroll');
+                });
+                wheelButtons.reroll = rerollHandle;
+                rerollHandle.root.position.set(0, 0);
+                buttonsRow.addChild(rerollHandle.root);
+
+                const lockHandle = createWheelButton('reward-wheel-lock', 'Lock', () => {
+                    void runWheelAction('lock');
+                });
+                wheelButtons.lock = lockHandle;
+                const rerollWidth = rerollHandle.background.width;
+                const spacing = Math.max(16, Math.min(48, (contentRight - contentLeft) * 0.08));
+                lockHandle.root.position.set(rerollWidth + spacing, 0);
+                buttonsRow.addChild(lockHandle.root);
+
+                buttonsRow.position.set(0, wheelCursorY);
+                wheelHost.addChild(buttonsRow);
+                const buttonHeight = rerollHandle.background.height;
+                wheelCursorY += buttonHeight + 14;
+
+                wheelResourceLabel = new Text({
+                    text: '',
+                    style: {
+                        fill: hexToNumber(GameTheme.hud.textSecondary),
+                        fontFamily: GameTheme.monoFont,
+                        fontSize: 20,
+                        align: 'left',
+                    },
+                });
+                wheelResourceLabel.anchor.set(0, 0.5);
+                wheelResourceLabel.position.set(0, wheelCursorY);
+                wheelHost.addChild(wheelResourceLabel);
+                wheelCursorY += 26;
+
+                wheelStatusLabel = new Text({
+                    text: '',
+                    style: {
+                        fill: hexToNumber(GameTheme.hud.textSecondary),
+                        fontFamily: GameTheme.monoFont,
+                        fontSize: 20,
+                        align: 'left',
+                    },
+                });
+                wheelStatusLabel.anchor.set(0, 0.5);
+                wheelStatusLabel.position.set(0, wheelCursorY);
+                wheelStatusLabel.alpha = 0;
+                wheelHost.addChild(wheelStatusLabel);
+                wheelCursorY += 24;
+
+                host.addChild(wheelHost);
+
+                updateResourceLabel(wheelState);
+                refreshButtons(wheelState);
+                setWheelStatus(null);
+
+                wheelSectionBottom = wheelTop + wheelCursorY;
             }
 
             const recap = payload.recap;
@@ -242,7 +574,7 @@ export const createLevelCompleteScene = (
                 },
             ];
 
-            const statStartY = (rewardText?.y ?? score.y) + 60;
+            const statStartY = wheelSectionBottom + 60;
             const statSpacing = 40;
 
             const divider = new Graphics();

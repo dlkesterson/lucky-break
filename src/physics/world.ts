@@ -66,6 +66,8 @@ export interface PhysicsWorldHandle {
     readonly remove: (body: PhysicsBody | PhysicsBody[]) => void;
     readonly factory: PhysicsFactories;
     readonly dispose: () => void;
+    readonly setGravity: (value: number) => void;
+    readonly getGravity: () => number;
     // Ball attachment tracking
     readonly attachBallToPaddle: (ball: PhysicsBody, paddle: PhysicsBody, offset?: Vector2) => void;
     readonly detachBallFromPaddle: (ball: PhysicsBody) => void;
@@ -218,7 +220,12 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
         velocityIterations: 8,
         positionIterations: 8, // Increased for better collision accuracy and prevent tunneling
     });
-    configureGravity(engine, config.gravity);
+    const initialGravity =
+        typeof config.gravity === 'number' && Number.isFinite(config.gravity)
+            ? config.gravity
+            : undefined;
+    let currentGravity = initialGravity ?? 1;
+    configureGravity(engine, initialGravity);
     const timeStep = config.timeStepMs ?? DEFAULT_TIMESTEP_MS;
 
     // Set world bounds to prevent tunneling
@@ -339,6 +346,14 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
         orphanedAttachmentWarnings.clear();
     };
 
+    const setGravity: PhysicsWorldHandle['setGravity'] = (value) => {
+        const candidate = Number.isFinite(value) ? value : currentGravity;
+        currentGravity = candidate;
+        configureGravity(engine, candidate);
+    };
+
+    const getGravity: PhysicsWorldHandle['getGravity'] = () => currentGravity;
+
     return {
         engine,
         world: engine.world,
@@ -347,6 +362,8 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
         step,
         factory: createFactories(engine.world, dimensions),
         dispose,
+        setGravity,
+        getGravity,
         attachBallToPaddle,
         detachBallFromPaddle,
         updateBallAttachment,

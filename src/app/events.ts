@@ -1,3 +1,5 @@
+import type { RewardKey } from 'config/game';
+
 export type BrickType = 'standard' | 'multi-hit' | 'indestructible' | 'power-up' | 'gamble';
 export type WallHitSide = 'top' | 'left' | 'right' | 'bottom';
 export type LifeLostCause = 'ball-drop' | 'timeout' | 'forced-reset';
@@ -80,6 +82,37 @@ export interface LaserHitPayload {
     readonly scheduledTime?: number;
 }
 
+export type EntropyActionType = 'reroll' | 'shield' | 'bailout';
+
+export interface EntropyActionPayload {
+    readonly sessionId: string;
+    readonly action: EntropyActionType;
+    readonly cost: number;
+    readonly storedBefore: number;
+    readonly storedAfter: number;
+}
+
+export interface RewardWheelWeightSnapshot {
+    readonly type: RewardKey;
+    readonly weight: number;
+    readonly chance: number;
+}
+
+export type RewardWheelInteractionType = 'initial-spin' | 'reroll' | 'lock';
+
+export interface RewardWheelInteractionPayload {
+    readonly sessionId: string;
+    readonly action: RewardWheelInteractionType;
+    readonly rewardType: RewardKey;
+    readonly rewardDuration: number;
+    readonly entropyCost: number;
+    readonly coinsCost: number;
+    readonly entropyStored: number;
+    readonly coins: number;
+    readonly locked: boolean;
+    readonly weights: readonly RewardWheelWeightSnapshot[];
+}
+
 export interface ComboMilestonePayload {
     readonly sessionId: string;
     readonly combo: number;
@@ -88,7 +121,7 @@ export interface ComboMilestonePayload {
     readonly totalScore: number;
 }
 
-export type UiSceneName = 'main-menu' | 'gameplay' | 'pause' | 'level-complete' | 'game-over';
+export type UiSceneName = 'main-menu' | 'gameplay' | 'pause' | 'level-complete' | 'bias-phase' | 'game-over';
 export type UiSceneTransitionAction = 'enter' | 'exit' | 'suspend' | 'resume';
 
 export interface UiSceneTransitionPayload {
@@ -108,6 +141,8 @@ export interface LuckyBreakEventMap {
     readonly UiSceneTransition: UiSceneTransitionPayload;
     readonly LaserFire: LaserFirePayload;
     readonly LaserHit: LaserHitPayload;
+    readonly EntropyAction: EntropyActionPayload;
+    readonly RewardWheelInteraction: RewardWheelInteractionPayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;

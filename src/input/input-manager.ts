@@ -35,6 +35,7 @@ export class GameInputManager implements InputManager {
     private activeTouchId: number | null = null;
     private suppressMouseInput = false;
     private keyboardState = new Map<string, boolean>();
+    private pendingKeyPresses = new Set<string>();
     private activeInputs = new Set<InputType>();
     private primaryInput: InputType | null = null;
     private launchManager = new PaddleLaunchManager();
@@ -105,6 +106,7 @@ export class GameInputManager implements InputManager {
         this.primaryInput = null;
         this.activeInputs.clear();
         this.keyboardState.clear();
+        this.pendingKeyPresses.clear();
         const { width, height } = this.getCanvasSize();
         this.gamepadCursorX = width > 0 ? width / 2 : null;
         this.gamepadCursorY = height > 0 ? Math.max(0, height * 0.85) : null;
@@ -313,6 +315,9 @@ export class GameInputManager implements InputManager {
     private handleKeyDown(event: KeyboardEvent): void {
         this.markPrimaryInput('keyboard');
         this.keyboardState.set(event.code, true);
+        if (!event.repeat) {
+            this.pendingKeyPresses.add(event.code);
+        }
     }
 
     private handleKeyUp(event: KeyboardEvent): void {
@@ -451,6 +456,7 @@ export class GameInputManager implements InputManager {
         this.launchManager.reset();
         this.activeInputs.clear();
         this.keyboardState.clear();
+        this.pendingKeyPresses.clear();
         this.resetTouchGestureState();
         this.container = null;
         this.canvas = null;
@@ -530,6 +536,14 @@ export class GameInputManager implements InputManager {
         }
 
         this.gamepadLaunchHeld = launchPressed;
+    }
+
+    consumeKeyPress(code: string): boolean {
+        if (!this.pendingKeyPresses.has(code)) {
+            return false;
+        }
+        this.pendingKeyPresses.delete(code);
+        return true;
     }
 
     private readActiveGamepad(): Gamepad | null {

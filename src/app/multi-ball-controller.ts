@@ -24,6 +24,7 @@ export interface MultiBallControllerOptions {
     readonly colors: MultiBallColors;
     readonly multiplier: number;
     readonly maxExtraBalls: number;
+    readonly sampleRestitution: () => number;
 }
 
 interface ExtraBallEntry {
@@ -46,6 +47,7 @@ export interface MultiBallController {
         readonly deltaSeconds: number;
     }): void;
     visitActiveBalls(visitor: (entry: { readonly body: Body; readonly isPrimary: boolean }) => void): void;
+    setRestitution(value: number): void;
 }
 
 const createAngularOffsets = (count: number): number[] => {
@@ -86,10 +88,13 @@ export const createMultiBallController = ({
     colors,
     multiplier,
     maxExtraBalls,
+    sampleRestitution,
 }: MultiBallControllerOptions): MultiBallController => {
     const extraBalls = new Map<number, ExtraBallEntry>();
     let palette: MultiBallColors = { ...colors };
     const baseBallZ = typeof ballGraphics.zIndex === 'number' ? ballGraphics.zIndex : 0;
+    const initialRestitution = sampleRestitution();
+    let currentRestitution = Number.isFinite(initialRestitution) ? initialRestitution : 0.98;
 
     const buildSpeedRing = () => {
         const ring = createSpeedRing({
@@ -184,10 +189,11 @@ export const createMultiBallController = ({
                 const extraBody = physics.factory.ball({
                     radius: ball.radius,
                     position: spawnPosition,
-                    restitution: 0.98,
+                    restitution: currentRestitution,
                 });
 
                 MatterBody.setVelocity(extraBody, velocity);
+                extraBody.restitution = currentRestitution;
                 physics.add(extraBody);
 
                 const extraVisual = new Graphics();
@@ -290,6 +296,14 @@ export const createMultiBallController = ({
         });
     };
 
+    const setRestitution: MultiBallController['setRestitution'] = (value) => {
+        const normalized = Number.isFinite(value) ? value : currentRestitution;
+        currentRestitution = normalized;
+        extraBalls.forEach((entry) => {
+            entry.body.restitution = normalized;
+        });
+    };
+
     return {
         spawnExtraBalls,
         promoteExtraBallToPrimary,
@@ -300,5 +314,6 @@ export const createMultiBallController = ({
         applyTheme,
         updateSpeedIndicators,
         visitActiveBalls,
+        setRestitution,
     };
 };

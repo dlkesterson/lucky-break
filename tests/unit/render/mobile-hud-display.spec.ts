@@ -16,8 +16,13 @@ vi.mock('pixi.js', () => {
         public visible = true;
         public alpha = 1;
         public parent: Container | null = null;
+        public label = '';
+        public name = '';
         public position = createPoint();
         public scale = createPoint();
+        public cursor: string | undefined;
+        public hitArea: unknown = null;
+        private listeners = new Map<string, ((...args: unknown[]) => void)[]>();
 
         addChild<T>(...items: T[]): T {
             this.children.push(...items);
@@ -28,6 +33,55 @@ vi.mock('pixi.js', () => {
             });
             return items[0];
         }
+
+        on(event: string, handler: (...args: unknown[]) => void): this {
+            const existing = this.listeners.get(event) ?? [];
+            existing.push(handler);
+            this.listeners.set(event, existing);
+            return this;
+        }
+
+        removeAllListeners(): this {
+            this.listeners.clear();
+            return this;
+        }
+
+        emit(event: string, ...args: unknown[]): void {
+            const handlers = this.listeners.get(event);
+            handlers?.forEach((handler) => handler(...args));
+        }
+    }
+
+    class Graphics extends Container {
+        public drawCommands: { type: string; payload?: unknown }[] = [];
+
+        clear(): void {
+            this.drawCommands.push({ type: 'clear' });
+        }
+
+        roundRect(x: number, y: number, width: number, height: number, radius: number): this {
+            this.drawCommands.push({ type: 'roundRect', payload: { x, y, width, height, radius } });
+            return this;
+        }
+
+        fill(style: unknown): this {
+            this.drawCommands.push({ type: 'fill', payload: style });
+            return this;
+        }
+
+        stroke(style: unknown): this {
+            this.drawCommands.push({ type: 'stroke', payload: style });
+            return this;
+        }
+    }
+
+    class Rectangle {
+        public constructor(
+            public readonly x: number,
+            public readonly y: number,
+            public readonly width: number,
+            public readonly height: number,
+        ) { }
     }
 
     class Text extends Container {
@@ -52,11 +106,13 @@ vi.mock('pixi.js', () => {
 
     return {
         Container,
+        Graphics,
+        Rectangle,
         Text,
     };
 });
 
-import { Text } from 'pixi.js';
+import { Container, Text, type FederatedPointerEvent } from 'pixi.js';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import type { GameThemeDefinition } from 'render/theme';
 import type { HudDisplayUpdate } from 'render/hud-display';
@@ -256,5 +312,48 @@ describe('createMobileHudDisplay', () => {
         expect(difficultyText.text).toBe('Diff ×0.75');
         expect(comboText.visible).toBe(false);
         expect(display.getHeight()).toBeGreaterThanOrEqual(96);
+    });
+
+    it('renders entropy action buttons for touch controls and forwards taps', () => {
+        const display = createMobileHudDisplay(theme);
+        const handler = vi.fn();
+        display.setEntropyActionHandler(handler);
+
+        const entropyActions: NonNullable<HudDisplayUpdate['entropyActions']> = [
+            { action: 'reroll', label: 'Reroll Reward', hotkey: 'R', cost: 30, charges: 1, affordable: true },
+            { action: 'bailout', label: 'Bailout', hotkey: 'B', cost: 60, charges: 0, affordable: false },
+        ];
+
+        display.update({
+            ...payload,
+            entropyActions,
+        });
+
+        const entropyRoot = display.container.children.find(
+            (child): child is Container => child instanceof Container && child.label === 'entropy-actions',
+        );
+        expect(entropyRoot).toBeDefined();
+        expect(entropyRoot?.visible).toBe(true);
+
+        const rerollButton = entropyRoot?.children.find(
+            (child): child is Container => child instanceof Container && child.name === 'mobile-entropy-action-reroll',
+        );
+        expect(rerollButton).toBeDefined();
+
+        handler.mockClear();
+        rerollButton?.emit('pointertap', {} as unknown as FederatedPointerEvent);
+        expect(handler).toHaveBeenCalledWith('reroll');
+
+        const bailoutButton = entropyRoot?.children.find(
+            (child): child is Container => child instanceof Container && child.name === 'mobile-entropy-action-bailout',
+        );
+        expect(bailoutButton).toBeDefined();
+
+        handler.mockClear();
+        bailoutButton?.emit('pointertap', {} as unknown as FederatedPointerEvent);
+        expect(handler).not.toHaveBeenCalled();
+
+        display.update({ ...payload, entropyActions: [] });
+        expect(entropyRoot?.visible).toBe(false);
     });
 });

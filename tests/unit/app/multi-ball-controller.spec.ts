@@ -145,6 +145,7 @@ describe('createMultiBallController', () => {
     let colors: any;
     let multiplier: number;
     let maxExtraBalls: number;
+    let sampleRestitution: () => number;
 
     beforeEach(async () => {
         const pixi = await import('pixi.js');
@@ -152,13 +153,14 @@ describe('createMultiBallController', () => {
         let nextId = 10;
         physics = {
             factory: {
-                ball: vi.fn(({ position, radius }: { position: { x: number; y: number }; radius: number }) => {
+                ball: vi.fn(({ position, radius, restitution }: { position: { x: number; y: number }; radius: number; restitution?: number }) => {
                     return {
                         id: nextId++,
                         position: { ...position },
                         velocity: { x: 0, y: 0 },
                         angle: 0,
                         radius,
+                        restitution: restitution ?? 1,
                     };
                 }),
             },
@@ -181,6 +183,7 @@ describe('createMultiBallController', () => {
         colors = { core: 0x112233, aura: 0x445566, highlight: 0x778899 };
         multiplier = 3;
         maxExtraBalls = 4;
+        sampleRestitution = vi.fn(() => 0.98) as unknown as () => number;
         matterBodyMock.setVelocity.mockClear();
         matterMocks.setVelocity.mockClear();
     });
@@ -197,6 +200,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
@@ -240,6 +244,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9 });
@@ -270,6 +275,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9, requestedCount: 1 });
@@ -292,6 +298,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9, requestedCount: 2 });
@@ -313,6 +320,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 10 });
@@ -345,6 +353,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier: 1,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         physics.factory.ball.mockClear();
@@ -367,6 +376,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 8 });
@@ -399,6 +409,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 12 });
@@ -442,6 +453,7 @@ describe('createMultiBallController', () => {
             colors,
             multiplier,
             maxExtraBalls,
+            sampleRestitution,
         });
 
         controller.spawnExtraBalls({ currentLaunchSpeed: 9 });

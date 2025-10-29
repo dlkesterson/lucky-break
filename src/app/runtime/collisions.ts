@@ -18,6 +18,7 @@ import type { RandomManager } from 'util/random';
 import type { GambleBrickManager } from 'game/gamble-brick-manager';
 import type { GameInputManager } from 'input/input-manager';
 import type { RuntimeScoringHandle } from './scoring';
+import type { RoundMachine } from './round-machine';
 
 export interface CollisionRuntime {
     wire(): void;
@@ -118,6 +119,7 @@ export interface CollisionContext {
         maxValue: number;
     };
     readonly functions: CollisionFunctions;
+    readonly roundMachine: RoundMachine;
 }
 
 export interface CollisionRuntimeDeps {
@@ -601,6 +603,17 @@ const handleBallBottomCollision = (
 
     const scoringState = ctx.scoring.state;
     const comboBeforeReset = scoringState.combo;
+    const frameTimestampMs = fx.getFrameTimestampMs();
+
+    if (ctx.roundMachine.consumeShieldCharge(frameTimestampMs)) {
+        fx.clearExtraBalls();
+        fx.reattachBallToPaddle();
+        fx.flashPaddleLight(0.65);
+        fx.hudPulseCombo(0.55);
+        ctx.session.recordEntropyEvent({ type: 'combo-reset', comboHeat: Math.max(0, comboBeforeReset * 0.35) });
+        return;
+    }
+
     ctx.session.recordLifeLost('ball-drop');
     ctx.session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
     ctx.scoring.lifeLost();

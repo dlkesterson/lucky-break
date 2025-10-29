@@ -499,6 +499,8 @@ vi.mock('physics/world', () => ({
             updateBallAttachment: vi.fn(),
             step: vi.fn(),
             engine: {},
+            setGravity: vi.fn(),
+            getGravity: vi.fn(() => 0),
         };
         physicsWorldState.instances.push(instance);
         return instance;
@@ -587,6 +589,7 @@ vi.mock('render/hud-display', () => ({
             update: vi.fn(),
             pulseCombo: vi.fn(),
             setTheme: vi.fn(),
+            setEntropyActionHandler: vi.fn(),
         };
     }),
     HudPowerUpView: vi.fn(),
@@ -721,6 +724,7 @@ vi.mock('input/input-manager', () => {
         getPaddleTarget = vi.fn(() => null);
         shouldLaunch = vi.fn(() => false);
         consumeLaunchIntent = vi.fn(() => ({ direction: { x: 0, y: -1 } }));
+        consumeKeyPress = vi.fn(() => false);
         getDebugState = vi.fn(() => ({
             activeInputs: [],
             primaryInput: null,

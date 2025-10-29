@@ -20,8 +20,12 @@ vi.mock('pixi.js', () => {
         public parent: Container | null = null;
         public sortableChildren = false;
         public label = '';
+        public name = '';
         public position = createPoint();
         public scale = createPoint();
+        public cursor: string | undefined;
+        public hitArea: unknown = null;
+        private listeners = new Map<string, ((...args: unknown[]) => void)[]>();
         private _x = 0;
         private _y = 0;
 
@@ -51,6 +55,23 @@ vi.mock('pixi.js', () => {
                 }
             });
             return items[0];
+        }
+
+        on(event: string, handler: (...args: unknown[]) => void): this {
+            const existing = this.listeners.get(event) ?? [];
+            existing.push(handler);
+            this.listeners.set(event, existing);
+            return this;
+        }
+
+        removeAllListeners(): this {
+            this.listeners.clear();
+            return this;
+        }
+
+        emit(event: string, ...args: unknown[]): void {
+            const handlers = this.listeners.get(event);
+            handlers?.forEach((handler) => handler(...args));
         }
     }
 
@@ -102,6 +123,15 @@ vi.mock('pixi.js', () => {
         }
     }
 
+    class Rectangle {
+        public constructor(
+            public readonly x: number,
+            public readonly y: number,
+            public readonly width: number,
+            public readonly height: number,
+        ) { }
+    }
+
     class Text extends Container {
         public text: string;
         public style: Record<string, unknown>;
@@ -131,11 +161,13 @@ vi.mock('pixi.js', () => {
         Graphics,
         FillGradient,
         Text,
+        Rectangle,
     };
 });
 
-import { Text } from 'pixi.js';
+import { Container, Text, type FederatedPointerEvent } from 'pixi.js';
 import { createHudDisplay, type HudDisplayUpdate } from 'render/hud-display';
+import type { HudEntropyActionDescriptor } from 'render/hud';
 import type { GameThemeDefinition } from 'render/theme';
 
 const parseColor = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
@@ -237,6 +269,56 @@ describe('createHudDisplay', () => {
         expect(prompts).toHaveLength(1);
 
         expect(display.getHeight()).toBeGreaterThan(220);
+    });
+
+    it('renders entropy action buttons and triggers the handler when tapped', () => {
+        const display = createHudDisplay(theme);
+        const entropyActions: HudEntropyActionDescriptor[] = [
+            { action: 'reroll', label: 'Reroll Reward', hotkey: 'R', cost: 30, charges: 1, affordable: true },
+            { action: 'shield', label: 'Shield Paddle', hotkey: 'S', cost: 45, charges: 0, affordable: false },
+        ];
+
+        const handler = vi.fn();
+        display.setEntropyActionHandler(handler);
+
+        display.update({
+            ...payload,
+            entropyActions,
+        });
+
+        const texts = display.container.children.filter(isText);
+        const header = texts.find((text) => text.text === 'Entropy Actions');
+        expect(header?.visible).toBe(true);
+
+        const rerollButton = display.container.children.find(
+            (child): child is Container => child instanceof Container && child.name === 'entropy-action-reroll',
+        );
+        expect(rerollButton).toBeDefined();
+
+        handler.mockClear();
+        rerollButton?.emit('pointertap', {} as unknown as FederatedPointerEvent);
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith('reroll');
+
+        const shieldButton = display.container.children.find(
+            (child): child is Container => child instanceof Container && child.name === 'entropy-action-shield',
+        );
+        expect(shieldButton).toBeDefined();
+
+        handler.mockClear();
+        shieldButton?.emit('pointertap', {} as unknown as FederatedPointerEvent);
+        expect(handler).not.toHaveBeenCalled();
+
+        // Clear actions and ensure buttons hide.
+        display.update({
+            ...payload,
+            entropyActions: [],
+        });
+
+        const remainingButtons = display.container.children.filter(
+            (child): child is Container => child instanceof Container && child.name?.startsWith('entropy-action-'),
+        );
+        expect(remainingButtons.every((button) => button.visible === false)).toBe(true);
     });
 
     it('applies combo pulse intensity and decays over subsequent updates', () => {

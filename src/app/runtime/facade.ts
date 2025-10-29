@@ -15,14 +15,25 @@ import {
 import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
-import type { LifeLostCause } from '../events';
+import type { EntropyActionType, LifeLostCause, RewardWheelInteractionType } from '../events';
 import { createAchievementManager, type AchievementUnlock } from '../achievements';
-import { buildHudScoreboard } from 'render/hud';
+import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createGameplayScene } from 'scenes/gameplay';
-import { createLevelCompleteScene } from 'scenes/level-complete';
+import {
+    createLevelCompleteScene,
+    type LevelCompleteRewardWheelPayload,
+    type RewardWheelState,
+    type RewardWheelUpdateResult,
+} from 'scenes/level-complete';
+import {
+    createBiasPhaseScene,
+    type BiasPhasePayload,
+    type BiasPhaseSceneOption,
+    type BiasPhaseSessionSummary,
+} from 'scenes/bias-phase';
 import { createGameOverScene } from 'scenes/game-over';
 import { createPauseScene } from 'scenes/pause';
 import { gameConfig, type GameConfig } from 'config/game';
@@ -60,7 +71,14 @@ import { createMultiBallController, type MultiBallColors } from '../multi-ball-c
 import { createLevelRuntime, type BrickLayoutBounds } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
 import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
-import { spinWheel, createReward, type RewardType, type LaserPaddleReward } from 'game/rewards';
+import {
+    spinWheel,
+    createReward,
+    setRewardOverride,
+    type Reward,
+    type RewardType,
+    type LaserPaddleReward,
+} from 'game/rewards';
 import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { rootLogger } from 'util/log';
 import { getHighScores, recordHighScore } from 'util/high-scores';
@@ -70,7 +88,14 @@ import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { createRuntimeVisuals, type ForeshadowInstrument } from './visuals';
 import { createGambleHighlightEffect, type GambleHighlightEffect } from 'render/effects';
 import { createRuntimeScoring, type RuntimeScoringHandle } from './scoring';
-import { createRoundMachine, type RoundMachine } from './round-machine';
+import {
+    createRoundMachine,
+    type BiasOptionRisk,
+    type BiasPhaseEffects,
+    type BiasPhaseOption,
+    type EntropyActionState,
+    type RoundMachine,
+} from './round-machine';
 import { createRuntimePowerups, type RuntimePowerups } from './powerups';
 import { createRuntimeInput, type RuntimeInput } from './input';
 import { createRuntimeDebug, type RuntimeDebug } from './debug';
@@ -78,6 +103,7 @@ import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
 import type { GameplayRuntimeState } from './types';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
+import { createRuntimeModifiers, type RuntimeModifiers } from './modifiers';
 
 type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
 import {
@@ -121,6 +147,14 @@ const MULTI_BALL_CAPACITY = config.multiBall.maxExtraBalls;
 const SLOW_TIME_MAX_DURATION = config.rewards.stackLimits.slowTimeMaxDuration;
 const MULTI_BALL_MAX_DURATION = config.rewards.stackLimits.multiBallMaxDuration;
 const DEFAULT_PADDLE_WIDTH_MULTIPLIER = config.paddle.expandedWidthMultiplier;
+const MODIFIER_GRAVITY_RANGE = config.modifiers.gravity;
+const MODIFIER_RESTITUTION_RANGE = config.modifiers.restitution;
+const MODIFIER_PADDLE_WIDTH_RANGE = config.modifiers.paddleWidth;
+const MODIFIER_SPEED_GOVERNOR_RANGE = config.modifiers.speedGovernor;
+const BASE_BALL_RESTITUTION = MODIFIER_RESTITUTION_RANGE.default;
+const BASE_PADDLE_WIDTH = 100;
+const BASE_PADDLE_HEIGHT = 20;
+const BASE_PADDLE_SPEED = 300;
 const BRICK_WIDTH = config.bricks.size.width;
 const BRICK_HEIGHT = config.bricks.size.height;
 const POWER_UP_RADIUS = config.powerUp.radius;
@@ -264,6 +298,25 @@ const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     return hashed === 0 ? 1 : hashed;
 };
 
+const ENTROPY_COST_REROLL = Math.max(1, config.entropy.spend.rerollCost);
+const REWARD_LOCK_COIN_COST = Math.max(0, config.rewards.lockCoinCost);
+const ENTROPY_COST_SHIELD = Math.max(1, config.entropy.spend.shieldCost);
+const ENTROPY_COST_BAILOUT = Math.max(1, config.entropy.spend.bailoutCost);
+
+const ENTROPY_ACTION_COSTS: Record<EntropyActionType, number> = {
+    reroll: ENTROPY_COST_REROLL,
+    shield: ENTROPY_COST_SHIELD,
+    bailout: ENTROPY_COST_BAILOUT,
+} as const;
+
+const ENTROPY_ACTION_BINDINGS: Record<EntropyActionType, { key: string; hotkey: string; label: string }> = {
+    reroll: { key: 'KeyR', hotkey: 'R', label: 'Reroll' },
+    shield: { key: 'KeyS', hotkey: 'S', label: 'Shield' },
+    bailout: { key: 'KeyB', hotkey: 'B', label: 'Bailout' },
+} as const;
+
+const ENTROPY_ACTION_SEQUENCE: readonly EntropyActionType[] = ['reroll', 'shield', 'bailout'];
+
 const achievements = createAchievementManager();
 
 let upgradeSnapshot = achievements.getUpgradeSnapshot();
@@ -306,6 +359,7 @@ export interface RuntimeFacadeModules {
     readonly scoring: RuntimeScoringHandle;
     readonly powerups: RuntimePowerups;
     readonly roundMachine: RoundMachine;
+    readonly modifiers: RuntimeModifiers;
 }
 
 export interface RuntimeFacade {
@@ -572,6 +626,10 @@ export const createRuntimeFacade = async ({
         currentBaseSpeed: BALL_BASE_SPEED,
         currentMaxSpeed: BALL_MAX_SPEED,
         currentLaunchSpeed: BALL_LAUNCH_SPEED,
+        gravity: MODIFIER_GRAVITY_RANGE.default,
+        ballRestitution: BASE_BALL_RESTITUTION,
+        paddleBaseWidth: BASE_PADDLE_WIDTH * MODIFIER_PADDLE_WIDTH_RANGE.default,
+        speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
     };
 
     const LOW_FPS_THRESHOLD = 45;
@@ -1158,15 +1216,16 @@ export const createRuntimeFacade = async ({
 
     const paddle: PaddleState = paddleController.createPaddle(
         { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
-        { width: 100, height: 20, speed: 300 },
+        { width: BASE_PADDLE_WIDTH, height: BASE_PADDLE_HEIGHT, speed: BASE_PADDLE_SPEED },
     );
     physics.add(paddle.physicsBody);
 
     const ball: BallState = ballController.createAttachedBall(
         paddleController.getPaddleCenter(paddle),
-        { radius: 10, restitution: 0.98 },
+        { radius: 10, restitution: BASE_BALL_RESTITUTION },
     );
     physics.add(ball.physicsBody);
+    ball.physicsBody.restitution = runtimeState.ballRestitution;
 
     runtimeInput.install();
 
@@ -1228,7 +1287,34 @@ export const createRuntimeFacade = async ({
         colors: themeBallColors,
         multiplier: MULTI_BALL_MULTIPLIER,
         maxExtraBalls: MULTI_BALL_CAPACITY,
+        sampleRestitution: () => runtimeState.ballRestitution,
     });
+
+    multiBallController.setRestitution(runtimeState.ballRestitution);
+
+    const setPaddleWidth = (() => {
+        let lastWidth = paddle.width;
+        return (requestedWidth: number): void => {
+            const clampedWidth = Number.isFinite(requestedWidth) ? Math.max(24, requestedWidth) : lastWidth;
+            if (Math.abs(clampedWidth - lastWidth) <= 1e-3) {
+                paddle.width = clampedWidth;
+                return;
+            }
+            const currentPosition = {
+                x: paddle.physicsBody.position.x,
+                y: paddle.physicsBody.position.y,
+            };
+            const scaleX = clampedWidth / lastWidth;
+            if (Number.isFinite(scaleX) && scaleX > 0) {
+                MatterBody.scale(paddle.physicsBody, scaleX, 1);
+                MatterBody.setPosition(paddle.physicsBody, currentPosition);
+            }
+            lastWidth = clampedWidth;
+            paddle.width = clampedWidth;
+            paddle.position.x = currentPosition.x;
+            paddle.position.y = currentPosition.y;
+        };
+    })();
 
     const paddleGraphics = visualFactory.paddle.create({ width: paddle.width, height: paddle.height });
     paddleGraphics.zIndex = 60;
@@ -1307,6 +1393,255 @@ export const createRuntimeFacade = async ({
     });
     const { manager: powerUpManager } = powerups;
 
+    const refreshPaddleWidth = () => {
+        const scale = powerups.getPaddleWidthScale();
+        setPaddleWidth(runtimeState.paddleBaseWidth * scale);
+    };
+
+    refreshPaddleWidth();
+
+    const applyBallRestitution = (value: number) => {
+        const normalized = Number.isFinite(value) ? value : runtimeState.ballRestitution;
+        ball.physicsBody.restitution = normalized;
+        multiBallController.setRestitution(normalized);
+    };
+
+    const runtimeModifiers = createRuntimeModifiers({
+        config: config.modifiers,
+        physics,
+        runtimeState,
+        baseValues: { paddleWidth: BASE_PADDLE_WIDTH },
+        applyRestitution: (value) => {
+            applyBallRestitution(value);
+        },
+        applyPaddleBaseWidth: () => {
+            refreshPaddleWidth();
+        },
+        onSpeedGovernorChange: () => {
+            /* speed governor state already updated by modifier module */
+        },
+    });
+
+    runtimeModifiers.reset();
+
+    const roundToDecimals = (value: number, decimals = 3): number => {
+        if (!Number.isFinite(value)) {
+            return 0;
+        }
+        const factor = 10 ** decimals;
+        return Math.round(value * factor) / factor;
+    };
+
+    const formatSigned = (value: number, decimals = 2): string => {
+        const rounded = roundToDecimals(value, decimals);
+        const sign = rounded >= 0 ? '+' : '';
+        return `${sign}${rounded.toFixed(decimals)}`;
+    };
+
+    const formatMultiplierLabel = (value: number, decimals = 2): string => {
+        const rounded = roundToDecimals(value, decimals);
+        return `x${rounded.toFixed(decimals)}`;
+    };
+
+    const clampToRange = (value: number, range: { readonly min: number; readonly max: number }): number => {
+        if (!Number.isFinite(value)) {
+            return range.min;
+        }
+        return Math.min(range.max, Math.max(range.min, value));
+    };
+
+    const randomBetween = (min: number, max: number): number => min + (max - min) * random.next();
+
+    const randomSigned = (magnitude: number): number => (random.boolean() ? magnitude : -magnitude);
+
+    const pickFrom = <T>(values: readonly T[]): T => {
+        if (values.length === 0) {
+            throw new Error('Cannot select from empty list');
+        }
+        const index = random.nextInt(values.length);
+        return values[index] ?? values[0];
+    };
+
+    const biasRiskOrder: readonly BiasOptionRisk[] = ['safe', 'bold', 'volatile'];
+
+    const biasLabels: Record<BiasOptionRisk, readonly string[]> = {
+        safe: ['Momentum Hedge', 'Steady Anchor', 'Measured Tilt'],
+        bold: ['Double Down', 'Edge Stack', 'Tempo Spike'],
+        volatile: ['Chaos Ramp', 'Glitch Push', 'Void Bet'],
+    } as const;
+
+    const biasDescriptions: Record<BiasOptionRisk, readonly string[]> = {
+        safe: [
+            'Pocket a modest edge while keeping the board manageable.',
+            'Steady your hand with softer tweaks and steadier odds.',
+        ],
+        bold: [
+            'Lean into the heat for fatter drops and sharper volleys.',
+            'Amp the tempo to chase richer streak rewards.',
+        ],
+        volatile: [
+            'Spin the wheel for wild payouts and relentless speed.',
+            'Embrace chaos—huge upside with heavy gravity shifts.',
+        ],
+    } as const;
+
+    const generateBiasPhaseOptions = (upcomingLevelIndex: number): BiasPhaseOption[] => {
+        const baseGravity = MODIFIER_GRAVITY_RANGE.default;
+        const baseRestitution = MODIFIER_RESTITUTION_RANGE.default;
+        const basePaddleWidth = MODIFIER_PADDLE_WIDTH_RANGE.default;
+        const baseSpeedGovernor = MODIFIER_SPEED_GOVERNOR_RANGE.default;
+
+        return biasRiskOrder.map((risk, order) => {
+            const idSeed = random.nextInt(1_000_000);
+            const modifierEntries: {
+                gravity?: number;
+                restitution?: number;
+                paddleWidthMultiplier?: number;
+                speedGovernorMultiplier?: number;
+            } = {};
+            let difficulty: number | undefined;
+            let powerUp: number | undefined;
+
+            if (risk === 'safe') {
+                modifierEntries.paddleWidthMultiplier = roundToDecimals(
+                    clampToRange(basePaddleWidth + randomBetween(0.05, 0.12), MODIFIER_PADDLE_WIDTH_RANGE),
+                    2,
+                );
+                modifierEntries.gravity = roundToDecimals(
+                    clampToRange(baseGravity + randomSigned(randomBetween(0.02, 0.05)), MODIFIER_GRAVITY_RANGE),
+                    2,
+                );
+                difficulty = roundToDecimals(1 + randomBetween(0.04, 0.08), 3);
+                powerUp = roundToDecimals(1 + randomBetween(0.06, 0.1), 3);
+            } else if (risk === 'bold') {
+                modifierEntries.paddleWidthMultiplier = roundToDecimals(
+                    clampToRange(basePaddleWidth - randomBetween(0.05, 0.12), MODIFIER_PADDLE_WIDTH_RANGE),
+                    2,
+                );
+                modifierEntries.speedGovernorMultiplier = roundToDecimals(
+                    clampToRange(baseSpeedGovernor + randomBetween(0.08, 0.15), MODIFIER_SPEED_GOVERNOR_RANGE),
+                    2,
+                );
+                modifierEntries.gravity = roundToDecimals(
+                    clampToRange(baseGravity + randomSigned(randomBetween(0.04, 0.08)), MODIFIER_GRAVITY_RANGE),
+                    2,
+                );
+                difficulty = roundToDecimals(1 + randomBetween(0.09, 0.16), 3);
+                powerUp = roundToDecimals(1 + randomBetween(0.12, 0.18), 3);
+            } else {
+                modifierEntries.speedGovernorMultiplier = roundToDecimals(
+                    clampToRange(baseSpeedGovernor + randomBetween(0.16, 0.24), MODIFIER_SPEED_GOVERNOR_RANGE),
+                    2,
+                );
+                modifierEntries.restitution = roundToDecimals(
+                    clampToRange(baseRestitution + randomBetween(0.02, 0.06), MODIFIER_RESTITUTION_RANGE),
+                    2,
+                );
+                modifierEntries.gravity = roundToDecimals(
+                    clampToRange(baseGravity + randomSigned(randomBetween(0.1, 0.18)), MODIFIER_GRAVITY_RANGE),
+                    2,
+                );
+                difficulty = roundToDecimals(1 + randomBetween(0.16, 0.24), 3);
+                powerUp = roundToDecimals(1 + randomBetween(0.18, 0.26), 3);
+            }
+
+            const modifiers = Object.keys(modifierEntries).length > 0 ? modifierEntries : undefined;
+            const effects: BiasPhaseEffects = {
+                modifiers,
+                difficultyMultiplier: difficulty,
+                powerUpChanceMultiplier: powerUp,
+            };
+
+            return {
+                id: `bias-${upcomingLevelIndex + 1}-${risk}-${order}-${idSeed}`,
+                label: pickFrom(biasLabels[risk]),
+                description: pickFrom(biasDescriptions[risk]),
+                risk,
+                effects,
+            } satisfies BiasPhaseOption;
+        });
+    };
+
+    const describeBiasOption = (option: BiasPhaseOption): readonly string[] => {
+        const summary: string[] = [];
+        const { modifiers, difficultyMultiplier, powerUpChanceMultiplier } = option.effects;
+
+        if (difficultyMultiplier !== undefined && Math.abs(difficultyMultiplier - 1) > 1e-3) {
+            summary.push(`Difficulty ${formatMultiplierLabel(difficultyMultiplier)}`);
+        }
+
+        if (powerUpChanceMultiplier !== undefined && Math.abs(powerUpChanceMultiplier - 1) > 1e-3) {
+            summary.push(`Power-Up Odds ${formatMultiplierLabel(powerUpChanceMultiplier)}`);
+        }
+
+        if (modifiers) {
+            if (modifiers.gravity !== undefined) {
+                const delta = modifiers.gravity - MODIFIER_GRAVITY_RANGE.default;
+                summary.push(`Gravity ${formatSigned(delta)}`);
+            }
+            if (modifiers.restitution !== undefined) {
+                const delta = modifiers.restitution - MODIFIER_RESTITUTION_RANGE.default;
+                summary.push(`Restitution ${formatSigned(delta)}`);
+            }
+            if (modifiers.paddleWidthMultiplier !== undefined) {
+                summary.push(`Paddle Width ${formatMultiplierLabel(modifiers.paddleWidthMultiplier)}`);
+            }
+            if (modifiers.speedGovernorMultiplier !== undefined) {
+                summary.push(`Speed Governor ${formatMultiplierLabel(modifiers.speedGovernorMultiplier)}`);
+            }
+        }
+
+        if (summary.length === 0) {
+            summary.push('No material change');
+        }
+        return summary;
+    };
+
+    const mapBiasOptionToScene = (option: BiasPhaseOption): BiasPhaseSceneOption => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        risk: option.risk,
+        effectSummary: describeBiasOption(option),
+    });
+
+    const applyBiasSelection = (selection: BiasPhaseOption | null) => {
+        if (!selection) {
+            return;
+        }
+
+        const { effects } = selection;
+        if (effects.difficultyMultiplier !== undefined && effects.difficultyMultiplier > 0) {
+            const base = roundMachine.getLevelDifficultyMultiplier();
+            const adjusted = roundToDecimals(base * effects.difficultyMultiplier, 4);
+            roundMachine.setLevelDifficultyMultiplier(adjusted);
+        }
+
+        if (effects.powerUpChanceMultiplier !== undefined && effects.powerUpChanceMultiplier > 0) {
+            const base = roundMachine.getPowerUpChanceMultiplier();
+            const adjusted = roundToDecimals(base * effects.powerUpChanceMultiplier, 4);
+            roundMachine.setPowerUpChanceMultiplier(Math.max(0.01, adjusted));
+        }
+
+        const modifiers = effects.modifiers;
+        if (!modifiers) {
+            return;
+        }
+
+        if (modifiers.gravity !== undefined) {
+            runtimeModifiers.setGravity(modifiers.gravity);
+        }
+        if (modifiers.restitution !== undefined) {
+            runtimeModifiers.setRestitution(modifiers.restitution);
+        }
+        if (modifiers.paddleWidthMultiplier !== undefined) {
+            runtimeModifiers.setPaddleWidthMultiplier(modifiers.paddleWidthMultiplier);
+        }
+        if (modifiers.speedGovernorMultiplier !== undefined) {
+            runtimeModifiers.setSpeedGovernorMultiplier(modifiers.speedGovernorMultiplier);
+        }
+    };
+
     const hudContainer = new Container();
     hudContainer.eventMode = 'none';
     hudContainer.visible = false;
@@ -1318,6 +1653,9 @@ export const createRuntimeFacade = async ({
         : createHudDisplay(GameTheme);
     hudDisplay.container.zIndex = 1;
     hudContainer.addChild(hudDisplay.container);
+    hudDisplay.setEntropyActionHandler((action) => {
+        attemptEntropyAction(action);
+    });
 
     const positionHud = () => {
         const margin = hudProfile === 'mobile' ? MOBILE_HUD_MARGIN : HUD_MARGIN;
@@ -1430,10 +1768,120 @@ export const createRuntimeFacade = async ({
 
     let lastComboCount = 0;
 
+    const buildEntropyHudEntries = (state: EntropyActionState, stored: number): HudEntropyActionDescriptor[] => {
+        return ENTROPY_ACTION_SEQUENCE.map((action) => {
+            const binding = ENTROPY_ACTION_BINDINGS[action];
+            const cost = ENTROPY_ACTION_COSTS[action];
+            const charges = action === 'reroll'
+                ? state.rerollTokens
+                : action === 'shield'
+                    ? state.shieldCharges
+                    : 0;
+            const lastActionTimestamp = state.lastAction?.action === action ? state.lastAction.timestamp : undefined;
+            return {
+                action,
+                label: binding.label,
+                hotkey: binding.hotkey,
+                cost,
+                charges,
+                affordable: stored >= cost,
+                lastActionTimestamp,
+            } satisfies HudEntropyActionDescriptor;
+        });
+    };
+
+    const applyImmediateReroll = (timestamp: number): boolean => {
+        const pendingReward = roundMachine.getPendingReward();
+        if (!pendingReward) {
+            return false;
+        }
+        if (roundMachine.isPendingRewardLocked()) {
+            return false;
+        }
+        if (!roundMachine.consumeRerollToken(timestamp)) {
+            return false;
+        }
+        const rerolledReward = spinWheel(random.random);
+        roundMachine.setPendingReward(rerolledReward);
+        return true;
+    };
+
+    interface EntropyActionAttemptResult {
+        readonly success: boolean;
+        readonly reason?: 'invalid-state' | 'insufficient' | 'locked';
+    }
+
+    const attemptEntropyAction = (action: EntropyActionType): EntropyActionAttemptResult => {
+        const snapshot = session.snapshot();
+        const status = snapshot.status;
+        if (action === 'reroll') {
+            if (status !== 'active' && status !== 'completed') {
+                return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
+            }
+            if (roundMachine.isPendingRewardLocked()) {
+                return { success: false, reason: 'locked' } satisfies EntropyActionAttemptResult;
+            }
+        } else if (status !== 'active') {
+            return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
+        }
+
+        const cost = ENTROPY_ACTION_COSTS[action];
+        const spend = session.spendStoredEntropy({ action, cost });
+        if (!spend.success) {
+            const reason: EntropyActionAttemptResult['reason'] = spend.reason === 'insufficient'
+                ? 'insufficient'
+                : 'invalid-state';
+            return { success: false, reason } satisfies EntropyActionAttemptResult;
+        }
+
+        const timestamp = sessionNow();
+        let applied = false;
+
+        switch (action) {
+            case 'reroll': {
+                roundMachine.grantEntropyAction(action, timestamp);
+                applied = applyImmediateReroll(timestamp);
+                if (applied) {
+                    hudDisplay.pulseCombo(0.3);
+                    renderStageSoon();
+                }
+                break;
+            }
+            case 'shield': {
+                roundMachine.grantEntropyAction(action, timestamp);
+                hudDisplay.pulseCombo(0.4);
+                applied = true;
+                break;
+            }
+            case 'bailout': {
+                roundMachine.recordBailoutActivation(timestamp);
+                clearExtraBalls();
+                reattachBallToPaddle();
+                resetAutoCompleteCountdown();
+                flashPaddleLight(0.55);
+                hudDisplay.pulseCombo(0.5);
+                renderStageSoon();
+                applied = true;
+                break;
+            }
+        }
+
+        if (applied) {
+            refreshHud();
+            return { success: true } satisfies EntropyActionAttemptResult;
+        }
+
+        return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
+    };
+
     const refreshHud = () => {
         const snapshot = session.snapshot();
         const gambleStatus = gambleManager.snapshot();
-        const hudView = buildHudScoreboard(snapshot, gambleStatus);
+        const entropyState = roundMachine.getEntropyActionState();
+        const entropyActions = buildEntropyHudEntries(entropyState, snapshot.hud.entropy.stored);
+        const hudView = buildHudScoreboard(snapshot, gambleStatus, {
+            entropyActions,
+        });
 
         const prompts = (() => {
             const autoState = roundMachine.getAutoCompleteState();
@@ -1468,6 +1916,7 @@ export const createRuntimeFacade = async ({
             activePowerUps: powerups.collectHudPowerUps(),
             reward: powerups.resolveRewardView(),
             momentum: snapshot.hud.momentum,
+            entropyActions,
         });
 
         if (scoringState.combo > lastComboCount) {
@@ -1477,6 +1926,154 @@ export const createRuntimeFacade = async ({
         lastComboCount = scoringState.combo;
         positionHud();
     };
+
+    const buildRewardWheelOdds = (): LevelCompleteRewardWheelPayload['odds'] => {
+        const segments = config.rewards.wheelSegments;
+        const totalWeight = segments.reduce((sum, segment) => sum + segment.weight, 0);
+        return segments.map((segment) => ({
+            reward: createReward(segment.type),
+            weight: segment.weight,
+            chance: totalWeight > 0 ? segment.weight / totalWeight : 0,
+        }));
+    };
+
+    const buildRewardWheelState = (): RewardWheelState => {
+        const snapshot = session.snapshot();
+        const pendingReward = roundMachine.getPendingReward();
+        const locked = roundMachine.isPendingRewardLocked();
+        const entropyStored = snapshot.hud.entropy.stored;
+        const coins = snapshot.coins;
+
+        return {
+            reward: pendingReward ?? null,
+            locked,
+            entropyStored,
+            coins,
+            rerollCost: ENTROPY_COST_REROLL,
+            lockCost: REWARD_LOCK_COIN_COST,
+            canReroll: Boolean(pendingReward) && !locked && entropyStored >= ENTROPY_COST_REROLL,
+            canLock: Boolean(pendingReward) && !locked && coins >= REWARD_LOCK_COIN_COST,
+        } satisfies RewardWheelState;
+    };
+
+    const publishRewardWheelInteraction = (
+        action: RewardWheelInteractionType,
+        reward: Reward,
+        costs: { readonly entropyCost?: number; readonly coinsCost?: number } = {},
+    ): void => {
+        const snapshot = session.snapshot();
+        const segments = config.rewards.wheelSegments;
+        const totalWeight = segments.reduce((sum, segment) => sum + segment.weight, 0);
+        const weights = segments.map((segment) => ({
+            type: segment.type,
+            weight: segment.weight,
+            chance: totalWeight > 0 ? segment.weight / totalWeight : 0,
+        }));
+
+        bus.publish('RewardWheelInteraction', {
+            sessionId: snapshot.sessionId,
+            action,
+            rewardType: reward.type,
+            rewardDuration: reward.duration,
+            entropyCost: costs.entropyCost ?? 0,
+            coinsCost: costs.coinsCost ?? 0,
+            entropyStored: snapshot.entropy.stored,
+            coins: snapshot.coins,
+            locked: roundMachine.isPendingRewardLocked(),
+            weights,
+        });
+    };
+
+    const performRewardReroll = (): Promise<RewardWheelUpdateResult> => {
+        const currentState = buildRewardWheelState();
+        if (!currentState.reward) {
+            return Promise.resolve({
+                success: false,
+                message: 'No reward to reroll',
+                state: currentState,
+            } satisfies RewardWheelUpdateResult);
+        }
+
+        const result = attemptEntropyAction('reroll');
+        if (!result.success) {
+            const message = result.reason === 'insufficient'
+                ? 'Not enough entropy'
+                : result.reason === 'locked'
+                    ? 'Reward is locked'
+                    : 'Reroll unavailable';
+            return Promise.resolve({
+                success: false,
+                message,
+                state: buildRewardWheelState(),
+            } satisfies RewardWheelUpdateResult);
+        }
+
+        const updatedState = buildRewardWheelState();
+        const reward = updatedState.reward ?? currentState.reward;
+        publishRewardWheelInteraction('reroll', reward, { entropyCost: ENTROPY_COST_REROLL });
+        return Promise.resolve({
+            success: true,
+            message: 'Reward rerolled',
+            state: updatedState,
+        } satisfies RewardWheelUpdateResult);
+    };
+
+    const performRewardLock = (): Promise<RewardWheelUpdateResult> => {
+        const currentState = buildRewardWheelState();
+        const reward = currentState.reward;
+        if (!reward) {
+            return Promise.resolve({
+                success: false,
+                message: 'No reward to lock',
+                state: currentState,
+            } satisfies RewardWheelUpdateResult);
+        }
+        if (currentState.locked) {
+            return Promise.resolve({
+                success: false,
+                message: 'Reward already locked',
+                state: currentState,
+            } satisfies RewardWheelUpdateResult);
+        }
+
+        if (REWARD_LOCK_COIN_COST > 0) {
+            const paid = session.spendCoins(REWARD_LOCK_COIN_COST);
+            if (!paid) {
+                return Promise.resolve({
+                    success: false,
+                    message: 'Not enough coins',
+                    state: buildRewardWheelState(),
+                } satisfies RewardWheelUpdateResult);
+            }
+        }
+
+        const locked = roundMachine.lockPendingReward();
+        if (!locked) {
+            return Promise.resolve({
+                success: false,
+                message: 'Unable to lock reward',
+                state: buildRewardWheelState(),
+            } satisfies RewardWheelUpdateResult);
+        }
+        setRewardOverride({ type: reward.type, duration: reward.duration, persist: false });
+        refreshHud();
+        renderStageSoon();
+        publishRewardWheelInteraction('lock', reward, { coinsCost: REWARD_LOCK_COIN_COST });
+        return Promise.resolve({
+            success: true,
+            message: 'Reward locked for next spin',
+            state: buildRewardWheelState(),
+        } satisfies RewardWheelUpdateResult);
+    };
+
+    const buildRewardWheelPayload = (): LevelCompleteRewardWheelPayload => ({
+        odds: buildRewardWheelOdds(),
+        state: buildRewardWheelState(),
+        actions: {
+            reroll: () => performRewardReroll(),
+            lock: () => performRewardLock(),
+        },
+    });
 
     scoring.setHudUpdater(refreshHud);
 
@@ -1673,10 +2270,14 @@ export const createRuntimeFacade = async ({
             coins: sessionSnapshot.coins,
         });
 
+        const pendingBiasSelection = roundMachine.consumePendingBiasSelection();
+
         powerups.reset();
+        runtimeModifiers.reset();
         clearExtraBalls();
         resetForeshadowing();
         loadLevel(levelIndex);
+        applyBiasSelection(pendingBiasSelection);
         reattachBallToPaddle();
         const pendingReward = roundMachine.getPendingReward();
         if (pendingReward) {
@@ -1688,13 +2289,95 @@ export const createRuntimeFacade = async ({
         refreshHud();
     };
 
+    const buildBiasSessionSummary = (upcomingLevelIndex: number): BiasPhaseSessionSummary => {
+        const snapshot = session.snapshot();
+        return {
+            nextLevel: upcomingLevelIndex + 1,
+            score: scoringState.score,
+            coins: snapshot.coins,
+            lives: snapshot.livesRemaining,
+            highestCombo: roundMachine.getRunHighestCombo(),
+        } satisfies BiasPhaseSessionSummary;
+    };
+
+    const presentBiasPhase = (): void => {
+        const upcomingLevelIndex = roundMachine.getCurrentLevelIndex() + 1;
+        const options = generateBiasPhaseOptions(upcomingLevelIndex);
+
+        if (options.length === 0) {
+            const nextLevelIndex = roundMachine.incrementLevelIndex();
+            startLevel(nextLevelIndex);
+            loop?.start();
+            renderStageSoon();
+            return;
+        }
+
+        roundMachine.setBiasPhaseOptions(options);
+
+        const advance = (selection: BiasPhaseOption | null) => {
+            if (!selection) {
+                roundMachine.setBiasPhaseOptions([]);
+            }
+            if (stage.getCurrentScene() === 'bias-phase') {
+                stage.pop();
+            }
+            const nextLevelIndex = roundMachine.incrementLevelIndex();
+            startLevel(nextLevelIndex);
+            loop?.start();
+            renderStageSoon();
+        };
+
+        const handleSelection = (optionId: string) => {
+            const selection = roundMachine.commitBiasSelection(optionId);
+            if (!selection) {
+                runtimeLogger.warn('Failed to resolve bias selection', { optionId });
+                advance(null);
+                return;
+            }
+            replayBuffer.recordBiasChoice(optionId, runtimeState.sessionElapsedSeconds);
+            advance(selection);
+        };
+
+        const handleSkip = () => {
+            advance(null);
+        };
+
+        const payload = {
+            session: buildBiasSessionSummary(upcomingLevelIndex),
+            options: options.map(mapBiasOptionToScene),
+            onSelect: (optionId: string) => {
+                handleSelection(optionId);
+            },
+            onSkip: handleSkip,
+        } satisfies BiasPhasePayload;
+
+        void stage.push('bias-phase', payload)
+            .then(() => {
+                renderStageSoon();
+            })
+            .catch((error) => {
+                runtimeLogger.error('Failed to push bias-phase scene', { error });
+                handleSkip();
+            });
+    };
+
     const handleLevelComplete = (): void => {
         clearExtraBalls();
         resetForeshadowing();
         isPaused = false;
         loop?.stop();
         const spunReward = spinWheel(random.random);
-        roundMachine.setPendingReward(spunReward);
+        let finalReward = spunReward;
+        let rerollCount = 0;
+        while (roundMachine.consumeRerollToken(sessionNow()) && rerollCount < 5) {
+            finalReward = spinWheel(random.random);
+            rerollCount += 1;
+        }
+        roundMachine.setPendingReward(finalReward);
+        publishRewardWheelInteraction('initial-spin', finalReward, {
+            entropyCost: rerollCount * ENTROPY_COST_REROLL,
+            coinsCost: 0,
+        });
         resetAutoCompleteCountdown();
 
         const autoCompletedThisLevel = roundMachine.isLevelAutoCompleted();
@@ -1753,11 +2436,10 @@ export const createRuntimeFacade = async ({
             if (stage.getCurrentScene() === 'level-complete') {
                 stage.pop();
             }
-            const nextLevelIndex = roundMachine.incrementLevelIndex();
-            startLevel(nextLevelIndex);
-            loop?.start();
-            renderStageSoon();
+            presentBiasPhase();
         };
+
+        const rewardWheelPayload = buildRewardWheelPayload();
 
         void stage.push('level-complete', {
             level: completedLevel,
@@ -1776,6 +2458,7 @@ export const createRuntimeFacade = async ({
                 durationMs,
             },
             milestones: milestones.length > 0 ? milestones : undefined,
+            rewardWheel: rewardWheelPayload,
             onContinue: continueToNextLevel,
         })
             .then(() => {
@@ -1844,6 +2527,7 @@ export const createRuntimeFacade = async ({
             remove: physics.remove,
         },
         inputManager,
+        roundMachine,
         dimensions: {
             brickWidth: BRICK_WIDTH,
             brickHeight: BRICK_HEIGHT,
@@ -1979,6 +2663,13 @@ export const createRuntimeFacade = async ({
         powerups.tick(deltaSeconds);
         laserController?.update(deltaSeconds);
 
+        ENTROPY_ACTION_SEQUENCE.forEach((action) => {
+            const binding = ENTROPY_ACTION_BINDINGS[action];
+            if (runtimeInput.consumeKeyPress(binding.key)) {
+                attemptEntropyAction(action);
+            }
+        });
+
         const slowTimeScale = powerups.getSlowTimeScale();
         const slowTimeRemaining = powerups.getSlowTimeRemaining();
         const timeScale = slowTimeScale;
@@ -2009,14 +2700,15 @@ export const createRuntimeFacade = async ({
 
         const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
         const difficultyScale = roundMachine.getLevelDifficultyMultiplier();
-        const baseTargetSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale;
-        runtimeState.currentMaxSpeed = BALL_MAX_SPEED * speedMultiplier * difficultyScale;
+        const governor = runtimeState.speedGovernorMultiplier;
+        const baseTargetSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale * governor;
+        runtimeState.currentMaxSpeed = Math.max(1, BALL_MAX_SPEED * speedMultiplier * difficultyScale * governor);
         runtimeState.currentBaseSpeed = getAdaptiveBaseSpeed(
             baseTargetSpeed,
             runtimeState.currentMaxSpeed,
             scoringState.combo,
         );
-        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier * difficultyScale;
+        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier * difficultyScale * governor;
 
         audioState$.next({
             combo: scoringState.combo,
@@ -2027,8 +2719,8 @@ export const createRuntimeFacade = async ({
         updateGhostBricks(deltaSeconds);
         tickGambleBricks(deltaSeconds);
         const paddleScale = powerups.getPaddleWidthScale();
-        const basePaddleWidth = 100;
-        paddle.width = basePaddleWidth * paddleScale;
+        const targetPaddleWidth = runtimeState.paddleBaseWidth * paddleScale;
+        setPaddleWidth(targetPaddleWidth);
 
         const comboBeforeDecay = scoringState.combo;
         scoring.decayCombo(deltaSeconds);
@@ -2414,6 +3106,10 @@ export const createRuntimeFacade = async ({
         { provideContext: provideSceneServices },
     );
 
+    stage.register('bias-phase', (context) => createBiasPhaseScene(context), {
+        provideContext: provideSceneServices,
+    });
+
     stage.register('game-over', (context) =>
         createGameOverScene(context, {
             prompt: 'Tap to return to menu',
@@ -2646,6 +3342,7 @@ export const createRuntimeFacade = async ({
             scoring,
             powerups,
             roundMachine,
+            modifiers: runtimeModifiers,
         },
     } satisfies RuntimeFacade;
 };

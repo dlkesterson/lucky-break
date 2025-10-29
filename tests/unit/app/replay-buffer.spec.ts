@@ -101,4 +101,18 @@ describe('createReplayBuffer', () => {
             position: { x: 10, y: 20 },
         });
     });
+
+    it('records bias choices with timestamps', () => {
+        const buffer = createReplayBuffer();
+        buffer.begin(1234);
+        buffer.recordBiasChoice('bias-safe', 1.5);
+        buffer.recordBiasChoice('', 2); // ignored
+        buffer.recordBiasChoice('bias-bold', 2.5);
+
+        const events = buffer.snapshot().events.filter((event) => event.type === 'bias-choice');
+        expect(events).toEqual([
+            { type: 'bias-choice', time: 1.5, optionId: 'bias-safe' },
+            { type: 'bias-choice', time: 2.5, optionId: 'bias-bold' },
+        ]);
+    });
 });

@@ -1,6 +1,6 @@
 import type { Vector2 } from 'input/contracts';
 
-export type ReplayEvent = ReplayPaddleTargetEvent | ReplayLaunchEvent | ReplaySeedChangeEvent;
+export type ReplayEvent = ReplayPaddleTargetEvent | ReplayLaunchEvent | ReplaySeedChangeEvent | ReplayBiasChoiceEvent;
 
 export interface ReplayPaddleTargetEvent {
     readonly type: 'paddle-target';
@@ -19,6 +19,12 @@ export interface ReplaySeedChangeEvent {
     readonly seed: number;
 }
 
+export interface ReplayBiasChoiceEvent {
+    readonly type: 'bias-choice';
+    readonly time: number;
+    readonly optionId: string;
+}
+
 export interface ReplayRecording {
     readonly version: 1;
     readonly seed: number | null;
@@ -31,6 +37,7 @@ export interface ReplayBuffer {
     recordSeed(seed: number, timeSeconds?: number): void;
     recordPaddleTarget(timeSeconds: number, position: Vector2 | null): void;
     recordLaunch(timeSeconds: number): void;
+    recordBiasChoice(optionId: string, timeSeconds: number): void;
     markTime(timeSeconds: number): void;
     snapshot(): ReplayRecording;
     toJSON(): ReplayRecording;
@@ -64,6 +71,14 @@ const cloneEvent = (event: ReplayEvent): ReplayEvent => {
             time: event.time,
             seed: event.seed,
         };
+    }
+
+    if (event.type === 'bias-choice') {
+        return {
+            type: 'bias-choice',
+            time: event.time,
+            optionId: event.optionId,
+        } satisfies ReplayBiasChoiceEvent;
     }
 
     return {
@@ -199,6 +214,25 @@ export const createReplayBuffer = (): ReplayBuffer => {
         updateDuration(normalizedTime);
     };
 
+    const recordBiasChoice = (optionId: string, timeSeconds: number) => {
+        if (!optionId) {
+            return;
+        }
+        const normalizedTime = normalizeTime(timeSeconds);
+        recording = {
+            ...recording,
+            events: [
+                ...recording.events,
+                {
+                    type: 'bias-choice',
+                    time: normalizedTime,
+                    optionId,
+                } satisfies ReplayBiasChoiceEvent,
+            ],
+        };
+        updateDuration(normalizedTime);
+    };
+
     const markTime = (timeSeconds: number) => {
         updateDuration(timeSeconds);
     };
@@ -212,6 +246,7 @@ export const createReplayBuffer = (): ReplayBuffer => {
         recordSeed,
         recordPaddleTarget,
         recordLaunch,
+        recordBiasChoice,
         markTime,
         snapshot,
         toJSON: snapshot,
