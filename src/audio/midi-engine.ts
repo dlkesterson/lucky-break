@@ -1,4 +1,11 @@
 import { MembraneSynth, PolySynth, Synth, now as toneNow } from 'tone';
+import type { ToneOscillatorType } from 'tone';
+const sanitizeOscillatorType = (value: unknown, fallback: ToneOscillatorType): ToneOscillatorType => {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    return value as ToneOscillatorType;
+};
 
 const clamp01 = (value: number): number => {
     if (!Number.isFinite(value)) {
@@ -16,7 +23,7 @@ const clamp01 = (value: number): number => {
 const midiToFrequency = (note: number): number => 440 * 2 ** ((note - 69) / 12);
 
 // Multiple scale patterns for variety in combo sounds
-const SCALE_PATTERNS: readonly (readonly number[])[] = [
+const DEFAULT_SCALE_PATTERNS: readonly (readonly number[])[] = [
     [60, 62, 64, 65, 67, 69, 71, 72], // C major
     [62, 64, 66, 67, 69, 71, 73, 74], // D major
     [64, 66, 68, 69, 71, 73, 75, 76], // E major
@@ -28,6 +35,34 @@ const SCALE_PATTERNS: readonly (readonly number[])[] = [
     [62, 65, 67, 69, 71, 74, 76, 78], // D minor
     [64, 67, 69, 71, 73, 76, 78, 80], // E minor
 ];
+
+export interface MidiPaletteConfig {
+    readonly scalePatterns?: readonly (readonly number[])[];
+    readonly brickSynth?: {
+        readonly oscillatorType?: string;
+        readonly envelope?: Partial<{ attack: number; decay: number; sustain: number; release: number }>;
+        readonly volume?: number;
+    };
+    readonly chimeSynth?: {
+        readonly oscillatorType?: string;
+        readonly envelope?: Partial<{ attack: number; decay: number; sustain: number; release: number }>;
+        readonly volume?: number;
+    };
+    readonly percussion?: {
+        readonly volume?: number;
+        readonly pitchDecay?: number;
+        readonly octaves?: number;
+        readonly oscillatorType?: string;
+    };
+    readonly comboVelocityBias?: number;
+    readonly powerUpSequence?: readonly number[];
+    readonly powerUpOffsets?: readonly number[];
+    readonly wallHitNoteBase?: number;
+}
+
+export interface MidiEngineOptions {
+    readonly palette?: MidiPaletteConfig;
+}
 
 export interface MidiWallHitOptions {
     readonly speed?: number;
@@ -87,15 +122,15 @@ const resolveVelocity = (value: number, min = 0.2, max = 0.95): number => {
     return Math.max(min, Math.min(max, value));
 };
 
-const resolveComboNote = (combo: number): number => {
+const resolveComboNote = (combo: number, scalePatterns: readonly (readonly number[])[]): number => {
     if (!Number.isFinite(combo) || combo <= 0) {
-        return SCALE_PATTERNS[0][0];
+        return scalePatterns[0]?.[0] ?? 60;
     }
     const stepIndex = Math.max(0, Math.floor(combo) - 1);
 
     // Use combo number as seed for deterministic but varied scale selection
-    const scalePatternIndex = Math.abs(Math.floor(combo * 7.3 + combo)) % SCALE_PATTERNS.length;
-    const selectedScale = SCALE_PATTERNS[scalePatternIndex] ?? SCALE_PATTERNS[0];
+    const scalePatternIndex = Math.abs(Math.floor(combo * 7.3 + combo)) % scalePatterns.length;
+    const selectedScale = scalePatterns[scalePatternIndex] ?? scalePatterns[0];
 
     const scaleIndex = stepIndex % selectedScale.length;
     const octaveOffset = Math.floor(stepIndex / selectedScale.length);
@@ -113,7 +148,7 @@ const configureSynth = (handle: SynthHandle, options: unknown) => {
     }
 };
 
-const createBrickHandle = (): SynthHandle => {
+const createBrickHandle = (palette?: MidiPaletteConfig): SynthHandle => {
     let ctor: typeof PolySynth | null = null;
     try {
         ctor = typeof PolySynth === 'function' ? PolySynth : null;
@@ -128,19 +163,31 @@ const createBrickHandle = (): SynthHandle => {
         const instance = new ctor(Synth).toDestination();
         const handle = instance as unknown as SynthHandle;
         if (handle.volume) {
-            handle.volume.value = -12;
+            const volume = typeof palette?.brickSynth?.volume === 'number' && Number.isFinite(palette.brickSynth.volume)
+                ? palette.brickSynth.volume
+                : -12;
+            handle.volume.value = volume;
         }
-        configureSynth(handle, {
-            oscillator: { type: 'triangle' },
-            envelope: { attack: 0.005, decay: 0.22, sustain: 0.18, release: 0.6 },
-        });
+        const oscillatorType = sanitizeOscillatorType(palette?.brickSynth?.oscillatorType, 'triangle');
+        const envelope = {
+            attack: 0.005,
+            decay: 0.22,
+            sustain: 0.18,
+            release: 0.6,
+            ...palette?.brickSynth?.envelope,
+        } satisfies { attack: number; decay: number; sustain: number; release: number };
+        const synthOptions = {
+            oscillator: { type: oscillatorType },
+            envelope,
+        } as const;
+        configureSynth(handle, synthOptions as never);
         return handle;
     } catch {
         return createStubHandle();
     }
 };
 
-const createPercussionHandle = (): SynthHandle => {
+const createPercussionHandle = (palette?: MidiPaletteConfig): SynthHandle => {
     let ctor: typeof MembraneSynth | null = null;
     try {
         ctor = typeof MembraneSynth === 'function' ? MembraneSynth : null;
@@ -152,15 +199,26 @@ const createPercussionHandle = (): SynthHandle => {
     }
 
     try {
-        const instance = new ctor({
-            pitchDecay: 0.03,
-            octaves: 1.1,
-            oscillator: { type: 'sine' },
+        const pitchDecay = typeof palette?.percussion?.pitchDecay === 'number'
+            ? palette.percussion.pitchDecay
+            : 0.03;
+        const octaves = typeof palette?.percussion?.octaves === 'number'
+            ? palette.percussion.octaves
+            : 1.1;
+        const oscillatorType = sanitizeOscillatorType(palette?.percussion?.oscillatorType, 'sine');
+        const membraneOptions = {
+            pitchDecay,
+            octaves,
+            oscillator: { type: oscillatorType },
             envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.45 },
-        }).toDestination();
+        } as const;
+        const instance = new ctor(membraneOptions as never).toDestination();
         const handle = instance as unknown as SynthHandle;
         if (handle.volume) {
-            handle.volume.value = -10;
+            const volume = typeof palette?.percussion?.volume === 'number' && Number.isFinite(palette.percussion.volume)
+                ? palette.percussion.volume
+                : -10;
+            handle.volume.value = volume;
         }
         return handle;
     } catch {
@@ -168,7 +226,7 @@ const createPercussionHandle = (): SynthHandle => {
     }
 };
 
-const createChimeHandle = (): SynthHandle => {
+const createChimeHandle = (palette?: MidiPaletteConfig): SynthHandle => {
     let ctor: typeof PolySynth | null = null;
     try {
         ctor = typeof PolySynth === 'function' ? PolySynth : null;
@@ -183,24 +241,54 @@ const createChimeHandle = (): SynthHandle => {
         const instance = new ctor(Synth).toDestination();
         const handle = instance as unknown as SynthHandle;
         if (handle.volume) {
-            handle.volume.value = -8;
+            const volume = typeof palette?.chimeSynth?.volume === 'number' && Number.isFinite(palette.chimeSynth.volume)
+                ? palette.chimeSynth.volume
+                : -8;
+            handle.volume.value = volume;
         }
-        configureSynth(handle, {
-            oscillator: { type: 'square' },
-            envelope: { attack: 0.004, decay: 0.18, sustain: 0.1, release: 0.5 },
-        });
+        const oscillatorType = sanitizeOscillatorType(palette?.chimeSynth?.oscillatorType, 'square');
+        const envelope = {
+            attack: 0.004,
+            decay: 0.18,
+            sustain: 0.1,
+            release: 0.5,
+            ...palette?.chimeSynth?.envelope,
+        } satisfies { attack: number; decay: number; sustain: number; release: number };
+        const synthOptions = {
+            oscillator: { type: oscillatorType },
+            envelope,
+        } as const;
+        configureSynth(handle, synthOptions as never);
         return handle;
     } catch {
         return createStubHandle();
     }
 };
 
-export const createMidiEngine = (): MidiEngine => {
-    const brickHandle = createBrickHandle();
-    const percussionHandle = createPercussionHandle();
-    const chimeHandle = createChimeHandle();
+export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine => {
+    const palette = options.palette;
+    const scalePatterns = palette?.scalePatterns && palette.scalePatterns.length > 0
+        ? palette.scalePatterns
+        : DEFAULT_SCALE_PATTERNS;
+
+    const brickHandle = createBrickHandle(palette);
+    const percussionHandle = createPercussionHandle(palette);
+    const chimeHandle = createChimeHandle(palette);
 
     let disposed = false;
+
+    const comboVelocityBias = Number.isFinite(palette?.comboVelocityBias ?? 0)
+        ? (palette?.comboVelocityBias ?? 0)
+        : 0;
+    const powerUpSequence = palette?.powerUpSequence && palette.powerUpSequence.length > 0
+        ? palette.powerUpSequence
+        : [67, 71, 76];
+    const powerUpOffsets = palette?.powerUpOffsets && palette.powerUpOffsets.length === powerUpSequence.length
+        ? palette.powerUpOffsets
+        : [0, 0.14, 0.28];
+    const wallHitBase = Number.isFinite(palette?.wallHitNoteBase ?? 0)
+        ? (palette?.wallHitNoteBase ?? 36)
+        : 36;
 
     const triggerWallHit: MidiEngine['triggerWallHit'] = (options) => {
         if (disposed) {
@@ -208,7 +296,7 @@ export const createMidiEngine = (): MidiEngine => {
         }
         const resolvedTime = resolveTime(options?.time);
         const normalizedSpeed = clamp01(Math.abs(options?.speed ?? 0) / 80);
-        const note = 36 + Math.round(normalizedSpeed * 4);
+        const note = wallHitBase + Math.round(normalizedSpeed * 4);
         const velocity = resolveVelocity(0.3 + normalizedSpeed * 0.5, 0.25, 0.85);
         try {
             percussionHandle.triggerAttackRelease(midiToFrequency(note), '8n', resolvedTime, velocity);
@@ -224,10 +312,12 @@ export const createMidiEngine = (): MidiEngine => {
         const accent = options.accent ?? 'hit';
         const resolvedTime = resolveTime(options.time);
         const comboForNote = Math.max(1, Math.floor(Number.isFinite(options.combo) ? options.combo : 1));
-        const note = resolveComboNote(comboForNote);
+        const note = resolveComboNote(comboForNote, scalePatterns);
         const normalizedIntensity = clamp01(options.intensity ?? (accent === 'break' ? 0.65 : 0.4));
         const baseVelocity = accent === 'break' ? 0.45 : 0.25;
-        const velocity = resolveVelocity(baseVelocity + normalizedIntensity * (accent === 'break' ? 0.45 : 0.3));
+        const velocity = resolveVelocity(
+            baseVelocity + normalizedIntensity * (accent === 'break' ? 0.45 : 0.3) + comboVelocityBias * normalizedIntensity,
+        );
         const duration = accent === 'break' ? '8n' : '16n';
         try {
             brickHandle.triggerAttackRelease(midiToFrequency(note), duration, resolvedTime, velocity);
@@ -242,8 +332,8 @@ export const createMidiEngine = (): MidiEngine => {
         }
         const baseTime = resolveTime(options?.time);
         const sparkle = clamp01(options?.sparkle ?? 0.7);
-        const noteSequence = [67, 71, 76];
-        const offsets = [0, 0.14, 0.28];
+        const noteSequence = powerUpSequence;
+        const offsets = powerUpOffsets;
         const velocities = [0.45, 0.6, 0.85].map((value) => resolveVelocity(value + sparkle * 0.1));
         for (let index = 0; index < noteSequence.length; index += 1) {
             const scheduled = baseTime + offsets[index];

@@ -140,18 +140,26 @@ export interface SceneManagerHandle {
     destroy(): void;
 }
 
-export type SceneTransitionEffect = 'fade';
+export type SceneTransitionEffect = 'fade' | 'slide';
+export type SceneTransitionDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface SceneTransitionOptions {
     readonly effect?: SceneTransitionEffect;
     readonly durationMs?: number;
     readonly easing?: (progress: number) => number;
+    readonly direction?: SceneTransitionDirection;
 }
 
 const DEFAULT_TRANSITION_DURATION_MS = 250;
 const DEFAULT_TRANSITION_EFFECT: SceneTransitionEffect = 'fade';
+const DEFAULT_SLIDE_DIRECTION: SceneTransitionDirection = 'right';
 
 const defaultEase = (progress: number) => progress;
+
+interface SlideVectors {
+    readonly startIncoming: { readonly x: number; readonly y: number };
+    readonly endOutgoing: { readonly x: number; readonly y: number };
+}
 
 const isTextureRenderer = (
     renderer: Application['renderer'],
@@ -172,6 +180,35 @@ const resolveResolution = (config: StageConfig): number => {
     return 1;
 };
 
+const resolveSlideVectors = (
+    direction: SceneTransitionDirection,
+    width: number,
+    height: number,
+): SlideVectors => {
+    switch (direction) {
+        case 'left':
+            return {
+                startIncoming: { x: -width, y: 0 },
+                endOutgoing: { x: width, y: 0 },
+            };
+        case 'right':
+            return {
+                startIncoming: { x: width, y: 0 },
+                endOutgoing: { x: -width, y: 0 },
+            };
+        case 'up':
+            return {
+                startIncoming: { x: 0, y: -height },
+                endOutgoing: { x: 0, y: height },
+            };
+        case 'down':
+        default:
+            return {
+                startIncoming: { x: 0, y: height },
+                endOutgoing: { x: 0, y: -height },
+            };
+    }
+};
 export type SceneManagerConfig = StageConfig;
 
 export const createSceneManager = async (config: SceneManagerConfig = {}): Promise<SceneManagerHandle> => {
@@ -271,16 +308,34 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
     const sceneRegistrations = new Map<string, SceneRegistration<unknown, UnknownServices>>();
     const sceneStack: { readonly name: string; readonly scene: Scene<unknown, UnknownServices> }[] = [];
     let destroyed = false;
-    let activeTransition:
-        | {
-            readonly sprite: Sprite;
-            readonly durationSeconds: number;
-            elapsedSeconds: number;
-            readonly resolve: () => void;
-            readonly reject: (error: unknown) => void;
-            readonly easing: (progress: number) => number;
-        }
-        | null = null;
+    interface FadeTransitionState {
+        readonly kind: 'fade';
+        readonly sprite: Sprite;
+        readonly durationSeconds: number;
+        elapsedSeconds: number;
+        readonly resolve: () => void;
+        readonly reject: (error: unknown) => void;
+        readonly easing: (progress: number) => number;
+    }
+
+    interface SlideTransitionState {
+        readonly kind: 'slide';
+        readonly outgoing: Sprite;
+        readonly incoming: Sprite;
+        readonly direction: SceneTransitionDirection;
+        readonly durationSeconds: number;
+        elapsedSeconds: number;
+        readonly resolve: () => void;
+        readonly reject: (error: unknown) => void;
+        readonly easing: (progress: number) => number;
+        readonly startIncoming: { readonly x: number; readonly y: number };
+        readonly endOutgoing: { readonly x: number; readonly y: number };
+        readonly restoreLayers: () => void;
+    }
+
+    type TransitionState = FadeTransitionState | SlideTransitionState;
+
+    let activeTransition: TransitionState | null = null;
 
     const getTopEntry = () => sceneStack.at(-1) ?? null;
 
@@ -373,14 +428,122 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         const effect = options?.effect ?? DEFAULT_TRANSITION_EFFECT;
         const durationMs = Math.max(options?.durationMs ?? DEFAULT_TRANSITION_DURATION_MS, 0);
         const easing = options?.easing ?? defaultEase;
+        const performImmediateSwitch = async () => {
+            await switchScene(name, payload);
+        };
+
+        if (effect === 'slide') {
+            if (!isTextureRenderer(app.renderer) || durationMs === 0) {
+                await performImmediateSwitch();
+                return;
+            }
+
+            const direction = options?.direction ?? DEFAULT_SLIDE_DIRECTION;
+            const previousSnapshot = app.renderer.generateTexture(root);
+            const outgoing = new Sprite(previousSnapshot);
+            outgoing.alpha = 1;
+            outgoing.zIndex = Number.MAX_SAFE_INTEGER - 1;
+            outgoing.label = 'scene-transition-outgoing';
+            outgoing.x = 0;
+            outgoing.y = 0;
+
+            root.addChild(outgoing);
+
+            const durationSeconds = durationMs / 1000;
+            let resolveTransition: (() => void) | undefined;
+            let rejectTransition: ((error: unknown) => void) | undefined;
+            let incoming: Sprite | null = null;
+            let restoreLayers: (() => void) | null = null;
+
+            const transitionPromise = new Promise<void>((resolve, reject) => {
+                resolveTransition = () => {
+                    resolve();
+                };
+                rejectTransition = (error: unknown) => {
+                    if (error instanceof Error) {
+                        reject(error);
+                        return;
+                    }
+                    reject(new Error(String(error)));
+                };
+            });
+
+            try {
+                await switchScene(name, payload);
+
+                const incomingTexture = app.renderer.generateTexture(root);
+                incoming = new Sprite(incomingTexture);
+                incoming.alpha = 1;
+                incoming.zIndex = Number.MAX_SAFE_INTEGER;
+                incoming.label = 'scene-transition-incoming';
+                root.addChild(incoming);
+
+                const originalAlphas = {
+                    playfield: layers.playfield.alpha,
+                    effects: layers.effects.alpha,
+                    hud: layers.hud.alpha,
+                };
+
+                const restoreLayersFn = () => {
+                    layers.playfield.alpha = originalAlphas.playfield;
+                    layers.effects.alpha = originalAlphas.effects;
+                    layers.hud.alpha = originalAlphas.hud;
+                };
+
+                restoreLayers = restoreLayersFn;
+
+                layers.playfield.alpha = 0;
+                layers.effects.alpha = 0;
+                layers.hud.alpha = 0;
+
+                const rendererWidth = Math.max(app.renderer.width, designSize.width);
+                const rendererHeight = Math.max(app.renderer.height, designSize.height);
+                const vectors = resolveSlideVectors(direction, rendererWidth, rendererHeight);
+                incoming.x = vectors.startIncoming.x;
+                incoming.y = vectors.startIncoming.y;
+
+                activeTransition = {
+                    kind: 'slide',
+                    outgoing,
+                    incoming,
+                    direction,
+                    durationSeconds,
+                    elapsedSeconds: 0,
+                    resolve: () => {
+                        resolveTransition?.();
+                    },
+                    reject: (error: unknown) => {
+                        rejectTransition?.(error);
+                    },
+                    easing,
+                    startIncoming: vectors.startIncoming,
+                    endOutgoing: vectors.endOutgoing,
+                    restoreLayers: restoreLayersFn,
+                };
+            } catch (error) {
+                root.removeChild(outgoing);
+                outgoing.destroy({ texture: true });
+                if (incoming) {
+                    root.removeChild(incoming);
+                    incoming.destroy({ texture: true });
+                }
+                restoreLayers?.();
+                activeTransition = null;
+                rejectTransition?.(error);
+                throw error;
+            }
+
+            await transitionPromise;
+            return;
+        }
 
         if (effect !== 'fade') {
-            await switchScene(name, payload);
+            await performImmediateSwitch();
             return;
         }
 
         if (!isTextureRenderer(app.renderer)) {
-            await switchScene(name, payload);
+            await performImmediateSwitch();
             return;
         }
 
@@ -394,7 +557,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
 
         if (durationMs === 0) {
             try {
-                await switchScene(name, payload);
+                await performImmediateSwitch();
             } finally {
                 root.removeChild(overlay);
                 overlay.destroy({ texture: true });
@@ -407,6 +570,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         let rejectTransition: ((error: unknown) => void) | undefined;
 
         activeTransition = {
+            kind: 'fade',
             sprite: overlay,
             durationSeconds,
             elapsedSeconds: 0,
@@ -433,7 +597,7 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         });
 
         try {
-            await switchScene(name, payload);
+            await performImmediateSwitch();
         } catch (error) {
             root.removeChild(overlay);
             overlay.destroy({ texture: true });
@@ -481,15 +645,36 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         if (activeTransition) {
             const state = activeTransition;
             state.elapsedSeconds += deltaSeconds;
-            const progress = Math.min(state.elapsedSeconds / state.durationSeconds, 1);
+            const duration = state.durationSeconds;
+            const progressRatio = duration <= 0 ? 1 : state.elapsedSeconds / duration;
+            const progress = Math.min(progressRatio, 1);
             const eased = state.easing(progress);
-            state.sprite.alpha = 1 - Math.min(Math.max(eased, 0), 1);
+            const clamped = Math.min(Math.max(eased, 0), 1);
 
-            if (progress >= 1) {
-                root.removeChild(state.sprite);
-                state.sprite.destroy({ texture: true });
-                activeTransition = null;
-                state.resolve();
+            if (state.kind === 'fade') {
+                state.sprite.alpha = 1 - clamped;
+
+                if (progress >= 1) {
+                    root.removeChild(state.sprite);
+                    state.sprite.destroy({ texture: true });
+                    activeTransition = null;
+                    state.resolve();
+                }
+            } else {
+                state.incoming.x = state.startIncoming.x + (0 - state.startIncoming.x) * clamped;
+                state.incoming.y = state.startIncoming.y + (0 - state.startIncoming.y) * clamped;
+                state.outgoing.x = state.endOutgoing.x * clamped;
+                state.outgoing.y = state.endOutgoing.y * clamped;
+
+                if (progress >= 1) {
+                    state.restoreLayers();
+                    root.removeChild(state.outgoing);
+                    root.removeChild(state.incoming);
+                    state.outgoing.destroy({ texture: true });
+                    state.incoming.destroy({ texture: true });
+                    activeTransition = null;
+                    state.resolve();
+                }
             }
         }
 
@@ -503,8 +688,16 @@ export const createSceneManager = async (config: SceneManagerConfig = {}): Promi
         }
         destroyed = true;
         if (activeTransition) {
-            root.removeChild(activeTransition.sprite);
-            activeTransition.sprite.destroy({ texture: true });
+            if (activeTransition.kind === 'fade') {
+                root.removeChild(activeTransition.sprite);
+                activeTransition.sprite.destroy({ texture: true });
+            } else {
+                root.removeChild(activeTransition.outgoing);
+                root.removeChild(activeTransition.incoming);
+                activeTransition.outgoing.destroy({ texture: true });
+                activeTransition.incoming.destroy({ texture: true });
+                activeTransition.restoreLayers();
+            }
             activeTransition.reject(new Error('Scene manager has been destroyed'));
             activeTransition = null;
         }

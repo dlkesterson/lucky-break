@@ -5,6 +5,7 @@ import type { MusicDirector } from 'audio/music-director';
 import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from './replay-buffer';
 import type { FateLedger } from './fate-ledger';
+import type { MetaUpgradeManager } from './meta-upgrades';
 
 export interface GameSceneServices {
     readonly bus: LuckyBreakEventBus;
@@ -15,4 +16,5 @@ export interface GameSceneServices {
     readonly replayBuffer: ReplayBuffer;
     readonly renderStageSoon: () => void;
     readonly fateLedger: FateLedger;
+    readonly metaUpgrades: MetaUpgradeManager;
 }

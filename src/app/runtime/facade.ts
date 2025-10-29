@@ -17,6 +17,7 @@ import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
 import type { EntropyActionType, LifeLostCause, RewardWheelInteractionType } from '../events';
 import { createAchievementManager, type AchievementUnlock } from '../achievements';
+import { getMetaUpgradeManager } from '../metaprogression';
 import { createFateLedger } from '../fate-ledger';
 import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
@@ -386,22 +387,39 @@ const ENTROPY_ACTION_SEQUENCE: readonly EntropyActionType[] = ['reroll', 'shield
 
 const achievements = createAchievementManager();
 const fateLedger = createFateLedger();
+const metaUpgrades = getMetaUpgradeManager();
 
 let upgradeSnapshot = achievements.getUpgradeSnapshot();
-let comboDecayWindow = BASE_COMBO_DECAY_WINDOW * upgradeSnapshot.comboDecayMultiplier;
+let metaUpgradeLoadout = metaUpgrades.getLoadout();
+let traitEffects = metaUpgradeLoadout.traitEffects;
+
+const recomputeComboDecayWindow = () => {
+    const combinedMultiplier = upgradeSnapshot.comboDecayMultiplier * traitEffects.comboDecayMultiplier;
+    const candidate = BASE_COMBO_DECAY_WINDOW * combinedMultiplier;
+    return Number.isFinite(candidate) && candidate > 0 ? candidate : BASE_COMBO_DECAY_WINDOW;
+};
+
+let comboDecayWindow = recomputeComboDecayWindow();
 
 const refreshAchievementUpgrades = () => {
     upgradeSnapshot = achievements.getUpgradeSnapshot();
-    const candidate = BASE_COMBO_DECAY_WINDOW * upgradeSnapshot.comboDecayMultiplier;
-    comboDecayWindow = Number.isFinite(candidate) && candidate > 0 ? candidate : BASE_COMBO_DECAY_WINDOW;
+    comboDecayWindow = recomputeComboDecayWindow();
     return upgradeSnapshot;
 };
 
-if (!Number.isFinite(comboDecayWindow) || comboDecayWindow <= 0) {
-    refreshAchievementUpgrades();
-}
+const applyMetaLoadout = (loadout: typeof metaUpgradeLoadout) => {
+    metaUpgradeLoadout = loadout;
+    traitEffects = loadout.traitEffects;
+    comboDecayWindow = recomputeComboDecayWindow();
+};
 
-const resolveInitialLives = () => Math.max(1, BASE_LIVES + upgradeSnapshot.bonusLives);
+const refreshMetaLoadout = () => {
+    applyMetaLoadout(metaUpgrades.getLoadout());
+};
+
+refreshMetaLoadout();
+
+const resolveInitialLives = () => Math.max(1, BASE_LIVES + upgradeSnapshot.bonusLives + traitEffects.extraLives);
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -463,16 +481,73 @@ export const createRuntimeFacade = async ({
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const layoutDecorator = createBrickDecorator(sessionOrientation);
 
+    const toColorValue = (value: string | number): number =>
+        typeof value === 'number' ? value : toColorNumber(value);
+
     let rowColors = GameTheme.brickColors.map(toColorNumber);
     let themeBallColors: MultiBallColors = {
-        core: toColorNumber(GameTheme.ball.core),
-        aura: toColorNumber(GameTheme.ball.aura),
-        highlight: toColorNumber(GameTheme.ball.highlight),
+        core: 0xffffff,
+        aura: 0xffffff,
+        highlight: 0xffffff,
     };
     let themeAccents = {
-        combo: toColorNumber(GameTheme.accents.combo),
-        powerUp: toColorNumber(GameTheme.accents.powerUp),
+        combo: 0xffffff,
+        powerUp: 0xffffff,
     };
+
+    let ballVisualDefaults: BallVisualDefaults = {
+        baseColor: 0xffffff,
+        auraColor: 0xffffff,
+        highlightColor: 0xffffff,
+        baseAlpha: 0.78,
+        rimAlpha: 0.38,
+        innerAlpha: 0.32,
+        innerScale: 0.5,
+    } satisfies BallVisualDefaults;
+
+    let paddleVisualDefaults: PaddleVisualDefaults = {
+        gradient: GameTheme.paddle.gradient.map(toColorNumber),
+        accentColor: toColorValue(GameTheme.accents.combo),
+    } satisfies PaddleVisualDefaults;
+
+    let backgroundAccentOverrides: readonly number[] | null = null;
+
+    const applyMetaVisualDefaults = (theme: GameThemeDefinition) => {
+        const palette = metaUpgradeLoadout.visualPalette;
+        themeBallColors = {
+            core: toColorValue(palette.ball?.core ?? theme.ball.core),
+            aura: toColorValue(palette.ball?.aura ?? theme.ball.aura),
+            highlight: toColorValue(palette.ball?.highlight ?? theme.ball.highlight),
+        } satisfies MultiBallColors;
+
+        ballVisualDefaults = {
+            baseColor: themeBallColors.core,
+            auraColor: themeBallColors.aura,
+            highlightColor: themeBallColors.highlight,
+            baseAlpha: palette.ball?.baseAlpha ?? 0.78,
+            rimAlpha: palette.ball?.rimAlpha ?? 0.38,
+            innerAlpha: palette.ball?.innerAlpha ?? 0.32,
+            innerScale: palette.ball?.innerScale ?? 0.5,
+        } satisfies BallVisualDefaults;
+
+        const paddleGradientSource = palette.paddle?.gradient ?? theme.paddle.gradient;
+        const paddleAccentSource = palette.paddle?.accentColor ?? theme.accents.combo;
+        paddleVisualDefaults = {
+            gradient: paddleGradientSource.map(toColorValue),
+            accentColor: toColorValue(paddleAccentSource),
+        } satisfies PaddleVisualDefaults;
+
+        themeAccents = {
+            combo: toColorValue(palette.accents?.combo ?? theme.accents.combo),
+            powerUp: toColorValue(palette.accents?.powerUp ?? theme.accents.powerUp),
+        };
+
+        backgroundAccentOverrides = palette.accents?.background && palette.accents.background.length > 0
+            ? palette.accents.background.map(toColorValue)
+            : null;
+    };
+
+    applyMetaVisualDefaults(GameTheme);
 
     let visuals: RuntimeVisuals | null = null;
 
@@ -483,6 +558,7 @@ export const createRuntimeFacade = async ({
     let dynamicPerformanceMode = false;
     let desiredVisualProfile: 'quality' | 'performance' = userPerformancePreference ? 'performance' : 'quality';
     let unsubscribeSettings: (() => void) | null = null;
+    let unsubscribeMeta: (() => void) | null = null;
 
     const applyVisualPerformanceProfile = () => {
         desiredVisualProfile = userPerformancePreference || dynamicPerformanceMode ? 'performance' : 'quality';
@@ -502,21 +578,6 @@ export const createRuntimeFacade = async ({
         primeResetHp: Math.max(1, GAMBLE_PRIME_RESET_HP),
         failPenaltyHp: Math.max(1, GAMBLE_FAIL_PENALTY_HP),
     });
-
-    let ballVisualDefaults: BallVisualDefaults = {
-        baseColor: themeBallColors.core,
-        auraColor: themeBallColors.aura,
-        highlightColor: themeBallColors.highlight,
-        baseAlpha: 0.78,
-        rimAlpha: 0.38,
-        innerAlpha: 0.32,
-        innerScale: 0.5,
-    };
-
-    let paddleVisualDefaults: PaddleVisualDefaults = {
-        gradient: GameTheme.paddle.gradient.map(toColorNumber),
-        accentColor: themeBallColors.aura,
-    };
 
     const visualFactory = createVisualFactory({
         ball: ballVisualDefaults,
@@ -540,18 +601,17 @@ export const createRuntimeFacade = async ({
     let backgroundAccentIndex = 0;
     let backgroundAccentColor = themeAccents.combo;
     let bloomAccentColor = themeAccents.combo;
-    let backgroundAccentPalette: number[] = [
-        themeAccents.combo,
-        themeBallColors.aura,
-        mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
-    ];
+    let backgroundAccentPalette: number[] = [];
 
     const rebuildBackgroundPalette = () => {
-        backgroundAccentPalette = [
-            themeAccents.combo,
-            themeBallColors.aura,
-            mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
-        ];
+        const override = backgroundAccentOverrides && backgroundAccentOverrides.length > 0
+            ? [...backgroundAccentOverrides]
+            : [
+                themeAccents.combo,
+                themeBallColors.aura,
+                mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
+            ];
+        backgroundAccentPalette = override.length > 0 ? override : [0xffffff];
         if (backgroundAccentPalette.length === 0) {
             backgroundAccentPalette = [0xffffff];
         }
@@ -598,7 +658,17 @@ export const createRuntimeFacade = async ({
 
     const hasPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';
     const pendingVisualTimers = new Set<ReturnType<typeof setTimeout>>();
-    const midiEngine: MidiEngine = createMidiEngine();
+    let midiEngine: MidiEngine = createMidiEngine({
+        palette: metaUpgradeLoadout.audioPalette.config,
+    });
+
+    const rebuildMidiEngine = () => {
+        const previous = midiEngine;
+        midiEngine = createMidiEngine({
+            palette: metaUpgradeLoadout.audioPalette.config,
+        });
+        previous.dispose();
+    };
 
     const computeScheduledAudioTime = (offsetMs = 0): number => scheduler.predictAt(offsetMs);
 
@@ -950,6 +1020,7 @@ export const createRuntimeFacade = async ({
         replayBuffer,
         renderStageSoon,
         fateLedger,
+        metaUpgrades,
     };
 
     const provideSceneServices = (): GameSceneServices => sharedSceneServices;
@@ -1831,31 +1902,7 @@ export const createRuntimeFacade = async ({
         levelRuntime.setRowColors(rowColors);
         reapplyGambleAppearances();
 
-        themeBallColors = {
-            core: toColorNumber(theme.ball.core),
-            aura: toColorNumber(theme.ball.aura),
-            highlight: toColorNumber(theme.ball.highlight),
-        };
-
-        ballVisualDefaults = {
-            baseColor: themeBallColors.core,
-            auraColor: themeBallColors.aura,
-            highlightColor: themeBallColors.highlight,
-            baseAlpha: 0.78,
-            rimAlpha: 0.38,
-            innerAlpha: 0.32,
-            innerScale: 0.5,
-        } satisfies BallVisualDefaults;
-
-        paddleVisualDefaults = {
-            gradient: theme.paddle.gradient.map(toColorNumber),
-            accentColor: themeBallColors.aura,
-        } satisfies PaddleVisualDefaults;
-
-        themeAccents = {
-            combo: toColorNumber(theme.accents.combo),
-            powerUp: toColorNumber(theme.accents.powerUp),
-        };
+        applyMetaVisualDefaults(theme);
 
         visualFactory.ball.setDefaults(ballVisualDefaults);
         visualFactory.paddle.setDefaults(paddleVisualDefaults);
@@ -1884,6 +1931,8 @@ export const createRuntimeFacade = async ({
 
         renderStageSoon();
     };
+
+    applyRuntimeTheme(GameTheme);
 
     positionHud();
     window.addEventListener('resize', positionHud);
@@ -2061,6 +2110,31 @@ export const createRuntimeFacade = async ({
         lastComboCount = scoringState.combo;
         positionHud();
     };
+
+    const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
+        refreshMetaLoadout();
+        applyRuntimeTheme(GameTheme);
+        rebuildMidiEngine();
+        refreshHud();
+        renderStageSoon();
+        runtimeLogger.info('Meta upgrades updated', {
+            reason: snapshotReason,
+            visualPalette: metaUpgradeLoadout.visualPalette.id,
+            audioPalette: metaUpgradeLoadout.audioPalette.id,
+            extraLives: traitEffects.extraLives,
+            comboMultiplier: traitEffects.comboDecayMultiplier,
+            details,
+        });
+    };
+
+    unsubscribeMeta = metaUpgrades.subscribe((snapshot) => {
+        applyMetaSnapshot('loadout-changed', {
+            dustBalance: snapshot.dustBalance,
+            visualPalette: snapshot.equipped.visualPalette,
+            audioPalette: snapshot.equipped.audioPalette,
+            traits: snapshot.equipped.traits,
+        });
+    });
 
     const buildRewardWheelOdds = (): LevelCompleteRewardWheelPayload['odds'] => {
         const segments = config.rewards.wheelSegments;
@@ -3444,6 +3518,8 @@ export const createRuntimeFacade = async ({
         }
         unsubscribeSettings?.();
         unsubscribeSettings = null;
+        unsubscribeMeta?.();
+        unsubscribeMeta = null;
         unsubscribeTheme?.();
         unsubscribeTheme = null;
         visuals?.dispose();

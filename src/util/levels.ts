@@ -46,6 +46,11 @@ export interface LevelGenerationOptions {
     readonly decorateBrick?: (context: BrickDecorationContext) => BrickDecorationResult | void;
 }
 
+export interface LevelTransformPlan {
+    readonly directives: readonly LayoutTransformDirective[];
+    readonly applyPhaseIndex?: number;
+}
+
 export interface LevelSpec {
     /** Number of brick rows */
     readonly rows: number;
@@ -68,6 +73,14 @@ export interface LevelLayout {
     readonly breakableCount: number;
     /** Level specification used */
     readonly spec: LevelSpec;
+    /** Optional metadata describing how the layout was derived */
+    readonly metadata?: LevelLayoutMetadata;
+}
+
+export interface LevelLayoutMetadata {
+    readonly phase: string;
+    readonly index: number;
+    readonly total: number;
 }
 
 export type BrickTrait = 'fortified' | 'gamble' | 'wall';
@@ -112,6 +125,10 @@ export interface BrickSpec {
     /** Whether the physics body should behave as a sensor */
     readonly isSensor?: boolean;
 }
+
+type MutableBrickSpec = {
+    -readonly [Key in keyof BrickSpec]: BrickSpec[Key];
+};
 
 let levelPresetOffset = 0;
 
@@ -734,6 +751,484 @@ export function getLoopScalingInfo(loopCount: number): LoopScalingInfo {
         centerFortifiedBias: centerBias,
         maxVoidColumns,
     } satisfies LoopScalingInfo;
+}
+
+export type LayoutTransformDirective =
+    | {
+        readonly type: 'shiftRows';
+        readonly rows?: 'all' | readonly number[];
+        readonly steps: number;
+        readonly label?: string;
+    }
+    | {
+        readonly type: 'shiftColumns';
+        readonly columns?: 'all' | readonly number[];
+        readonly steps: number;
+        readonly label?: string;
+    }
+    | {
+        readonly type: 'swapBands';
+        readonly first: { readonly start: number; readonly end: number };
+        readonly second: { readonly start: number; readonly end: number };
+        readonly label?: string;
+    }
+    | {
+        readonly type: 'applyPattern';
+        readonly pattern: 'checker' | 'hollow';
+        readonly invert?: boolean;
+        readonly label?: string;
+    };
+
+export interface TransformingLayoutOptions extends LevelGenerationOptions {
+    readonly brickWidth?: number;
+    readonly brickHeight?: number;
+    readonly fieldWidth?: number;
+}
+
+export interface TransformingLayoutPhase extends LevelLayout {
+    readonly metadata: LevelLayoutMetadata;
+}
+
+const rotateArray = <T>(values: readonly T[], steps: number): T[] => {
+    const length = values.length;
+    if (length === 0) {
+        return [];
+    }
+    const normalized = ((Math.trunc(steps) % length) + length) % length;
+    if (normalized === 0) {
+        return [...values];
+    }
+    return [...values.slice(-normalized), ...values.slice(0, length - normalized)];
+};
+
+const cloneBrick = (brick: BrickSpec): MutableBrickSpec => ({
+    row: brick.row,
+    col: brick.col,
+    x: brick.x,
+    y: brick.y,
+    hp: brick.hp,
+    traits: brick.traits ? [...brick.traits] : undefined,
+    form: brick.form,
+    breakable: brick.breakable,
+    isSensor: brick.isSensor,
+});
+
+const computeBreakableCount = (bricks: readonly BrickSpec[]): number =>
+    bricks.reduce((count, brick) => (brick.breakable === false ? count : count + 1), 0);
+
+const uniqueSorted = (values: Iterable<number>): number[] => {
+    const unique = new Set<number>();
+    for (const value of values) {
+        unique.add(Math.floor(value));
+    }
+    return [...unique].sort((a, b) => a - b);
+};
+
+const resolveRows = (layout: LevelLayout, rows: 'all' | readonly number[] | undefined): number[] => {
+    if (!rows || rows === 'all') {
+        return uniqueSorted(layout.bricks.filter((brick) => brick.breakable !== false).map((brick) => brick.row));
+    }
+    return uniqueSorted(rows);
+};
+
+const resolveColumns = (layout: LevelLayout, columns: 'all' | readonly number[] | undefined): number[] => {
+    if (!columns || columns === 'all') {
+        return uniqueSorted(layout.bricks.filter((brick) => brick.breakable !== false).map((brick) => brick.col));
+    }
+    return uniqueSorted(columns);
+};
+
+const applyShiftRows = (
+    layout: LevelLayout,
+    steps: number,
+    rows: 'all' | readonly number[] | undefined,
+): MutableBrickSpec[] => {
+    const normalizedSteps = Math.trunc(steps);
+    if (!Number.isFinite(normalizedSteps) || normalizedSteps === 0) {
+        return layout.bricks.map(cloneBrick);
+    }
+
+    const targetRows = resolveRows(layout, rows);
+    if (targetRows.length === 0) {
+        return layout.bricks.map(cloneBrick);
+    }
+
+    const clones: MutableBrickSpec[] = layout.bricks.map(cloneBrick);
+    const rowToIndices = new Map<number, number[]>();
+    clones.forEach((brick, index) => {
+        if (brick.breakable === false) {
+            return;
+        }
+        if (!rowToIndices.has(brick.row)) {
+            rowToIndices.set(brick.row, []);
+        }
+        rowToIndices.get(brick.row)?.push(index);
+    });
+
+    for (const row of targetRows) {
+        const indices = rowToIndices.get(row);
+        if (!indices || indices.length <= 1) {
+            continue;
+        }
+
+        const sorted = [...indices].sort((a, b) => clones[a].x - clones[b].x);
+        const columns = sorted.map((index) => clones[index].col);
+        const positions = sorted.map((index) => clones[index].x);
+        const rotatedColumns = rotateArray(columns, normalizedSteps);
+        const rotatedPositions = rotateArray(positions, normalizedSteps);
+
+        sorted.forEach((brickIndex, positionIndex) => {
+            const brick = clones[brickIndex];
+            brick.col = rotatedColumns[positionIndex] ?? brick.col;
+            brick.x = rotatedPositions[positionIndex] ?? brick.x;
+        });
+    }
+
+    return clones;
+};
+
+const applyShiftColumns = (
+    layout: LevelLayout,
+    steps: number,
+    columns: 'all' | readonly number[] | undefined,
+): MutableBrickSpec[] => {
+    const normalizedSteps = Math.trunc(steps);
+    if (!Number.isFinite(normalizedSteps) || normalizedSteps === 0) {
+        return layout.bricks.map(cloneBrick);
+    }
+
+    const targetColumns = resolveColumns(layout, columns);
+    if (targetColumns.length === 0) {
+        return layout.bricks.map(cloneBrick);
+    }
+
+    const clones: MutableBrickSpec[] = layout.bricks.map(cloneBrick);
+    const columnToIndices = new Map<number, number[]>();
+    clones.forEach((brick, index) => {
+        if (brick.breakable === false) {
+            return;
+        }
+        if (!columnToIndices.has(brick.col)) {
+            columnToIndices.set(brick.col, []);
+        }
+        columnToIndices.get(brick.col)?.push(index);
+    });
+
+    for (const column of targetColumns) {
+        const indices = columnToIndices.get(column);
+        if (!indices || indices.length <= 1) {
+            continue;
+        }
+
+        const sorted = [...indices].sort((a, b) => clones[a].y - clones[b].y);
+        const rows = sorted.map((index) => clones[index].row);
+        const positions = sorted.map((index) => clones[index].y);
+        const rotatedRows = rotateArray(rows, normalizedSteps);
+        const rotatedPositions = rotateArray(positions, normalizedSteps);
+
+        sorted.forEach((brickIndex, positionIndex) => {
+            const brick = clones[brickIndex];
+            brick.row = rotatedRows[positionIndex] ?? brick.row;
+            brick.y = rotatedPositions[positionIndex] ?? brick.y;
+        });
+    }
+
+    return clones;
+};
+
+const withinRange = (value: number, bounds: { readonly start: number; readonly end: number }): boolean => {
+    const min = Math.min(bounds.start, bounds.end);
+    const max = Math.max(bounds.start, bounds.end);
+    return value >= min && value <= max;
+};
+
+const applySwapBands = (
+    layout: LevelLayout,
+    first: { readonly start: number; readonly end: number },
+    second: { readonly start: number; readonly end: number },
+): MutableBrickSpec[] => {
+    const clones: MutableBrickSpec[] = layout.bricks.map(cloneBrick);
+    const firstRows = uniqueSorted(
+        clones.filter((brick) => withinRange(brick.row, first)).map((brick) => brick.row),
+    );
+    const secondRows = uniqueSorted(
+        clones.filter((brick) => withinRange(brick.row, second)).map((brick) => brick.row),
+    );
+
+    if (firstRows.length === 0 || secondRows.length === 0) {
+        return clones;
+    }
+
+    const rowPositions = new Map<number, number>();
+    clones.forEach((brick) => {
+        if (!rowPositions.has(brick.row)) {
+            rowPositions.set(brick.row, brick.y);
+        }
+    });
+
+    const mapping = new Map<number, number>();
+    const pairCount = Math.min(firstRows.length, secondRows.length);
+    for (let index = 0; index < pairCount; index++) {
+        const firstRow = firstRows[index];
+        const secondRow = secondRows[index];
+        mapping.set(firstRow, secondRow);
+        mapping.set(secondRow, firstRow);
+    }
+
+    clones.forEach((brick) => {
+        const targetRow = mapping.get(brick.row);
+        if (targetRow === undefined) {
+            return;
+        }
+        const targetY = rowPositions.get(targetRow);
+        brick.row = targetRow;
+        if (targetY !== undefined) {
+            brick.y = targetY;
+        }
+    });
+
+    return clones;
+};
+
+const applyPattern = (
+    layout: LevelLayout,
+    pattern: 'checker' | 'hollow',
+    invert: boolean,
+): MutableBrickSpec[] => {
+    const clones = layout.bricks.map(cloneBrick);
+
+    if (pattern === 'checker') {
+        clones.forEach((brick) => {
+            if (brick.breakable === false) {
+                return;
+            }
+            const parity = Math.abs(brick.row + brick.col) % 2 === 0;
+            const shouldSolidify = invert ? !parity : parity;
+            if (!shouldSolidify) {
+                return;
+            }
+            const traits = new Set(brick.traits ?? []);
+            traits.add('wall');
+            brick.breakable = false;
+            brick.traits = [...traits];
+            brick.hp = WALL_BRICK_HP;
+            brick.form = brick.form ?? 'rectangle';
+            brick.isSensor = false;
+        });
+        return clones;
+    }
+
+    const rows = uniqueSorted(clones.map((brick) => brick.row));
+    const cols = uniqueSorted(clones.map((brick) => brick.col));
+    const minRow = rows[0] ?? 0;
+    const maxRow = rows.at(-1) ?? 0;
+    const minCol = cols[0] ?? 0;
+    const maxCol = cols.at(-1) ?? 0;
+
+    clones.forEach((brick) => {
+        if (brick.breakable === false) {
+            return;
+        }
+        const isEdge = brick.row === minRow || brick.row === maxRow || brick.col === minCol || brick.col === maxCol;
+        const shouldSolidify = invert ? isEdge : !isEdge;
+        if (!shouldSolidify) {
+            return;
+        }
+        const traits = new Set(brick.traits ?? []);
+        traits.add('wall');
+        brick.breakable = false;
+        brick.traits = [...traits];
+        brick.hp = WALL_BRICK_HP;
+        brick.form = brick.form ?? 'rectangle';
+        brick.isSensor = false;
+    });
+
+    return clones;
+};
+
+const getDirectivePhaseCount = (directive: LayoutTransformDirective): number => {
+    if (directive.type === 'shiftRows' || directive.type === 'shiftColumns') {
+        return Math.abs(Math.trunc(directive.steps));
+    }
+    return 1;
+};
+
+const resolveShiftDirectionLabel = (directive: LayoutTransformDirective, stepSign: number): string => {
+    if (directive.type === 'shiftRows') {
+        if (stepSign > 0) {
+            return 'shiftRows:right';
+        }
+        if (stepSign < 0) {
+            return 'shiftRows:left';
+        }
+        return 'shiftRows';
+    }
+    if (directive.type === 'shiftColumns') {
+        if (stepSign > 0) {
+            return 'shiftColumns:down';
+        }
+        if (stepSign < 0) {
+            return 'shiftColumns:up';
+        }
+        return 'shiftColumns';
+    }
+    return directive.type;
+};
+
+const createPhaseLabel = (
+    directive: LayoutTransformDirective,
+    stepIndex: number,
+    stepCount: number,
+    stepSign: number,
+): string => {
+    const baseLabel = directive.label ?? resolveShiftDirectionLabel(directive, stepSign);
+    if (stepCount <= 1) {
+        return baseLabel;
+    }
+    return `${baseLabel}#${stepIndex + 1}`;
+};
+
+const asReadonly = (bricks: MutableBrickSpec[]): readonly BrickSpec[] =>
+    bricks.map((brick) => ({
+        row: brick.row,
+        col: brick.col,
+        x: brick.x,
+        y: brick.y,
+        hp: brick.hp,
+        traits: brick.traits ? [...brick.traits] : undefined,
+        form: brick.form,
+        breakable: brick.breakable,
+        isSensor: brick.isSensor,
+    } satisfies BrickSpec));
+
+export function generateTransformingLayouts(
+    spec: LevelSpec,
+    directives: readonly LayoutTransformDirective[],
+    options: TransformingLayoutOptions = {},
+): readonly TransformingLayoutPhase[] {
+    const {
+        brickWidth = DEFAULT_BRICK_WIDTH,
+        brickHeight = DEFAULT_BRICK_HEIGHT,
+        fieldWidth = DEFAULT_FIELD_WIDTH,
+        ...generationOptions
+    } = options;
+
+    const baseLayout = generateLevelLayout(spec, brickWidth, brickHeight, fieldWidth, generationOptions);
+    const totalPhases = 1 + directives.reduce((sum, directive) => sum + getDirectivePhaseCount(directive), 0);
+
+    const results: TransformingLayoutPhase[] = [];
+
+    const basePhase: TransformingLayoutPhase = {
+        ...baseLayout,
+        metadata: {
+            phase: 'base',
+            index: 0,
+            total: totalPhases,
+        },
+    };
+    results.push(basePhase);
+
+    let currentLayout: TransformingLayoutPhase = basePhase;
+    let phaseIndex = 1;
+
+    for (const directive of directives) {
+        if (directive.type === 'shiftRows' || directive.type === 'shiftColumns') {
+            const stepSign = Math.sign(Math.trunc(directive.steps)) || 0;
+            const iterations = Math.abs(Math.trunc(directive.steps));
+            if (stepSign === 0 || iterations === 0) {
+                continue;
+            }
+
+            for (let iteration = 0; iteration < iterations; iteration++) {
+                const bricks = directive.type === 'shiftRows'
+                    ? applyShiftRows(currentLayout, stepSign, directive.rows)
+                    : applyShiftColumns(currentLayout, stepSign, directive.columns);
+
+                const readOnlyBricks = asReadonly(bricks);
+                const nextLayout: TransformingLayoutPhase = {
+                    bricks: readOnlyBricks,
+                    breakableCount: computeBreakableCount(readOnlyBricks),
+                    spec,
+                    metadata: {
+                        phase: createPhaseLabel(directive, iteration, iterations, stepSign),
+                        index: phaseIndex,
+                        total: totalPhases,
+                    },
+                };
+
+                results.push(nextLayout);
+                currentLayout = nextLayout;
+                phaseIndex += 1;
+            }
+            continue;
+        }
+
+        if (directive.type === 'swapBands') {
+            const bricks = applySwapBands(currentLayout, directive.first, directive.second);
+            const readOnlyBricks = asReadonly(bricks);
+            const nextLayout: TransformingLayoutPhase = {
+                bricks: readOnlyBricks,
+                breakableCount: computeBreakableCount(readOnlyBricks),
+                spec,
+                metadata: {
+                    phase: directive.label ?? 'swapBands',
+                    index: phaseIndex,
+                    total: totalPhases,
+                },
+            };
+            results.push(nextLayout);
+            currentLayout = nextLayout;
+            phaseIndex += 1;
+            continue;
+        }
+
+        if (directive.type === 'applyPattern') {
+            const bricks = applyPattern(currentLayout, directive.pattern, directive.invert ?? false);
+            const readOnlyBricks = asReadonly(bricks);
+            const nextLayout: TransformingLayoutPhase = {
+                bricks: readOnlyBricks,
+                breakableCount: computeBreakableCount(readOnlyBricks),
+                spec,
+                metadata: {
+                    phase: directive.label ?? `pattern:${directive.pattern}`,
+                    index: phaseIndex,
+                    total: totalPhases,
+                },
+            };
+            results.push(nextLayout);
+            currentLayout = nextLayout;
+            phaseIndex += 1;
+            continue;
+        }
+    }
+
+    return results;
+}
+
+const LEVEL_TRANSFORM_PLAN_PRESETS = new Map<number, LevelTransformPlan>([
+    [
+        4,
+        {
+            directives: [
+                { type: 'shiftRows', rows: 'all', steps: 1, label: 'scroll-right' },
+                { type: 'shiftColumns', columns: 'all', steps: -1, label: 'stagger-down' },
+                { type: 'applyPattern', pattern: 'hollow', label: 'hollow-core' },
+            ],
+        },
+    ],
+]);
+
+export function getLevelTransformPlan(levelIndex: number): LevelTransformPlan | null {
+    if (LEVEL_PRESETS.length === 0) {
+        return null;
+    }
+
+    const normalized = ((Math.trunc(levelIndex) % LEVEL_PRESETS.length) + LEVEL_PRESETS.length) % LEVEL_PRESETS.length;
+    const plan = LEVEL_TRANSFORM_PLAN_PRESETS.get(normalized);
+    if (!plan) {
+        return null;
+    }
+    return plan;
 }
 
 /**

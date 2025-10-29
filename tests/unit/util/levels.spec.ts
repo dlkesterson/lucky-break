@@ -12,6 +12,8 @@ import {
     setLevelPresetOffset,
     getLevelPresetOffset,
     MAX_LEVEL_BRICK_HP,
+    generateTransformingLayouts,
+    getLevelTransformPlan,
 } from 'util/levels';
 import { mulberry32 } from 'util/random';
 
@@ -390,5 +392,97 @@ describe('generateLevelLayout', () => {
 
         expect(layout.breakableCount).toBe(3);
         expect(layout.bricks.some((brick) => brick.traits?.includes('gamble'))).toBe(false);
+    });
+});
+
+describe('generateTransformingLayouts', () => {
+    it('creates sequential phases for row scrolling directives', () => {
+        const config = gameConfig;
+        const spec = getLevelSpec(0);
+
+        const phases = generateTransformingLayouts(
+            spec,
+            [
+                {
+                    type: 'shiftRows',
+                    rows: [0],
+                    steps: 2,
+                    label: 'scroll-top',
+                },
+            ],
+            {
+                brickWidth: config.bricks.size.width,
+                brickHeight: config.bricks.size.height,
+                fieldWidth: config.playfield.width,
+            },
+        );
+
+        expect(phases).toHaveLength(3);
+        expect(phases[0].metadata.phase).toBe('base');
+        expect(phases[0].metadata.total).toBe(3);
+
+        const originalRow = phases[0].bricks
+            .filter((brick) => brick.row === 0 && brick.breakable !== false)
+            .map((brick) => brick.col);
+        const shiftedRow = phases[1].bricks
+            .filter((brick) => brick.row === 0 && brick.breakable !== false)
+            .map((brick) => brick.col);
+
+        expect(new Set(shiftedRow)).toEqual(new Set(originalRow));
+        expect(shiftedRow).not.toEqual(originalRow);
+
+        expect(phases[1].metadata.phase.startsWith('scroll-top')).toBe(true);
+        expect(phases[2].metadata.phase.startsWith('scroll-top')).toBe(true);
+    });
+
+    it('applies pattern directives to carve puzzle-style layouts', () => {
+        const config = gameConfig;
+        const spec = getLevelSpec(1);
+
+        const [basePhase, puzzlePhase] = generateTransformingLayouts(
+            spec,
+            [
+                {
+                    type: 'applyPattern',
+                    pattern: 'hollow',
+                    label: 'hollow-core',
+                },
+            ],
+            {
+                brickWidth: config.bricks.size.width,
+                brickHeight: config.bricks.size.height,
+                fieldWidth: config.playfield.width,
+            },
+        );
+
+        expect(puzzlePhase.breakableCount).toBeLessThan(basePhase.breakableCount);
+        const interiorBrick = puzzlePhase.bricks.find(
+            (brick) => brick.row > 0 && brick.row < spec.rows - 1 && brick.col > 0 && brick.col < spec.cols - 1,
+        );
+        expect(interiorBrick?.breakable).toBe(false);
+        expect(puzzlePhase.metadata.phase).toBe('hollow-core');
+    });
+});
+
+describe('getLevelTransformPlan', () => {
+    it('returns a transform plan for configured preset indices', () => {
+        const presetCount = getPresetLevelCount();
+        const targetIndex = presetCount > 0 ? 4 % presetCount : 4;
+        const plan = getLevelTransformPlan(4);
+        if (presetCount === 0) {
+            expect(plan).toBeNull();
+            return;
+        }
+        expect(plan).not.toBeNull();
+        expect(plan?.directives.length).toBeGreaterThan(0);
+        if (plan) {
+            expect(plan.directives.at(-1)?.type).toBe('applyPattern');
+        }
+        const loopedPlan = getLevelTransformPlan(4 + presetCount);
+        expect(loopedPlan).toEqual(plan);
+        const otherPlan = getLevelTransformPlan(1);
+        if (targetIndex !== 1) {
+            expect(otherPlan).toBeNull();
+        }
     });
 });

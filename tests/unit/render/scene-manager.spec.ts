@@ -7,6 +7,9 @@ vi.mock('pixi.js', async () => {
         public label = '';
         public parent: Container | null = null;
         public zIndex = 0;
+        public alpha = 1;
+        public x = 0;
+        public y = 0;
 
         addChild<T>(...items: T[]): T {
             this.children.push(...items);
@@ -284,6 +287,73 @@ describe('createSceneManager', () => {
 
         expect(resolved).toBe(true);
         expect(findOverlay()).toBeUndefined();
+    });
+
+    it('performs a slide transition with directional motion', async () => {
+        const firstDestroy = vi.fn();
+        const secondInit = vi.fn();
+
+        manager.register('first', () => ({
+            init: vi.fn(),
+            update: vi.fn(),
+            destroy: firstDestroy,
+        }));
+
+        manager.register('second', () => ({
+            init: secondInit,
+            update: vi.fn(),
+            destroy: vi.fn(),
+        }));
+
+        await manager.switch('first');
+
+        const transitionPromise = manager.transition('second', undefined, {
+            effect: 'slide',
+            durationMs: 400,
+            direction: 'left',
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const resolveChild = (label: string) =>
+            manager.layers.root.children.find(
+                (child) => (child as { label?: string }).label === label,
+            ) as { x: number; y: number } | undefined;
+
+        let outgoing = resolveChild('scene-transition-outgoing');
+        let incoming = resolveChild('scene-transition-incoming');
+
+        for (let attempt = 0; attempt < 5 && (!outgoing || !incoming); attempt += 1) {
+            await Promise.resolve();
+            outgoing = outgoing ?? resolveChild('scene-transition-outgoing');
+            incoming = incoming ?? resolveChild('scene-transition-incoming');
+        }
+
+        expect(outgoing).toBeDefined();
+        expect(incoming).toBeDefined();
+        expect(manager.layers.playfield.alpha).toBe(0);
+
+        const initialOutgoingX = outgoing?.x ?? 0;
+        const initialIncomingX = incoming?.x ?? 0;
+
+        manager.update(0.1);
+
+        expect(outgoing?.x).toBeGreaterThan(initialOutgoingX);
+        expect(incoming?.x).toBeGreaterThan(initialIncomingX);
+
+        manager.update(1);
+        await transitionPromise;
+
+        expect(manager.layers.playfield.alpha).toBe(1);
+        expect(firstDestroy).toHaveBeenCalledTimes(1);
+        expect(secondInit).toHaveBeenCalledTimes(1);
+
+        const hasTransitionSprites = manager.layers.root.children.some((child) => {
+            const label = (child as { label?: string }).label;
+            return typeof label === 'string' && label.startsWith('scene-transition-');
+        });
+        expect(hasTransitionSprites).toBe(false);
     });
 
     it('throws when switching to an unregistered scene', async () => {
