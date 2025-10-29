@@ -214,6 +214,8 @@ export interface PhysicsDebugOverlayState {
     readonly extraBalls: number;
     readonly extraBallCapacity: number;
     readonly syncDriftMs?: number;
+    readonly syncDriftAverageMs?: number;
+    readonly syncDriftPeakMs?: number;
 }
 
 export class PhysicsDebugOverlay {
@@ -263,6 +265,12 @@ export class PhysicsDebugOverlay {
 
     update(state: PhysicsDebugOverlayState): void {
         const formatSpeed = (value: number) => value.toFixed(2).padStart(5, ' ');
+        const formatDrift = (value: number | null | undefined): string => {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+                return '—';
+            }
+            return value.toFixed(1);
+        };
         const hasSlowTime = state.slowTimeRemaining > 0 && state.slowTimeScale < 0.999;
         const regulationLine = (() => {
             if (!state.regulation || Math.abs(state.regulation.delta) < 0.01) {
@@ -277,14 +285,26 @@ export class PhysicsDebugOverlay {
             ? `Time Scale: ×${state.timeScale.toFixed(2)} (slow ×${state.slowTimeScale.toFixed(2)} | ${state.slowTimeRemaining.toFixed(1)}s)`
             : `Time Scale: ×${state.timeScale.toFixed(2)}`;
 
+        const driftPrimary = formatDrift(state.syncDriftMs);
+        const driftDetails: string[] = [];
+        const driftAverage = formatDrift(state.syncDriftAverageMs);
+        if (driftAverage !== '—') {
+            driftDetails.push(`avg ${driftAverage} ms`);
+        }
+        const driftPeak = formatDrift(state.syncDriftPeakMs);
+        if (driftPeak !== '—') {
+            driftDetails.push(`peak ${driftPeak} ms`);
+        }
+        const driftLine = driftDetails.length > 0
+            ? `Audio drift: ${driftPrimary} ms (${driftDetails.join(' | ')})`
+            : `Audio drift: ${driftPrimary} ms`;
+
         const lines: string[] = [
             `Speed: ${formatSpeed(state.currentSpeed)} | base ${state.baseSpeed.toFixed(2)} | max ${state.maxSpeed.toFixed(2)}`,
             timeScaleLabel,
             regulationLine,
             `Multi-Ball: ${Math.min(state.extraBalls, state.extraBallCapacity)}/${state.extraBallCapacity}`,
-            `Audio drift: ${typeof state.syncDriftMs === 'number' && Number.isFinite(state.syncDriftMs)
-                ? state.syncDriftMs.toFixed(1)
-                : '—'} ms`,
+            driftLine,
         ];
 
         this.text.text = lines.join('\n');

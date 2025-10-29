@@ -227,6 +227,9 @@ describe('PhysicsDebugOverlay', () => {
             regulation: { direction: 'boost', delta: 1.2 },
             extraBalls: 2,
             extraBallCapacity: 3,
+            syncDriftMs: 12.345,
+            syncDriftAverageMs: 8.94,
+            syncDriftPeakMs: 20.02,
         });
 
         const panel = container.children[0] as Container;
@@ -237,6 +240,7 @@ describe('PhysicsDebugOverlay', () => {
         expect(textNode.text).toContain('Time Scale:');
         expect(textNode.text).toContain('Regulation: boost');
         expect(textNode.text).toContain('Multi-Ball: 2/3');
+        expect(textNode.text).toContain('Audio drift: 12.3 ms (avg 8.9 ms | peak 20.0 ms)');
 
         const backgroundMock = background as unknown as {
             roundRect: ReturnType<typeof vi.fn>;

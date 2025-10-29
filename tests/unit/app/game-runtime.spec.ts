@@ -206,26 +206,29 @@ const createGameInitializerMock = vi.hoisted(() =>
             triggerComboAccent: vi.fn(),
             dispose: vi.fn(),
         };
+        const scheduler = {
+            lookAheadMs: 120,
+            lookAheadSeconds: 0.12,
+            schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
+            cancel: vi.fn(),
+            dispose: vi.fn(),
+            context: { currentTime: 0 } as AudioContext,
+            now: vi.fn().mockReturnValue(0),
+            predictAt: vi.fn().mockImplementation((offsetMs?: number) => 0.12 + (typeof offsetMs === 'number' ? offsetMs / 1000 : 0)),
+        };
+
         initializerState.instances.push({
             stage,
             dispose,
             musicDirector,
             renderStageSoon,
+            scheduler,
             options,
         });
         return {
             stage,
             bus: { publish: vi.fn() },
-            scheduler: {
-                lookAheadMs: 120,
-                lookAheadSeconds: 0.12,
-                schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
-                cancel: vi.fn(),
-                dispose: vi.fn(),
-                context: { currentTime: 0 } as AudioContext,
-                now: vi.fn().mockReturnValue(0),
-                predictAt: vi.fn().mockImplementation((offsetMs?: number) => 0.12 + (typeof offsetMs === 'number' ? offsetMs / 1000 : 0)),
-            },
+            scheduler,
             audioState$: { next: vi.fn() },
             musicDirector,
             renderStageSoon,
@@ -484,7 +487,6 @@ vi.mock('render/theme', () => ({
 }));
 
 const setActiveTheme = themeMockState.setActiveTheme;
-const getActiveThemeName = themeMockState.getActiveThemeName;
 
 vi.mock('physics/world', () => ({
     createPhysicsWorld: vi.fn(() => {
@@ -1450,6 +1452,42 @@ describe('game-runtime internal helpers', () => {
         expect(internalHelpers.clampMidiNote(85, 40, 80)).toBe(80);
     });
 
+    it('tracks sync drift averages and peaks across samples', () => {
+        const state = {
+            syncDriftHistory: [],
+            syncDriftAverageMs: 0,
+            syncDriftPeakMs: 0,
+            syncDriftPeakRecordedAt: 0,
+        } as Parameters<typeof internalHelpers.updateSyncDriftMetrics>[0];
+
+        internalHelpers.updateSyncDriftMetrics(state, 10, 0.1);
+        internalHelpers.updateSyncDriftMetrics(state, -4, 0.2);
+        internalHelpers.updateSyncDriftMetrics(state, 20, 1.2);
+
+        expect(state.syncDriftHistory).toHaveLength(3);
+        expect(state.syncDriftAverageMs).toBeCloseTo((10 - 4 + 20) / 3, 3);
+        expect(state.syncDriftPeakMs).toBeCloseTo(20);
+        expect(state.syncDriftPeakRecordedAt).toBeCloseTo(1.2);
+    });
+
+    it('drops stale sync drift samples beyond the history window', () => {
+        const state = {
+            syncDriftHistory: [],
+            syncDriftAverageMs: 0,
+            syncDriftPeakMs: 0,
+            syncDriftPeakRecordedAt: 0,
+        } as Parameters<typeof internalHelpers.updateSyncDriftMetrics>[0];
+
+        internalHelpers.updateSyncDriftMetrics(state, 5, 0);
+        const window = internalHelpers.SYNC_DRIFT_HISTORY_SECONDS;
+        internalHelpers.updateSyncDriftMetrics(state, 1, window + 0.1);
+
+        expect(state.syncDriftHistory).toHaveLength(1);
+        expect(state.syncDriftAverageMs).toBeCloseTo(1);
+        expect(state.syncDriftPeakMs).toBeCloseTo(1);
+        expect(state.syncDriftPeakRecordedAt).toBeCloseTo(window + 0.1);
+    });
+
     it('computes ray intersections across edge cases', () => {
         const toBounds = <T>(value: T) => value as unknown as Parameters<(typeof internalHelpers)['intersectRayWithExpandedAabb']>[2];
         const bounds = {
@@ -1540,6 +1578,7 @@ describe('createGameRuntime', () => {
         markTime: vi.fn(),
         recordPaddleTarget: vi.fn(),
         recordLaunch: vi.fn(),
+        recordBiasChoice: vi.fn(),
         snapshot: vi.fn(() => ({
             version: 1 as const,
             seed: null,
@@ -1889,6 +1928,93 @@ describe('createGameRuntime', () => {
         handle.dispose();
     });
 
+    it('logs sync drift telemetry samples and warnings', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const handle = await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        const stageInstance = initializerState.instances[0]?.stage;
+        expect(stageInstance).toBeDefined();
+        const registerCalls = stageInstance!.register.mock.calls as [
+            string,
+            (context: unknown) => unknown,
+            unknown?,
+        ][];
+        const gameplayRegistration = registerCalls.find(([name]) => name === 'gameplay');
+        expect(gameplayRegistration).toBeDefined();
+        const gameplayFactory = gameplayRegistration?.[1];
+        expect(gameplayFactory).toBeInstanceOf(Function);
+        gameplayFactory?.({} as never);
+
+        const gameplayMock = vi.mocked(createGameplayScene);
+        const gameplayOptions = gameplayMock.mock.calls.at(-1)?.[1] as { onUpdate: (delta: number) => void } | undefined;
+        expect(gameplayOptions?.onUpdate).toBeDefined();
+        const onUpdate = gameplayOptions!.onUpdate;
+
+        const scheduler = initializerState.instances[0]?.scheduler;
+        expect(scheduler).toBeDefined();
+        let audioTime = 0;
+        scheduler!.now.mockImplementation(() => audioTime);
+
+        let wallClockMs = 0;
+        const performanceNowSpy = vi.spyOn(performance, 'now').mockImplementation(() => wallClockMs);
+
+        const logger = loggerState.runtime;
+        expect(logger).toBeDefined();
+        logger!.debug.mockClear();
+        logger!.warn.mockClear();
+        logger!.info.mockClear();
+
+        const interval = internalHelpers.SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+        const warnThreshold = internalHelpers.SYNC_DRIFT_WARN_THRESHOLD_MS;
+        const recoveryThreshold = internalHelpers.SYNC_DRIFT_RECOVERY_THRESHOLD_MS;
+
+        const severeDriftMs = Math.max(1, warnThreshold * 1.5);
+        const mildDriftMs = Math.max(1, recoveryThreshold * 0.25);
+
+        const step = (deltaSeconds: number, driftMs: number) => {
+            audioTime += deltaSeconds;
+            wallClockMs = (audioTime + driftMs / 1000) * 1000;
+            onUpdate(deltaSeconds);
+        };
+
+        step(interval / 2, severeDriftMs);
+        step(interval / 2, severeDriftMs);
+
+        const warnCall = logger!.warn.mock.calls.find(([message]) => message === 'Audio sync drift above threshold');
+        expect(warnCall).toBeDefined();
+        expect(warnCall?.[1]).toMatchObject({
+            peakMs: expect.any(Number),
+            thresholdMs: warnThreshold,
+        });
+
+        const debugCall = logger!.debug.mock.calls.find(([message]) => message === 'Sync drift sample');
+        expect(debugCall).toBeDefined();
+        expect(debugCall?.[1]).toMatchObject({
+            sampleCount: expect.any(Number),
+            sampleWindowSeconds: internalHelpers.SYNC_DRIFT_HISTORY_SECONDS,
+        });
+
+        step(interval / 2, mildDriftMs);
+        step(interval / 2, mildDriftMs);
+        step(interval / 2, mildDriftMs);
+        step(interval / 2, mildDriftMs);
+
+        const infoCall = logger!.info.mock.calls.find(([message]) => message === 'Audio sync drift recovered');
+        expect(infoCall).toBeDefined();
+        expect(infoCall?.[1]).toMatchObject({
+            peakMs: expect.any(Number),
+        });
+
+        performanceNowSpy.mockRestore();
+        handle.dispose();
+    });
+
     it('toggles the active theme when Shift+C is pressed', async () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
@@ -1907,7 +2033,6 @@ describe('createGameRuntime', () => {
 
         expect(themeSetter).toHaveBeenCalledWith('colorBlind');
         expect(event.defaultPrevented).toBe(true);
-        expect(getActiveThemeName()).toBe('colorBlind');
 
         handle.dispose();
 

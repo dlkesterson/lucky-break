@@ -100,7 +100,7 @@ import { createRuntimePowerups, type RuntimePowerups } from './powerups';
 import { createRuntimeInput, type RuntimeInput } from './input';
 import { createRuntimeDebug, type RuntimeDebug } from './debug';
 import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
-import type { GameplayRuntimeState } from './types';
+import type { GameplayRuntimeState, SyncDriftSample } from './types';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
 import { createRuntimeModifiers, type RuntimeModifiers } from './modifiers';
@@ -296,6 +296,64 @@ const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     const normalizedIndex = levelIndex + 1;
     const hashed = (baseSeed ^ Math.imul(normalizedIndex, LAYOUT_SEED_SALT)) >>> 0;
     return hashed === 0 ? 1 : hashed;
+};
+
+const SYNC_DRIFT_HISTORY_SECONDS = 6;
+const SYNC_DRIFT_HISTORY_MAX_SAMPLES = SYNC_DRIFT_HISTORY_SECONDS * 120;
+const SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS = 12;
+const SYNC_DRIFT_WARN_THRESHOLD_MS = 35;
+const SYNC_DRIFT_RECOVERY_THRESHOLD_MS = 12;
+
+const updateSyncDriftMetrics = (
+    state: Pick<
+        GameplayRuntimeState,
+        'syncDriftHistory' | 'syncDriftAverageMs' | 'syncDriftPeakMs' | 'syncDriftPeakRecordedAt'
+    >,
+    driftMs: number,
+    elapsedSeconds: number,
+): void => {
+    const safeElapsed = Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0;
+    const safeDrift = Number.isFinite(driftMs) ? driftMs : 0;
+    state.syncDriftHistory.push({
+        timestamp: safeElapsed,
+        drift: safeDrift,
+        magnitude: Math.abs(safeDrift),
+    } satisfies SyncDriftSample);
+
+    const cutoff = safeElapsed - SYNC_DRIFT_HISTORY_SECONDS;
+    while (state.syncDriftHistory.length > 0) {
+        const oldest = state.syncDriftHistory[0];
+        if (!oldest || oldest.timestamp >= cutoff) {
+            break;
+        }
+        state.syncDriftHistory.shift();
+    }
+
+    if (state.syncDriftHistory.length > SYNC_DRIFT_HISTORY_MAX_SAMPLES) {
+        state.syncDriftHistory.splice(0, state.syncDriftHistory.length - SYNC_DRIFT_HISTORY_MAX_SAMPLES);
+    }
+
+    if (state.syncDriftHistory.length === 0) {
+        state.syncDriftAverageMs = 0;
+        state.syncDriftPeakMs = 0;
+        state.syncDriftPeakRecordedAt = safeElapsed;
+        return;
+    }
+
+    let sum = 0;
+    let peak = 0;
+    let peakTimestamp = state.syncDriftHistory[state.syncDriftHistory.length - 1]?.timestamp ?? safeElapsed;
+    for (const sample of state.syncDriftHistory) {
+        sum += sample.drift;
+        if (sample.magnitude >= peak) {
+            peak = sample.magnitude;
+            peakTimestamp = sample.timestamp;
+        }
+    }
+
+    state.syncDriftAverageMs = sum / state.syncDriftHistory.length;
+    state.syncDriftPeakMs = peak;
+    state.syncDriftPeakRecordedAt = peakTimestamp;
 };
 
 const ENTROPY_COST_REROLL = Math.max(1, config.entropy.spend.rerollCost);
@@ -616,6 +674,10 @@ export const createRuntimeFacade = async ({
         frameTimestampMs: 0,
         audioVisualSkewSeconds: 0,
         syncDriftMs: 0,
+        syncDriftAverageMs: 0,
+        syncDriftPeakMs: 0,
+        syncDriftPeakRecordedAt: 0,
+        syncDriftHistory: [],
         ballGlowPulse: 0,
         paddleGlowPulse: 0,
         comboRingPulse: 0,
@@ -630,6 +692,66 @@ export const createRuntimeFacade = async ({
         ballRestitution: BASE_BALL_RESTITUTION,
         paddleBaseWidth: BASE_PADDLE_WIDTH * MODIFIER_PADDLE_WIDTH_RANGE.default,
         speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
+    };
+
+    let nextSyncDriftTelemetryLogAt = SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+    let syncDriftWarnActive = false;
+
+    const formatDriftValue = (value: number): number => {
+        if (!Number.isFinite(value)) {
+            return value;
+        }
+        return Number(value.toFixed(2));
+    };
+
+    const emitSyncDriftTelemetry = (elapsedSeconds: number): void => {
+        if (!hasPerformanceNow) {
+            return;
+        }
+
+        const sampleCount = runtimeState.syncDriftHistory.length;
+        if (sampleCount === 0) {
+            return;
+        }
+
+        if (elapsedSeconds >= nextSyncDriftTelemetryLogAt) {
+            performanceLogger.debug('Sync drift sample', {
+                elapsedSeconds: Number(elapsedSeconds.toFixed(3)),
+                currentMs: formatDriftValue(runtimeState.syncDriftMs),
+                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
+                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
+                peakRecordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
+                sampleWindowSeconds: SYNC_DRIFT_HISTORY_SECONDS,
+                sampleCount,
+            });
+            nextSyncDriftTelemetryLogAt = elapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+        }
+
+        const peakMagnitude = Math.abs(runtimeState.syncDriftPeakMs);
+        const averageMagnitude = Math.abs(runtimeState.syncDriftAverageMs);
+
+        if (!syncDriftWarnActive && peakMagnitude >= SYNC_DRIFT_WARN_THRESHOLD_MS) {
+            performanceLogger.warn('Audio sync drift above threshold', {
+                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
+                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
+                currentMs: formatDriftValue(runtimeState.syncDriftMs),
+                recordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
+                thresholdMs: SYNC_DRIFT_WARN_THRESHOLD_MS,
+            });
+            syncDriftWarnActive = true;
+        } else if (
+            syncDriftWarnActive &&
+            peakMagnitude <= SYNC_DRIFT_RECOVERY_THRESHOLD_MS &&
+            averageMagnitude <= SYNC_DRIFT_RECOVERY_THRESHOLD_MS
+        ) {
+            performanceLogger.info('Audio sync drift recovered', {
+                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
+                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
+                currentMs: formatDriftValue(runtimeState.syncDriftMs),
+                recordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
+            });
+            syncDriftWarnActive = false;
+        }
     };
 
     const LOW_FPS_THRESHOLD = 45;
@@ -2647,16 +2769,25 @@ export const createRuntimeFacade = async ({
 
     const runGameplayUpdate = (deltaSeconds: number): void => {
         const audioTimeSeconds = scheduler.now();
+        const nextElapsedSeconds = runtimeState.sessionElapsedSeconds + deltaSeconds;
         if (hasPerformanceNow) {
             const wallClockSeconds = performance.now() / 1000;
             runtimeState.audioVisualSkewSeconds = wallClockSeconds - audioTimeSeconds;
             runtimeState.syncDriftMs = runtimeState.audioVisualSkewSeconds * 1000;
+            updateSyncDriftMetrics(runtimeState, runtimeState.syncDriftMs, nextElapsedSeconds);
         } else {
             runtimeState.audioVisualSkewSeconds = 0;
             runtimeState.syncDriftMs = 0;
+            runtimeState.syncDriftAverageMs = 0;
+            runtimeState.syncDriftPeakMs = 0;
+            runtimeState.syncDriftPeakRecordedAt = nextElapsedSeconds;
+            runtimeState.syncDriftHistory.length = 0;
+            syncDriftWarnActive = false;
+            nextSyncDriftTelemetryLogAt = nextElapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
         }
 
-        runtimeState.sessionElapsedSeconds += deltaSeconds;
+        runtimeState.sessionElapsedSeconds = nextElapsedSeconds;
+        emitSyncDriftTelemetry(runtimeState.sessionElapsedSeconds);
         replayBuffer.markTime(runtimeState.sessionElapsedSeconds);
         runtimeState.frameTimestampMs = sessionNow();
 
@@ -2861,6 +2992,8 @@ export const createRuntimeFacade = async ({
             extraBalls: multiBallController.count(),
             extraBallCapacity: MULTI_BALL_CAPACITY,
             syncDriftMs: runtimeState.syncDriftMs,
+            syncDriftAverageMs: runtimeState.syncDriftAverageMs,
+            syncDriftPeakMs: runtimeState.syncDriftPeakMs,
         };
 
         runtimeState.lastPhysicsDebugState = physicsOverlayState;
@@ -3257,6 +3390,12 @@ export const createRuntimeFacade = async ({
         runtimeDebug?.resetVisibility();
         runtimeDebug?.updateOverlays({ input: null, physics: null });
         runtimeState.lastPhysicsDebugState = null;
+        runtimeState.syncDriftHistory.length = 0;
+        runtimeState.syncDriftAverageMs = 0;
+        runtimeState.syncDriftPeakMs = 0;
+        runtimeState.syncDriftPeakRecordedAt = runtimeState.sessionElapsedSeconds;
+        nextSyncDriftTelemetryLogAt = runtimeState.sessionElapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+        syncDriftWarnActive = false;
         dynamicPerformanceMode = false;
         accumulatedLowFpsMs = 0;
         accumulatedHighFpsMs = 0;
@@ -3362,4 +3501,10 @@ export const __internalGameRuntimeTesting = {
     intersectRayWithExpandedAabb,
     deriveLayoutSeed,
     clampMidiNote,
+    updateSyncDriftMetrics,
+    SYNC_DRIFT_HISTORY_SECONDS,
+    SYNC_DRIFT_HISTORY_MAX_SAMPLES,
+    SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS,
+    SYNC_DRIFT_WARN_THRESHOLD_MS,
+    SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
 };
