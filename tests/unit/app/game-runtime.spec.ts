@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { MetaUpgradeListener, MetaUpgradeLoadout, MetaUpgradeSnapshot } from 'app/meta-upgrades';
 
 const toneState = vi.hoisted(() => ({
     contextState: 'suspended' as 'suspended' | 'running',
@@ -14,6 +15,153 @@ const toneState = vi.hoisted(() => ({
     resumeMock: vi.fn(),
     transportStartMock: vi.fn(),
 }));
+
+const metaUpgradeState = vi.hoisted(() => {
+    const baseSnapshot: MetaUpgradeSnapshot = {
+        version: 1,
+        dustBalance: 0,
+        unlocked: {
+            visualPalettes: ['baseline'],
+            audioPalettes: ['baseline'],
+            traits: [],
+        },
+        equipped: {
+            visualPalette: 'baseline',
+            audioPalette: 'baseline',
+            traits: [],
+        },
+    };
+
+    const cloneSnapshot = (snapshot: MetaUpgradeSnapshot): MetaUpgradeSnapshot => ({
+        version: snapshot.version,
+        dustBalance: snapshot.dustBalance,
+        unlocked: {
+            visualPalettes: [...snapshot.unlocked.visualPalettes],
+            audioPalettes: [...snapshot.unlocked.audioPalettes],
+            traits: [...snapshot.unlocked.traits],
+        },
+        equipped: {
+            visualPalette: snapshot.equipped.visualPalette,
+            audioPalette: snapshot.equipped.audioPalette,
+            traits: [...snapshot.equipped.traits],
+        },
+    });
+
+    const baseLoadout: MetaUpgradeLoadout = {
+        visualPalette: {
+            id: 'baseline',
+            label: 'Baseline Prism',
+            description: 'Default palette for tests',
+            cost: 0,
+            previewAccent: '#FFFFFF',
+            ball: {
+                core: '#FFFFFF',
+                aura: '#FFFFFF',
+                highlight: '#FFFFFF',
+                baseAlpha: 0.78,
+                rimAlpha: 0.38,
+                innerAlpha: 0.32,
+                innerScale: 0.5,
+            },
+            paddle: {
+                gradient: ['#FFFFFF', '#DDDDDD'],
+                accentColor: '#FFFFFF',
+            },
+            accents: {
+                combo: '#FFFFFF',
+                powerUp: '#FFFFFF',
+                background: ['#101010', '#303030'],
+            },
+        },
+        audioPalette: {
+            id: 'baseline',
+            label: 'Baseline Ensemble',
+            description: 'Default audio palette for tests',
+            cost: 0,
+            config: {},
+        },
+        traitEffects: {
+            extraLives: 0,
+            comboDecayMultiplier: 1,
+        },
+    };
+
+    return {
+        baseSnapshot,
+        snapshot: cloneSnapshot(baseSnapshot),
+        baseLoadout,
+        loadout: baseLoadout,
+        listeners: new Set<MetaUpgradeListener>(),
+        manager: null as any,
+        cloneSnapshot,
+    };
+});
+
+vi.mock('app/metaprogression', () => {
+    const state = metaUpgradeState;
+
+    const manager = {
+        getLoadout: vi.fn(() => state.loadout),
+        getCatalog: vi.fn(() => ({
+            visualPalettes: [state.loadout.visualPalette],
+            audioPalettes: [state.loadout.audioPalette],
+            traits: [],
+        })),
+        getSnapshot: vi.fn(() => state.snapshot),
+        grantDust: vi.fn((amount: number) => {
+            if (Number.isFinite(amount) && amount > 0) {
+                state.snapshot = {
+                    ...state.snapshot,
+                    dustBalance: state.snapshot.dustBalance + Math.floor(amount),
+                    unlocked: {
+                        visualPalettes: [...state.snapshot.unlocked.visualPalettes],
+                        audioPalettes: [...state.snapshot.unlocked.audioPalettes],
+                        traits: [...state.snapshot.unlocked.traits],
+                    },
+                    equipped: {
+                        visualPalette: state.snapshot.equipped.visualPalette,
+                        audioPalette: state.snapshot.equipped.audioPalette,
+                        traits: [...state.snapshot.equipped.traits],
+                    },
+                } satisfies MetaUpgradeSnapshot;
+            }
+            const snapshot = state.cloneSnapshot(state.snapshot);
+            state.snapshot = snapshot;
+            for (const listener of state.listeners) {
+                listener(state.cloneSnapshot(snapshot));
+            }
+            return {
+                dustBalance: snapshot.dustBalance,
+                snapshot: state.cloneSnapshot(snapshot),
+            };
+        }),
+        purchase: vi.fn(() => ({ success: false, snapshot: state.cloneSnapshot(state.snapshot) })),
+        equipVisualPalette: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
+        equipAudioPalette: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
+        toggleTrait: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
+        subscribe: vi.fn((listener: MetaUpgradeListener) => {
+            state.listeners.add(listener);
+            listener(state.cloneSnapshot(state.snapshot));
+            return () => {
+                state.listeners.delete(listener);
+            };
+        }),
+    };
+
+    state.manager = manager;
+
+    return {
+        getMetaUpgradeManager: () => manager,
+        setMetaUpgradeManager: vi.fn(),
+    };
+});
+
+const prestigeModule = vi.hoisted(() => ({
+    computePrestigeDust: vi.fn(() => 0),
+}));
+
+vi.mock('util/prestige', () => prestigeModule);
+
 
 const createStageStub = () => {
     const makeLifecycleContainer = () => ({
@@ -197,6 +345,7 @@ const createGameInitializerMock = vi.hoisted(() =>
         const stage = createStageStub();
         const dispose = vi.fn();
         const renderStageSoon = vi.fn();
+        const bus = { publish: vi.fn() };
         const musicDirector = {
             setState: vi.fn(),
             getState: vi.fn(() => null),
@@ -223,11 +372,12 @@ const createGameInitializerMock = vi.hoisted(() =>
             musicDirector,
             renderStageSoon,
             scheduler,
+            bus,
             options,
         });
         return {
             stage,
-            bus: { publish: vi.fn() },
+            bus,
             scheduler,
             audioState$: { next: vi.fn() },
             musicDirector,
@@ -1625,6 +1775,19 @@ describe('createGameRuntime', () => {
         highScoreModule.recordHighScore.mockReturnValue({ accepted: false, position: null, entries: [] });
         matterEventsState.on.mockClear();
 
+        prestigeModule.computePrestigeDust.mockReset();
+        prestigeModule.computePrestigeDust.mockReturnValue(0);
+
+        metaUpgradeState.snapshot = metaUpgradeState.cloneSnapshot(metaUpgradeState.baseSnapshot);
+        metaUpgradeState.loadout = metaUpgradeState.baseLoadout;
+        metaUpgradeState.listeners.clear();
+        if (metaUpgradeState.manager) {
+            Object.values(metaUpgradeState.manager).forEach((possibleMock) => {
+                const candidate = possibleMock as { mockClear?: () => void };
+                candidate.mockClear?.();
+            });
+        }
+
         const themeSetter = setActiveTheme as unknown as Mock;
         themeSetter.mockClear();
         setActiveTheme('default');
@@ -2078,6 +2241,85 @@ describe('createGameRuntime', () => {
         const provided = mainMenuOptions?.highScoresProvider?.();
         expect(highScoreModule.getHighScores).toHaveBeenCalledTimes(1);
         expect(provided).toEqual(sampleScores);
+    });
+
+    it('grants prestige dust and emits analytics when the run ends', async () => {
+        prestigeModule.computePrestigeDust.mockReturnValueOnce(42);
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        await createGameRuntime({
+            container,
+            random: makeRandomManager(),
+            replayBuffer: makeReplayBuffer(),
+        });
+
+        const initializerInstance = initializerState.instances[0] as
+            | {
+                stage: { push: Mock };
+                bus: { publish: Mock };
+            }
+            | undefined;
+        expect(initializerInstance).toBeDefined();
+        const stage = initializerInstance!.stage;
+        const bus = initializerInstance!.bus;
+
+        const manager = metaUpgradeState.manager as { grantDust: Mock } | null;
+        expect(manager?.grantDust).toBeDefined();
+
+        const collisionRegistration = matterEventsState.on.mock.calls.find((call) => call[1] === 'collisionStart');
+        expect(collisionRegistration).toBeDefined();
+        interface CollisionPair {
+            bodyA: { label: string; velocity: { x: number; y: number }; position: { x: number; y: number } };
+            bodyB: { label: string; velocity: { x: number; y: number }; position: { x: number; y: number } };
+        }
+
+        interface CollisionEvent {
+            pairs: CollisionPair[];
+        }
+
+        const collisionHandler = collisionRegistration?.[2] as ((this: void, event: CollisionEvent) => void) | undefined;
+        expect(collisionHandler).toBeInstanceOf(Function);
+
+        const ballBody = { label: 'ball', velocity: { x: 0, y: 10 }, position: { x: 0, y: 0 } };
+        const wallBody = { label: 'wall-bottom', velocity: { x: 0, y: 0 }, position: { x: 0, y: 0 } };
+
+        for (let i = 0; i < 3; i += 1) {
+            collisionHandler?.call(undefined, { pairs: [{ bodyA: ballBody, bodyB: wallBody }] });
+        }
+
+        expect(prestigeModule.computePrestigeDust).toHaveBeenCalledTimes(1);
+        expect(prestigeModule.computePrestigeDust).toHaveBeenCalledWith(
+            expect.objectContaining({
+                score: expect.any(Number),
+                roundsCompleted: expect.any(Number),
+                highestCombo: expect.any(Number),
+                coinsBanked: expect.any(Number),
+            }),
+            expect.any(Object),
+        );
+
+        expect(manager!.grantDust).toHaveBeenCalledTimes(1);
+        expect(manager!.grantDust).toHaveBeenCalledWith(42);
+
+        expect(bus.publish).toHaveBeenCalledWith(
+            'PrestigeConversion',
+            expect.objectContaining({
+                sessionId: expect.any(String),
+                totalScore: expect.any(Number),
+                roundsCompleted: expect.any(Number),
+                highestCombo: expect.any(Number),
+                coins: expect.any(Number),
+                dustAwarded: 42,
+                timestamp: expect.any(Number),
+            }),
+        );
+
+        expect(stage.push).toHaveBeenCalledWith(
+            'game-over',
+            expect.objectContaining({ dustAwarded: 42 }),
+        );
     });
 
     it('records a high score submission when the game ends', async () => {

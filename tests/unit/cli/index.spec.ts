@@ -62,9 +62,18 @@ describe('createCli', () => {
                 livesLost: 1,
                 averageFps: 120,
                 bricksPerSecond: 0.5,
+                hazardContacts: 4,
+                hazardContactsByType: {
+                    'gravity-well': 2,
+                    'moving-bumper': 1,
+                    portal: 1,
+                },
+                movingBumperImpacts: 1,
+                portalTransports: 1,
             },
             volleyStats: { longestVolley: 12, averageImpactSpeed: 7.5 },
             snapshot: {} as SimulationResult['snapshot'],
+            hazards: [],
         };
         vi.mocked(runHeadlessSimulation).mockResolvedValue(result);
         setArgv('simulate', '--seed', '24', '--round', '5', '--duration', '90');
@@ -114,6 +123,17 @@ describe('createCli', () => {
                 bestScore: 2000,
                 averageBricksPerSecond: 0.55,
                 averageLongestVolley: 18,
+                averageBricksBroken: 45,
+                averageLivesLost: 0.5,
+                averageHazardContacts: 1.5,
+                hazardContactBreakdown: {
+                    'gravity-well': 0.8,
+                    'moving-bumper': 0.5,
+                    portal: 0.2,
+                },
+                averagePortalTransports: 0.3,
+                brickClearStdDev: 2.1,
+                deterministicCheck: true,
             },
             runs: [],
         };

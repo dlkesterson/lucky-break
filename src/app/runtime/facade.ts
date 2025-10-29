@@ -46,6 +46,7 @@ import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { getMomentumMetrics } from 'util/scoring';
 import { calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
+import { computePrestigeDust } from 'util/prestige';
 import type { Ball } from 'physics/contracts';
 import type { Paddle } from 'render/contracts';
 import {
@@ -376,6 +377,8 @@ const ENTROPY_ACTION_COSTS: Record<EntropyActionType, number> = {
     shield: ENTROPY_COST_SHIELD,
     bailout: ENTROPY_COST_BAILOUT,
 } as const;
+
+const PRESTIGE_CONFIG = config.prestige;
 
 const ENTROPY_ACTION_BINDINGS: Record<EntropyActionType, { key: string; hotkey: string; label: string }> = {
     reroll: { key: 'KeyR', hotkey: 'R', label: 'Reroll' },
@@ -2736,6 +2739,10 @@ export const createRuntimeFacade = async ({
         powerups.reset();
         musicDirector.setEnabled(false);
 
+        const sessionSnapshot = session.snapshot();
+        const roundsCompleted = Math.max(1, roundMachine.getCurrentLevelIndex() + 1);
+        const highestCombo = roundMachine.getRunHighestCombo();
+
         const sessionUnlocks = achievements.recordSessionSummary({ highestCombo: roundMachine.getRunHighestCombo() });
         if (sessionUnlocks.length > 0) {
             roundMachine.enqueueAchievementUnlocks(sessionUnlocks);
@@ -2744,14 +2751,47 @@ export const createRuntimeFacade = async ({
 
         const achievementsToShow = roundMachine.consumeAchievementNotifications();
         recordHighScore(scoringState.score, {
-            round: roundMachine.getCurrentLevelIndex() + 1,
+            round: roundsCompleted,
             achievedAt: Date.now(),
             minScore: 1,
         });
 
+        const dustAwarded = computePrestigeDust(
+            {
+                score: scoringState.score,
+                roundsCompleted,
+                highestCombo,
+                coinsBanked: sessionSnapshot.coins,
+            },
+            PRESTIGE_CONFIG,
+        );
+
+        if (dustAwarded > 0) {
+            const grantResult = metaUpgrades.grantDust(dustAwarded);
+            runtimeLogger.info('Prestige dust granted', {
+                dustAwarded,
+                dustBalance: grantResult.dustBalance,
+                roundsCompleted,
+                highestCombo,
+                score: scoringState.score,
+                coins: sessionSnapshot.coins,
+            });
+
+            bus.publish('PrestigeConversion', {
+                sessionId: sessionSnapshot.sessionId,
+                totalScore: scoringState.score,
+                roundsCompleted,
+                highestCombo,
+                coins: sessionSnapshot.coins,
+                dustAwarded,
+                timestamp: Date.now(),
+            });
+        }
+
         void stage.push('game-over', {
             score: scoringState.score,
             achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,
+            dustAwarded: dustAwarded > 0 ? dustAwarded : undefined,
         })
             .then(() => {
                 renderStageSoon();

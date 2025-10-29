@@ -44,6 +44,7 @@ export interface SimulationResult {
     readonly metrics: HeadlessSimulationResult['metrics'];
     readonly volleyStats: HeadlessSimulationResult['volley'];
     readonly snapshot: HeadlessSimulationResult['snapshot'];
+    readonly hazards: HeadlessSimulationResult['hazards'];
     readonly telemetry?: {
         readonly events: readonly EventEnvelope<LuckyBreakEventName>[];
     };
@@ -86,6 +87,7 @@ const mapResult = (
     metrics: source.metrics,
     volleyStats: source.volley,
     snapshot: source.snapshot,
+    hazards: source.hazards,
     telemetry: telemetryRequested
         ? {
             events: source.events,

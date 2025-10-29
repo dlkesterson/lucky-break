@@ -448,4 +448,20 @@ describe('scene interaction lifecycles', () => {
             action: 'resume',
         });
     });
+
+    it('shows a dust summary when certainty dust is awarded', () => {
+        const { context, getLastAdded } = createSceneHarness();
+        const scene = createGameOverScene(context, {
+            onRestart: vi.fn(),
+        });
+
+        void scene.init({ score: 1200, dustAwarded: 7 });
+
+        const container = getLastAdded();
+        expect(container).not.toBeNull();
+        const dustText = container?.children.find(
+            (child): child is Text => child instanceof Text && child.text.includes('Certainty Dust Banked'),
+        );
+        expect(dustText?.text).toContain('7');
+    });
 });

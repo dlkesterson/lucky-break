@@ -64,6 +64,15 @@ interface EntropySpendConfig {
     readonly bailoutCost: number;
 }
 
+interface PrestigeConfig {
+    readonly scoreDivisor: number;
+    readonly roundBonus: number;
+    readonly comboDivisor: number;
+    readonly coinDivisor: number;
+    readonly minimumDust: number;
+    readonly maximumDust: number;
+}
+
 export type RewardKey =
     | 'sticky-paddle'
     | 'double-points'
@@ -221,6 +230,7 @@ export interface GameConfig {
         readonly paddleWidth: ModifierRange;
         readonly speedGovernor: ModifierRange;
     };
+    readonly prestige: PrestigeConfig;
 }
 
 const rewardDefinitions = {
@@ -383,6 +393,14 @@ export const gameConfig = {
         restitution: { min: 0.85, max: 1.15, default: 0.98, step: 0.01 },
         paddleWidth: { min: 0.85, max: 1.35, default: 1, step: 0.05 },
         speedGovernor: { min: 0.75, max: 1.35, default: 1, step: 0.05 },
+    },
+    prestige: {
+        scoreDivisor: 15000,
+        roundBonus: 2,
+        comboDivisor: 40,
+        coinDivisor: 275,
+        minimumDust: 2,
+        maximumDust: 125,
     },
 } as const satisfies GameConfig;
 

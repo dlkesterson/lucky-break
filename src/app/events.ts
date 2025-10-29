@@ -113,6 +113,16 @@ export interface RewardWheelInteractionPayload {
     readonly weights: readonly RewardWheelWeightSnapshot[];
 }
 
+export interface PrestigeConversionPayload {
+    readonly sessionId: string;
+    readonly totalScore: number;
+    readonly roundsCompleted: number;
+    readonly highestCombo: number;
+    readonly coins: number;
+    readonly dustAwarded: number;
+    readonly timestamp?: number;
+}
+
 export interface ComboMilestonePayload {
     readonly sessionId: string;
     readonly combo: number;
@@ -150,6 +160,7 @@ export interface LuckyBreakEventMap {
     readonly LaserHit: LaserHitPayload;
     readonly EntropyAction: EntropyActionPayload;
     readonly RewardWheelInteraction: RewardWheelInteractionPayload;
+    readonly PrestigeConversion: PrestigeConversionPayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;

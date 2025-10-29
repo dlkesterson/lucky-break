@@ -23,11 +23,20 @@ const EXPECTED: SimulationResult = {
         livesLost: 0,
         averageFps: 120.01,
         bricksPerSecond: 0.008,
+        hazardContacts: 0,
+        hazardContactsByType: {
+            'gravity-well': 0,
+            'moving-bumper': 0,
+            portal: 0,
+        },
+        movingBumperImpacts: 0,
+        portalTransports: 0,
     },
     volleyStats: {
         longestVolley: 1,
         averageImpactSpeed: 4,
     },
+    hazards: [],
     snapshot: {
         sessionId: 'sim-17-r2',
         status: 'active',

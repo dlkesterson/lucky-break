@@ -65,11 +65,20 @@ describe('simulate CLI command', () => {
             metrics: {
                 bricksBroken: expect.any(Number),
                 averageFps: expect.any(Number),
+                hazardContacts: expect.any(Number),
+                hazardContactsByType: {
+                    'gravity-well': expect.any(Number),
+                    'moving-bumper': expect.any(Number),
+                    portal: expect.any(Number),
+                },
+                movingBumperImpacts: expect.any(Number),
+                portalTransports: expect.any(Number),
             },
             volleyStats: {
                 longestVolley: expect.any(Number),
                 averageImpactSpeed: expect.any(Number),
             },
+            hazards: expect.any(Array),
             telemetry: {
                 events: expect.any(Array),
             },

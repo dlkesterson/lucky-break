@@ -8,6 +8,7 @@ import { GameTheme } from 'render/theme';
 export interface GameOverPayload {
     readonly score: number;
     readonly achievements?: readonly AchievementUnlock[];
+    readonly dustAwarded?: number;
 }
 
 export interface GameOverSceneOptions {
@@ -29,6 +30,7 @@ export const createGameOverScene = (
     let container: Container | null = null;
     let promptLabel: Text | null = null;
     let scoreLabel: Text | null = null;
+    let dustLabel: Text | null = null;
     let elapsed = 0;
 
     const emitSceneEvent = (action: UiSceneTransitionAction) => {
@@ -120,11 +122,28 @@ export const createGameOverScene = (
             scoreLabel.position.set(width / 2, panelY + panelHeight * 0.48);
 
             let contentY = scoreLabel.position.y + 48;
-            const achievements = effectivePayload.achievements ?? [];
             if (!container) {
                 throw new Error('GameOverScene container not initialized');
             }
             const host = container;
+            const dustAwarded = Math.max(0, Math.trunc(effectivePayload.dustAwarded ?? 0));
+            if (dustAwarded > 0) {
+                dustLabel = new Text({
+                    text: `Certainty Dust Banked: ${dustAwarded}`,
+                    style: {
+                        fill: hexToNumber(GameTheme.accents.combo),
+                        fontFamily: GameTheme.monoFont,
+                        fontSize: 26,
+                        align: 'center',
+                    },
+                });
+                dustLabel.anchor.set(0.5);
+                dustLabel.position.set(width / 2, contentY);
+                host.addChild(dustLabel);
+                contentY += 44;
+            }
+
+            const achievements = effectivePayload.achievements ?? [];
             if (achievements.length > 0) {
                 const heading = new Text({
                     text: 'Achievements Unlocked',
@@ -198,6 +217,7 @@ export const createGameOverScene = (
             container = null;
             promptLabel = null;
             scoreLabel = null;
+            dustLabel = null;
             pushIdleAudioState();
             emitSceneEvent('exit');
             context.renderStageSoon();

@@ -3,6 +3,12 @@ import type { IEventCollision, MatterBody, MatterEngine } from 'physics/matter';
 import { createGameSessionManager, type GameSessionManager } from 'app/state';
 import { createEventBus, type EventEnvelope, type LuckyBreakEventBus, type LuckyBreakEventName } from 'app/events';
 import { createPhysicsWorld, type PhysicsWorldHandle } from 'physics/world';
+import {
+    createGravityWellHazard,
+    createMovingBumperHazard,
+    createPortalHazard,
+    type HazardType,
+} from 'physics/hazards';
 import { gameConfig } from 'config/game';
 import { getLevelSpec, getLoopScalingInfo, getPresetLevelCount, remixLevel, generateLevelLayout } from 'util/levels';
 import { createRandomManager, type RandomManager } from 'util/random';
@@ -35,6 +41,20 @@ interface BrickState {
     readonly col: number;
 }
 
+interface HazardDescriptor {
+    readonly id: string;
+    readonly type: HazardType;
+    readonly position: { readonly x: number; readonly y: number };
+    readonly radius: number;
+    readonly strength?: number;
+    readonly impulse?: number;
+    readonly direction?: { readonly x: number; readonly y: number };
+    readonly exit?: { readonly x: number; readonly y: number };
+    readonly cooldownSeconds?: number;
+}
+
+type HazardLookup = Map<number, HazardDescriptor>;
+
 interface ReplayCursor {
     readonly events: readonly ReplayEvent[];
     index: number;
@@ -51,6 +71,10 @@ interface HeadlessMetrics {
     speedTotal: number;
     currentVolley: number;
     longestVolley: number;
+    hazardContacts: number;
+    hazardContactsByType: Record<HazardType, number>;
+    movingBumperImpacts: number;
+    portalTransports: number;
 }
 
 export interface HeadlessSimulationOptions {
@@ -74,6 +98,10 @@ export interface HeadlessSimulationResult {
         readonly livesLost: number;
         readonly averageFps: number;
         readonly bricksPerSecond: number;
+        readonly hazardContacts: number;
+        readonly hazardContactsByType: Record<HazardType, number>;
+        readonly movingBumperImpacts: number;
+        readonly portalTransports: number;
     };
     readonly volley: {
         readonly longestVolley: number;
@@ -82,6 +110,7 @@ export interface HeadlessSimulationResult {
     readonly events: readonly EventEnvelope<LuckyBreakEventName>[];
     readonly score: number;
     readonly snapshot: ReturnType<GameSessionManager['snapshot']>;
+    readonly hazards: readonly HazardDescriptor[];
 }
 
 const collectEvents = (bus: LuckyBreakEventBus, enabled: boolean): (() => EventEnvelope<LuckyBreakEventName>[]) => {
@@ -182,6 +211,8 @@ const advanceReplay = (cursor: ReplayCursor, elapsedSeconds: number, random: Ran
 const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: number): {
     bricks: Map<number, BrickState>;
     total: number;
+    hazards: readonly HazardDescriptor[];
+    hazardLookup: HazardLookup;
 } => {
     const levelIndex = Math.max(0, round - 1);
     const presetCount = getPresetLevelCount();
@@ -204,12 +235,20 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
     );
 
     const bricks = new Map<number, BrickState>();
+    const hazardLookup: HazardLookup = new Map();
+    const hazardSummaries: HazardDescriptor[] = [];
+    const brickWidth = config.bricks.size.width;
+    const brickHeight = config.bricks.size.height;
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
 
     layout.bricks.forEach((brickSpec) => {
         const brickForm = brickSpec.form ?? 'rectangle';
         const body = physics.factory.brick({
             position: { x: brickSpec.x, y: brickSpec.y },
-            size: { width: config.bricks.size.width, height: config.bricks.size.height },
+            size: { width: brickWidth, height: brickHeight },
             label: 'brick',
             isSensor: brickSpec.isSensor ?? false,
             shape: brickForm,
@@ -222,11 +261,142 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
             row: brickSpec.row,
             col: brickSpec.col,
         });
+
+        if (brickSpec.breakable !== false) {
+            const halfWidth = brickWidth / 2;
+            const halfHeight = brickHeight / 2;
+            minX = Math.min(minX, brickSpec.x - halfWidth);
+            maxX = Math.max(maxX, brickSpec.x + halfWidth);
+            minY = Math.min(minY, brickSpec.y - halfHeight);
+            maxY = Math.max(maxY, brickSpec.y + halfHeight);
+        }
     });
+
+    const registerHazard = (descriptor: HazardDescriptor, body: PhysicsBody | undefined) => {
+        hazardSummaries.push(descriptor);
+        if (body) {
+            hazardLookup.set(body.id, descriptor);
+        }
+    };
+
+    const layoutHasBounds =
+        layout.breakableCount > 0 &&
+        Number.isFinite(minX) &&
+        Number.isFinite(maxX) &&
+        Number.isFinite(minY) &&
+        Number.isFinite(maxY);
+
+    if (layoutHasBounds) {
+        const layoutWidth = Math.max(0, maxX - minX);
+        const layoutHeight = Math.max(0, maxY - minY);
+
+        if (loopCount >= 1 && (layoutWidth > 0 || layoutHeight > 0)) {
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const baseRadius = Math.max(layoutWidth, layoutHeight) * 0.35;
+            const minRadius = Math.max(brickWidth, brickHeight) * 2.5;
+            const maxRadius = Math.max(config.playfield.width, Math.max(brickWidth, brickHeight) * 10) * 0.45;
+            const radius = Math.max(minRadius, Math.min(maxRadius, baseRadius));
+            const strength = 0.0012 + loopCount * 0.00035;
+
+            const gravityWell = createGravityWellHazard({
+                id: `gravity-well-${levelIndex}`,
+                position: { x: centerX, y: centerY },
+                radius,
+                strength,
+                falloff: 'linear',
+            });
+
+            physics.addHazard(gravityWell);
+            registerHazard(
+                {
+                    id: gravityWell.id,
+                    type: 'gravity-well',
+                    position: gravityWell.position,
+                    radius: gravityWell.radius,
+                    strength: gravityWell.strength,
+                },
+                gravityWell.body,
+            );
+        }
+
+        if (loopCount >= 2 && layoutWidth > 120) {
+            const bumperRadius = Math.max(brickWidth, brickHeight) * 0.6;
+            const bumperPadding = Math.max(bumperRadius + 24, brickWidth * 0.75);
+            const travelStartX = minX + bumperPadding;
+            const travelEndX = maxX - bumperPadding;
+
+            if (travelEndX - travelStartX >= bumperRadius * 0.5) {
+                const centerY = (minY + maxY) / 2;
+                const descriptorDirection = { x: 0, y: 0 };
+
+                const movingBumper = createMovingBumperHazard({
+                    id: `moving-bumper-${levelIndex}`,
+                    start: { x: travelStartX, y: centerY },
+                    end: { x: travelEndX, y: centerY },
+                    radius: bumperRadius,
+                    speed: Math.max(80, layoutWidth / 2),
+                    impulse: 4 + loopCount * 0.6,
+                    onPositionChange: (_pos, direction) => {
+                        descriptorDirection.x = direction.x;
+                        descriptorDirection.y = direction.y;
+                    },
+                });
+
+                descriptorDirection.x = movingBumper.direction.x;
+                descriptorDirection.y = movingBumper.direction.y;
+
+                physics.addHazard(movingBumper);
+                registerHazard(
+                    {
+                        id: movingBumper.id,
+                        type: 'moving-bumper',
+                        position: movingBumper.position,
+                        radius: movingBumper.radius,
+                        impulse: movingBumper.impulse,
+                        direction: descriptorDirection,
+                    },
+                    movingBumper.body,
+                );
+            }
+        }
+
+        if (loopCount >= 3 && layoutWidth > 100 && layoutHeight > 80) {
+            const portalRadius = Math.max(brickWidth, brickHeight) * 0.8;
+            const centerX = (minX + maxX) / 2;
+            const entryY = Math.min(maxY - portalRadius, minY + layoutHeight * 0.4);
+            const exitYBase = Math.max(minY - portalRadius * 2, portalRadius + 40);
+            const exitY = Math.min(config.playfield.height - portalRadius - 40, Math.max(exitYBase, maxY + portalRadius * 2));
+            const portalExit = { x: centerX, y: exitY };
+
+            const portalHazard = createPortalHazard({
+                id: `portal-${levelIndex}`,
+                entry: { x: centerX, y: entryY },
+                exit: portalExit,
+                radius: portalRadius,
+                cooldownSeconds: 0.45,
+            });
+
+            physics.addHazard(portalHazard);
+            registerHazard(
+                {
+                    id: portalHazard.id,
+                    type: 'portal',
+                    position: portalHazard.position,
+                    radius: portalHazard.radius,
+                    exit: portalHazard.exit,
+                    cooldownSeconds: portalHazard.cooldownSeconds,
+                },
+                portalHazard.body,
+            );
+        }
+    }
 
     return {
         bricks,
         total: layout.breakableCount,
+        hazards: hazardSummaries,
+        hazardLookup,
     };
 };
 
@@ -282,7 +452,7 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         random.setSeed(replaySeed!);
     }
 
-    const { bricks, total } = setupBricks(physics, random, options.round);
+    const { bricks, total, hazards: hazardSummaries, hazardLookup } = setupBricks(physics, random, options.round);
     session.startRound({ breakableBricks: total });
 
     const scoring = createScoring();
@@ -298,8 +468,17 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         speedTotal: 0,
         currentVolley: 0,
         longestVolley: 0,
+        hazardContacts: 0,
+        hazardContactsByType: {
+            'gravity-well': 0,
+            'moving-bumper': 0,
+            portal: 0,
+        },
+        movingBumperImpacts: 0,
+        portalTransports: 0,
     };
 
+    const portalCooldowns = new Map<string, number>();
     const replayCursor = createReplayCursor(options.replay);
     const paddleTargetState = { x: paddle.position.x };
 
@@ -370,6 +549,8 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
             const resolveBall = () => (bodyA.label === 'ball' ? bodyA : bodyB);
             const resolveBrick = () => (bodyA.label === 'brick' ? bodyA : bodyB);
             const resolveWall = () => (bodyA.label.startsWith('wall-') ? bodyA : bodyB);
+            const resolveHazard = () => (bodyA.label.startsWith('hazard-') ? bodyA : bodyB);
+            const isHazardLabel = (label: string) => label.startsWith('hazard-');
 
             if ((bodyA.label === 'ball' && bodyB.label === 'brick') || (bodyB.label === 'ball' && bodyA.label === 'brick')) {
                 const brickBody = resolveBrick();
@@ -408,6 +589,68 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
                     type: 'wall-hit',
                     speed: MatterVector.magnitude(resolveBall().velocity),
                 });
+                continue;
+            }
+
+            if (
+                (bodyA.label === 'ball' && isHazardLabel(bodyB.label)) ||
+                (bodyB.label === 'ball' && isHazardLabel(bodyA.label))
+            ) {
+                const hazardBody = resolveHazard();
+                const descriptor = hazardLookup.get(hazardBody.id);
+                if (!descriptor) {
+                    continue;
+                }
+
+                metrics.hazardContacts += 1;
+                metrics.hazardContactsByType[descriptor.type] =
+                    (metrics.hazardContactsByType[descriptor.type] ?? 0) + 1;
+
+                if (descriptor.type === 'moving-bumper') {
+                    const ballBody = resolveBall();
+                    const offsetX = ballBody.position.x - descriptor.position.x;
+                    const offsetY = ballBody.position.y - descriptor.position.y;
+                    const distance = Math.hypot(offsetX, offsetY);
+                    const direction = distance > 0 && Number.isFinite(distance)
+                        ? { x: offsetX / distance, y: offsetY / distance }
+                        : descriptor.direction ?? { x: 0, y: -1 };
+                    const impulse = descriptor.impulse ?? 0;
+                    if (impulse > 0) {
+                        metrics.movingBumperImpacts += 1;
+                        Body.setVelocity(ballBody, {
+                            x: ballBody.velocity.x + direction.x * impulse,
+                            y: ballBody.velocity.y + direction.y * impulse,
+                        });
+                    }
+                } else if (descriptor.type === 'portal' && descriptor.exit) {
+                    const ballBody = resolveBall();
+                    const nowMs = elapsedMs;
+                    const cooldownMs = Math.max(0, (descriptor.cooldownSeconds ?? 0) * 1000);
+                    const lastTrigger = portalCooldowns.get(descriptor.id) ?? Number.NEGATIVE_INFINITY;
+                    if (nowMs - lastTrigger >= cooldownMs) {
+                        portalCooldowns.set(descriptor.id, nowMs);
+                        const travelVector = {
+                            x: descriptor.exit.x - descriptor.position.x,
+                            y: descriptor.exit.y - descriptor.position.y,
+                        };
+                        const travelLength = Math.hypot(travelVector.x, travelVector.y);
+                        const direction = travelLength > 0 && Number.isFinite(travelLength)
+                            ? { x: travelVector.x / travelLength, y: travelVector.y / travelLength }
+                            : { x: 0, y: -1 };
+                        const safeOffset = Math.max(BALL_RADIUS * 1.75, descriptor.radius * 0.65 + 8);
+                        Body.setPosition(ballBody, {
+                            x: descriptor.exit.x + direction.x * safeOffset,
+                            y: descriptor.exit.y + direction.y * safeOffset,
+                        });
+                        Body.setVelocity(ballBody, {
+                            x: ballBody.velocity.x * 0.85 + direction.x * 2.2,
+                            y: ballBody.velocity.y * 0.85 + direction.y * 2.2,
+                        });
+                        metrics.portalTransports += 1;
+                    }
+                }
+
+                continue;
             }
         }
     };
@@ -551,6 +794,14 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
             livesLost: metrics.livesLost,
             averageFps: Number(averageFps.toFixed(2)),
             bricksPerSecond: Number(bricksPerSecond.toFixed(3)),
+            hazardContacts: metrics.hazardContacts,
+            hazardContactsByType: {
+                'gravity-well': metrics.hazardContactsByType['gravity-well'] ?? 0,
+                'moving-bumper': metrics.hazardContactsByType['moving-bumper'] ?? 0,
+                portal: metrics.hazardContactsByType.portal ?? 0,
+            },
+            movingBumperImpacts: metrics.movingBumperImpacts,
+            portalTransports: metrics.portalTransports,
         },
         volley: {
             longestVolley: metrics.longestVolley,
@@ -559,5 +810,6 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         events,
         score: snapshot.score,
         snapshot,
+        hazards: hazardSummaries,
     };
 };

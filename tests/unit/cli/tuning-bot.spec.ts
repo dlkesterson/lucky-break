@@ -23,9 +23,18 @@ const createResult = (seed: number, score: number, bricksPerSecond: number, long
         livesLost: 1,
         averageFps: 120,
         bricksPerSecond,
+        hazardContacts: 0,
+        hazardContactsByType: {
+            'gravity-well': 0,
+            'moving-bumper': 0,
+            portal: 0,
+        },
+        movingBumperImpacts: 0,
+        portalTransports: 0,
     },
     volleyStats: { longestVolley, averageImpactSpeed: 7.5 },
     snapshot: {} as SimulationResult['snapshot'],
+    hazards: [],
 });
 
 describe('runTuningBot', () => {
@@ -44,20 +53,52 @@ describe('runTuningBot', () => {
             durationSec: 60,
         });
 
-        expect(runHeadlessSimulation).toHaveBeenCalledTimes(3);
-        expect(runHeadlessSimulation).toHaveBeenCalledWith({
+        expect(runHeadlessSimulation).toHaveBeenCalledTimes(4);
+        expect(runHeadlessSimulation).toHaveBeenNthCalledWith(1, {
+            mode: 'simulate',
+            seed: 1,
+            round: 7,
+            durationSec: 60,
+            cheats: undefined,
+        });
+        expect(runHeadlessSimulation).toHaveBeenNthCalledWith(2, {
+            mode: 'simulate',
+            seed: 2,
+            round: 7,
+            durationSec: 60,
+            cheats: undefined,
+        });
+        expect(runHeadlessSimulation).toHaveBeenNthCalledWith(3, {
             mode: 'simulate',
             seed: 3,
             round: 7,
             durationSec: 60,
             cheats: undefined,
         });
-        expect(result.summary).toEqual({
+        expect(runHeadlessSimulation).toHaveBeenNthCalledWith(4, {
+            mode: 'simulate',
+            seed: 1,
+            round: 7,
+            durationSec: 60,
+            cheats: undefined,
+        });
+        expect(result.summary).toMatchObject({
             runCount: 3,
             averageScore: 200,
             bestScore: 300,
             averageBricksPerSecond: 0.2,
             averageLongestVolley: 4,
+            averageBricksBroken: 60,
+            averageLivesLost: 1,
+            averageHazardContacts: 0,
+            averagePortalTransports: 0,
+            brickClearStdDev: 0,
+            deterministicCheck: true,
+        });
+        expect(result.summary.hazardContactBreakdown).toEqual({
+            'gravity-well': 0,
+            'moving-bumper': 0,
+            portal: 0,
         });
         expect(result.runs).toHaveLength(3);
     });
@@ -75,7 +116,7 @@ describe('runTuningBot', () => {
             cheats: { forceReward: 'multi-ball' },
         });
 
-        expect(runHeadlessSimulation).toHaveBeenCalledTimes(2);
+        expect(runHeadlessSimulation).toHaveBeenCalledTimes(3);
         expect(runHeadlessSimulation).toHaveBeenNthCalledWith(1, {
             mode: 'simulate',
             seed: 10,
@@ -86,6 +127,13 @@ describe('runTuningBot', () => {
         expect(runHeadlessSimulation).toHaveBeenNthCalledWith(2, {
             mode: 'simulate',
             seed: 11,
+            round: 9,
+            durationSec: 75,
+            cheats: { forceReward: 'multi-ball' },
+        });
+        expect(runHeadlessSimulation).toHaveBeenNthCalledWith(3, {
+            mode: 'simulate',
+            seed: 10,
             round: 9,
             durationSec: 75,
             cheats: { forceReward: 'multi-ball' },
@@ -101,7 +149,7 @@ describe('runTuningBot', () => {
             durationSec: 30,
         });
 
-        expect(runHeadlessSimulation).toHaveBeenCalledTimes(50);
+        expect(runHeadlessSimulation).toHaveBeenCalledTimes(51);
         expect(result.summary.runCount).toBe(50);
     });
 
@@ -114,7 +162,7 @@ describe('runTuningBot', () => {
             durationSec: 45,
         });
 
-        expect(runHeadlessSimulation).toHaveBeenCalledTimes(1);
+        expect(runHeadlessSimulation).toHaveBeenCalledTimes(2);
         expect(result.summary.runCount).toBe(1);
     });
 
@@ -127,7 +175,7 @@ describe('runTuningBot', () => {
             durationSec: 20,
         });
 
-        expect(runHeadlessSimulation).toHaveBeenCalledTimes(1);
+        expect(runHeadlessSimulation).toHaveBeenCalledTimes(2);
         expect(result.summary.runCount).toBe(1);
     });
 });
