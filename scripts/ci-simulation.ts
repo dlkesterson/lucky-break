@@ -36,7 +36,6 @@ const EXPECTED: SimulationResult = {
         longestVolley: 1,
         averageImpactSpeed: 4,
     },
-    hazards: [],
     snapshot: {
         sessionId: 'sim-17-r2',
         status: 'active',
@@ -118,6 +117,7 @@ const EXPECTED: SimulationResult = {
         },
         updatedAt: 120_008,
     },
+    hazards: [],
 };
 
 const serialize = (value: unknown): string => JSON.stringify(value, null, 2);

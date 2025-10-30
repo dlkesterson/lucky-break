@@ -16,9 +16,7 @@ import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
 import type { EntropyActionType, LifeLostCause, RewardWheelInteractionType } from '../events';
-import { createAchievementManager, type AchievementUnlock } from '../achievements';
-import { getMetaUpgradeManager } from '../metaprogression';
-import { createFateLedger } from '../fate-ledger';
+import type { AchievementUnlock } from '../achievements';
 import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
@@ -67,7 +65,7 @@ import {
 import type { MatterBody as Body } from 'physics/matter';
 import { Transport } from 'tone';
 import type { MusicState, MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
-import { createMidiEngine, type MidiEngine } from 'audio/midi-engine';
+import type { MidiEngine } from 'audio/midi-engine';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer, ReplayRecording } from '../replay-buffer';
 import { createGameInitializer } from '../game-initializer';
@@ -105,15 +103,26 @@ import { createRuntimePowerups, type RuntimePowerups } from './powerups';
 import { createRuntimeInput, type RuntimeInput } from './input';
 import { createRuntimeDebug, type RuntimeDebug } from './debug';
 import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
-import type { GameplayRuntimeState, SyncDriftSample } from './types';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
 import { createRuntimeModifiers, type RuntimeModifierSnapshot, type RuntimeModifiers } from './modifiers';
 import { createIdleSimulation, type IdleSimulationResultSummary } from './idle';
+import { createMetaProgressionService } from './meta-progress-service';
+import { createVisualThemeDefaults, type VisualThemeSnapshot } from './visual-theme-defaults';
+import {
+    createRuntimeState,
+    createSyncDriftTelemetry,
+    SYNC_DRIFT_HISTORY_SECONDS,
+    SYNC_DRIFT_HISTORY_MAX_SAMPLES,
+    SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS,
+    SYNC_DRIFT_WARN_THRESHOLD_MS,
+    SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
+    updateSyncDriftMetrics,
+} from './state-store';
 
 type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
+import { createAudioBootstrap, FORESHADOW_EVENT_SALT, deriveForeshadowScale, clampMidiNote } from './audio-bootstrap';
 import {
-    ensureToneAudio as ensureToneAudioBase,
     isAutoplayBlockedError,
     resolveToneTransport,
     isPromiseLike,
@@ -127,17 +136,6 @@ interface BiasPhaseAutomation {
     readonly select: (optionId: string) => void;
     readonly skip: () => void;
 }
-
-const ensureToneAudio = () =>
-    ensureToneAudioBase({
-        warn: (message, details) => {
-            if (details) {
-                runtimeLogger.warn(message, details);
-            } else {
-                runtimeLogger.warn(message);
-            }
-        },
-    });
 
 const config: GameConfig = gameConfig;
 const PLAYFIELD_DEFAULT = config.playfield;
@@ -189,41 +187,11 @@ const BASE_LIVES = 3;
 const LAYOUT_SEED_SALT = 0x9e3779b1;
 const PRESET_OFFSET_SALT = 0x1f123bb5;
 
-const FORESHADOW_SCALE_SALT = 0x4b1d9a85;
-const FORESHADOW_EVENT_SALT = 0x2c9277b9;
 const FORESHADOW_MIN_PREDICTION_SECONDS = 0.28;
 const FORESHADOW_MAX_PREDICTION_SECONDS = 3.6;
 const FORESHADOW_MIN_SPEED = Math.max(4, BALL_BASE_SPEED * 0.75);
 const FORESHADOW_MIN_LEAD_SECONDS = 0.35;
 const FORESHADOW_MAX_LEAD_SECONDS = 2.6;
-
-const FORESHADOW_SCALE_LIBRARY: readonly (readonly number[])[] = [
-    [52, 55, 57, 59, 62, 64, 67], // D mixolydian
-    [48, 50, 53, 55, 57, 60, 62], // C major pentatonic
-    [45, 48, 50, 52, 55, 57, 60], // A minor
-    [47, 50, 52, 54, 57, 59, 62], // B dorian
-    [49, 52, 54, 56, 59, 61, 64], // C# minor
-    [57, 60, 62, 64, 67, 69, 72], // A major
-    [55, 58, 60, 63, 65, 67, 70], // G mixolydian
-    [53, 56, 58, 60, 63, 65, 68], // F lydian
-];
-
-const clampMidiNote = (note: number, min = 36, max = 96): number => {
-    if (!Number.isFinite(note)) {
-        return min;
-    }
-    return Math.max(min, Math.min(max, Math.round(note)));
-};
-
-const deriveForeshadowScale = (seed: number): readonly number[] => {
-    const normalizedSeed = (seed ^ FORESHADOW_SCALE_SALT) >>> 0;
-    const rng = mulberry32(normalizedSeed);
-    const libraryIndex = Math.floor(rng() * FORESHADOW_SCALE_LIBRARY.length) % FORESHADOW_SCALE_LIBRARY.length;
-    const baseScale = FORESHADOW_SCALE_LIBRARY[libraryIndex] ?? FORESHADOW_SCALE_LIBRARY[0];
-    const octaveShift = Math.floor(rng() * 3) - 1; // -1, 0, 1
-    const shiftSemitones = octaveShift * 12;
-    return baseScale.map((note) => clampMidiNote(note + shiftSemitones));
-};
 
 const resolveBallRadius = (body: Body): number => {
     if (typeof body.circleRadius === 'number' && Number.isFinite(body.circleRadius)) {
@@ -309,64 +277,6 @@ const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     return hashed === 0 ? 1 : hashed;
 };
 
-const SYNC_DRIFT_HISTORY_SECONDS = 6;
-const SYNC_DRIFT_HISTORY_MAX_SAMPLES = SYNC_DRIFT_HISTORY_SECONDS * 120;
-const SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS = 12;
-const SYNC_DRIFT_WARN_THRESHOLD_MS = 35;
-const SYNC_DRIFT_RECOVERY_THRESHOLD_MS = 12;
-
-const updateSyncDriftMetrics = (
-    state: Pick<
-        GameplayRuntimeState,
-        'syncDriftHistory' | 'syncDriftAverageMs' | 'syncDriftPeakMs' | 'syncDriftPeakRecordedAt'
-    >,
-    driftMs: number,
-    elapsedSeconds: number,
-): void => {
-    const safeElapsed = Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0;
-    const safeDrift = Number.isFinite(driftMs) ? driftMs : 0;
-    state.syncDriftHistory.push({
-        timestamp: safeElapsed,
-        drift: safeDrift,
-        magnitude: Math.abs(safeDrift),
-    } satisfies SyncDriftSample);
-
-    const cutoff = safeElapsed - SYNC_DRIFT_HISTORY_SECONDS;
-    while (state.syncDriftHistory.length > 0) {
-        const oldest = state.syncDriftHistory[0];
-        if (!oldest || oldest.timestamp >= cutoff) {
-            break;
-        }
-        state.syncDriftHistory.shift();
-    }
-
-    if (state.syncDriftHistory.length > SYNC_DRIFT_HISTORY_MAX_SAMPLES) {
-        state.syncDriftHistory.splice(0, state.syncDriftHistory.length - SYNC_DRIFT_HISTORY_MAX_SAMPLES);
-    }
-
-    if (state.syncDriftHistory.length === 0) {
-        state.syncDriftAverageMs = 0;
-        state.syncDriftPeakMs = 0;
-        state.syncDriftPeakRecordedAt = safeElapsed;
-        return;
-    }
-
-    let sum = 0;
-    let peak = 0;
-    let peakTimestamp = state.syncDriftHistory[state.syncDriftHistory.length - 1]?.timestamp ?? safeElapsed;
-    for (const sample of state.syncDriftHistory) {
-        sum += sample.drift;
-        if (sample.magnitude >= peak) {
-            peak = sample.magnitude;
-            peakTimestamp = sample.timestamp;
-        }
-    }
-
-    state.syncDriftAverageMs = sum / state.syncDriftHistory.length;
-    state.syncDriftPeakMs = peak;
-    state.syncDriftPeakRecordedAt = peakTimestamp;
-};
-
 const ENTROPY_COST_REROLL = Math.max(1, config.entropy.spend.rerollCost);
 const REWARD_LOCK_COIN_COST = Math.max(0, config.rewards.lockCoinCost);
 const ENTROPY_COST_SHIELD = Math.max(1, config.entropy.spend.shieldCost);
@@ -388,41 +298,34 @@ const ENTROPY_ACTION_BINDINGS: Record<EntropyActionType, { key: string; hotkey: 
 
 const ENTROPY_ACTION_SEQUENCE: readonly EntropyActionType[] = ['reroll', 'shield', 'bailout'];
 
-const achievements = createAchievementManager();
-const fateLedger = createFateLedger();
-const metaUpgrades = getMetaUpgradeManager();
+const metaProgression = createMetaProgressionService({
+    baseComboDecayWindow: BASE_COMBO_DECAY_WINDOW,
+    baseLives: BASE_LIVES,
+});
 
-let upgradeSnapshot = achievements.getUpgradeSnapshot();
-let metaUpgradeLoadout = metaUpgrades.getLoadout();
-let traitEffects = metaUpgradeLoadout.traitEffects;
+const {
+    achievements,
+    fateLedger,
+    metaUpgrades,
+    refreshAchievementUpgrades,
+    refreshMetaLoadout,
+    resolveInitialLives,
+    getLoadout: getMetaLoadout,
+    getTraitEffects: getMetaTraitEffects,
+    getComboDecayWindow: getMetaComboDecayWindow,
+} = metaProgression;
 
-const recomputeComboDecayWindow = () => {
-    const combinedMultiplier = upgradeSnapshot.comboDecayMultiplier * traitEffects.comboDecayMultiplier;
-    const candidate = BASE_COMBO_DECAY_WINDOW * combinedMultiplier;
-    return Number.isFinite(candidate) && candidate > 0 ? candidate : BASE_COMBO_DECAY_WINDOW;
-};
-
-let comboDecayWindow = recomputeComboDecayWindow();
-
-const refreshAchievementUpgrades = () => {
-    upgradeSnapshot = achievements.getUpgradeSnapshot();
-    comboDecayWindow = recomputeComboDecayWindow();
-    return upgradeSnapshot;
-};
-
-const applyMetaLoadout = (loadout: typeof metaUpgradeLoadout) => {
-    metaUpgradeLoadout = loadout;
-    traitEffects = loadout.traitEffects;
-    comboDecayWindow = recomputeComboDecayWindow();
-};
-
-const refreshMetaLoadout = () => {
-    applyMetaLoadout(metaUpgrades.getLoadout());
+const resolveComboDecayWindow = (): number => {
+    const window = getMetaComboDecayWindow();
+    return Number.isFinite(window) && window > 0 ? window : BASE_COMBO_DECAY_WINDOW;
 };
 
 refreshMetaLoadout();
 
-const resolveInitialLives = () => Math.max(1, BASE_LIVES + upgradeSnapshot.bonusLives + traitEffects.extraLives);
+const audioBootstrap = createAudioBootstrap({
+    logger: runtimeLogger,
+    getPaletteConfig: () => getMetaLoadout().audioPalette.config,
+});
 
 export interface GameRuntimeOptions {
     readonly container: HTMLElement;
@@ -468,7 +371,7 @@ export const createRuntimeFacade = async ({
     replayBuffer,
     onAudioBlocked,
 }: GameRuntimeOptions): Promise<RuntimeFacade> => {
-    await ensureToneAudio().catch((error) => {
+    await audioBootstrap.ensureToneAudio().catch((error: unknown) => {
         if (isAutoplayBlockedError(error)) {
             onAudioBlocked?.(error);
             return;
@@ -484,73 +387,36 @@ export const createRuntimeFacade = async ({
     const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const layoutDecorator = createBrickDecorator(sessionOrientation);
 
-    const toColorValue = (value: string | number): number =>
-        typeof value === 'number' ? value : toColorNumber(value);
+    const themeDefaults = createVisualThemeDefaults({
+        initialTheme: GameTheme,
+        getMetaLoadout,
+    });
 
-    let rowColors = GameTheme.brickColors.map(toColorNumber);
-    let themeBallColors: MultiBallColors = {
-        core: 0xffffff,
-        aura: 0xffffff,
-        highlight: 0xffffff,
+    let themeSnapshot: VisualThemeSnapshot = themeDefaults.getSnapshot();
+    let rowColors: readonly number[] = themeSnapshot.rowColors;
+    let themeBallColors: MultiBallColors = themeSnapshot.ballColors;
+    let themeAccents: { combo: number; powerUp: number } = {
+        combo: themeSnapshot.accents.combo,
+        powerUp: themeSnapshot.accents.powerUp,
     };
-    let themeAccents = {
-        combo: 0xffffff,
-        powerUp: 0xffffff,
-    };
+    let ballVisualDefaults: BallVisualDefaults = themeSnapshot.ballDefaults;
+    let paddleVisualDefaults: PaddleVisualDefaults = themeSnapshot.paddleDefaults;
+    let backgroundAccentColor = themeSnapshot.backgroundAccentColor;
+    let bloomAccentColor = themeSnapshot.bloomAccentColor;
 
-    let ballVisualDefaults: BallVisualDefaults = {
-        baseColor: 0xffffff,
-        auraColor: 0xffffff,
-        highlightColor: 0xffffff,
-        baseAlpha: 0.78,
-        rimAlpha: 0.38,
-        innerAlpha: 0.32,
-        innerScale: 0.5,
-    } satisfies BallVisualDefaults;
-
-    let paddleVisualDefaults: PaddleVisualDefaults = {
-        gradient: GameTheme.paddle.gradient.map(toColorNumber),
-        accentColor: toColorValue(GameTheme.accents.combo),
-    } satisfies PaddleVisualDefaults;
-
-    let backgroundAccentOverrides: readonly number[] | null = null;
-
-    const applyMetaVisualDefaults = (theme: GameThemeDefinition) => {
-        const palette = metaUpgradeLoadout.visualPalette;
-        themeBallColors = {
-            core: toColorValue(palette.ball?.core ?? theme.ball.core),
-            aura: toColorValue(palette.ball?.aura ?? theme.ball.aura),
-            highlight: toColorValue(palette.ball?.highlight ?? theme.ball.highlight),
-        } satisfies MultiBallColors;
-
-        ballVisualDefaults = {
-            baseColor: themeBallColors.core,
-            auraColor: themeBallColors.aura,
-            highlightColor: themeBallColors.highlight,
-            baseAlpha: palette.ball?.baseAlpha ?? 0.78,
-            rimAlpha: palette.ball?.rimAlpha ?? 0.38,
-            innerAlpha: palette.ball?.innerAlpha ?? 0.32,
-            innerScale: palette.ball?.innerScale ?? 0.5,
-        } satisfies BallVisualDefaults;
-
-        const paddleGradientSource = palette.paddle?.gradient ?? theme.paddle.gradient;
-        const paddleAccentSource = palette.paddle?.accentColor ?? theme.accents.combo;
-        paddleVisualDefaults = {
-            gradient: paddleGradientSource.map(toColorValue),
-            accentColor: toColorValue(paddleAccentSource),
-        } satisfies PaddleVisualDefaults;
-
+    const syncThemeSnapshot = (snapshot: VisualThemeSnapshot): void => {
+        themeSnapshot = snapshot;
+        rowColors = snapshot.rowColors;
+        themeBallColors = snapshot.ballColors;
         themeAccents = {
-            combo: toColorValue(palette.accents?.combo ?? theme.accents.combo),
-            powerUp: toColorValue(palette.accents?.powerUp ?? theme.accents.powerUp),
+            combo: snapshot.accents.combo,
+            powerUp: snapshot.accents.powerUp,
         };
-
-        backgroundAccentOverrides = palette.accents?.background && palette.accents.background.length > 0
-            ? palette.accents.background.map(toColorValue)
-            : null;
+        ballVisualDefaults = snapshot.ballDefaults;
+        paddleVisualDefaults = snapshot.paddleDefaults;
+        backgroundAccentColor = snapshot.backgroundAccentColor;
+        bloomAccentColor = snapshot.bloomAccentColor;
     };
-
-    applyMetaVisualDefaults(GameTheme);
 
     let visuals: RuntimeVisuals | null = null;
 
@@ -601,30 +467,6 @@ export const createRuntimeFacade = async ({
     const flashPaddleLight = (intensity: number) => {
         visuals?.paddleLight?.flash(intensity);
     };
-    let backgroundAccentIndex = 0;
-    let backgroundAccentColor = themeAccents.combo;
-    let bloomAccentColor = themeAccents.combo;
-    let backgroundAccentPalette: number[] = [];
-
-    const rebuildBackgroundPalette = () => {
-        const override = backgroundAccentOverrides && backgroundAccentOverrides.length > 0
-            ? [...backgroundAccentOverrides]
-            : [
-                themeAccents.combo,
-                themeBallColors.aura,
-                mixColors(themeAccents.powerUp, themeBallColors.highlight, 0.45),
-            ];
-        backgroundAccentPalette = override.length > 0 ? override : [0xffffff];
-        if (backgroundAccentPalette.length === 0) {
-            backgroundAccentPalette = [0xffffff];
-        }
-        backgroundAccentIndex %= backgroundAccentPalette.length;
-        backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex] ?? themeAccents.combo;
-        bloomAccentColor = backgroundAccentColor;
-        visuals?.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
-    };
-
-    rebuildBackgroundPalette();
     const cheatPowerUpBindings: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
         { code: 'Digit1', type: 'paddle-width' },
         { code: 'Digit2', type: 'ball-speed' },
@@ -660,17 +502,15 @@ export const createRuntimeFacade = async ({
     });
 
     const hasPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';
-    const pendingVisualTimers = new Set<ReturnType<typeof setTimeout>>();
-    let midiEngine: MidiEngine = createMidiEngine({
-        palette: metaUpgradeLoadout.audioPalette.config,
+    const syncDriftTelemetry = createSyncDriftTelemetry({
+        logger: performanceLogger,
+        hasPerformanceNow,
     });
+    const pendingVisualTimers = new Set<ReturnType<typeof setTimeout>>();
+    let midiEngine: MidiEngine = audioBootstrap.createMidiEngine();
 
     const rebuildMidiEngine = () => {
-        const previous = midiEngine;
-        midiEngine = createMidiEngine({
-            palette: metaUpgradeLoadout.audioPalette.config,
-        });
-        previous.dispose();
+        midiEngine = audioBootstrap.rebuildMidiEngine(midiEngine);
     };
 
     const computeScheduledAudioTime = (offsetMs = 0): number => scheduler.predictAt(offsetMs);
@@ -754,90 +594,16 @@ export const createRuntimeFacade = async ({
         gravity: 0,
     });
 
-    const runtimeState: GameplayRuntimeState = {
-        sessionElapsedSeconds: 0,
-        frameTimestampMs: 0,
-        audioVisualSkewSeconds: 0,
-        syncDriftMs: 0,
-        syncDriftAverageMs: 0,
-        syncDriftPeakMs: 0,
-        syncDriftPeakRecordedAt: 0,
-        syncDriftHistory: [],
-        ballGlowPulse: 0,
-        paddleGlowPulse: 0,
-        comboRingPulse: 0,
-        comboRingPhase: 0,
-        lastRecordedInputTarget: null,
-        previousPaddlePosition: { x: 0, y: 0 },
-        lastPhysicsDebugState: null,
-        currentBaseSpeed: BALL_BASE_SPEED,
-        currentMaxSpeed: BALL_MAX_SPEED,
-        currentLaunchSpeed: BALL_LAUNCH_SPEED,
+    const runtimeState = createRuntimeState({
+        baseBallSpeed: BALL_BASE_SPEED,
+        maxBallSpeed: BALL_MAX_SPEED,
+        launchBallSpeed: BALL_LAUNCH_SPEED,
         gravity: MODIFIER_GRAVITY_RANGE.default,
         ballRestitution: BASE_BALL_RESTITUTION,
-        paddleBaseWidth: BASE_PADDLE_WIDTH * MODIFIER_PADDLE_WIDTH_RANGE.default,
+        paddleBaseWidth: BASE_PADDLE_WIDTH,
+        paddleWidthMultiplier: MODIFIER_PADDLE_WIDTH_RANGE.default,
         speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
-    };
-
-    let nextSyncDriftTelemetryLogAt = SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
-    let syncDriftWarnActive = false;
-
-    const formatDriftValue = (value: number): number => {
-        if (!Number.isFinite(value)) {
-            return value;
-        }
-        return Number(value.toFixed(2));
-    };
-
-    const emitSyncDriftTelemetry = (elapsedSeconds: number): void => {
-        if (!hasPerformanceNow) {
-            return;
-        }
-
-        const sampleCount = runtimeState.syncDriftHistory.length;
-        if (sampleCount === 0) {
-            return;
-        }
-
-        if (elapsedSeconds >= nextSyncDriftTelemetryLogAt) {
-            performanceLogger.debug('Sync drift sample', {
-                elapsedSeconds: Number(elapsedSeconds.toFixed(3)),
-                currentMs: formatDriftValue(runtimeState.syncDriftMs),
-                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
-                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
-                peakRecordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
-                sampleWindowSeconds: SYNC_DRIFT_HISTORY_SECONDS,
-                sampleCount,
-            });
-            nextSyncDriftTelemetryLogAt = elapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
-        }
-
-        const peakMagnitude = Math.abs(runtimeState.syncDriftPeakMs);
-        const averageMagnitude = Math.abs(runtimeState.syncDriftAverageMs);
-
-        if (!syncDriftWarnActive && peakMagnitude >= SYNC_DRIFT_WARN_THRESHOLD_MS) {
-            performanceLogger.warn('Audio sync drift above threshold', {
-                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
-                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
-                currentMs: formatDriftValue(runtimeState.syncDriftMs),
-                recordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
-                thresholdMs: SYNC_DRIFT_WARN_THRESHOLD_MS,
-            });
-            syncDriftWarnActive = true;
-        } else if (
-            syncDriftWarnActive &&
-            peakMagnitude <= SYNC_DRIFT_RECOVERY_THRESHOLD_MS &&
-            averageMagnitude <= SYNC_DRIFT_RECOVERY_THRESHOLD_MS
-        ) {
-            performanceLogger.info('Audio sync drift recovered', {
-                peakMs: formatDriftValue(runtimeState.syncDriftPeakMs),
-                averageMs: formatDriftValue(runtimeState.syncDriftAverageMs),
-                currentMs: formatDriftValue(runtimeState.syncDriftMs),
-                recordedAt: Number(runtimeState.syncDriftPeakRecordedAt.toFixed(3)),
-            });
-            syncDriftWarnActive = false;
-        }
-    };
+    });
 
     const LOW_FPS_THRESHOLD = 45;
     const RECOVER_FPS_THRESHOLD = 55;
@@ -1385,13 +1151,8 @@ export const createRuntimeFacade = async ({
     };
 
     const applyBackgroundAccent = (accentIndexDelta: number) => {
-        if (backgroundAccentPalette.length === 0) {
-            return;
-        }
-        backgroundAccentIndex = (backgroundAccentIndex + accentIndexDelta + backgroundAccentPalette.length) %
-            backgroundAccentPalette.length;
-        backgroundAccentColor = backgroundAccentPalette[backgroundAccentIndex];
-        bloomAccentColor = backgroundAccentColor;
+        const snapshot = themeDefaults.cycleBackgroundAccent(accentIndexDelta);
+        syncThemeSnapshot(snapshot);
         visuals?.playfieldBackground?.setTint(backgroundAccentColor);
     };
 
@@ -1901,11 +1662,10 @@ export const createRuntimeFacade = async ({
     };
 
     const applyRuntimeTheme = (theme: GameThemeDefinition) => {
-        rowColors = theme.brickColors.map(toColorNumber);
+        const snapshot = themeDefaults.applyTheme(theme);
+        syncThemeSnapshot(snapshot);
         levelRuntime.setRowColors(rowColors);
         reapplyGambleAppearances();
-
-        applyMetaVisualDefaults(theme);
 
         visualFactory.ball.setDefaults(ballVisualDefaults);
         visualFactory.paddle.setDefaults(paddleVisualDefaults);
@@ -1930,7 +1690,7 @@ export const createRuntimeFacade = async ({
         });
         visuals?.comboBloomEffect?.applyTheme(themeAccents.combo);
         visuals?.replacePaddleLight(themeAccents.powerUp);
-        rebuildBackgroundPalette();
+        visuals?.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
 
         renderStageSoon();
     };
@@ -2120,12 +1880,14 @@ export const createRuntimeFacade = async ({
         rebuildMidiEngine();
         refreshHud();
         renderStageSoon();
+        const loadout = getMetaLoadout();
+        const traits = getMetaTraitEffects();
         runtimeLogger.info('Meta upgrades updated', {
             reason: snapshotReason,
-            visualPalette: metaUpgradeLoadout.visualPalette.id,
-            audioPalette: metaUpgradeLoadout.audioPalette.id,
-            extraLives: traitEffects.extraLives,
-            comboMultiplier: traitEffects.comboDecayMultiplier,
+            visualPalette: loadout.visualPalette.id,
+            audioPalette: loadout.audioPalette.id,
+            extraLives: traits.extraLives,
+            comboMultiplier: traits.comboDecayMultiplier,
             details,
         });
     };
@@ -2845,7 +2607,7 @@ export const createRuntimeFacade = async ({
         functions: {
             getSessionElapsedSeconds: () => runtimeState.sessionElapsedSeconds,
             getFrameTimestampMs: () => runtimeState.frameTimestampMs,
-            getComboDecayWindow: () => comboDecayWindow,
+            getComboDecayWindow: () => resolveComboDecayWindow(),
             getCurrentBaseSpeed: () => runtimeState.currentBaseSpeed,
             getCurrentMaxSpeed: () => runtimeState.currentMaxSpeed,
             getPowerUpChanceMultiplier: () => roundMachine.getPowerUpChanceMultiplier(),
@@ -2957,12 +2719,11 @@ export const createRuntimeFacade = async ({
             runtimeState.syncDriftPeakMs = 0;
             runtimeState.syncDriftPeakRecordedAt = nextElapsedSeconds;
             runtimeState.syncDriftHistory.length = 0;
-            syncDriftWarnActive = false;
-            nextSyncDriftTelemetryLogAt = nextElapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+            syncDriftTelemetry.reset();
         }
 
         runtimeState.sessionElapsedSeconds = nextElapsedSeconds;
-        emitSyncDriftTelemetry(runtimeState.sessionElapsedSeconds);
+        syncDriftTelemetry.emit(runtimeState.sessionElapsedSeconds, runtimeState);
         replayBuffer.markTime(runtimeState.sessionElapsedSeconds);
         runtimeState.frameTimestampMs = sessionNow();
 
@@ -3211,7 +2972,7 @@ export const createRuntimeFacade = async ({
 
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
-        const decayWindow = comboDecayWindow > 0 ? comboDecayWindow : BASE_COMBO_DECAY_WINDOW;
+        const decayWindow = resolveComboDecayWindow();
         const comboTimerFactor = comboActive ? clampUnit(scoringState.comboTimer / decayWindow) : 0;
         const comboEnergy = Math.min(
             1.15,
@@ -3575,8 +3336,7 @@ export const createRuntimeFacade = async ({
         runtimeState.syncDriftAverageMs = 0;
         runtimeState.syncDriftPeakMs = 0;
         runtimeState.syncDriftPeakRecordedAt = runtimeState.sessionElapsedSeconds;
-        nextSyncDriftTelemetryLogAt = runtimeState.sessionElapsedSeconds + SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
-        syncDriftWarnActive = false;
+        syncDriftTelemetry.reset();
         dynamicPerformanceMode = false;
         accumulatedLowFpsMs = 0;
         accumulatedHighFpsMs = 0;
@@ -3693,7 +3453,7 @@ export const __internalGameRuntimeTesting = {
     waitForPromise,
     isAutoplayBlockedError,
     resolveToneTransport,
-    ensureToneAudio,
+    ensureToneAudio: audioBootstrap.ensureToneAudio,
     resolveBallRadius,
     intersectRayWithExpandedAabb,
     deriveLayoutSeed,
