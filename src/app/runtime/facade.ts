@@ -1,10 +1,4 @@
-import {
-    scheduleForeshadowEvent,
-    initForeshadower,
-    cancelForeshadowEvent,
-    disposeForeshadower,
-} from 'audio/foreshadow-api';
-import type { ForeshadowDiagnostics } from 'audio/AudioForeshadower';
+import { createAudioBootstrap, clampMidiNote } from './audio-bootstrap';
 
 import {
     GameTheme,
@@ -12,41 +6,20 @@ import {
     toggleTheme,
     type GameThemeDefinition,
 } from 'render/theme';
-import { createPhysicsWorld } from 'physics/world';
 import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from '../state';
-import type { EntropyActionType, LifeLostCause, RewardWheelInteractionType } from '../events';
+import type { GameSessionManager } from '../state';
+import type { EntropyActionType } from '../events';
 import type { AchievementUnlock } from '../achievements';
 import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
 import { createHudDisplay } from 'render/hud-display';
 import { createMobileHudDisplay } from 'render/mobile-hud-display';
-import { createMainMenuScene } from 'scenes/main-menu';
-import { createGameplayScene } from 'scenes/gameplay';
-import {
-    createLevelCompleteScene,
-    type LevelCompleteRewardWheelPayload,
-    type RewardWheelState,
-    type RewardWheelUpdateResult,
-} from 'scenes/level-complete';
-import {
-    createBiasPhaseScene,
-    type BiasPhasePayload,
-    type BiasPhaseSceneOption,
-    type BiasPhaseSessionSummary,
-} from 'scenes/bias-phase';
-import { createFateLedgerScene } from 'scenes/fate-ledger';
-import { createGameOverScene } from 'scenes/game-over';
-import { createPauseScene } from 'scenes/pause';
+import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
 import { gameConfig, type GameConfig } from 'config/game';
-import { BallAttachmentController } from 'physics/ball-attachment';
-import { PaddleBodyController } from 'render/paddle-body';
-import { PhysicsBallLaunchController } from 'physics/ball-launch';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { getMomentumMetrics } from 'util/scoring';
 import { calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
 import { computePrestigeDust } from 'util/prestige';
-import type { Ball } from 'physics/contracts';
-import type { Paddle } from 'render/contracts';
 import {
     toColorNumber,
     clampUnit,
@@ -56,20 +29,18 @@ import {
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createVisualFactory } from 'render/visual-factory';
-import { Sprite, Container, Graphics, ColorMatrixFilter, type Filter } from 'pixi.js';
-import { GlowFilter } from '@pixi/filter-glow';
+import { Sprite, Container, type Graphics } from 'pixi.js';
 import {
     Body as MatterBody,
     Vector as MatterVector,
 } from 'physics/matter';
 import type { MatterBody as Body } from 'physics/matter';
-import { Transport } from 'tone';
 import type { MusicState, MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
 import type { MidiEngine } from 'audio/midi-engine';
 import { mulberry32, type RandomManager } from 'util/random';
-import type { ReplayBuffer, ReplayRecording } from '../replay-buffer';
+import type { ReplayBuffer } from '../replay-buffer';
 import { createGameInitializer } from '../game-initializer';
-import { createMultiBallController, type MultiBallColors } from '../multi-ball-controller';
+import type { MultiBallColors } from '../multi-ball-controller';
 import { createLevelRuntime, type BrickLayoutBounds } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
 import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
@@ -77,40 +48,34 @@ import {
     spinWheel,
     createReward,
     setRewardOverride,
-    type Reward,
     type RewardType,
-    type LaserPaddleReward,
 } from 'game/rewards';
-import { createGambleBrickManager } from 'game/gamble-brick-manager';
 import { rootLogger } from 'util/log';
-import { getHighScores, recordHighScore } from 'util/high-scores';
+import { recordHighScore } from 'util/high-scores';
 import type { GameSceneServices } from '../scene-services';
-import { developerCheats } from '../developer-cheats';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
-import { createRuntimeVisuals, type ForeshadowInstrument } from './visuals';
-import { createGambleHighlightEffect, type GambleHighlightEffect } from 'render/effects';
+import { createGambleRuntime } from './gamble';
 import { createRuntimeScoring, type RuntimeScoringHandle } from './scoring';
 import {
     createRoundMachine,
-    type BiasOptionRisk,
-    type BiasPhaseEffects,
-    type BiasPhaseOption,
-    type BiasPhaseState,
     type EntropyActionState,
     type RoundMachine,
 } from './round-machine';
-import { createRuntimePowerups, type RuntimePowerups } from './powerups';
-import { createRuntimeInput, type RuntimeInput } from './input';
-import { createRuntimeDebug, type RuntimeDebug } from './debug';
-import { createRuntimeLifecycle, type RuntimeLifecycle } from './lifecycle';
+import type { RuntimePowerups } from './powerups';
+import {
+    createRewardWheelOrchestrator,
+    type EntropyActionAttemptResult,
+    type RewardWheelOrchestrator,
+} from './reward-wheel';
+import type { RuntimeInput } from './input';
+import type { RuntimeDebug } from './debug';
+import type { RuntimeLifecycle } from './lifecycle';
 import { getSettings, subscribeSettings } from 'util/settings';
 import { createLaserController, type LaserController } from './laser';
-import { createRuntimeModifiers, type RuntimeModifierSnapshot, type RuntimeModifiers } from './modifiers';
-import { createIdleSimulation, type IdleSimulationResultSummary } from './idle';
+import type { RuntimeModifiers } from './modifiers';
 import { createMetaProgressionService } from './meta-progress-service';
 import { createVisualThemeDefaults, type VisualThemeSnapshot } from './visual-theme-defaults';
 import {
-    createRuntimeState,
     createSyncDriftTelemetry,
     SYNC_DRIFT_HISTORY_SECONDS,
     SYNC_DRIFT_HISTORY_MAX_SAMPLES,
@@ -119,9 +84,6 @@ import {
     SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
     updateSyncDriftMetrics,
 } from './state-store';
-
-type RuntimeVisuals = ReturnType<typeof createRuntimeVisuals>;
-import { createAudioBootstrap, FORESHADOW_EVENT_SALT, deriveForeshadowScale, clampMidiNote } from './audio-bootstrap';
 import {
     isAutoplayBlockedError,
     resolveToneTransport,
@@ -129,13 +91,19 @@ import {
     waitForPromise,
 } from './audio';
 import { createCollisionRuntime, type CollisionRuntime, type CollisionContext } from './collisions';
+import { createPhysicsAssembly, type RuntimeVisuals } from './physics-assembly';
+import {
+    createForeshadowingRuntime,
+    resolveBallRadius,
+    intersectRayWithExpandedAabb,
+} from './foreshadowing';
+import { createBiasPhaseCoordinator, type BiasPhaseCoordinator } from './bias-phase-coordinator';
+import { registerRuntimeScenes } from './scene-registration';
+import { createModifierPowerupServices } from './modifier-powerup-services';
+import { initializeRuntimeLifecycle } from './lifecycle-manager';
+import { setupDebugHarnessIntegrations } from './debug-harness-integration';
 
 const runtimeLogger = rootLogger.child('game-runtime');
-
-interface BiasPhaseAutomation {
-    readonly select: (optionId: string) => void;
-    readonly skip: () => void;
-}
 
 const config: GameConfig = gameConfig;
 const PLAYFIELD_DEFAULT = config.playfield;
@@ -192,79 +160,6 @@ const FORESHADOW_MAX_PREDICTION_SECONDS = 3.6;
 const FORESHADOW_MIN_SPEED = Math.max(4, BALL_BASE_SPEED * 0.75);
 const FORESHADOW_MIN_LEAD_SECONDS = 0.35;
 const FORESHADOW_MAX_LEAD_SECONDS = 2.6;
-
-const resolveBallRadius = (body: Body): number => {
-    if (typeof body.circleRadius === 'number' && Number.isFinite(body.circleRadius)) {
-        return Math.max(2, body.circleRadius);
-    }
-    const width = body.bounds?.max.x - body.bounds?.min.x;
-    const height = body.bounds?.max.y - body.bounds?.min.y;
-    if (Number.isFinite(width) && Number.isFinite(height)) {
-        return Math.max(2, Math.max(width ?? 0, height ?? 0) / 2);
-    }
-    return 10;
-};
-
-const intersectRayWithExpandedAabb = (
-    origin: { readonly x: number; readonly y: number },
-    direction: { readonly x: number; readonly y: number },
-    bounds: Body['bounds'],
-    radius: number,
-): number | null => {
-    const minX = bounds.min.x - radius;
-    const maxX = bounds.max.x + radius;
-    const minY = bounds.min.y - radius;
-    const maxY = bounds.max.y + radius;
-
-    let tMin = 0;
-    let tMax = Number.POSITIVE_INFINITY;
-
-    if (Math.abs(direction.x) < 1e-6) {
-        if (origin.x < minX || origin.x > maxX) {
-            return null;
-        }
-    } else {
-        const invX = 1 / direction.x;
-        let t1 = (minX - origin.x) * invX;
-        let t2 = (maxX - origin.x) * invX;
-        if (t1 > t2) {
-            [t1, t2] = [t2, t1];
-        }
-        tMin = Math.max(tMin, t1);
-        tMax = Math.min(tMax, t2);
-        if (tMin > tMax) {
-            return null;
-        }
-    }
-
-    if (Math.abs(direction.y) < 1e-6) {
-        if (origin.y < minY || origin.y > maxY) {
-            return null;
-        }
-    } else {
-        const invY = 1 / direction.y;
-        let t1 = (minY - origin.y) * invY;
-        let t2 = (maxY - origin.y) * invY;
-        if (t1 > t2) {
-            [t1, t2] = [t2, t1];
-        }
-        tMin = Math.max(tMin, t1);
-        tMax = Math.min(tMax, t2);
-        if (tMin > tMax) {
-            return null;
-        }
-    }
-
-    if (tMax < 0) {
-        return null;
-    }
-
-    const impactTime = tMin >= 0 ? tMin : tMax;
-    if (!Number.isFinite(impactTime) || impactTime < 0) {
-        return null;
-    }
-    return impactTime;
-};
 
 const AUTO_COMPLETE_SETTINGS = config.levels.autoComplete;
 const AUTO_COMPLETE_ENABLED = AUTO_COMPLETE_SETTINGS.enabled;
@@ -359,9 +254,6 @@ export interface RuntimeFacade {
     readonly modules: RuntimeFacadeModules;
 }
 
-type PaddleState = Paddle;
-type BallState = Ball;
-
 export const createRuntimeFacade = async ({
     container,
     playfieldDimensions = PLAYFIELD_DEFAULT,
@@ -441,12 +333,7 @@ export const createRuntimeFacade = async ({
 
     const gambleTintArmed = toColorNumber(GAMBLE_TINT_ARMED);
     const gambleTintPrimed = toColorNumber(GAMBLE_TINT_PRIMED);
-    const gambleManager = createGambleBrickManager({
-        timerSeconds: GAMBLE_TIMER_SECONDS,
-        rewardMultiplier: Math.max(1, GAMBLE_REWARD_MULTIPLIER),
-        primeResetHp: Math.max(1, GAMBLE_PRIME_RESET_HP),
-        failPenaltyHp: Math.max(1, GAMBLE_FAIL_PENALTY_HP),
-    });
+    let gambleRuntime: ReturnType<typeof createGambleRuntime> | null = null;
 
     const visualFactory = createVisualFactory({
         ball: ballVisualDefaults,
@@ -454,11 +341,7 @@ export const createRuntimeFacade = async ({
     });
 
     let ballHueShift = 0;
-    let gambleHighlight: GambleHighlightEffect | null = null;
-    let gambleCountdownLastSecond: number | null = null;
     let runtimeDebug: RuntimeDebug | null = null;
-
-    let biasPhaseAutomation: BiasPhaseAutomation | null = null;
 
     const flashBallLight = (intensity: number) => {
         visuals?.ballLight?.flash(intensity);
@@ -467,6 +350,8 @@ export const createRuntimeFacade = async ({
     const flashPaddleLight = (intensity: number) => {
         visuals?.paddleLight?.flash(intensity);
     };
+
+    const visualBodies = new Map<Body, Container>();
     const cheatPowerUpBindings: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
         { code: 'Digit1', type: 'paddle-width' },
         { code: 'Digit2', type: 'ball-speed' },
@@ -542,68 +427,65 @@ export const createRuntimeFacade = async ({
         pendingVisualTimers.add(timer);
     };
 
-    const resolveForeshadowVisualTime = (transportTime: number): number | undefined => {
-        if (!Number.isFinite(transportTime)) {
-            return undefined;
-        }
-        const nowSeconds = Transport.now();
-        const deltaSeconds = Math.max(0, transportTime - nowSeconds);
-        const offsetMs = deltaSeconds * 1000 - scheduler.lookAheadMs;
-        if (!Number.isFinite(offsetMs)) {
-            return undefined;
-        }
-        return scheduler.predictAt(offsetMs);
-    };
-
-    const foreshadowVisualEvents = new Map<string, ForeshadowInstrument>();
-
-    const triggerForeshadowWave = (
-        accent: 'schedule' | 'note' | 'cancel',
-        instrument: ForeshadowInstrument,
-        intensity: number,
-        transportTime?: number,
-    ): void => {
-        if (!visuals?.audioWaveBackdrop) {
-            return;
-        }
-        const clampedIntensity = clampUnit(intensity);
-        if (clampedIntensity <= 0 && accent !== 'cancel') {
-            return;
-        }
-        const applyBump = () => {
-            const backdrop = visuals?.audioWaveBackdrop;
-            if (!backdrop) {
-                return;
-            }
-            backdrop.setVisible(true);
-            const resolvedIntensity = accent === 'cancel' ? Math.max(clampedIntensity, 0.35) : clampedIntensity;
-            backdrop.bump('foreshadow', {
-                accent,
-                instrument,
-                intensity: resolvedIntensity,
-            });
-        };
-        const scheduledTime = typeof transportTime === 'number'
-            ? resolveForeshadowVisualTime(transportTime)
-            : undefined;
-        scheduleVisualEffect(scheduledTime, applyBump);
-    };
-
-    const physics = createPhysicsWorld({
-        dimensions: { width: PLAYFIELD_WIDTH, height: PLAYFIELD_HEIGHT },
-        gravity: 0,
+    const physicsAssembly = createPhysicsAssembly({
+        container,
+        stage,
+        playfieldDimensions,
+        themeBallColors,
+        themeAccents,
+        random,
+        visualFactory,
+        visualBodies,
+        runtimeStateDefaults: {
+            baseBallSpeed: BALL_BASE_SPEED,
+            maxBallSpeed: BALL_MAX_SPEED,
+            launchBallSpeed: BALL_LAUNCH_SPEED,
+            gravity: MODIFIER_GRAVITY_RANGE.default,
+            ballRestitution: BASE_BALL_RESTITUTION,
+            paddleBaseWidth: BASE_PADDLE_WIDTH,
+            paddleWidthMultiplier: MODIFIER_PADDLE_WIDTH_RANGE.default,
+            speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
+        },
+        physics: {
+            width: PLAYFIELD_WIDTH,
+            height: PLAYFIELD_HEIGHT,
+            gravity: 0,
+        },
+        paddle: {
+            width: BASE_PADDLE_WIDTH,
+            height: BASE_PADDLE_HEIGHT,
+            speed: BASE_PADDLE_SPEED,
+            spawnPosition: { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
+        },
+        paddleSmoothing: {
+            responsiveness: PADDLE_SMOOTH_RESPONSIVENESS,
+            snapThreshold: PADDLE_SNAP_THRESHOLD,
+        },
+        ball: { radius: 10 },
+        ballMaxSpeed: BALL_MAX_SPEED,
+        multiBall: {
+            multiplier: MULTI_BALL_MULTIPLIER,
+            maxExtraBalls: MULTI_BALL_CAPACITY,
+        },
     });
 
-    const runtimeState = createRuntimeState({
-        baseBallSpeed: BALL_BASE_SPEED,
-        maxBallSpeed: BALL_MAX_SPEED,
-        launchBallSpeed: BALL_LAUNCH_SPEED,
-        gravity: MODIFIER_GRAVITY_RANGE.default,
-        ballRestitution: BASE_BALL_RESTITUTION,
-        paddleBaseWidth: BASE_PADDLE_WIDTH,
-        paddleWidthMultiplier: MODIFIER_PADDLE_WIDTH_RANGE.default,
-        speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
-    });
+    const {
+        physics,
+        runtimeState,
+        ballController,
+        paddleController,
+        launchController,
+        runtimeInput,
+        ball,
+        paddle,
+        visuals: createdVisuals,
+        ballGraphics,
+        paddleGraphics,
+        ballGlowFilter,
+        ballHueFilter,
+        gameContainer,
+        multiBallController,
+    } = physicsAssembly;
 
     const LOW_FPS_THRESHOLD = 45;
     const RECOVER_FPS_THRESHOLD = 55;
@@ -655,41 +537,6 @@ export const createRuntimeFacade = async ({
 
     const sessionNow = (): number => Math.max(0, Math.floor(runtimeState.sessionElapsedSeconds * 1000));
 
-    const foreshadowScale = deriveForeshadowScale(random.seed());
-    const foreshadowSeed = (random.seed() ^ FORESHADOW_EVENT_SALT) >>> 0;
-    const foreshadowDiagnostics: ForeshadowDiagnostics = {
-        onPatternScheduled: ({ event, instrument, averageVelocity, startTime }) => {
-            foreshadowVisualEvents.set(event.id, instrument);
-            triggerForeshadowWave('schedule', instrument, averageVelocity, startTime);
-        },
-        onNoteTriggered: ({ eventId, instrument, velocity, time }) => {
-            foreshadowVisualEvents.set(eventId, instrument);
-            triggerForeshadowWave('note', instrument, velocity, time);
-        },
-        onEventFinalized: ({ eventId, reason }) => {
-            const instrument = foreshadowVisualEvents.get(eventId) ?? 'melodic';
-            if (reason === 'cancelled') {
-                triggerForeshadowWave('cancel', instrument, 0.6);
-            }
-            foreshadowVisualEvents.delete(eventId);
-        },
-    };
-
-    initForeshadower({
-        scale: foreshadowScale,
-        seed: foreshadowSeed,
-        diagnostics: foreshadowDiagnostics,
-    });
-
-    interface BallForeshadowState {
-        readonly eventId: string;
-        readonly brickId: number;
-        readonly scheduledAt: number;
-    }
-
-    const activeForeshadowByBall = new Map<number, BallForeshadowState>();
-    let foreshadowEventCounter = 0;
-
     const createSession = () =>
         createGameSessionManager({
             sessionId: 'game-session',
@@ -737,6 +584,12 @@ export const createRuntimeFacade = async ({
     };
 
     let session = createSession();
+    const sessionFacade: Pick<GameSessionManager, 'snapshot' | 'recordLifeLost' | 'recordEntropyEvent' | 'completeRound'> = {
+        snapshot: () => session.snapshot(),
+        recordLifeLost: (cause) => session.recordLifeLost(cause),
+        recordEntropyEvent: (event) => session.recordEntropyEvent(event),
+        completeRound: () => session.completeRound(),
+    };
     const scoring = createRuntimeScoring({
         bus,
         scoringConfig: config.scoring,
@@ -777,7 +630,6 @@ export const createRuntimeFacade = async ({
     let laserController: LaserController | null = null;
     let isPaused = false;
 
-    const visualBodies = new Map<Body, Container>();
     let brickLayoutBounds: BrickLayoutBounds | null = null;
 
     const sharedSceneServices: GameSceneServices = {
@@ -799,10 +651,7 @@ export const createRuntimeFacade = async ({
         if (!visual) {
             return;
         }
-
-        if (visual instanceof Sprite && gambleHighlight) {
-            gambleHighlight.reset(visual);
-        }
+        gambleRuntime?.handleBrickRemoved(body, visual);
 
         if (visual.parent) {
             visual.parent.removeChild(visual);
@@ -814,7 +663,6 @@ export const createRuntimeFacade = async ({
         }
         visualBodies.delete(body);
         brickVisualState.delete(body);
-        gambleManager.unregister(body);
     };
 
     const presetCount = getPresetLevelCount();
@@ -846,262 +694,56 @@ export const createRuntimeFacade = async ({
     const brickMetadata = levelRuntime.brickMetadata;
     const brickVisualState = levelRuntime.brickVisualState;
 
-    const nextForeshadowEventId = (): string => {
-        foreshadowEventCounter = (foreshadowEventCounter + 1) >>> 0;
-        const salted = foreshadowEventCounter ^ foreshadowSeed;
-        return `foreshadow:${salted.toString(16)}`;
-    };
+    const foreshadowing = createForeshadowingRuntime({
+        randomSeed: random.seed(),
+        runtimeState,
+        scheduler,
+        getVisuals: () => visuals,
+        multiBallController,
+        levelRuntime,
+        config: {
+            minPredictionSeconds: FORESHADOW_MIN_PREDICTION_SECONDS,
+            maxPredictionSeconds: FORESHADOW_MAX_PREDICTION_SECONDS,
+            minSpeed: FORESHADOW_MIN_SPEED,
+            minLeadSeconds: FORESHADOW_MIN_LEAD_SECONDS,
+            maxLeadSeconds: FORESHADOW_MAX_LEAD_SECONDS,
+        },
+        scheduleVisualEffect,
+    });
 
-    const cancelForeshadowForBall = (ballId: number): void => {
-        const entry = activeForeshadowByBall.get(ballId);
-        if (!entry) {
-            return;
-        }
-        cancelForeshadowEvent(entry.eventId);
-        activeForeshadowByBall.delete(ballId);
-    };
-
-    const releaseForeshadowForBall = (ballId: number, actualTimeSeconds?: number): void => {
-        const entry = activeForeshadowByBall.get(ballId);
-        if (!entry) {
-            return;
-        }
-        if (typeof actualTimeSeconds === 'number' && entry.scheduledAt - actualTimeSeconds > 0.12) {
-            cancelForeshadowEvent(entry.eventId);
-        }
-        activeForeshadowByBall.delete(ballId);
-    };
-
-    const resetForeshadowing = (): void => {
-        activeForeshadowByBall.forEach((entry) => {
-            cancelForeshadowEvent(entry.eventId);
-        });
-        activeForeshadowByBall.clear();
-        foreshadowEventCounter = 0;
-        foreshadowVisualEvents.clear();
-        visuals?.audioWaveBackdrop?.setVisible(false);
-    };
-
-    const resolveBrickTargetMidi = (brick: Body): number => {
-        const metadata = brickMetadata.get(brick);
-        if (!metadata) {
-            return foreshadowScale[0] ?? 60;
-        }
-        const scaleLength = foreshadowScale.length || 1;
-        const base = foreshadowScale[Math.abs(metadata.row) % scaleLength] ?? foreshadowScale[0] ?? 60;
-        const octaveStep = Math.floor(metadata.row / scaleLength);
-        const octaveOffset = Math.max(-1, Math.min(2, octaveStep)) * 12;
-        const columnAccent = (metadata.col ?? 0) % 3;
-        const columnOffset = columnAccent === 2 ? 4 : columnAccent === 1 ? 2 : 0;
-        return clampMidiNote(base + octaveOffset + columnOffset);
-    };
-
-    interface PredictedBrickImpact {
-        readonly brick: Body;
-        readonly timeUntil: number;
-        readonly speed: number;
-    }
-
-    const predictNextBrickImpact = (ballBody: Body): PredictedBrickImpact | null => {
-        const speed = MatterVector.magnitude(ballBody.velocity);
-        if (!Number.isFinite(speed) || speed < FORESHADOW_MIN_SPEED) {
-            return null;
-        }
-        const direction = ballBody.velocity;
-        if (Math.abs(direction.x) < 1e-6 && Math.abs(direction.y) < 1e-6) {
-            return null;
-        }
-
-        const radius = resolveBallRadius(ballBody);
-        const origin = { x: ballBody.position.x, y: ballBody.position.y };
-
-        let best: PredictedBrickImpact | null = null;
-
-        brickHealth.forEach((hp, brick) => {
-            if (hp <= 0) {
-                return;
-            }
-            if (brick.isSensor) {
-                return;
-            }
-            const metadata = brickMetadata.get(brick);
-            if (metadata?.breakable === false) {
-                return;
-            }
-
-            const bounds = brick.bounds;
-            const impactTime = intersectRayWithExpandedAabb(origin, direction, bounds, radius);
-            if (impactTime === null) {
-                return;
-            }
-            if (impactTime < FORESHADOW_MIN_PREDICTION_SECONDS || impactTime > FORESHADOW_MAX_PREDICTION_SECONDS) {
-                return;
-            }
-            if (!best || impactTime < best.timeUntil) {
-                best = {
-                    brick,
-                    timeUntil: impactTime,
-                    speed,
-                };
-            }
-        });
-
-        return best;
-    };
-
-    const updateForeshadowPredictions = (): void => {
-        const nowSeconds = runtimeState.sessionElapsedSeconds;
-        const visited = new Set<number>();
-        multiBallController.visitActiveBalls(({ body }) => {
-            visited.add(body.id);
-            const prediction = predictNextBrickImpact(body);
-            if (!prediction) {
-                cancelForeshadowForBall(body.id);
-                return;
-            }
-
-            const scheduledAt = nowSeconds + prediction.timeUntil;
-            const existing = activeForeshadowByBall.get(body.id);
-            if (existing) {
-                const timeDelta = Math.abs(existing.scheduledAt - scheduledAt);
-                if (existing.brickId === prediction.brick.id && timeDelta < 0.1) {
-                    return;
-                }
-                cancelForeshadowForBall(body.id);
-            }
-
-            const eventId = nextForeshadowEventId();
-            const targetMidi = resolveBrickTargetMidi(prediction.brick);
-            const normalizedIntensity = clampUnit(
-                prediction.speed /
-                Math.max(FORESHADOW_MIN_SPEED, runtimeState.currentMaxSpeed || FORESHADOW_MIN_SPEED),
-            );
-            const rawLead = prediction.timeUntil * 0.75;
-            const leadInSeconds = Math.min(
-                Math.max(FORESHADOW_MIN_LEAD_SECONDS, rawLead),
-                Math.max(FORESHADOW_MIN_LEAD_SECONDS, Math.min(prediction.timeUntil - 0.1, FORESHADOW_MAX_LEAD_SECONDS)),
-            );
-
-            scheduleForeshadowEvent({
-                id: eventId,
-                type: 'brickHit',
-                timeUntil: prediction.timeUntil,
-                targetMidi,
-                intensity: normalizedIntensity,
-                leadInSeconds,
-            });
-
-            activeForeshadowByBall.set(body.id, {
-                eventId,
-                brickId: prediction.brick.id,
-                scheduledAt,
-            });
-        });
-
-        activeForeshadowByBall.forEach((entry, ballId) => {
-            if (!visited.has(ballId)) {
-                cancelForeshadowForBall(ballId);
-            }
-        });
-    };
+    gambleRuntime = createGambleRuntime({
+        managerOptions: {
+            timerSeconds: GAMBLE_TIMER_SECONDS,
+            rewardMultiplier: Math.max(1, GAMBLE_REWARD_MULTIPLIER),
+            primeResetHp: Math.max(1, GAMBLE_PRIME_RESET_HP),
+            failPenaltyHp: Math.max(1, GAMBLE_FAIL_PENALTY_HP),
+        },
+        countdownAudioThreshold: GAMBLE_COUNTDOWN_AUDIO_THRESHOLD,
+        tintArmed: gambleTintArmed,
+        tintPrimed: gambleTintPrimed,
+        visualBodies,
+        brickMetadata,
+        brickHealth,
+        brickVisualState,
+        maxBrickHp: MAX_LEVEL_BRICK_HP,
+        updateBrickDamage: (brick, hp) => {
+            levelRuntime.updateBrickDamage(brick, hp);
+        },
+        getMidiEngine: () => midiEngine,
+        musicDirector,
+    });
+    const { manager: gambleManager } = gambleRuntime;
 
     const applyGambleAppearance = (body: Body): void => {
-        const visual = visualBodies.get(body);
-        if (!(visual instanceof Sprite)) {
-            return;
-        }
-        const state = gambleManager.getState(body);
-        if (state === 'primed') {
-            visual.tint = gambleTintPrimed;
-            if (gambleHighlight) {
-                const remaining = gambleManager.getRemainingTimer(body);
-                const urgency = remaining !== null && Number.isFinite(remaining)
-                    ? clampUnit(1 - remaining / Math.max(0.001, GAMBLE_TIMER_SECONDS))
-                    : 0;
-                gambleHighlight.apply(visual, 'primed', urgency);
-            }
-        } else if (state === 'armed') {
-            visual.tint = gambleTintArmed;
-            gambleHighlight?.apply(visual, 'armed', 0);
-        } else {
-            visual.tint = 0xffffff;
-            if (gambleHighlight) {
-                gambleHighlight.reset(visual);
-            }
-        }
+        gambleRuntime?.applyAppearance(body);
     };
 
     const reapplyGambleAppearances = (): void => {
-        gambleManager.forEach((body) => {
-            applyGambleAppearance(body);
-        });
+        gambleRuntime?.reapplyAppearances();
     };
 
     const registerGambleBricks = (): void => {
-        brickMetadata.forEach((metadata, body) => {
-            if (metadata?.traits?.includes('gamble')) {
-                gambleManager.register(body);
-                applyGambleAppearance(body);
-            }
-        });
-    };
-
-    const applyGambleFailurePenalty = (brick: Body, penaltyHp: number): void => {
-        if (!brickHealth.has(brick)) {
-            return;
-        }
-        const normalizedPenalty = Math.max(1, Math.round(penaltyHp));
-        const clampedPenalty = Math.min(MAX_LEVEL_BRICK_HP, normalizedPenalty);
-        brickHealth.set(brick, clampedPenalty);
-        const state = brickVisualState.get(brick);
-        if (state) {
-            const nextMax = state.isBreakable
-                ? Math.min(MAX_LEVEL_BRICK_HP, Math.max(state.maxHp, clampedPenalty))
-                : Math.max(state.maxHp, clampedPenalty);
-            state.maxHp = nextMax;
-        }
-        levelRuntime.updateBrickDamage(brick, clampedPenalty);
-        applyGambleAppearance(brick);
-    };
-
-    const updateGambleCountdownAudio = (nextExpirationSeconds: number | null): void => {
-        if (nextExpirationSeconds === null || !Number.isFinite(nextExpirationSeconds)) {
-            gambleCountdownLastSecond = null;
-            return;
-        }
-        const remaining = Math.max(0, nextExpirationSeconds);
-        if (remaining > GAMBLE_COUNTDOWN_AUDIO_THRESHOLD) {
-            gambleCountdownLastSecond = null;
-            return;
-        }
-        const marker = Math.max(0, Math.ceil(remaining));
-        if (gambleCountdownLastSecond === marker) {
-            return;
-        }
-        gambleCountdownLastSecond = marker;
-        const urgency = clampUnit(1 - remaining / Math.max(0.001, GAMBLE_TIMER_SECONDS));
-        midiEngine.triggerGambleCountdown({
-            second: marker,
-            urgency,
-        });
-        musicDirector.triggerGambleCountdown({
-            urgency,
-        });
-    };
-
-    const tickGambleBricks = (deltaSeconds: number): void => {
-        if (gambleHighlight) {
-            gambleHighlight.update(deltaSeconds);
-        }
-        const expirations = gambleManager.tick(deltaSeconds);
-        const summary = gambleManager.snapshot();
-        updateGambleCountdownAudio(summary.nextExpirationSeconds);
-        if (expirations.length === 0) {
-            return;
-        }
-        expirations.forEach(({ brick, penaltyHp }) => {
-            applyGambleFailurePenalty(brick, penaltyHp);
-        });
+        gambleRuntime?.registerBricks();
     };
 
     const updateBrickLighting = (
@@ -1139,7 +781,7 @@ export const createRuntimeFacade = async ({
     };
 
     const loadLevel = (levelIndex: number) => {
-        gambleManager.clear();
+        gambleRuntime?.prepareLevel();
         const result = levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
         roundMachine.setLevelDifficultyMultiplier(result.difficultyMultiplier);
@@ -1170,55 +812,12 @@ export const createRuntimeFacade = async ({
     const bounds = physics.factory.bounds();
     physics.add(bounds);
 
-    const ballController = new BallAttachmentController();
-    const paddleController = new PaddleBodyController();
-    const runtimeInput = createRuntimeInput({
-        container,
-        stage,
-        playfieldWidth: PLAYFIELD_WIDTH,
-        smoothing: {
-            responsiveness: PADDLE_SMOOTH_RESPONSIVENESS,
-            snapThreshold: PADDLE_SNAP_THRESHOLD,
-        },
-    });
     const { manager: inputManager } = runtimeInput;
-    const launchController = new PhysicsBallLaunchController();
-
-    const paddle: PaddleState = paddleController.createPaddle(
-        { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
-        { width: BASE_PADDLE_WIDTH, height: BASE_PADDLE_HEIGHT, speed: BASE_PADDLE_SPEED },
-    );
-    physics.add(paddle.physicsBody);
-
-    const ball: BallState = ballController.createAttachedBall(
-        paddleController.getPaddleCenter(paddle),
-        { radius: 10, restitution: BASE_BALL_RESTITUTION },
-    );
-    physics.add(ball.physicsBody);
-    ball.physicsBody.restitution = runtimeState.ballRestitution;
-
-    runtimeInput.install();
-
-    const createdVisuals = createRuntimeVisuals({
-        stage,
-        playfieldDimensions,
-        themeBallColors,
-        themeAccents,
-        random,
-        ball,
-        paddle,
-        ballController,
-        paddleController,
-        inputManager,
-        ballMaxSpeed: BALL_MAX_SPEED,
-    });
     visuals = createdVisuals;
     createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
     visuals.setEffectProfile(desiredVisualProfile);
-    gambleHighlight = createGambleHighlightEffect();
 
     const comboRing = createdVisuals.comboRing;
-    const gameContainer = createdVisuals.gameContainer;
     const inputDebugOverlay = createdVisuals.inputDebugOverlay;
     const physicsDebugOverlay = createdVisuals.physicsDebugOverlay;
 
@@ -1231,36 +830,6 @@ export const createRuntimeFacade = async ({
     const drawBallSprite = (graphics: Graphics, radius: number, palette?: Partial<BallVisualPalette>) => {
         visualFactory.ball.draw(graphics, radius, palette);
     };
-
-    const ballGraphics = visualFactory.ball.create({ radius: ball.radius });
-    ballGraphics.zIndex = 50;
-    const ballGlowFilter = new GlowFilter({
-        distance: 18,
-        outerStrength: 1.4,
-        innerStrength: 0,
-        color: themeBallColors.highlight,
-        quality: 0.3,
-    });
-    const ballHueFilter = new ColorMatrixFilter();
-    ballGraphics.filters = [ballGlowFilter as unknown as Filter, ballHueFilter];
-    gameContainer.addChild(ballGraphics);
-    visualBodies.set(ball.physicsBody, ballGraphics);
-
-    const multiBallController = createMultiBallController({
-        physics,
-        ball,
-        paddle,
-        ballGraphics,
-        gameContainer,
-        visualBodies,
-        drawBallVisual: drawBallSprite,
-        colors: themeBallColors,
-        multiplier: MULTI_BALL_MULTIPLIER,
-        maxExtraBalls: MULTI_BALL_CAPACITY,
-        sampleRestitution: () => runtimeState.ballRestitution,
-    });
-
-    multiBallController.setRestitution(runtimeState.ballRestitution);
 
     const setPaddleWidth = (() => {
         let lastWidth = paddle.width;
@@ -1286,11 +855,6 @@ export const createRuntimeFacade = async ({
         };
     })();
 
-    const paddleGraphics = visualFactory.paddle.create({ width: paddle.width, height: paddle.height });
-    paddleGraphics.zIndex = 60;
-    gameContainer.addChild(paddleGraphics);
-    visualBodies.set(paddle.physicsBody, paddleGraphics);
-
     runtimeState.previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
     runtimeState.lastRecordedInputTarget = null;
     runtimeState.currentBaseSpeed = BALL_BASE_SPEED;
@@ -1298,7 +862,7 @@ export const createRuntimeFacade = async ({
     runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED;
     const reattachBallToPaddle = (): void => {
         const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
-        cancelForeshadowForBall(ball.physicsBody.id);
+        foreshadowing.cancelForBall(ball.physicsBody.id);
         physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
         ball.isAttached = true;
         ball.attachmentOffset = attachmentOffset;
@@ -1319,15 +883,17 @@ export const createRuntimeFacade = async ({
     };
 
     const removeExtraBallByBody = (body: Body) => {
-        cancelForeshadowForBall(body.id);
+        foreshadowing.cancelForBall(body.id);
         multiBallController.removeExtraBallByBody(body);
     };
 
     const clearExtraBalls = () => {
-        const extraBallIds = Array.from(activeForeshadowByBall.keys()).filter((ballId) => ballId !== ball.physicsBody.id);
-        extraBallIds.forEach((ballId) => {
-            cancelForeshadowForBall(ballId);
-        });
+        foreshadowing
+            .getActiveBallIds()
+            .filter((ballId) => ballId !== ball.physicsBody.id)
+            .forEach((ballId) => {
+                foreshadowing.cancelForBall(ballId);
+            });
         multiBallController.clear();
     };
 
@@ -1335,16 +901,28 @@ export const createRuntimeFacade = async ({
         multiBallController.spawnExtraBalls({ currentLaunchSpeed: runtimeState.currentLaunchSpeed, requestedCount });
     };
 
-    let pendingLaserActivation: LaserPaddleReward | null = null;
-    let enableLaserRewardImpl: (reward: LaserPaddleReward) => void = (reward) => {
-        pendingLaserActivation = reward;
-    };
-    let disableLaserRewardImpl: () => void = () => {
-        pendingLaserActivation = null;
+    const applyBallRestitution = (value: number) => {
+        const normalized = Number.isFinite(value) ? value : runtimeState.ballRestitution;
+        ball.physicsBody.restitution = normalized;
+        multiBallController.setRestitution(normalized);
     };
 
-    const powerups = createRuntimePowerups({
+    const {
+        powerups,
+        powerUpManager,
+        runtimeModifiers,
+        bindLaserController,
+    } = createModifierPowerupServices({
         logger: runtimeLogger,
+        modifierConfig: config.modifiers,
+        runtimeState,
+        basePaddleWidth: BASE_PADDLE_WIDTH,
+        defaults: {
+            paddleWidthMultiplier: DEFAULT_PADDLE_WIDTH_MULTIPLIER,
+            multiBallCapacity: MULTI_BALL_CAPACITY,
+            multiBallMaxDuration: MULTI_BALL_MAX_DURATION,
+            slowTimeMaxDuration: SLOW_TIME_MAX_DURATION,
+        },
         multiBallController,
         flashBallLight,
         flashPaddleLight,
@@ -1352,41 +930,9 @@ export const createRuntimeFacade = async ({
         resetGhostBricks,
         applyGhostBrickReward,
         getGhostBrickRemainingDuration,
-        enableLaserReward: (reward) => enableLaserRewardImpl(reward),
-        disableLaserReward: () => disableLaserRewardImpl(),
-        defaults: {
-            paddleWidthMultiplier: DEFAULT_PADDLE_WIDTH_MULTIPLIER,
-            multiBallCapacity: MULTI_BALL_CAPACITY,
-            multiBallMaxDuration: MULTI_BALL_MAX_DURATION,
-            slowTimeMaxDuration: SLOW_TIME_MAX_DURATION,
-        },
-    });
-    const { manager: powerUpManager } = powerups;
-
-    const refreshPaddleWidth = () => {
-        const scale = powerups.getPaddleWidthScale();
-        setPaddleWidth(runtimeState.paddleBaseWidth * scale);
-    };
-
-    refreshPaddleWidth();
-
-    const applyBallRestitution = (value: number) => {
-        const normalized = Number.isFinite(value) ? value : runtimeState.ballRestitution;
-        ball.physicsBody.restitution = normalized;
-        multiBallController.setRestitution(normalized);
-    };
-
-    const runtimeModifiers = createRuntimeModifiers({
-        config: config.modifiers,
         physics,
-        runtimeState,
-        baseValues: { paddleWidth: BASE_PADDLE_WIDTH },
-        applyRestitution: (value) => {
-            applyBallRestitution(value);
-        },
-        applyPaddleBaseWidth: () => {
-            refreshPaddleWidth();
-        },
+        setPaddleWidth,
+        setBallRestitution: applyBallRestitution,
         onSpeedGovernorChange: () => {
             /* speed governor state already updated by modifier module */
         },
@@ -1394,223 +940,7 @@ export const createRuntimeFacade = async ({
 
     runtimeModifiers.reset();
 
-    const roundToDecimals = (value: number, decimals = 3): number => {
-        if (!Number.isFinite(value)) {
-            return 0;
-        }
-        const factor = 10 ** decimals;
-        return Math.round(value * factor) / factor;
-    };
-
-    const formatSigned = (value: number, decimals = 2): string => {
-        const rounded = roundToDecimals(value, decimals);
-        const sign = rounded >= 0 ? '+' : '';
-        return `${sign}${rounded.toFixed(decimals)}`;
-    };
-
-    const formatMultiplierLabel = (value: number, decimals = 2): string => {
-        const rounded = roundToDecimals(value, decimals);
-        return `x${rounded.toFixed(decimals)}`;
-    };
-
-    const clampToRange = (value: number, range: { readonly min: number; readonly max: number }): number => {
-        if (!Number.isFinite(value)) {
-            return range.min;
-        }
-        return Math.min(range.max, Math.max(range.min, value));
-    };
-
-    const randomBetween = (min: number, max: number): number => min + (max - min) * random.next();
-
-    const randomSigned = (magnitude: number): number => (random.boolean() ? magnitude : -magnitude);
-
-    const pickFrom = <T>(values: readonly T[]): T => {
-        if (values.length === 0) {
-            throw new Error('Cannot select from empty list');
-        }
-        const index = random.nextInt(values.length);
-        return values[index] ?? values[0];
-    };
-
-    const biasRiskOrder: readonly BiasOptionRisk[] = ['safe', 'bold', 'volatile'];
-
-    const biasLabels: Record<BiasOptionRisk, readonly string[]> = {
-        safe: ['Momentum Hedge', 'Steady Anchor', 'Measured Tilt'],
-        bold: ['Double Down', 'Edge Stack', 'Tempo Spike'],
-        volatile: ['Chaos Ramp', 'Glitch Push', 'Void Bet'],
-    } as const;
-
-    const biasDescriptions: Record<BiasOptionRisk, readonly string[]> = {
-        safe: [
-            'Pocket a modest edge while keeping the board manageable.',
-            'Steady your hand with softer tweaks and steadier odds.',
-        ],
-        bold: [
-            'Lean into the heat for fatter drops and sharper volleys.',
-            'Amp the tempo to chase richer streak rewards.',
-        ],
-        volatile: [
-            'Spin the wheel for wild payouts and relentless speed.',
-            'Embrace chaos—huge upside with heavy gravity shifts.',
-        ],
-    } as const;
-
-    const generateBiasPhaseOptions = (upcomingLevelIndex: number): BiasPhaseOption[] => {
-        const baseGravity = MODIFIER_GRAVITY_RANGE.default;
-        const baseRestitution = MODIFIER_RESTITUTION_RANGE.default;
-        const basePaddleWidth = MODIFIER_PADDLE_WIDTH_RANGE.default;
-        const baseSpeedGovernor = MODIFIER_SPEED_GOVERNOR_RANGE.default;
-
-        return biasRiskOrder.map((risk, order) => {
-            const idSeed = random.nextInt(1_000_000);
-            const modifierEntries: {
-                gravity?: number;
-                restitution?: number;
-                paddleWidthMultiplier?: number;
-                speedGovernorMultiplier?: number;
-            } = {};
-            let difficulty: number | undefined;
-            let powerUp: number | undefined;
-
-            if (risk === 'safe') {
-                modifierEntries.paddleWidthMultiplier = roundToDecimals(
-                    clampToRange(basePaddleWidth + randomBetween(0.05, 0.12), MODIFIER_PADDLE_WIDTH_RANGE),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.02, 0.05)), MODIFIER_GRAVITY_RANGE),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.04, 0.08), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.06, 0.1), 3);
-            } else if (risk === 'bold') {
-                modifierEntries.paddleWidthMultiplier = roundToDecimals(
-                    clampToRange(basePaddleWidth - randomBetween(0.05, 0.12), MODIFIER_PADDLE_WIDTH_RANGE),
-                    2,
-                );
-                modifierEntries.speedGovernorMultiplier = roundToDecimals(
-                    clampToRange(baseSpeedGovernor + randomBetween(0.08, 0.15), MODIFIER_SPEED_GOVERNOR_RANGE),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.04, 0.08)), MODIFIER_GRAVITY_RANGE),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.09, 0.16), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.12, 0.18), 3);
-            } else {
-                modifierEntries.speedGovernorMultiplier = roundToDecimals(
-                    clampToRange(baseSpeedGovernor + randomBetween(0.16, 0.24), MODIFIER_SPEED_GOVERNOR_RANGE),
-                    2,
-                );
-                modifierEntries.restitution = roundToDecimals(
-                    clampToRange(baseRestitution + randomBetween(0.02, 0.06), MODIFIER_RESTITUTION_RANGE),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.1, 0.18)), MODIFIER_GRAVITY_RANGE),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.16, 0.24), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.18, 0.26), 3);
-            }
-
-            const modifiers = Object.keys(modifierEntries).length > 0 ? modifierEntries : undefined;
-            const effects: BiasPhaseEffects = {
-                modifiers,
-                difficultyMultiplier: difficulty,
-                powerUpChanceMultiplier: powerUp,
-            };
-
-            return {
-                id: `bias-${upcomingLevelIndex + 1}-${risk}-${order}-${idSeed}`,
-                label: pickFrom(biasLabels[risk]),
-                description: pickFrom(biasDescriptions[risk]),
-                risk,
-                effects,
-            } satisfies BiasPhaseOption;
-        });
-    };
-
-    const describeBiasOption = (option: BiasPhaseOption): readonly string[] => {
-        const summary: string[] = [];
-        const { modifiers, difficultyMultiplier, powerUpChanceMultiplier } = option.effects;
-
-        if (difficultyMultiplier !== undefined && Math.abs(difficultyMultiplier - 1) > 1e-3) {
-            summary.push(`Difficulty ${formatMultiplierLabel(difficultyMultiplier)}`);
-        }
-
-        if (powerUpChanceMultiplier !== undefined && Math.abs(powerUpChanceMultiplier - 1) > 1e-3) {
-            summary.push(`Power-Up Odds ${formatMultiplierLabel(powerUpChanceMultiplier)}`);
-        }
-
-        if (modifiers) {
-            if (modifiers.gravity !== undefined) {
-                const delta = modifiers.gravity - MODIFIER_GRAVITY_RANGE.default;
-                summary.push(`Gravity ${formatSigned(delta)}`);
-            }
-            if (modifiers.restitution !== undefined) {
-                const delta = modifiers.restitution - MODIFIER_RESTITUTION_RANGE.default;
-                summary.push(`Restitution ${formatSigned(delta)}`);
-            }
-            if (modifiers.paddleWidthMultiplier !== undefined) {
-                summary.push(`Paddle Width ${formatMultiplierLabel(modifiers.paddleWidthMultiplier)}`);
-            }
-            if (modifiers.speedGovernorMultiplier !== undefined) {
-                summary.push(`Speed Governor ${formatMultiplierLabel(modifiers.speedGovernorMultiplier)}`);
-            }
-        }
-
-        if (summary.length === 0) {
-            summary.push('No material change');
-        }
-        return summary;
-    };
-
-    const mapBiasOptionToScene = (option: BiasPhaseOption): BiasPhaseSceneOption => ({
-        id: option.id,
-        label: option.label,
-        description: option.description,
-        risk: option.risk,
-        effectSummary: describeBiasOption(option),
-    });
-
-    const applyBiasSelection = (selection: BiasPhaseOption | null) => {
-        if (!selection) {
-            return;
-        }
-
-        const { effects } = selection;
-        if (effects.difficultyMultiplier !== undefined && effects.difficultyMultiplier > 0) {
-            const base = roundMachine.getLevelDifficultyMultiplier();
-            const adjusted = roundToDecimals(base * effects.difficultyMultiplier, 4);
-            roundMachine.setLevelDifficultyMultiplier(adjusted);
-        }
-
-        if (effects.powerUpChanceMultiplier !== undefined && effects.powerUpChanceMultiplier > 0) {
-            const base = roundMachine.getPowerUpChanceMultiplier();
-            const adjusted = roundToDecimals(base * effects.powerUpChanceMultiplier, 4);
-            roundMachine.setPowerUpChanceMultiplier(Math.max(0.01, adjusted));
-        }
-
-        const modifiers = effects.modifiers;
-        if (!modifiers) {
-            return;
-        }
-
-        if (modifiers.gravity !== undefined) {
-            runtimeModifiers.setGravity(modifiers.gravity);
-        }
-        if (modifiers.restitution !== undefined) {
-            runtimeModifiers.setRestitution(modifiers.restitution);
-        }
-        if (modifiers.paddleWidthMultiplier !== undefined) {
-            runtimeModifiers.setPaddleWidthMultiplier(modifiers.paddleWidthMultiplier);
-        }
-        if (modifiers.speedGovernorMultiplier !== undefined) {
-            runtimeModifiers.setSpeedGovernorMultiplier(modifiers.speedGovernorMultiplier);
-        }
-    };
+    let biasCoordinator: BiasPhaseCoordinator | null = null;
 
     const hudContainer = new Container();
     hudContainer.eventMode = 'none';
@@ -1705,14 +1035,6 @@ export const createRuntimeFacade = async ({
         applyRuntimeTheme(theme);
     });
 
-    const pauseLegendLines = [
-        'Cyan Paddle Width - Widens your paddle for extra coverage.',
-        'Orange Ball Speed - Speeds up the ball and boosts scoring.',
-        'Pink Multi Ball - Splits the active ball into additional balls.',
-        'Green Sticky Paddle - Catches the ball until you launch again.',
-        'Shift + C toggles high-contrast color mode.',
-    ] as const;
-
     let lastComboCount = 0;
 
     const buildEntropyHudEntries = (state: EntropyActionState, stored: number): HudEntropyActionDescriptor[] => {
@@ -1752,11 +1074,6 @@ export const createRuntimeFacade = async ({
         roundMachine.setPendingReward(rerolledReward);
         return true;
     };
-
-    interface EntropyActionAttemptResult {
-        readonly success: boolean;
-        readonly reason?: 'invalid-state' | 'insufficient' | 'locked';
-    }
 
     const attemptEntropyAction = (action: EntropyActionType): EntropyActionAttemptResult => {
         const snapshot = session.snapshot();
@@ -1874,6 +1191,23 @@ export const createRuntimeFacade = async ({
         positionHud();
     };
 
+    const rewardWheel: RewardWheelOrchestrator = createRewardWheelOrchestrator({
+        wheelSegments: config.rewards.wheelSegments,
+        roundMachine,
+        getSessionSnapshot: () => session.snapshot(),
+        spendCoins: (amount) => session.spendCoins(amount),
+        entropyCosts: {
+            reroll: ENTROPY_COST_REROLL,
+            lockCoins: REWARD_LOCK_COIN_COST,
+        },
+        attemptEntropyAction,
+        setRewardOverride,
+        refreshHud,
+        renderStageSoon,
+        eventBus: bus,
+        createReward: (type) => createReward(type),
+    });
+
     const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
         refreshMetaLoadout();
         applyRuntimeTheme(GameTheme);
@@ -1901,154 +1235,6 @@ export const createRuntimeFacade = async ({
         });
     });
 
-    const buildRewardWheelOdds = (): LevelCompleteRewardWheelPayload['odds'] => {
-        const segments = config.rewards.wheelSegments;
-        const totalWeight = segments.reduce((sum, segment) => sum + segment.weight, 0);
-        return segments.map((segment) => ({
-            reward: createReward(segment.type),
-            weight: segment.weight,
-            chance: totalWeight > 0 ? segment.weight / totalWeight : 0,
-        }));
-    };
-
-    const buildRewardWheelState = (): RewardWheelState => {
-        const snapshot = session.snapshot();
-        const pendingReward = roundMachine.getPendingReward();
-        const locked = roundMachine.isPendingRewardLocked();
-        const entropyStored = snapshot.hud.entropy.stored;
-        const coins = snapshot.coins;
-
-        return {
-            reward: pendingReward ?? null,
-            locked,
-            entropyStored,
-            coins,
-            rerollCost: ENTROPY_COST_REROLL,
-            lockCost: REWARD_LOCK_COIN_COST,
-            canReroll: Boolean(pendingReward) && !locked && entropyStored >= ENTROPY_COST_REROLL,
-            canLock: Boolean(pendingReward) && !locked && coins >= REWARD_LOCK_COIN_COST,
-        } satisfies RewardWheelState;
-    };
-
-    const publishRewardWheelInteraction = (
-        action: RewardWheelInteractionType,
-        reward: Reward,
-        costs: { readonly entropyCost?: number; readonly coinsCost?: number } = {},
-    ): void => {
-        const snapshot = session.snapshot();
-        const segments = config.rewards.wheelSegments;
-        const totalWeight = segments.reduce((sum, segment) => sum + segment.weight, 0);
-        const weights = segments.map((segment) => ({
-            type: segment.type,
-            weight: segment.weight,
-            chance: totalWeight > 0 ? segment.weight / totalWeight : 0,
-        }));
-
-        bus.publish('RewardWheelInteraction', {
-            sessionId: snapshot.sessionId,
-            action,
-            rewardType: reward.type,
-            rewardDuration: reward.duration,
-            entropyCost: costs.entropyCost ?? 0,
-            coinsCost: costs.coinsCost ?? 0,
-            entropyStored: snapshot.entropy.stored,
-            coins: snapshot.coins,
-            locked: roundMachine.isPendingRewardLocked(),
-            weights,
-        });
-    };
-
-    const performRewardReroll = (): Promise<RewardWheelUpdateResult> => {
-        const currentState = buildRewardWheelState();
-        if (!currentState.reward) {
-            return Promise.resolve({
-                success: false,
-                message: 'No reward to reroll',
-                state: currentState,
-            } satisfies RewardWheelUpdateResult);
-        }
-
-        const result = attemptEntropyAction('reroll');
-        if (!result.success) {
-            const message = result.reason === 'insufficient'
-                ? 'Not enough entropy'
-                : result.reason === 'locked'
-                    ? 'Reward is locked'
-                    : 'Reroll unavailable';
-            return Promise.resolve({
-                success: false,
-                message,
-                state: buildRewardWheelState(),
-            } satisfies RewardWheelUpdateResult);
-        }
-
-        const updatedState = buildRewardWheelState();
-        const reward = updatedState.reward ?? currentState.reward;
-        publishRewardWheelInteraction('reroll', reward, { entropyCost: ENTROPY_COST_REROLL });
-        return Promise.resolve({
-            success: true,
-            message: 'Reward rerolled',
-            state: updatedState,
-        } satisfies RewardWheelUpdateResult);
-    };
-
-    const performRewardLock = (): Promise<RewardWheelUpdateResult> => {
-        const currentState = buildRewardWheelState();
-        const reward = currentState.reward;
-        if (!reward) {
-            return Promise.resolve({
-                success: false,
-                message: 'No reward to lock',
-                state: currentState,
-            } satisfies RewardWheelUpdateResult);
-        }
-        if (currentState.locked) {
-            return Promise.resolve({
-                success: false,
-                message: 'Reward already locked',
-                state: currentState,
-            } satisfies RewardWheelUpdateResult);
-        }
-
-        if (REWARD_LOCK_COIN_COST > 0) {
-            const paid = session.spendCoins(REWARD_LOCK_COIN_COST);
-            if (!paid) {
-                return Promise.resolve({
-                    success: false,
-                    message: 'Not enough coins',
-                    state: buildRewardWheelState(),
-                } satisfies RewardWheelUpdateResult);
-            }
-        }
-
-        const locked = roundMachine.lockPendingReward();
-        if (!locked) {
-            return Promise.resolve({
-                success: false,
-                message: 'Unable to lock reward',
-                state: buildRewardWheelState(),
-            } satisfies RewardWheelUpdateResult);
-        }
-        setRewardOverride({ type: reward.type, duration: reward.duration, persist: false });
-        refreshHud();
-        renderStageSoon();
-        publishRewardWheelInteraction('lock', reward, { coinsCost: REWARD_LOCK_COIN_COST });
-        return Promise.resolve({
-            success: true,
-            message: 'Reward locked for next spin',
-            state: buildRewardWheelState(),
-        } satisfies RewardWheelUpdateResult);
-    };
-
-    const buildRewardWheelPayload = (): LevelCompleteRewardWheelPayload => ({
-        odds: buildRewardWheelOdds(),
-        state: buildRewardWheelState(),
-        actions: {
-            reroll: () => performRewardReroll(),
-            lock: () => performRewardLock(),
-        },
-    });
-
     scoring.setHudUpdater(refreshHud);
 
     const beginNewSession = async (): Promise<void> => {
@@ -2064,7 +1250,7 @@ export const createRuntimeFacade = async ({
         runtimeState.lastRecordedInputTarget = null;
         replayBuffer.begin(activeSeed);
 
-        resetForeshadowing();
+        foreshadowing.reset();
 
         refreshAchievementUpgrades();
         roundMachine.resetForNewSession();
@@ -2083,178 +1269,6 @@ export const createRuntimeFacade = async ({
         startLevel(roundMachine.getCurrentLevelIndex(), { resetScore: true });
         await stage.transitionTo('gameplay');
         loop?.start();
-    };
-
-    interface E2EHarnessRuntimeState {
-        readonly currentScene: string | null;
-        readonly isPaused: boolean;
-        readonly loopRunning: boolean;
-        readonly livesRemaining: number;
-    }
-
-    interface E2ERoundMachineSnapshot {
-        readonly levelIndex: number;
-        readonly difficultyMultiplier: number;
-        readonly powerUpChanceMultiplier: number;
-    }
-
-    interface E2EHarnessControls {
-        startGameplay?: () => Promise<void> | void;
-        skipLevel?: () => Promise<void> | void;
-        loseLife?: (cause?: LifeLostCause) => Promise<void> | void;
-        drainLives?: (options?: { leaveOne?: boolean }) => Promise<void> | void;
-        pauseGameplay?: () => Promise<void> | void;
-        resumeGameplay?: () => Promise<void> | void;
-        quitToMenu?: () => Promise<void> | void;
-        launchBall?: (direction?: { x: number; y: number }) => Promise<void> | void;
-        getRuntimeState?: () => E2EHarnessRuntimeState;
-        getBiasPhaseState?: () => BiasPhaseState;
-        commitBiasSelection?: (optionId: string) => boolean;
-        skipBiasPhase?: () => boolean;
-        getRuntimeModifiers?: () => RuntimeModifierSnapshot;
-        getRoundMachineSnapshot?: () => E2ERoundMachineSnapshot;
-        getReplaySnapshot?: () => ReplayRecording;
-    }
-
-    const registerE2EHarnessControls = (): void => {
-        const candidate = globalThis as { __LB_E2E_HOOKS__?: unknown };
-        const harness = candidate.__LB_E2E_HOOKS__;
-        if (!harness || typeof harness !== 'object') {
-            return;
-        }
-
-        const controls = harness as E2EHarnessControls;
-
-        const resolveCurrentScene = () => stage.getCurrentScene();
-        const isGameplaySceneActive = () => resolveCurrentScene() === 'gameplay';
-        const isPauseSceneActive = () => resolveCurrentScene() === 'pause';
-        const isGameOverSceneActive = () => resolveCurrentScene() === 'game-over';
-        const isLevelCompleteSceneActive = () => resolveCurrentScene() === 'level-complete';
-
-        const loseLifeInternal = (cause: LifeLostCause = 'forced-reset') => {
-            if (!isGameplaySceneActive()) {
-                return;
-            }
-
-            const comboBeforeReset = scoring.state.combo;
-            session.recordLifeLost(cause);
-            session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
-            scoring.lifeLost();
-            syncMomentum();
-
-            if (session.snapshot().livesRemaining > 0) {
-                clearExtraBalls();
-                reattachBallToPaddle();
-                renderStageSoon();
-                return;
-            }
-
-            handleGameOver();
-        };
-
-        controls.startGameplay = () => beginNewSession();
-        controls.skipLevel = () => {
-            if (!isGameplaySceneActive()) {
-                return;
-            }
-            skipToNextLevelCheat();
-        };
-        controls.loseLife = (cause?: LifeLostCause) => {
-            loseLifeInternal(cause ?? 'forced-reset');
-        };
-        controls.drainLives = (options?: { leaveOne?: boolean }) => {
-            if (!isGameplaySceneActive()) {
-                return;
-            }
-            const targetLives = options?.leaveOne === true ? 1 : 0;
-            while (session.snapshot().livesRemaining > targetLives) {
-                loseLifeInternal('forced-reset');
-                if (session.snapshot().livesRemaining <= targetLives || !isGameplaySceneActive()) {
-                    break;
-                }
-            }
-        };
-        controls.pauseGameplay = () => {
-            if (!isGameplaySceneActive() || isPaused || !loop?.isRunning()) {
-                return;
-            }
-            pauseGame();
-        };
-        controls.resumeGameplay = () => {
-            if (!isPauseSceneActive() || !isPaused) {
-                return;
-            }
-            resumeFromPause();
-        };
-        controls.quitToMenu = () => {
-            if (
-                !isGameplaySceneActive() &&
-                !isPauseSceneActive() &&
-                !isGameOverSceneActive() &&
-                !isLevelCompleteSceneActive()
-            ) {
-                return;
-            }
-            return quitToMenu();
-        };
-        controls.launchBall = (direction?: { x: number; y: number }) => {
-            if (!isGameplaySceneActive() || !launchController.canLaunch(ball)) {
-                return;
-            }
-            const launchDirection = direction ?? { x: 0, y: -1 };
-            replayBuffer.recordLaunch(runtimeState.sessionElapsedSeconds);
-            physics.detachBallFromPaddle(ball.physicsBody);
-            launchController.launch(ball, launchDirection, runtimeState.currentLaunchSpeed);
-            runtimeInput.resetLaunchTrigger();
-            const snapshot = session.snapshot();
-            bus.publish('BallLaunched', {
-                sessionId: snapshot.sessionId,
-                position: {
-                    x: ball.physicsBody.position.x,
-                    y: ball.physicsBody.position.y,
-                },
-                direction: {
-                    x: launchDirection.x,
-                    y: launchDirection.y,
-                },
-                speed: MatterVector.magnitude(ball.physicsBody.velocity),
-            });
-        };
-        controls.getRuntimeState = () => {
-            const currentScene = stage.getCurrentScene() ?? null;
-            const snapshot = session.snapshot();
-            return {
-                currentScene,
-                isPaused,
-                loopRunning: Boolean(loop?.isRunning()),
-                livesRemaining: snapshot.livesRemaining,
-            } satisfies E2EHarnessRuntimeState;
-        };
-        controls.getBiasPhaseState = () => roundMachine.getBiasPhaseState();
-        controls.commitBiasSelection = (optionId?: string) => {
-            if (typeof optionId !== 'string' || optionId.length === 0) {
-                return false;
-            }
-            if (biasPhaseAutomation === null) {
-                return false;
-            }
-            biasPhaseAutomation.select(optionId);
-            return true;
-        };
-        controls.skipBiasPhase = () => {
-            if (biasPhaseAutomation === null) {
-                return false;
-            }
-            biasPhaseAutomation.skip();
-            return true;
-        };
-        controls.getRuntimeModifiers = () => runtimeModifiers.getState();
-        controls.getRoundMachineSnapshot = () => ({
-            levelIndex: roundMachine.getCurrentLevelIndex(),
-            difficultyMultiplier: roundMachine.getLevelDifficultyMultiplier(),
-            powerUpChanceMultiplier: roundMachine.getPowerUpChanceMultiplier(),
-        } satisfies E2ERoundMachineSnapshot);
-        controls.getReplaySnapshot = () => replayBuffer.snapshot();
     };
 
     const startLevel = (levelIndex: number, options: { resetScore?: boolean } = {}): void => {
@@ -2286,9 +1300,9 @@ export const createRuntimeFacade = async ({
         powerups.reset();
         runtimeModifiers.reset();
         clearExtraBalls();
-        resetForeshadowing();
+        foreshadowing.reset();
         loadLevel(levelIndex);
-        applyBiasSelection(pendingBiasSelection);
+        biasCoordinator?.applySelection(pendingBiasSelection);
         reattachBallToPaddle();
         const pendingReward = roundMachine.getPendingReward();
         if (pendingReward) {
@@ -2311,81 +1325,40 @@ export const createRuntimeFacade = async ({
         } satisfies BiasPhaseSessionSummary;
     };
 
-    const presentBiasPhase = (): void => {
-        const upcomingLevelIndex = roundMachine.getCurrentLevelIndex() + 1;
-        const options = generateBiasPhaseOptions(upcomingLevelIndex);
+    biasCoordinator = createBiasPhaseCoordinator({
+        logger: runtimeLogger,
+        random,
+        roundMachine,
+        runtimeModifiers,
+        modifierConfig: config.modifiers,
+        stage,
+        startLoop: () => {
+            loop?.start();
+        },
+        startLevel: (levelIndex: number) => {
+            startLevel(levelIndex);
+        },
+        renderStageSoon,
+        replayBuffer,
+        runtimeState,
+        buildSessionSummary: buildBiasSessionSummary,
+    });
 
-        if (options.length === 0) {
-            biasPhaseAutomation = null;
+    const presentBiasPhase = (): void => {
+        if (!biasCoordinator) {
+            runtimeLogger.error('Bias phase coordinator unavailable; skipping bias phase');
             const nextLevelIndex = roundMachine.incrementLevelIndex();
             startLevel(nextLevelIndex);
             loop?.start();
             renderStageSoon();
             return;
         }
-
-        roundMachine.setBiasPhaseOptions(options);
-
-        const advance = (selection: BiasPhaseOption | null) => {
-            biasPhaseAutomation = null;
-            if (!selection) {
-                roundMachine.setBiasPhaseOptions([]);
-            }
-            if (stage.getCurrentScene() === 'bias-phase') {
-                stage.pop();
-            }
-            const nextLevelIndex = roundMachine.incrementLevelIndex();
-            startLevel(nextLevelIndex);
-            loop?.start();
-            renderStageSoon();
-        };
-
-        const handleSelection = (optionId: string) => {
-            const selection = roundMachine.commitBiasSelection(optionId);
-            if (!selection) {
-                runtimeLogger.warn('Failed to resolve bias selection', { optionId });
-                advance(null);
-                return;
-            }
-            replayBuffer.recordBiasChoice(optionId, runtimeState.sessionElapsedSeconds);
-            advance(selection);
-        };
-
-        const handleSkip = () => {
-            advance(null);
-        };
-
-        const payload = {
-            session: buildBiasSessionSummary(upcomingLevelIndex),
-            options: options.map(mapBiasOptionToScene),
-            onSelect: (optionId: string) => {
-                handleSelection(optionId);
-            },
-            onSkip: handleSkip,
-        } satisfies BiasPhasePayload;
-
-        biasPhaseAutomation = {
-            select: (optionId: string) => {
-                handleSelection(optionId);
-            },
-            skip: () => {
-                handleSkip();
-            },
-        } satisfies BiasPhaseAutomation;
-
-        void stage.push('bias-phase', payload)
-            .then(() => {
-                renderStageSoon();
-            })
-            .catch((error) => {
-                runtimeLogger.error('Failed to push bias-phase scene', { error });
-                handleSkip();
-            });
+        biasCoordinator.present();
     };
 
     const handleLevelComplete = (): void => {
         clearExtraBalls();
-        resetForeshadowing();
+        foreshadowing.reset();
         isPaused = false;
         loop?.stop();
         const spunReward = spinWheel(random.random);
@@ -2396,7 +1369,7 @@ export const createRuntimeFacade = async ({
             rerollCount += 1;
         }
         roundMachine.setPendingReward(finalReward);
-        publishRewardWheelInteraction('initial-spin', finalReward, {
+        rewardWheel.publishInteraction('initial-spin', finalReward, {
             entropyCost: rerollCount * ENTROPY_COST_REROLL,
             coinsCost: 0,
         });
@@ -2461,7 +1434,7 @@ export const createRuntimeFacade = async ({
             presentBiasPhase();
         };
 
-        const rewardWheelPayload = buildRewardWheelPayload();
+        const rewardWheelPayload = rewardWheel.buildPayload();
 
         void stage.push('level-complete', {
             level: completedLevel,
@@ -2494,7 +1467,7 @@ export const createRuntimeFacade = async ({
 
     const handleGameOver = (): void => {
         clearExtraBalls();
-        resetForeshadowing();
+        foreshadowing.reset();
         isPaused = false;
         loop?.stop();
         roundMachine.setPendingReward(null);
@@ -2627,7 +1600,9 @@ export const createRuntimeFacade = async ({
                 roundMachine.enqueueAchievementUnlocks(unlocks);
             },
             syncMomentum,
-            releaseForeshadowForBall,
+            releaseForeshadowForBall: (ballId, actualTimeSeconds) => {
+                foreshadowing.releaseForBall(ballId, actualTimeSeconds);
+            },
             computeScheduledAudioTime,
             scheduleVisualEffect,
             spawnHeatRipple: (options) => {
@@ -2685,24 +1660,7 @@ export const createRuntimeFacade = async ({
             height: paddle.height,
         }),
     });
-
-    enableLaserRewardImpl = (reward) => {
-        if (laserController) {
-            laserController.activate(reward);
-        } else {
-            pendingLaserActivation = reward;
-        }
-    };
-
-    disableLaserRewardImpl = () => {
-        laserController?.deactivate();
-        pendingLaserActivation = null;
-    };
-
-    if (pendingLaserActivation && laserController) {
-        laserController.activate(pendingLaserActivation);
-        pendingLaserActivation = null;
-    }
+    bindLaserController(laserController);
 
     const runGameplayUpdate = (deltaSeconds: number): void => {
         const audioTimeSeconds = scheduler.now();
@@ -2756,7 +1714,7 @@ export const createRuntimeFacade = async ({
             syncAutoCompleteCountdownDisplay();
         }
         if (autoResult.triggered) {
-            gambleManager.clear();
+            gambleRuntime?.clearAll();
             forceClearBreakableBricks();
             clearActivePowerUps();
             clearActiveCoins();
@@ -2784,7 +1742,7 @@ export const createRuntimeFacade = async ({
         });
 
         updateGhostBricks(deltaSeconds);
-        tickGambleBricks(deltaSeconds);
+        gambleRuntime?.tick(deltaSeconds);
         const paddleScale = powerups.getPaddleWidthScale();
         const targetPaddleWidth = runtimeState.paddleBaseWidth * paddleScale;
         setPaddleWidth(targetPaddleWidth);
@@ -2938,7 +1896,7 @@ export const createRuntimeFacade = async ({
             physics.step(movementDelta * 1000);
         }
 
-        updateForeshadowPredictions();
+        foreshadowing.updatePredictions();
 
         visualBodies.forEach((visual, body) => {
             visual.x = body.position.x;
@@ -3130,184 +2088,91 @@ export const createRuntimeFacade = async ({
         },
     );
 
-    stage.register('main-menu', (context) =>
-        createMainMenuScene(context, {
-            helpText: [
-                'Drag or use arrow keys to aim the paddle',
-                'Tap, space, or click to launch the ball',
-                'Stack power-ups for massive combos',
-            ],
-            onStart: () => {
-                void beginNewSession();
-            },
-            highScoresProvider: getHighScores,
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    stage.register('fate-ledger', (context) => createFateLedgerScene(context), {
-        provideContext: provideSceneServices,
+    const { pauseGame, resumeFromPause, quitToMenu } = await registerRuntimeScenes({
+        stage,
+        getLoop: () => loop,
+        renderStageSoon,
+        provideSceneServices,
+        beginNewSession,
+        runGameplayUpdate,
+        runtimeInput,
+        gameContainer,
+        hudContainer,
+        getScore: () => scoringState.score,
+        getIsPaused: () => isPaused,
+        setIsPaused: (paused) => {
+            isPaused = paused;
+        },
+        logger: runtimeLogger,
     });
 
-    stage.register('gameplay', (context) =>
-        createGameplayScene(context, {
-            onUpdate: runGameplayUpdate,
-            onSuspend: () => {
-                runtimeInput.resetLaunchTrigger();
+    const { runtimeDebug: createdRuntimeDebug } = setupDebugHarnessIntegrations({
+        logger: runtimeLogger,
+        cheatPowerUpBindings,
+        toggleTheme,
+        pauseGame,
+        resumeGame: () => {
+            resumeFromPause();
+        },
+        quitToMenu,
+        renderStageSoon,
+        isPaused: () => isPaused,
+        isLoopRunning: () => Boolean(loop?.isRunning()),
+        getPhysicsDebugState: () => runtimeState.lastPhysicsDebugState,
+        developerCheatDeps: {
+            getCurrentScene: () => stage.getCurrentScene(),
+            getPaddlePosition: () => ({
+                x: paddle.physicsBody.position.x,
+                y: paddle.physicsBody.position.y,
+            }),
+            spawnPowerUp: (type: PowerUpType, position: { x: number; y: number }) => {
+                levelRuntime.spawnPowerUp(type, position);
             },
-            onResume: () => {
-                runtimeInput.resetLaunchTrigger();
-            },
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    const quitLabel = 'Tap here or press Q to quit to menu';
-
-    stage.register('pause', (context) =>
-        createPauseScene(context, {
-            resumeLabel: 'Tap to resume',
-            quitLabel,
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    stage.register('level-complete', (context) =>
-        createLevelCompleteScene(context, {
-            prompt: 'Tap to continue',
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    stage.register('bias-phase', (context) => createBiasPhaseScene(context), {
-        provideContext: provideSceneServices,
-    });
-
-    stage.register('game-over', (context) =>
-        createGameOverScene(context, {
-            prompt: 'Tap to return to menu',
-            onRestart: () => {
-                void quitToMenu();
-            },
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    await stage.transitionTo('main-menu', undefined, { immediate: true });
-    renderStageSoon();
-    gameContainer.visible = false;
-    hudContainer.visible = false;
-
-    async function quitToMenu(): Promise<void> {
-        if (!loop) {
-            return;
-        }
-
-        while (true) {
-            const top = stage.getCurrentScene();
-            if (!top || top === 'gameplay' || top === 'main-menu') {
-                break;
-            }
-            stage.pop();
-        }
-
-        isPaused = false;
-        loop.stop();
-        gameContainer.visible = false;
-        hudContainer.visible = false;
-
-        try {
-            await stage.transitionTo('main-menu', undefined, { immediate: true });
-        } catch (error) {
-            runtimeLogger.error('Failed to transition to main menu', { error });
-        }
-
-        renderStageSoon();
-    }
-
-    const resumeFromPause = () => {
-        if (!loop || !isPaused) {
-            return;
-        }
-
-        if (stage.getCurrentScene() === 'pause') {
-            stage.pop();
-        }
-
-        isPaused = false;
-        loop.start();
-        renderStageSoon();
-    };
-
-    const pauseGame = () => {
-        if (!loop || isPaused || !loop.isRunning()) {
-            return;
-        }
-
-        isPaused = true;
-        loop.stop();
-
-        const payload = {
-            score: scoringState.score,
-            legendTitle: 'Power-Up Legend',
-            legendLines: pauseLegendLines,
-            onResume: () => {
+            powerUpRadius: POWER_UP_RADIUS,
+            renderStageSoon,
+            runtimeLogger,
+            roundMachine,
+            powerups,
+            refreshHud,
+            createReward: (type: RewardType) => createReward(type),
+            session: sessionFacade,
+            handleLevelComplete,
+        },
+        harnessDeps: {
+            beginNewSession,
+            getCurrentScene: () => stage.getCurrentScene(),
+            isLoopRunning: () => Boolean(loop?.isRunning()),
+            getIsPaused: () => isPaused,
+            pauseGame,
+            resumeGameplay: () => {
                 resumeFromPause();
             },
-            onQuit: () => {
-                void quitToMenu();
-            },
-        } as const;
+            quitToMenu,
+            scoring,
+            session: sessionFacade,
+            syncMomentum,
+            clearExtraBalls,
+            reattachBallToPaddle,
+            renderStageSoon,
+            handleGameOver,
+            runtimeInput,
+            launchController,
+            physics,
+            ball,
+            runtimeState,
+            replayBuffer,
+            bus,
+            roundMachine,
+            biasCoordinator,
+            runtimeModifiers,
+        },
+        overlays: {
+            input: visuals?.inputDebugOverlay ?? null,
+            physics: visuals?.physicsDebugOverlay ?? null,
+        },
+    });
 
-        void stage.push('pause', payload)
-            .then(() => {
-                renderStageSoon();
-            })
-            .catch((error) => {
-                isPaused = false;
-                loop.start();
-                runtimeLogger.error('Failed to push pause overlay', { error });
-            });
-    };
-
-    const spawnCheatPowerUp = (type: PowerUpType) => {
-        if (stage.getCurrentScene() !== 'gameplay') {
-            runtimeLogger.warn('Developer cheat ignored: spawn power-up outside gameplay scene', { type });
-            return;
-        }
-        const spawnX = paddle.physicsBody.position.x;
-        const spawnY = Math.max(POWER_UP_RADIUS, paddle.physicsBody.position.y - 120);
-        levelRuntime.spawnPowerUp(type, { x: spawnX, y: spawnY });
-        runtimeLogger.info('Developer cheat spawned power-up', { type, position: { x: spawnX, y: spawnY } });
-        renderStageSoon();
-    };
-
-    const applyCheatReward = (rewardType: RewardType) => {
-        if (stage.getCurrentScene() !== 'gameplay') {
-            runtimeLogger.warn('Developer cheat ignored: reward activation outside gameplay', { rewardType });
-            return;
-        }
-        const reward = createReward(rewardType);
-        roundMachine.setPendingReward(null);
-        powerups.activateReward(reward);
-        refreshHud();
-        runtimeLogger.info('Developer cheat activated reward', { rewardType });
-        renderStageSoon();
-    };
-
-    const skipToNextLevelCheat = () => {
-        if (stage.getCurrentScene() !== 'gameplay') {
-            runtimeLogger.warn('Developer cheat ignored: skip level outside gameplay');
-            return;
-        }
-        runtimeLogger.info('Developer cheat skipping current level', { level: roundMachine.getCurrentLevelIndex() + 1 });
-        session.completeRound();
-        handleLevelComplete();
-        renderStageSoon();
-    };
-
-
-    registerE2EHarnessControls();
+    runtimeDebug = createdRuntimeDebug;
 
 
     const cleanupVisuals = () => {
@@ -3317,6 +2182,7 @@ export const createRuntimeFacade = async ({
             }
             pendingVisualTimers.clear();
         }
+        gambleRuntime?.dispose();
         unsubscribeSettings?.();
         unsubscribeSettings = null;
         unsubscribeMeta?.();
@@ -3325,8 +2191,6 @@ export const createRuntimeFacade = async ({
         unsubscribeTheme = null;
         visuals?.dispose();
         visuals = null;
-        gambleHighlight?.dispose();
-        gambleHighlight = null;
         musicDirector.setBeatCallback(null);
         musicDirector.setMeasureCallback(null);
         runtimeDebug?.resetVisibility();
@@ -3343,77 +2207,41 @@ export const createRuntimeFacade = async ({
         applyVisualPerformanceProfile();
     };
 
-    const lifecycle = createRuntimeLifecycle();
-
-    const idleSimulation = createIdleSimulation({
+    const { lifecycle, idleResumeSummary } = initializeRuntimeLifecycle({
         session,
         random,
         fateLedger,
-        lifecycle,
+        cleanupHandlers: [
+            () => {
+                midiEngine.dispose();
+            },
+            () => {
+                foreshadowing.dispose();
+            },
+            () => {
+                disposeInitializer();
+            },
+            () => {
+                cleanupVisuals();
+            },
+            () => {
+                runtimeInput.dispose();
+            },
+            () => {
+                runtimeDebug?.dispose();
+                runtimeDebug = null;
+            },
+            () => {
+                collisionRuntime?.unwire();
+                collisionRuntime = null;
+            },
+            () => {
+                bindLaserController(null);
+                laserController?.dispose();
+                laserController = null;
+            },
+        ],
     });
-    let idleResumeSummary: IdleSimulationResultSummary | null = null;
-
-    lifecycle.register(() => {
-        midiEngine.dispose();
-    });
-    lifecycle.register(() => {
-        disposeForeshadower();
-    });
-    lifecycle.register(() => {
-        resetForeshadowing();
-    });
-    lifecycle.register(() => {
-        disposeInitializer();
-    });
-    lifecycle.register(() => {
-        cleanupVisuals();
-    });
-    lifecycle.register(() => {
-        runtimeInput.dispose();
-    });
-    lifecycle.register(() => {
-        runtimeDebug?.dispose();
-        runtimeDebug = null;
-    });
-    lifecycle.register(() => {
-        collisionRuntime?.unwire();
-        collisionRuntime = null;
-    });
-    lifecycle.register(() => {
-        laserController?.dispose();
-        laserController = null;
-    });
-
-    lifecycle.install();
-
-    runtimeDebug = createRuntimeDebug({
-        logger: runtimeLogger,
-        developerCheats,
-        cheatPowerUpBindings,
-        toggleTheme,
-        pauseGame,
-        resumeGame: () => {
-            void resumeFromPause();
-        },
-        quitToMenu,
-        spawnCheatPowerUp,
-        applyCheatReward,
-        skipLevel: () => {
-            void skipToNextLevelCheat();
-        },
-        renderStageSoon,
-        isPaused: () => isPaused,
-        isLoopRunning: () => Boolean(loop?.isRunning()),
-        getPhysicsDebugState: () => runtimeState.lastPhysicsDebugState,
-    });
-    runtimeDebug.install();
-    runtimeDebug.updateOverlays({
-        input: visuals?.inputDebugOverlay ?? null,
-        physics: visuals?.physicsDebugOverlay ?? null,
-    });
-
-    idleResumeSummary = idleSimulation.resumeIfNeeded();
-    idleSimulation.persistSnapshot();
     if (idleResumeSummary) {
         refreshHud();
         hudDisplay.pulseCombo(0.35);
