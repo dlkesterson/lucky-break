@@ -160,7 +160,7 @@ const createOptionCard = (
         style: {
             fill: hexToNumber(GameTheme.accents.combo),
             fontFamily: GameTheme.font,
-            fontSize: 24,
+            fontSize: dimensions.width <= 300 ? 20 : 24,
             align: 'center',
         },
     });
@@ -192,17 +192,33 @@ const createOptionCard = (
 
 const createScoreboard = (session: BiasPhaseSessionSummary, width: number): Container => {
     const panel = new Container();
-    const padding = 24;
-    const height = 120;
+    const paddingX = 24;
+    const paddingY = 20;
+    const effectiveWidth = Math.max(160, width);
+    const availableWidth = Math.max(1, effectiveWidth - paddingX * 2);
+    const minColumnWidth = 160;
+    const columns = Math.min(
+        SCOREBOARD_ENTRIES.length,
+        Math.max(1, Math.floor(availableWidth / minColumnWidth)),
+    );
+    const rows = Math.ceil(SCOREBOARD_ENTRIES.length / columns);
+    const columnWidth = availableWidth / columns;
+    const rowHeight = 70;
+    const panelHeight = paddingY * 2 + rows * rowHeight;
+
     const background = new Graphics();
-    background.roundRect(0, 0, width, height, 18)
+    background.roundRect(0, 0, effectiveWidth, panelHeight, 18)
         .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.92 })
         .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 4, alignment: 0.5 });
     background.eventMode = 'none';
     panel.addChild(background);
 
-    const entrySpacing = Math.max(140, Math.floor((width - padding * 2) / SCOREBOARD_ENTRIES.length));
     SCOREBOARD_ENTRIES.forEach((entry, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const baseX = paddingX + columnWidth * column + columnWidth / 2;
+        const baseY = paddingY + row * rowHeight;
+
         const label = new Text({
             text: entry.label.toUpperCase(),
             style: {
@@ -213,19 +229,19 @@ const createScoreboard = (session: BiasPhaseSessionSummary, width: number): Cont
             },
         });
         label.anchor.set(0.5, 0);
-        label.position.set(padding + entrySpacing * index + entrySpacing / 2, padding - 8);
+        label.position.set(baseX, baseY - 8);
 
         const value = new Text({
             text: entry.resolve(session),
             style: {
                 fill: hexToNumber(GameTheme.hud.textPrimary),
                 fontFamily: GameTheme.font,
-                fontSize: 30,
+                fontSize: columns >= 5 ? 24 : columns >= 4 ? 26 : 30,
                 fontWeight: '800',
             },
         });
         value.anchor.set(0.5, 0);
-        value.position.set(label.position.x, label.position.y + label.height + 4);
+        value.position.set(baseX, label.y + label.height + 4);
 
         panel.addChild(label, value);
     });
@@ -287,12 +303,13 @@ export const createBiasPhaseScene = (
             overlay.eventMode = 'none';
             root.addChild(overlay);
 
+            const titleFontSize = width >= 1280 ? 92 : width >= 1024 ? 84 : width >= 840 ? 72 : width >= 680 ? 64 : 56;
             const title = new Text({
                 text: 'Bias Phase'.toUpperCase(),
                 style: {
                     fill: hexToNumber(GameTheme.accents.combo),
                     fontFamily: GameTheme.font,
-                    fontSize: 92,
+                    fontSize: titleFontSize,
                     fontWeight: '900',
                     align: 'center',
                     letterSpacing: 2,
@@ -302,12 +319,13 @@ export const createBiasPhaseScene = (
             title.position.set(width / 2, 64);
             root.addChild(title);
 
+            const subtitleFontSize = width >= 1024 ? 26 : width >= 840 ? 24 : 22;
             const subtitle = new Text({
                 text: 'Stake your trajectory before the next volley',
                 style: {
                     fill: hexToNumber(GameTheme.hud.textSecondary),
                     fontFamily: GameTheme.monoFont,
-                    fontSize: 26,
+                    fontSize: subtitleFontSize,
                     align: 'center',
                 },
             });
@@ -315,18 +333,56 @@ export const createBiasPhaseScene = (
             subtitle.position.set(width / 2, title.y + title.height + 12);
             root.addChild(subtitle);
 
-            const scoreboardWidth = Math.min(width * 0.8, 880);
+            const widthMargin = Math.max(0, width - 24);
+            const maxAllowedWidth = Math.min(width, Math.max(180, widthMargin));
+            let scoreboardWidth = Math.min(880, Math.max(360, width * 0.8));
+            if (scoreboardWidth > maxAllowedWidth) {
+                scoreboardWidth = maxAllowedWidth;
+            }
+            const minAcceptableWidth = Math.min(320, maxAllowedWidth);
+            scoreboardWidth = Math.max(minAcceptableWidth, scoreboardWidth);
             const scoreboard = createScoreboard(payload.session, scoreboardWidth);
             scoreboard.position.set((width - scoreboardWidth) / 2, subtitle.y + subtitle.height + 36);
             root.addChild(scoreboard);
 
             const cardRow = new Container();
-            const spacing = 28;
-            const maxCardWidth = Math.min(420, Math.max(320, (width - spacing * 4) / 3));
-            const cardHeight = 420;
+            const baseGap = width >= 1280 ? 36 : width >= 1024 ? 32 : width >= 840 ? 28 : width >= 680 ? 24 : 18;
+            const horizontalPadding = width < 640 ? 16 : baseGap;
+            const maxColumns = Math.min(payload.options.length, 3);
+            const minCardWidth = width >= 1080 ? 320 : width >= 900 ? 300 : width >= 720 ? 280 : 240;
+            const availableWidth = Math.max(1, width - horizontalPadding * 2);
+            let cardColumns = maxColumns;
+            let columnGap = cardColumns > 1 ? baseGap : 0;
+            let cardWidth = 0;
+            for (let columns = maxColumns; columns >= 1; columns -= 1) {
+                const gap = columns > 1 ? baseGap : 0;
+                const candidate = (availableWidth - gap * (columns - 1)) / columns;
+                if (candidate >= Math.min(minCardWidth, 360)) {
+                    cardColumns = columns;
+                    columnGap = gap;
+                    cardWidth = Math.min(420, candidate);
+                    break;
+                }
+            }
+            if (cardWidth === 0) {
+                cardColumns = 1;
+                columnGap = 0;
+                cardWidth = Math.min(420, availableWidth);
+            }
+            const rowGap = baseGap + 12;
+            const cardHeight = width >= 1080 ? 420 : width >= 900 ? 400 : width >= 720 ? 380 : 340;
+            const rowCount = Math.ceil(payload.options.length / cardColumns);
+            const maxRowWidth = cardColumns * cardWidth + (cardColumns - 1) * columnGap;
+            const cardsHeight = rowCount * cardHeight + Math.max(0, rowCount - 1) * rowGap;
+            const scoreboardBottom = scoreboard.y + scoreboard.height;
+            const footerReserve = payload.onSkip ? 140 : 80;
+            const availableHeight = Math.max(160, height - (scoreboardBottom + 48) - footerReserve);
+            const cardScale = cardsHeight > availableHeight ? Math.max(0.6, availableHeight / cardsHeight) : 1;
+            const scaledRowWidth = maxRowWidth * cardScale;
+            const cardAreaLeft = Math.max(0, (width - scaledRowWidth) / 2);
 
             payload.options.forEach((option, index) => {
-                const card = createOptionCard(context, option, { width: maxCardWidth, height: cardHeight }, () => {
+                const card = createOptionCard(context, option, { width: cardWidth, height: cardHeight }, () => {
                     if (resolving) {
                         return;
                     }
@@ -341,13 +397,20 @@ export const createBiasPhaseScene = (
                             });
                     }
                 });
-                card.container.position.set(index * (maxCardWidth + spacing), 0);
+                const column = index % cardColumns;
+                const row = Math.floor(index / cardColumns);
+                const cardsInRow = Math.min(cardColumns, payload.options.length - row * cardColumns);
+                const rowWidth = cardsInRow * cardWidth + (cardsInRow - 1) * columnGap;
+                const rowOffset = (maxRowWidth - rowWidth) / 2;
+                const x = rowOffset + column * (cardWidth + columnGap);
+                const y = row * (cardHeight + rowGap);
+                card.container.position.set(x, y);
                 cardRow.addChild(card.container);
                 cleanupCallbacks.push(() => card.container.removeAllListeners());
             });
 
-            const totalWidth = payload.options.length * maxCardWidth + (payload.options.length - 1) * spacing;
-            cardRow.position.set((width - totalWidth) / 2, scoreboard.y + scoreboard.height + 48);
+            cardRow.scale.set(cardScale);
+            cardRow.position.set(cardAreaLeft, scoreboardBottom + 48);
             root.addChild(cardRow);
 
             if (payload.onSkip) {
@@ -361,7 +424,7 @@ export const createBiasPhaseScene = (
                     },
                 });
                 skipText.anchor.set(0.5, 0);
-                skipText.position.set(width / 2, cardRow.y + cardHeight + 32);
+                skipText.position.set(width / 2, cardRow.y + cardsHeight * cardScale + 32);
                 skipText.eventMode = 'static';
                 skipText.cursor = 'pointer';
                 skipText.on('pointertap', () => {

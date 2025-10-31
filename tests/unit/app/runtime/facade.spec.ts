@@ -1,101 +1,25 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { MetaUpgradeListener, MetaUpgradeLoadout, MetaUpgradeSnapshot } from 'app/meta-upgrades';
-
-const toneState = vi.hoisted(() => ({
-    contextState: 'suspended' as 'suspended' | 'running',
-    transportState: 'stopped' as 'stopped' | 'started',
-    resumeImpl: () => {
-        toneState.contextState = 'running';
-        return Promise.resolve();
-    },
-    startImpl: () => {
-        toneState.transportState = 'started';
-        return Promise.resolve();
-    },
-    resumeMock: vi.fn(),
-    transportStartMock: vi.fn(),
-}));
-
-const metaUpgradeState = vi.hoisted(() => {
-    const baseSnapshot: MetaUpgradeSnapshot = {
-        version: 1,
-        dustBalance: 0,
-        unlocked: {
-            visualPalettes: ['baseline'],
-            audioPalettes: ['baseline'],
-            traits: [],
-        },
-        equipped: {
-            visualPalette: 'baseline',
-            audioPalette: 'baseline',
-            traits: [],
-        },
-    };
-
-    const cloneSnapshot = (snapshot: MetaUpgradeSnapshot): MetaUpgradeSnapshot => ({
-        version: snapshot.version,
-        dustBalance: snapshot.dustBalance,
-        unlocked: {
-            visualPalettes: [...snapshot.unlocked.visualPalettes],
-            audioPalettes: [...snapshot.unlocked.audioPalettes],
-            traits: [...snapshot.unlocked.traits],
-        },
-        equipped: {
-            visualPalette: snapshot.equipped.visualPalette,
-            audioPalette: snapshot.equipped.audioPalette,
-            traits: [...snapshot.equipped.traits],
-        },
-    });
-
-    const baseLoadout: MetaUpgradeLoadout = {
-        visualPalette: {
-            id: 'baseline',
-            label: 'Baseline Prism',
-            description: 'Default palette for tests',
-            cost: 0,
-            previewAccent: '#FFFFFF',
-            ball: {
-                core: '#FFFFFF',
-                aura: '#FFFFFF',
-                highlight: '#FFFFFF',
-                baseAlpha: 0.78,
-                rimAlpha: 0.38,
-                innerAlpha: 0.32,
-                innerScale: 0.5,
-            },
-            paddle: {
-                gradient: ['#FFFFFF', '#DDDDDD'],
-                accentColor: '#FFFFFF',
-            },
-            accents: {
-                combo: '#FFFFFF',
-                powerUp: '#FFFFFF',
-                background: ['#101010', '#303030'],
-            },
-        },
-        audioPalette: {
-            id: 'baseline',
-            label: 'Baseline Ensemble',
-            description: 'Default audio palette for tests',
-            cost: 0,
-            config: {},
-        },
-        traitEffects: {
-            extraLives: 0,
-            comboDecayMultiplier: 1,
-        },
-    };
-
-    return {
-        baseSnapshot,
-        snapshot: cloneSnapshot(baseSnapshot),
-        baseLoadout,
-        loadout: baseLoadout,
-        listeners: new Set<MetaUpgradeListener>(),
-        manager: null as any,
-        cloneSnapshot,
-    };
-});
+import { toneState, resetToneState } from './__helpers__/tone-mock';
+import {
+    ballState,
+    createGameInitializerMock,
+    createGameSessionManagerMock,
+    highScoreModule,
+    initializerState,
+    inputManagerState,
+    launchControllerState,
+    loggerState,
+    matterEventsState,
+    metaUpgradeState,
+    multiBallControllerMockFactory,
+    paddleState,
+    physicsWorldState,
+    powerUpManagerState,
+    prestigeModule,
+    resetRuntimeFacadeTestState,
+    setActiveTheme,
+    themeMockState,
+} from './__helpers__/runtime-facade-test-harness';
 
 vi.mock('app/metaprogression', () => {
     const state = metaUpgradeState;
@@ -123,7 +47,7 @@ vi.mock('app/metaprogression', () => {
                         audioPalette: state.snapshot.equipped.audioPalette,
                         traits: [...state.snapshot.equipped.traits],
                     },
-                } satisfies MetaUpgradeSnapshot;
+                } satisfies typeof state.snapshot;
             }
             const snapshot = state.cloneSnapshot(state.snapshot);
             state.snapshot = snapshot;
@@ -139,7 +63,7 @@ vi.mock('app/metaprogression', () => {
         equipVisualPalette: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
         equipAudioPalette: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
         toggleTrait: vi.fn(() => ({ success: true, snapshot: state.cloneSnapshot(state.snapshot) })),
-        subscribe: vi.fn((listener: MetaUpgradeListener) => {
+        subscribe: vi.fn((listener) => {
             state.listeners.add(listener);
             listener(state.cloneSnapshot(state.snapshot));
             return () => {
@@ -156,476 +80,11 @@ vi.mock('app/metaprogression', () => {
     };
 });
 
-const prestigeModule = vi.hoisted(() => ({
-    computePrestigeDust: vi.fn(() => 0),
-}));
-
 vi.mock('util/prestige', () => prestigeModule);
-
-
-const createStageStub = () => {
-    const makeLifecycleContainer = () => ({
-        addChild: vi.fn(),
-    });
-
-    const layers: Record<string, { addChild: ReturnType<typeof vi.fn> }> = {
-        playfield: makeLifecycleContainer(),
-        effects: makeLifecycleContainer(),
-        hud: makeLifecycleContainer(),
-    };
-
-    return {
-        addToLayer: vi.fn((layer: string, child: unknown) => {
-            if (!layers[layer]) {
-                layers[layer] = makeLifecycleContainer();
-            }
-            layers[layer].addChild(child);
-        }),
-        layers,
-        app: {
-            renderer: {},
-            render: vi.fn(),
-        },
-        applyTheme: vi.fn(),
-        register: vi.fn(),
-        transitionTo: vi.fn().mockResolvedValue(undefined),
-        push: vi.fn().mockResolvedValue(undefined),
-        pop: vi.fn(),
-        getCurrentScene: vi.fn(() => 'main-menu'),
-        toPlayfield: vi.fn((point: { x: number; y: number }) => ({ ...point })),
-        update: vi.fn(),
-    };
-};
-
-const initializerState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const powerUpManagerState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const inputManagerState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const paddleState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const ballState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const physicsWorldState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const launchControllerState = vi.hoisted(() => ({
-    instances: [] as any[],
-}));
-
-const loggerState = vi.hoisted(() => ({
-    runtime: null as {
-        debug: Mock;
-        error: Mock;
-        info: Mock;
-        warn: Mock;
-    } | null,
-}));
-
-const sessionManagerState = vi.hoisted(() => ({
-    instances: [] as any[],
-    options: [] as Record<string, unknown>[],
-}));
-
-const createGameSessionManagerMock = vi.hoisted(() =>
-    vi.fn((options: Record<string, unknown> = {}) => {
-        const state: any = {
-            sessionId: 'session-test',
-            livesRemaining: 3,
-            brickRemaining: 0,
-            brickTotal: 0,
-            round: 1,
-            status: 'active',
-            score: 0,
-            coins: 0,
-            momentum: {
-                volleyLength: 0,
-                speedPressure: 0,
-                brickDensity: 1,
-                comboHeat: 0,
-                comboTimer: 0,
-                updatedAt: Date.now(),
-            },
-            entropy: {
-                charge: 0,
-                stored: 0,
-                trend: 'stable',
-                lastEvent: null,
-                updatedAt: Date.now(),
-            },
-        };
-
-        const handle = {
-            startRound: vi.fn((roundOptions: { breakableBricks: number }) => {
-                state.brickRemaining = roundOptions.breakableBricks;
-                state.brickTotal = roundOptions.breakableBricks;
-            }),
-            snapshot: vi.fn(() => ({
-                ...state,
-                hud: {
-                    score: state.score,
-                    coins: state.coins,
-                    lives: state.livesRemaining,
-                    round: state.round,
-                    brickRemaining: state.brickRemaining,
-                    brickTotal: state.brickTotal,
-                    momentum: {
-                        volleyLength: state.momentum.volleyLength,
-                        speedPressure: state.momentum.speedPressure,
-                        brickDensity: state.momentum.brickDensity,
-                        comboHeat: state.momentum.comboHeat,
-                        comboTimer: state.momentum.comboTimer,
-                    },
-                    entropy: {
-                        charge: state.entropy.charge,
-                        stored: state.entropy.stored,
-                        trend: state.entropy.trend,
-                    },
-                    audio: {
-                        scene: 'calm',
-                        nextScene: null,
-                        barCountdown: 0,
-                    },
-                    prompts: [],
-                    settings: {
-                        muted: false,
-                        masterVolume: 1,
-                        reducedMotion: false,
-                    },
-                },
-            })),
-            recordBrickBreak: vi.fn(),
-            recordLifeLost: vi.fn(() => {
-                state.livesRemaining = Math.max(0, state.livesRemaining - 1);
-            }),
-            completeRound: vi.fn(() => {
-                state.brickRemaining = 0;
-            }),
-            recordEntropyEvent: vi.fn((event: { type?: string }) => {
-                state.entropy.lastEvent = event?.type ?? null;
-            }),
-            collectCoins: vi.fn((amount: number) => {
-                const safeAmount = Math.max(0, Math.floor(amount));
-                state.coins += safeAmount;
-                state.score += safeAmount;
-            }),
-            getEntropyState: vi.fn(() => ({ ...state.entropy })),
-            updateMomentum: vi.fn((snapshot: Partial<Record<string, number>>) => {
-                state.momentum = {
-                    volleyLength: Math.max(0, Math.round(snapshot?.volleyLength ?? 0)),
-                    speedPressure: Math.max(0, Math.min(1, snapshot?.speedPressure ?? 0)),
-                    brickDensity: Math.max(0, Math.min(1, snapshot?.brickDensity ?? state.momentum.brickDensity ?? 0)),
-                    comboHeat: Math.max(0, Math.min(1, snapshot?.comboHeat ?? 0)),
-                    comboTimer: Math.max(0, snapshot?.comboTimer ?? 0),
-                    updatedAt: Date.now(),
-                };
-            }),
-        };
-
-        sessionManagerState.instances.push(handle);
-        sessionManagerState.options.push(options);
-        return handle;
-    }),
-);
-
-const createGameInitializerMock = vi.hoisted(() =>
-    vi.fn(async (options: unknown) => {
-        const stage = createStageStub();
-        const dispose = vi.fn();
-        const renderStageSoon = vi.fn();
-        const bus = { publish: vi.fn() };
-        const musicDirector = {
-            setState: vi.fn(),
-            getState: vi.fn(() => null),
-            setEnabled: vi.fn(),
-            setBeatCallback: vi.fn(),
-            setMeasureCallback: vi.fn(),
-            triggerComboAccent: vi.fn(),
-            dispose: vi.fn(),
-        };
-        const scheduler = {
-            lookAheadMs: 120,
-            lookAheadSeconds: 0.12,
-            schedule: vi.fn().mockReturnValue({ id: 0, time: 0 }),
-            cancel: vi.fn(),
-            dispose: vi.fn(),
-            context: { currentTime: 0 } as AudioContext,
-            now: vi.fn().mockReturnValue(0),
-            predictAt: vi.fn().mockImplementation((offsetMs?: number) => 0.12 + (typeof offsetMs === 'number' ? offsetMs / 1000 : 0)),
-        };
-
-        initializerState.instances.push({
-            stage,
-            dispose,
-            musicDirector,
-            renderStageSoon,
-            scheduler,
-            bus,
-            options,
-        });
-        return {
-            stage,
-            bus,
-            scheduler,
-            audioState$: { next: vi.fn() },
-            musicDirector,
-            renderStageSoon,
-            dispose,
-        };
-    }),
-);
 
 vi.mock('app/game-initializer', () => ({
     createGameInitializer: createGameInitializerMock,
 }));
-vi.mock('./game-initializer', () => ({
-    createGameInitializer: createGameInitializerMock,
-}));
-
-vi.mock('tone', () => {
-    const resumeMock = vi.fn(() => {
-        const result = toneState.resumeImpl();
-        if (typeof result === 'object' && result !== null && 'then' in result && typeof (result as PromiseLike<unknown>).then === 'function') {
-            return Promise.resolve(result).finally(() => {
-                toneState.contextState = 'running';
-            });
-        }
-        toneState.contextState = 'running';
-        return result;
-    });
-    const transportStartMock = vi.fn(() => {
-        const result = toneState.startImpl();
-        if (typeof result === 'object' && result !== null && 'then' in result && typeof (result as PromiseLike<unknown>).then === 'function') {
-            return Promise.resolve(result).finally(() => {
-                toneState.transportState = 'started';
-            });
-        }
-        toneState.transportState = 'started';
-        return result;
-    });
-    const toneStartMock = vi.fn(() => Promise.resolve());
-    toneState.resumeMock = resumeMock;
-    toneState.transportStartMock = transportStartMock;
-
-    class MockGain {
-        public readonly gain = {
-            value: 0,
-            cancelAndHoldAtTime: vi.fn(),
-            setValueAtTime: vi.fn(),
-            getValueAtTime: vi.fn(() => 0),
-            linearRampToValueAtTime: vi.fn(),
-        };
-        connect = vi.fn();
-        toDestination = vi.fn();
-        dispose = vi.fn();
-    }
-
-    class MockPlayer {
-        constructor(options: unknown) {
-            void options;
-        }
-        sync() {
-            return this;
-        }
-        start = vi.fn();
-        connect = vi.fn();
-        dispose = vi.fn();
-    }
-
-    class MockVolume {
-        constructor(value: number) {
-            void value;
-        }
-        connect = vi.fn();
-        dispose = vi.fn();
-    }
-
-    class MockPanner {
-        constructor(value: number) {
-            void value;
-        }
-        connect = vi.fn();
-        toDestination = vi.fn();
-        pan = {
-            setValueAtTime: vi.fn(),
-        };
-        dispose = vi.fn();
-    }
-
-    interface MockTonePlayer {
-        playbackRate: number;
-        volume: { value: number };
-        start: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-    }
-
-    class MockPlayers {
-        private readonly players: Record<string, MockTonePlayer>;
-        constructor(urls: Record<string, string>, onload?: () => void) {
-            this.players = Object.keys(urls).reduce<Record<string, MockTonePlayer>>((acc, id) => {
-                acc[id] = {
-                    playbackRate: 1,
-                    volume: { value: 0 },
-                    start: vi.fn(),
-                    stop: vi.fn(),
-                };
-                return acc;
-            }, {});
-            if (onload) {
-                queueMicrotask(onload);
-            }
-        }
-        connect = vi.fn();
-        dispose = vi.fn();
-        player = vi.fn((id: string): MockTonePlayer | undefined => this.players[id]);
-    }
-
-    const transport = {
-        get state() {
-            return toneState.transportState;
-        },
-        start: transportStartMock,
-    };
-
-    return {
-        Gain: MockGain,
-        Player: MockPlayer,
-        Transport: transport,
-        getTransport: () => transport,
-        getContext: () => ({
-            rawContext: {
-                get state() {
-                    return toneState.contextState;
-                },
-                resume: resumeMock,
-            },
-        }),
-        now: vi.fn(() => 0),
-        Volume: MockVolume,
-        Panner: MockPanner,
-        Players: MockPlayers,
-        start: toneStartMock,
-    };
-});
-
-const themeMockState = vi.hoisted(() => {
-    interface MockTheme {
-        brickColors: string[];
-        ball: { core: string; aura: string; highlight: string };
-        paddle: { gradient: string[]; glow: number };
-        accents: { combo: string; powerUp: string };
-        background: { from: number; to: number; starAlpha: number };
-        font: string;
-        monoFont: string;
-        hud: {
-            panelFill: string;
-            panelLine: string;
-            textPrimary: string;
-            textSecondary: string;
-            accent: string;
-            danger: string;
-        };
-    }
-
-    const defaultTheme: MockTheme = {
-        brickColors: ['#ff0000', '#00ff00', '#0000ff'],
-        ball: {
-            core: '#cccccc',
-            aura: '#eeeeee',
-            highlight: '#ffffff',
-        },
-        paddle: {
-            gradient: ['#123456', '#654321'],
-            glow: 0.4,
-        },
-        accents: {
-            combo: '#abcdef',
-            powerUp: '#fedcba',
-        },
-        background: {
-            from: 0x111111,
-            to: 0x222222,
-            starAlpha: 0.2,
-        },
-        font: 'Test Font',
-        monoFont: 'Test Mono',
-        hud: {
-            panelFill: '#101010',
-            panelLine: '#202020',
-            textPrimary: '#ffffff',
-            textSecondary: '#cccccc',
-            accent: '#ff8800',
-            danger: '#ff0000',
-        },
-    };
-
-    const highContrastTheme: MockTheme = {
-        ...defaultTheme,
-        brickColors: ['#123123', '#321321', '#654654'],
-        accents: {
-            combo: '#00ffaa',
-            powerUp: '#aa00ff',
-        },
-    };
-
-    let activeName: 'default' | 'colorBlind' = 'default';
-    let activeTheme: MockTheme = defaultTheme;
-    const listeners = new Set<(theme: MockTheme, name: 'default' | 'colorBlind') => void>();
-
-    const notify = () => {
-        listeners.forEach((listener) => listener(activeTheme, activeName));
-    };
-
-    const setActiveTheme = vi.fn((name: 'default' | 'colorBlind') => {
-        activeName = name;
-        activeTheme = name === 'colorBlind' ? highContrastTheme : defaultTheme;
-        notify();
-    });
-
-    const onThemeChange = (listener: (theme: MockTheme, name: 'default' | 'colorBlind') => void) => {
-        listeners.add(listener);
-        return () => {
-            listeners.delete(listener);
-        };
-    };
-
-    const themeOptions = [
-        { name: 'default' as const, label: 'Vibrant' },
-        { name: 'colorBlind' as const, label: 'High Contrast' },
-    ];
-
-    const getThemeOptions = vi.fn(() => themeOptions);
-
-    const getActiveThemeName = () => activeName;
-
-    const toggleTheme = vi.fn((name?: 'default' | 'colorBlind') => {
-        const next = name ?? (activeName === 'default' ? 'colorBlind' : 'default');
-        setActiveTheme(next);
-        return activeName;
-    });
-
-    return {
-        defaultTheme,
-        highContrastTheme,
-        setActiveTheme,
-        onThemeChange,
-        getActiveThemeName,
-        getThemeOptions,
-        toggleTheme,
-    };
-});
 
 vi.mock('render/theme', () => ({
     GameTheme: themeMockState.defaultTheme,
@@ -635,8 +94,6 @@ vi.mock('render/theme', () => ({
     getThemeOptions: themeMockState.getThemeOptions,
     toggleTheme: themeMockState.toggleTheme,
 }));
-
-const setActiveTheme = themeMockState.setActiveTheme;
 
 vi.mock('physics/world', () => ({
     createPhysicsWorld: vi.fn(() => {
@@ -659,7 +116,7 @@ vi.mock('physics/world', () => ({
     }),
 }));
 
-vi.mock('./loop', () => ({
+vi.mock('app/loop', () => ({
     createGameLoop: vi.fn((update: (delta: number) => void, render: () => void) => {
         let running = false;
         return {
@@ -674,10 +131,6 @@ vi.mock('./loop', () => ({
             isRunning: vi.fn(() => running),
         };
     }),
-}));
-
-vi.mock('./state', () => ({
-    createGameSessionManager: createGameSessionManagerMock,
 }));
 
 vi.mock('app/state', () => ({
@@ -697,7 +150,7 @@ vi.mock('render/effects/dynamic-light', () => ({
         container: {
             zIndex: 0,
             alpha: 1,
-            parent: null,
+            parent: null as unknown,
             removeFromParent() {
                 if (this.parent && typeof (this.parent as any).removeChild === 'function') {
                     (this.parent as any).removeChild(this);
@@ -713,7 +166,7 @@ vi.mock('render/effects/dynamic-light', () => ({
 vi.mock('render/effects/ball-trails', () => ({
     createBallTrailsEffect: vi.fn(() => ({
         container: {
-            parent: null,
+            parent: null as unknown,
             removeFromParent() {
                 if (this.parent && typeof (this.parent as any).removeChild === 'function') {
                     (this.parent as any).removeChild(this);
@@ -748,6 +201,8 @@ vi.mock('render/hud-display', () => ({
     HudRewardView: vi.fn(),
 }));
 
+vi.mock('util/high-scores', () => highScoreModule);
+
 const createMockScene = () => ({
     destroy: vi.fn(),
     suspend: vi.fn(),
@@ -755,18 +210,6 @@ const createMockScene = () => ({
     update: vi.fn(),
     init: vi.fn(),
 });
-
-const highScoreModule = vi.hoisted(() => ({
-    getHighScores: vi.fn<[], { score: number; name: string; round: number; achievedAt: number }[]>(
-        () => [],
-    ),
-    recordHighScore: vi.fn<
-        [number, { round?: number; minScore?: number; achievedAt?: number; name?: string }?],
-        { accepted: boolean; position: number | null; entries: unknown[] }
-    >(() => ({ accepted: false, position: null, entries: [] })),
-}));
-
-vi.mock('util/high-scores', () => highScoreModule);
 
 vi.mock('scenes/main-menu', () => ({
     createMainMenuScene: vi.fn(() => createMockScene()),
@@ -948,7 +391,7 @@ vi.mock('util/scoring', () => ({
     })),
 }));
 
-vi.mock('./combo-milestones', () => ({
+vi.mock('app/combo-milestones', () => ({
     publishComboMilestoneIfNeeded: vi.fn(),
 }));
 
@@ -979,7 +422,7 @@ vi.mock('util/power-ups', () => {
             return this.#effects.has(type);
         }
         update = vi.fn((delta: number) => {
-            for (const entry of this.#effects.values()) {
+            for (const entry of [...this.#effects.values()]) {
                 entry.remainingTime = Math.max(0, entry.remainingTime - delta);
                 if (entry.remainingTime === 0) {
                     this.#effects.delete(entry.type);
@@ -1231,10 +674,6 @@ vi.mock('@pixi/filter-glow', () => ({
     },
 }));
 
-const matterEventsState = vi.hoisted(() => ({
-    on: vi.fn(),
-}));
-
 vi.mock('physics/matter', () => {
     const exports = {
         Events: {
@@ -1262,35 +701,11 @@ vi.mock('physics/matter', () => {
     };
 });
 
-const createMultiBallControllerStub = () => ({
-    promoteExtraBallToPrimary: vi.fn(() => false),
-    removeExtraBallByBody: vi.fn(),
-    clear: vi.fn(),
-    spawnExtraBalls: vi.fn(),
-    count: vi.fn(() => 0),
-    isExtraBallBody: vi.fn(() => false),
-    applyTheme: vi.fn(),
-    visitActiveBalls: vi.fn((visitor?: (entry: { body: { id: number; position: { x: number; y: number }; velocity: { x: number; y: number } }; isPrimary: boolean }) => void) => {
-        if (typeof visitor === 'function') {
-            visitor({
-                body: {
-                    id: 1,
-                    position: { x: 0, y: 0 },
-                    velocity: { x: 0, y: 0 },
-                },
-                isPrimary: true,
-            });
-        }
-    }),
-});
-
-const multiBallControllerMockFactory = vi.fn(createMultiBallControllerStub);
-
-vi.mock('./multi-ball-controller', () => ({
+vi.mock('app/multi-ball-controller', () => ({
     createMultiBallController: multiBallControllerMockFactory,
 }));
 
-vi.mock('./level-runtime', () => ({
+vi.mock('app/level-runtime', () => ({
     createLevelRuntime: vi.fn(() => {
         const brickHealth = new Map();
         const brickMetadata = new Map();
@@ -1312,6 +727,7 @@ vi.mock('./level-runtime', () => ({
             })),
             updateBrickLighting: vi.fn(),
             updateBrickDamage: vi.fn(),
+            setRowColors: vi.fn(),
             findPowerUp: vi.fn(() => null),
             removePowerUp: vi.fn(),
             clearGhostEffect: vi.fn(),
@@ -1320,6 +736,10 @@ vi.mock('./level-runtime', () => ({
             updateGhostBricks: vi.fn(),
             getGhostBrickRemainingDuration: vi.fn(() => 0),
             spawnPowerUp: vi.fn(),
+            spawnCoin: vi.fn(),
+            forceClearBreakableBricks: vi.fn(),
+            clearActivePowerUps: vi.fn(),
+            clearActiveCoins: vi.fn(),
         };
     }),
 }));
@@ -1383,188 +803,7 @@ import { createMainMenuScene } from 'scenes/main-menu';
 
 const internalHelpers = __internalGameRuntimeTesting;
 
-describe('game-runtime internal helpers', () => {
-    beforeEach(() => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-        toneState.resumeImpl = () => {
-            toneState.contextState = 'running';
-            return Promise.resolve();
-        };
-        toneState.startImpl = () => {
-            toneState.transportState = 'started';
-            return Promise.resolve();
-        };
-        toneState.resumeMock.mockClear();
-        toneState.transportStartMock.mockClear();
-    });
-
-    it('identifies promise-like values correctly', () => {
-        expect(internalHelpers.isPromiseLike({ then: () => undefined })).toBe(true);
-        expect(internalHelpers.isPromiseLike(Promise.resolve('value'))).toBe(true);
-    });
-
-    it('rejects non promise-like values', () => {
-        expect(internalHelpers.isPromiseLike(null)).toBe(false);
-        expect(internalHelpers.isPromiseLike({})).toBe(false);
-        expect(internalHelpers.isPromiseLike({ then: 42 })).toBe(false);
-    });
-
-    it('waits for promises that settle before the timeout', async () => {
-        await expect(internalHelpers.waitForPromise(Promise.resolve('ok'), 10)).resolves.toBeUndefined();
-    });
-
-    it('times out safely when the promise never settles', async () => {
-        vi.useFakeTimers();
-        try {
-            const pending = new Promise<void>(() => undefined);
-            const waitTask = internalHelpers.waitForPromise(pending, 5);
-            await vi.advanceTimersByTimeAsync(6);
-            await expect(waitTask).resolves.toBeUndefined();
-        } finally {
-            vi.useRealTimers();
-        }
-    });
-
-    it('propagates promise rejections without swallowing errors', async () => {
-        const failure = new Error('wait failed');
-        await expect(internalHelpers.waitForPromise(Promise.reject(failure), 10)).rejects.toBe(failure);
-    });
-
-    it('detects autoplay blocking errors', () => {
-        const named = new Error('blocked');
-        named.name = 'NotAllowedError';
-        expect(internalHelpers.isAutoplayBlockedError(named)).toBe(true);
-
-        const messageMatch = new Error('Audio playback was not allowed to start');
-        expect(internalHelpers.isAutoplayBlockedError(messageMatch)).toBe(true);
-
-        expect(internalHelpers.isAutoplayBlockedError(new Error('Other failure'))).toBe(false);
-        expect(internalHelpers.isAutoplayBlockedError('not an error')).toBe(false);
-    });
-
-    it('uses Tone transport when available and falls back on failure', async () => {
-        const toneModule = await import('tone');
-        expect(internalHelpers.resolveToneTransport()).toBe(toneModule.getTransport());
-
-        const originalGetTransport = toneModule.getTransport;
-        (toneModule as { getTransport: () => unknown }).getTransport = () => {
-            throw new Error('unavailable');
-        };
-        try {
-            expect(internalHelpers.resolveToneTransport()).toBe(toneModule.Transport);
-        } finally {
-            (toneModule as { getTransport: () => unknown }).getTransport = originalGetTransport;
-        }
-    });
-
-    it('resumes audio context and starts transport when needed', async () => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-
-        await internalHelpers.ensureToneAudio();
-
-        expect(toneState.resumeMock).toHaveBeenCalledTimes(1);
-        expect(toneState.transportStartMock).toHaveBeenCalledTimes(1);
-        expect(toneState.contextState).toBe('running');
-        expect(toneState.transportState).toBe('started');
-    });
-
-    it('skips resume and start when audio is already active', async () => {
-        toneState.contextState = 'running';
-        toneState.transportState = 'started';
-
-        await internalHelpers.ensureToneAudio();
-
-        expect(toneState.resumeMock).not.toHaveBeenCalled();
-        expect(toneState.transportStartMock).not.toHaveBeenCalled();
-    });
-
-    it('bubbles autoplay blocks originating from Tone.start', async () => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-
-        const blocked = new Error('autoplay');
-        blocked.name = 'NotAllowedError';
-        const toneModule = await import('tone');
-        const startMock = toneModule.start as Mock;
-        startMock.mockImplementationOnce(() => Promise.reject(blocked));
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
-    });
-
-    it('bubbles autoplay blocks originating from AudioContext.resume', async () => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-
-        const blocked = new Error('context blocked');
-        blocked.name = 'NotAllowedError';
-        toneState.resumeImpl = () => Promise.reject(blocked);
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
-
-        toneState.resumeImpl = () => Promise.resolve();
-    });
-
-    it('bubbles autoplay blocks originating from Tone.Transport.start', async () => {
-        toneState.contextState = 'running';
-        toneState.transportState = 'stopped';
-
-        const blocked = new Error('transport blocked');
-        blocked.name = 'NotAllowedError';
-        toneState.transportStartMock.mockImplementationOnce(() => Promise.reject(blocked));
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(blocked);
-    });
-
-    it('logs and rethrows unexpected Tone.Transport.start errors', async () => {
-        toneState.contextState = 'running';
-        toneState.transportState = 'stopped';
-
-        const unexpected = new Error('transport failed');
-        toneState.transportStartMock.mockImplementationOnce(() => Promise.reject(unexpected));
-
-        const runtimeLogger = loggerState.runtime;
-        expect(runtimeLogger).toBeDefined();
-        runtimeLogger!.warn.mockClear();
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(unexpected);
-        expect(runtimeLogger!.warn).toHaveBeenCalledWith('Tone.Transport.start failed', { error: unexpected });
-    });
-
-    it('logs and rethrows unexpected Tone.start errors', async () => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-
-        const toneModule = await import('tone');
-        const failure = new Error('tone start failed');
-        (toneModule.start as Mock).mockImplementationOnce(() => Promise.reject(failure));
-
-        const runtimeLogger = loggerState.runtime;
-        expect(runtimeLogger).toBeDefined();
-        runtimeLogger!.warn.mockClear();
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(failure);
-        expect(runtimeLogger!.warn).toHaveBeenCalledWith('Tone.start failed', { error: failure });
-    });
-
-    it('logs and rethrows unexpected AudioContext.resume errors', async () => {
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-
-        const failure = new Error('resume failed');
-        toneState.resumeImpl = () => Promise.reject(failure);
-
-        const runtimeLogger = loggerState.runtime;
-        expect(runtimeLogger).toBeDefined();
-        runtimeLogger!.warn.mockClear();
-
-        await expect(internalHelpers.ensureToneAudio()).rejects.toBe(failure);
-        expect(runtimeLogger!.warn).toHaveBeenCalledWith('AudioContext.resume failed', { error: failure });
-
-        toneState.resumeImpl = () => Promise.resolve();
-    });
-
+describe('runtime facade helpers', () => {
     it('derives layout seeds deterministically and remaps zero hashes', () => {
         const baseSeed = 1234;
         const levelIndex = 2;
@@ -1573,141 +812,6 @@ describe('game-runtime internal helpers', () => {
 
         const zeroHashSeed = Math.imul(1, 0x9e3779b1) >>> 0;
         expect(internalHelpers.deriveLayoutSeed(zeroHashSeed, 0)).toBe(1);
-    });
-
-    it('resolves ball radius using circle radius, bounds, and defaults', () => {
-        const toBody = <T>(value: T) => value as unknown as Parameters<(typeof internalHelpers)['resolveBallRadius']>[0];
-
-        const circleBody = { circleRadius: 1 } as const;
-        expect(internalHelpers.resolveBallRadius(toBody(circleBody))).toBe(2);
-
-        const boundsBody = {
-            bounds: {
-                min: { x: 4, y: 6 },
-                max: { x: 14, y: 18 },
-            },
-        } as const;
-        expect(internalHelpers.resolveBallRadius(toBody(boundsBody))).toBe(6);
-
-        const fallbackBody = { bounds: { min: { x: NaN, y: NaN }, max: { x: NaN, y: NaN } } } as const;
-        expect(internalHelpers.resolveBallRadius(toBody(fallbackBody))).toBe(10);
-    });
-
-    it('clamps MIDI notes into the allowed range', () => {
-        expect(internalHelpers.clampMidiNote(NaN)).toBe(36);
-        expect(internalHelpers.clampMidiNote(-10)).toBe(36);
-        expect(internalHelpers.clampMidiNote(60)).toBe(60);
-        expect(internalHelpers.clampMidiNote(200)).toBe(96);
-        expect(internalHelpers.clampMidiNote(20, 40, 80)).toBe(40);
-        expect(internalHelpers.clampMidiNote(85, 40, 80)).toBe(80);
-    });
-
-    it('tracks sync drift averages and peaks across samples', () => {
-        const state = {
-            syncDriftHistory: [],
-            syncDriftAverageMs: 0,
-            syncDriftPeakMs: 0,
-            syncDriftPeakRecordedAt: 0,
-        } as Parameters<typeof internalHelpers.updateSyncDriftMetrics>[0];
-
-        internalHelpers.updateSyncDriftMetrics(state, 10, 0.1);
-        internalHelpers.updateSyncDriftMetrics(state, -4, 0.2);
-        internalHelpers.updateSyncDriftMetrics(state, 20, 1.2);
-
-        expect(state.syncDriftHistory).toHaveLength(3);
-        expect(state.syncDriftAverageMs).toBeCloseTo((10 - 4 + 20) / 3, 3);
-        expect(state.syncDriftPeakMs).toBeCloseTo(20);
-        expect(state.syncDriftPeakRecordedAt).toBeCloseTo(1.2);
-    });
-
-    it('drops stale sync drift samples beyond the history window', () => {
-        const state = {
-            syncDriftHistory: [],
-            syncDriftAverageMs: 0,
-            syncDriftPeakMs: 0,
-            syncDriftPeakRecordedAt: 0,
-        } as Parameters<typeof internalHelpers.updateSyncDriftMetrics>[0];
-
-        internalHelpers.updateSyncDriftMetrics(state, 5, 0);
-        const window = internalHelpers.SYNC_DRIFT_HISTORY_SECONDS;
-        internalHelpers.updateSyncDriftMetrics(state, 1, window + 0.1);
-
-        expect(state.syncDriftHistory).toHaveLength(1);
-        expect(state.syncDriftAverageMs).toBeCloseTo(1);
-        expect(state.syncDriftPeakMs).toBeCloseTo(1);
-        expect(state.syncDriftPeakRecordedAt).toBeCloseTo(window + 0.1);
-    });
-
-    it('computes ray intersections across edge cases', () => {
-        const toBounds = <T>(value: T) => value as unknown as Parameters<(typeof internalHelpers)['intersectRayWithExpandedAabb']>[2];
-        const bounds = {
-            min: { x: 0, y: 0 },
-            max: { x: 10, y: 10 },
-        } as const;
-
-        const diagonalHit = internalHelpers.intersectRayWithExpandedAabb(
-            { x: -5, y: -5 },
-            { x: 1, y: 2 },
-            toBounds(bounds),
-            0,
-        );
-        expect(diagonalHit).toBe(5);
-
-        const verticalOutside = internalHelpers.intersectRayWithExpandedAabb(
-            { x: 15, y: -5 },
-            { x: 0, y: 1 },
-            toBounds(bounds),
-            0,
-        );
-        expect(verticalOutside).toBeNull();
-
-        const swappedDirectionHit = internalHelpers.intersectRayWithExpandedAabb(
-            { x: 15, y: 5 },
-            { x: -1, y: 1 },
-            toBounds(bounds),
-            0,
-        );
-        expect(swappedDirectionHit).toBe(5);
-
-        const forwardMiss = internalHelpers.intersectRayWithExpandedAabb(
-            { x: 5, y: 20 },
-            { x: 0, y: 1 },
-            toBounds(bounds),
-            0,
-        );
-        expect(forwardMiss).toBeNull();
-
-        const parallelOutside = internalHelpers.intersectRayWithExpandedAabb(
-            { x: 5, y: 20 },
-            { x: 1, y: 0 },
-            toBounds(bounds),
-            0,
-        );
-        expect(parallelOutside).toBeNull();
-
-        const noOverlap = internalHelpers.intersectRayWithExpandedAabb(
-            { x: -5, y: 5 },
-            { x: -1, y: 0 },
-            toBounds(bounds),
-            0,
-        );
-        expect(noOverlap).toBeNull();
-
-        const horizontalHit = internalHelpers.intersectRayWithExpandedAabb(
-            { x: -5, y: 5 },
-            { x: 1, y: 0 },
-            toBounds(bounds),
-            0,
-        );
-        expect(horizontalHit).toBe(5);
-
-        const verticalSwap = internalHelpers.intersectRayWithExpandedAabb(
-            { x: 5, y: 15 },
-            { x: 0, y: -1 },
-            toBounds(bounds),
-            0,
-        );
-        expect(verticalSwap).toBe(5);
     });
 });
 
@@ -1745,53 +849,8 @@ describe('createGameRuntime', () => {
 
     beforeEach(() => {
         document.body.innerHTML = '';
-        toneState.contextState = 'suspended';
-        toneState.transportState = 'stopped';
-        toneState.resumeImpl = () => {
-            toneState.contextState = 'running';
-            return Promise.resolve();
-        };
-        toneState.startImpl = () => {
-            toneState.transportState = 'started';
-            return Promise.resolve();
-        };
-        toneState.resumeMock.mockClear();
-        toneState.transportStartMock.mockClear();
-        initializerState.instances.length = 0;
-        powerUpManagerState.instances.length = 0;
-        inputManagerState.instances.length = 0;
-        paddleState.instances.length = 0;
-        ballState.instances.length = 0;
-        physicsWorldState.instances.length = 0;
-        launchControllerState.instances.length = 0;
-        sessionManagerState.instances.length = 0;
-        sessionManagerState.options.length = 0;
-        createGameSessionManagerMock.mockClear();
-        multiBallControllerMockFactory.mockReset();
-        multiBallControllerMockFactory.mockImplementation(createMultiBallControllerStub);
-        highScoreModule.getHighScores.mockClear();
-        highScoreModule.getHighScores.mockReturnValue([]);
-        highScoreModule.recordHighScore.mockClear();
-        highScoreModule.recordHighScore.mockReturnValue({ accepted: false, position: null, entries: [] });
-        matterEventsState.on.mockClear();
-
-        prestigeModule.computePrestigeDust.mockReset();
-        prestigeModule.computePrestigeDust.mockReturnValue(0);
-
-        metaUpgradeState.snapshot = metaUpgradeState.cloneSnapshot(metaUpgradeState.baseSnapshot);
-        metaUpgradeState.loadout = metaUpgradeState.baseLoadout;
-        metaUpgradeState.listeners.clear();
-        if (metaUpgradeState.manager) {
-            Object.values(metaUpgradeState.manager).forEach((possibleMock) => {
-                const candidate = possibleMock as { mockClear?: () => void };
-                candidate.mockClear?.();
-            });
-        }
-
-        const themeSetter = setActiveTheme as unknown as Mock;
-        themeSetter.mockClear();
-        setActiveTheme('default');
-        themeSetter.mockClear();
+        resetToneState();
+        resetRuntimeFacadeTestState();
     });
 
     it('resumes Tone audio and starts the transport before creating the runtime', async () => {
@@ -2095,87 +1154,112 @@ describe('createGameRuntime', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
 
-        const handle = await createGameRuntime({
-            container,
-            random: makeRandomManager(),
-            replayBuffer: makeReplayBuffer(),
-        });
-
-        const stageInstance = initializerState.instances[0]?.stage;
-        expect(stageInstance).toBeDefined();
-        const registerCalls = stageInstance!.register.mock.calls as [
-            string,
-            (context: unknown) => unknown,
-            unknown?,
-        ][];
-        const gameplayRegistration = registerCalls.find(([name]) => name === 'gameplay');
-        expect(gameplayRegistration).toBeDefined();
-        const gameplayFactory = gameplayRegistration?.[1];
-        expect(gameplayFactory).toBeInstanceOf(Function);
-        gameplayFactory?.({} as never);
-
-        const gameplayMock = vi.mocked(createGameplayScene);
-        const gameplayOptions = gameplayMock.mock.calls.at(-1)?.[1] as { onUpdate: (delta: number) => void } | undefined;
-        expect(gameplayOptions?.onUpdate).toBeDefined();
-        const onUpdate = gameplayOptions!.onUpdate;
-
-        const scheduler = initializerState.instances[0]?.scheduler;
-        expect(scheduler).toBeDefined();
-        let audioTime = 0;
-        scheduler!.now.mockImplementation(() => audioTime);
-
+        const originalPerformance = globalThis.performance;
         let wallClockMs = 0;
-        const performanceNowSpy = vi.spyOn(performance, 'now').mockImplementation(() => wallClockMs);
+        const fakePerformanceNow = vi.fn(() => wallClockMs);
+        const fakePerformance = originalPerformance
+            ? (Object.assign(Object.create(Object.getPrototypeOf(originalPerformance)), originalPerformance) as Performance)
+            : ({ now: fakePerformanceNow } as unknown as Performance);
 
-        const logger = loggerState.runtime;
-        expect(logger).toBeDefined();
-        logger!.debug.mockClear();
-        logger!.warn.mockClear();
-        logger!.info.mockClear();
-
-        const interval = internalHelpers.SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
-        const warnThreshold = internalHelpers.SYNC_DRIFT_WARN_THRESHOLD_MS;
-        const recoveryThreshold = internalHelpers.SYNC_DRIFT_RECOVERY_THRESHOLD_MS;
-
-        const severeDriftMs = Math.max(1, warnThreshold * 1.5);
-        const mildDriftMs = Math.max(1, recoveryThreshold * 0.25);
-
-        const step = (deltaSeconds: number, driftMs: number) => {
-            audioTime += deltaSeconds;
-            wallClockMs = (audioTime + driftMs / 1000) * 1000;
-            onUpdate(deltaSeconds);
-        };
-
-        step(interval / 2, severeDriftMs);
-        step(interval / 2, severeDriftMs);
-
-        const warnCall = logger!.warn.mock.calls.find(([message]) => message === 'Audio sync drift above threshold');
-        expect(warnCall).toBeDefined();
-        expect(warnCall?.[1]).toMatchObject({
-            peakMs: expect.any(Number),
-            thresholdMs: warnThreshold,
+        Object.defineProperty(fakePerformance, 'now', {
+            configurable: true,
+            value: fakePerformanceNow as Performance['now'],
+            writable: true,
         });
 
-        const debugCall = logger!.debug.mock.calls.find(([message]) => message === 'Sync drift sample');
-        expect(debugCall).toBeDefined();
-        expect(debugCall?.[1]).toMatchObject({
-            sampleCount: expect.any(Number),
-            sampleWindowSeconds: internalHelpers.SYNC_DRIFT_HISTORY_SECONDS,
+        Object.defineProperty(globalThis, 'performance', {
+            configurable: true,
+            enumerable: true,
+            value: fakePerformance,
         });
 
-        step(interval / 2, mildDriftMs);
-        step(interval / 2, mildDriftMs);
-        step(interval / 2, mildDriftMs);
-        step(interval / 2, mildDriftMs);
+        let handle: Awaited<ReturnType<typeof createGameRuntime>> | undefined;
+        try {
+            handle = await createGameRuntime({
+                container,
+                random: makeRandomManager(),
+                replayBuffer: makeReplayBuffer(),
+            });
 
-        const infoCall = logger!.info.mock.calls.find(([message]) => message === 'Audio sync drift recovered');
-        expect(infoCall).toBeDefined();
-        expect(infoCall?.[1]).toMatchObject({
-            peakMs: expect.any(Number),
-        });
+            const stageInstance = initializerState.instances[0]?.stage;
+            expect(stageInstance).toBeDefined();
+            const registerCalls = stageInstance!.register.mock.calls as [
+                string,
+                (context: unknown) => unknown,
+                unknown?,
+            ][];
+            const gameplayRegistration = registerCalls.find(([name]) => name === 'gameplay');
+            expect(gameplayRegistration).toBeDefined();
+            const gameplayFactory = gameplayRegistration?.[1];
+            expect(gameplayFactory).toBeInstanceOf(Function);
+            gameplayFactory?.({} as never);
 
-        performanceNowSpy.mockRestore();
-        handle.dispose();
+            const gameplayMock = vi.mocked(createGameplayScene);
+            const gameplayOptions = gameplayMock.mock.calls.at(-1)?.[1] as { onUpdate: (delta: number) => void } | undefined;
+            expect(gameplayOptions?.onUpdate).toBeDefined();
+            const onUpdate = gameplayOptions!.onUpdate;
+
+            const scheduler = initializerState.instances[0]?.scheduler;
+            expect(scheduler).toBeDefined();
+            let audioTime = 0;
+            scheduler!.now.mockImplementation(() => audioTime);
+
+            const logger = loggerState.runtime;
+            expect(logger).toBeDefined();
+            logger!.debug.mockClear();
+            logger!.warn.mockClear();
+            logger!.info.mockClear();
+
+            const interval = internalHelpers.SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+            const warnThreshold = internalHelpers.SYNC_DRIFT_WARN_THRESHOLD_MS;
+            const recoveryThreshold = internalHelpers.SYNC_DRIFT_RECOVERY_THRESHOLD_MS;
+
+            const severeDriftMs = Math.max(1, warnThreshold * 2);
+            const mildDriftMs = Math.max(1, recoveryThreshold * 0.25);
+
+            const step = (deltaSeconds: number, driftMs: number) => {
+                audioTime += deltaSeconds;
+                wallClockMs = (audioTime + driftMs / 1000) * 1000;
+                onUpdate(deltaSeconds);
+            };
+
+            step(interval / 2, severeDriftMs);
+            step(interval / 2, severeDriftMs);
+            const warnCall = logger!.warn.mock.calls.find(([message]) => message === 'Audio sync drift above threshold');
+            expect(warnCall).toBeDefined();
+            expect(warnCall?.[1]).toMatchObject({
+                peakMs: expect.any(Number),
+                thresholdMs: warnThreshold,
+            });
+
+            const debugCall = logger!.debug.mock.calls.find(([message]) => message === 'Sync drift sample');
+            expect(debugCall).toBeDefined();
+            expect(debugCall?.[1]).toMatchObject({
+                sampleCount: expect.any(Number),
+                sampleWindowSeconds: internalHelpers.SYNC_DRIFT_HISTORY_SECONDS,
+            });
+
+            expect(fakePerformanceNow).toHaveBeenCalled();
+
+            step(interval / 2, mildDriftMs);
+            step(interval / 2, mildDriftMs);
+            step(interval / 2, mildDriftMs);
+            step(interval / 2, mildDriftMs);
+
+            const infoCall = logger!.info.mock.calls.find(([message]) => message === 'Audio sync drift recovered');
+            expect(infoCall).toBeDefined();
+            expect(infoCall?.[1]).toMatchObject({
+                peakMs: expect.any(Number),
+            });
+        } finally {
+            Object.defineProperty(globalThis, 'performance', {
+                configurable: true,
+                enumerable: true,
+                value: originalPerformance,
+            });
+            handle?.dispose();
+            container.remove();
+        }
     });
 
     it('toggles the active theme when Shift+C is pressed', async () => {
