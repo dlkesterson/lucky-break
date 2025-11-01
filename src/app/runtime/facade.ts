@@ -4,7 +4,6 @@ import {
     GameTheme,
     onThemeChange,
     toggleTheme,
-    type GameThemeDefinition,
 } from 'render/theme';
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from '../state';
@@ -22,12 +21,10 @@ import {
     toColorNumber,
     clampUnit,
     mixColors,
-    type BallVisualDefaults,
-    type BallVisualPalette,
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createVisualFactory } from 'render/visual-factory';
-import { Sprite, type Graphics } from 'pixi.js';
+import { Sprite } from 'pixi.js';
 import {
     Body as MatterBody,
     Vector as MatterVector,
@@ -95,6 +92,7 @@ import { createRuntimeHud } from './modules/runtime-hud';
 import { createRuntimeAudio } from './modules/runtime-audio';
 import { createRuntimeRewards, type RuntimeRewardsHandle } from './modules/runtime-rewards';
 import { createRuntimePerformance } from './modules/runtime-performance';
+import { createRuntimeThemeCoordinator } from './modules/runtime-theme';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -277,31 +275,16 @@ export const createRuntimeFacade = async ({
         getMetaLoadout,
     });
 
-    let themeSnapshot: VisualThemeSnapshot = themeDefaults.getSnapshot();
-    let rowColors: readonly number[] = themeSnapshot.rowColors;
-    let themeBallColors: MultiBallColors = themeSnapshot.ballColors;
+    const initialThemeSnapshot = themeDefaults.getSnapshot();
+    let rowColors: readonly number[] = initialThemeSnapshot.rowColors;
+    let themeBallColors: MultiBallColors = initialThemeSnapshot.ballColors;
     let themeAccents: { combo: number; powerUp: number } = {
-        combo: themeSnapshot.accents.combo,
-        powerUp: themeSnapshot.accents.powerUp,
+        combo: initialThemeSnapshot.accents.combo,
+        powerUp: initialThemeSnapshot.accents.powerUp,
     };
-    let ballVisualDefaults: BallVisualDefaults = themeSnapshot.ballDefaults;
-    let paddleVisualDefaults: PaddleVisualDefaults = themeSnapshot.paddleDefaults;
-    let backgroundAccentColor = themeSnapshot.backgroundAccentColor;
-    let bloomAccentColor = themeSnapshot.bloomAccentColor;
-
-    const syncThemeSnapshot = (snapshot: VisualThemeSnapshot): void => {
-        themeSnapshot = snapshot;
-        rowColors = snapshot.rowColors;
-        themeBallColors = snapshot.ballColors;
-        themeAccents = {
-            combo: snapshot.accents.combo,
-            powerUp: snapshot.accents.powerUp,
-        };
-        ballVisualDefaults = snapshot.ballDefaults;
-        paddleVisualDefaults = snapshot.paddleDefaults;
-        backgroundAccentColor = snapshot.backgroundAccentColor;
-        bloomAccentColor = snapshot.bloomAccentColor;
-    };
+    let backgroundAccentColor = initialThemeSnapshot.backgroundAccentColor;
+    let bloomAccentColor = initialThemeSnapshot.bloomAccentColor;
+    let paddleVisualDefaults: PaddleVisualDefaults = initialThemeSnapshot.paddleDefaults;
 
     let visuals: RuntimeVisuals | null = null;
 
@@ -324,7 +307,7 @@ export const createRuntimeFacade = async ({
     let gambleRuntime: ReturnType<typeof createGambleRuntime> | null = null;
 
     const visualFactory = createVisualFactory({
-        ball: ballVisualDefaults,
+        ball: initialThemeSnapshot.ballDefaults,
         paddle: paddleVisualDefaults,
     });
 
@@ -346,7 +329,8 @@ export const createRuntimeFacade = async ({
         { code: 'Digit4', type: 'sticky-paddle' },
         { code: 'Digit5', type: 'laser' },
     ];
-    let unsubscribeTheme: (() => void) | null = null;
+    let unsubscribeThemeChange: (() => void) | null = null;
+    let unsubscribeThemeSnapshot: (() => void) | null = null;
 
     const {
         stage,
@@ -684,22 +668,10 @@ export const createRuntimeFacade = async ({
         registerGambleBricks();
     };
 
-    const applyBackgroundAccent = (accentIndexDelta: number) => {
-        const snapshot = themeDefaults.cycleBackgroundAccent(accentIndexDelta);
-        syncThemeSnapshot(snapshot);
-        visuals?.playfieldBackground?.setTint(backgroundAccentColor);
-    };
-
-    const handleMusicMeasure = (_event: MusicMeasureEvent) => {
-        void _event;
-        applyBackgroundAccent(1);
-    };
     const handleMusicBeat = (event: MusicBeatEvent) => {
         const strength = event.isDownbeat ? 0.85 : 0.45;
         visuals?.playfieldBackground?.applyBeatPulse(strength);
     };
-    runtimeAudio.setBeatCallback(handleMusicBeat);
-    runtimeAudio.setMeasureCallback(handleMusicMeasure);
 
     const bounds = physics.factory.bounds();
     physics.add(bounds);
@@ -720,10 +692,6 @@ export const createRuntimeFacade = async ({
     }
 
     syncAutoCompleteCountdownDisplay();
-
-    const drawBallSprite = (graphics: Graphics, radius: number, palette?: Partial<BallVisualPalette>) => {
-        visualFactory.ball.draw(graphics, radius, palette);
-    };
 
     const setPaddleWidth = (() => {
         let lastWidth = paddle.width;
@@ -863,48 +831,55 @@ export const createRuntimeFacade = async ({
     const { container: hudContainer, display: hudDisplay } = runtimeHud;
     const positionHud = () => runtimeHud.updateLayout();
 
-    const applyRuntimeTheme = (theme: GameThemeDefinition) => {
-        const snapshot = themeDefaults.applyTheme(theme);
-        syncThemeSnapshot(snapshot);
-        levelRuntime.setRowColors(rowColors);
-        reapplyGambleAppearances();
+    const runtimeTheme = createRuntimeThemeCoordinator({
+        defaults: themeDefaults,
+        initialTheme: GameTheme,
+        levelRuntime: {
+            setRowColors: (colors: readonly number[]) => {
+                levelRuntime.setRowColors(colors);
+            },
+        },
+        reapplyGambleAppearances: () => {
+            reapplyGambleAppearances();
+        },
+        visualFactory,
+        ball,
+        paddle,
+        ballGraphics,
+        paddleGraphics,
+        ballGlowFilter,
+        multiBallController,
+        hudDisplay,
+        stage,
+        visualsProvider: () => visuals,
+        renderStageSoon,
+    });
 
-        visualFactory.ball.setDefaults(ballVisualDefaults);
-        visualFactory.paddle.setDefaults(paddleVisualDefaults);
+    unsubscribeThemeSnapshot = runtimeTheme.subscribe((snapshot: VisualThemeSnapshot) => {
+        rowColors = snapshot.rowColors;
+        themeBallColors = snapshot.ballColors;
+        themeAccents = {
+            combo: snapshot.accents.combo,
+            powerUp: snapshot.accents.powerUp,
+        };
+        backgroundAccentColor = snapshot.backgroundAccentColor;
+        bloomAccentColor = snapshot.bloomAccentColor;
+        paddleVisualDefaults = snapshot.paddleDefaults;
+    });
 
-        ballGlowFilter.color = themeBallColors.highlight;
-        visuals?.ballSpeedRing?.setPalette({
-            ringColor: themeBallColors.highlight,
-            haloColor: themeBallColors.aura,
-        });
-        drawBallSprite(ballGraphics, ball.radius);
-        visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height);
-
-        multiBallController.applyTheme(themeBallColors);
-
-        hudDisplay.setTheme(theme);
-        visuals?.roundCountdownDisplay?.setTheme(theme);
-        stage.applyTheme(theme);
-        visuals?.ballTrailsEffect?.applyTheme({
-            coreColor: themeBallColors.core,
-            auraColor: themeBallColors.aura,
-            accentColor: themeAccents.combo,
-        });
-        visuals?.comboBloomEffect?.applyTheme(themeAccents.combo);
-        visuals?.replacePaddleLight(themeAccents.powerUp);
-        visuals?.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
-
-        renderStageSoon();
-    };
-
-    applyRuntimeTheme(GameTheme);
+    unsubscribeThemeChange = onThemeChange((theme, name) => {
+        runtimeLogger.info('Applied theme change', { theme: name });
+        runtimeTheme.applyTheme(theme);
+    });
 
     positionHud();
 
-    unsubscribeTheme = onThemeChange((theme, name) => {
-        runtimeLogger.info('Applied theme change', { theme: name });
-        applyRuntimeTheme(theme);
-    });
+    const handleMusicMeasure = (_event: MusicMeasureEvent) => {
+        void _event;
+        runtimeTheme.cycleBackgroundAccent(1);
+    };
+    runtimeAudio.setBeatCallback(handleMusicBeat);
+    runtimeAudio.setMeasureCallback(handleMusicMeasure);
 
     let lastComboCount = 0;
     let refreshHudImpl: (() => void) | null = null;
@@ -1013,7 +988,7 @@ export const createRuntimeFacade = async ({
 
     const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
         refreshMetaLoadout();
-        applyRuntimeTheme(GameTheme);
+        runtimeTheme.applyTheme(GameTheme);
         runtimeAudio.rebuildMidiEngine();
         refreshHud();
         renderStageSoon();
@@ -1992,8 +1967,10 @@ export const createRuntimeFacade = async ({
         gambleRuntime?.dispose();
         unsubscribeMeta?.();
         unsubscribeMeta = null;
-        unsubscribeTheme?.();
-        unsubscribeTheme = null;
+        unsubscribeThemeChange?.();
+        unsubscribeThemeChange = null;
+        unsubscribeThemeSnapshot?.();
+        unsubscribeThemeSnapshot = null;
         runtimePerformance.updateVisuals(null);
         runtimePerformance.reset();
         visuals?.dispose();
