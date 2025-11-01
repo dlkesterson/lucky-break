@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { bootstrapAudio } from 'audio/index';
-import type { ReactiveAudioGameState } from 'audio/scheduler';
+import type { ReactiveAudioGameState, ToneScheduler } from 'audio/scheduler';
 import { createSubject } from 'util/observable';
 
 const createTransport = () => {
@@ -28,12 +28,15 @@ describe('bootstrapAudio', () => {
             scheduleOnce: vi.fn(),
             clear: vi.fn(),
         };
-        const scheduler = {
+        const scheduler: ToneScheduler = {
             lookAheadMs: 75,
+            lookAheadSeconds: 0.075,
             schedule: vi.fn(),
             cancel: vi.fn(),
             dispose: vi.fn(),
             context: { currentTime: 0 } as AudioContext,
+            now: vi.fn(() => 0),
+            predictAt: vi.fn((offsetMs = 0) => offsetMs),
         };
         const schedulerFactory = vi.fn(() => scheduler);
         const reactiveLayer = { dispose: vi.fn() };
@@ -66,12 +69,15 @@ describe('bootstrapAudio', () => {
 
     it('can operate without reactive layer and provides lookAhead override', () => {
         const transport = createTransport();
-        const scheduler = {
+        const scheduler: ToneScheduler = {
             lookAheadMs: 150,
+            lookAheadSeconds: 0.15,
             schedule: vi.fn(),
             cancel: vi.fn(),
             dispose: vi.fn(),
             context: { currentTime: 0 } as AudioContext,
+            now: vi.fn(() => 0),
+            predictAt: vi.fn((offsetMs = 0) => offsetMs),
         };
         const schedulerFactory = vi.fn(() => scheduler);
 

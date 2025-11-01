@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 import { runHeadlessSimulation, type SimulationInput, type SimulationResult } from 'cli/simulate';
 
 const INPUT: SimulationInput = {
@@ -122,6 +125,21 @@ const EXPECTED: SimulationResult = {
 
 const serialize = (value: unknown): string => JSON.stringify(value, null, 2);
 
+const ARTIFACT_DIR = resolve(process.cwd(), 'test-results', 'artifacts');
+const ARTIFACT_PATH = resolve(ARTIFACT_DIR, 'deterministic-simulation.json');
+
+const persistReplayArtifact = async (result: SimulationResult): Promise<void> => {
+    const payload = {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        input: INPUT,
+        result,
+    };
+    await mkdir(ARTIFACT_DIR, { recursive: true });
+    await writeFile(ARTIFACT_PATH, `${serialize(payload)}\n`, 'utf8');
+    console.log(`[simulate:verify] wrote deterministic replay artifact to ${ARTIFACT_PATH}`);
+};
+
 const fail = (message: string, details?: { expected?: unknown; actual?: unknown }) => {
     console.error(`[simulate:verify] ${message}`);
     if (details?.expected !== undefined) {
@@ -150,6 +168,8 @@ const main = async (): Promise<void> => {
             actual: first,
         });
     }
+
+    await persistReplayArtifact(first);
 
     console.log(
         `[simulate:verify] Deterministic simulation confirmed for seed ${INPUT.seed ?? 'default'} in round ${INPUT.round ?? 'default'

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
+import type { MetaUpgradeManager } from 'app/meta-upgrades';
 
 vi.mock('pixi.js', () => {
     class Container {
@@ -197,6 +198,18 @@ const createSceneHarness = (): SceneTestHarness => {
         }),
     };
 
+    const metaUpgrades = {
+        getSnapshot: vi.fn(),
+        getCatalog: vi.fn(),
+        getLoadout: vi.fn(),
+        grantDust: vi.fn(),
+        purchase: vi.fn(),
+        equipVisualPalette: vi.fn(),
+        equipAudioPalette: vi.fn(),
+        toggleTrait: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(vi.fn()),
+    } as unknown as MetaUpgradeManager;
+
     const services: GameSceneServices = {
         bus,
         scheduler,
@@ -206,6 +219,7 @@ const createSceneHarness = (): SceneTestHarness => {
         replayBuffer,
         renderStageSoon,
         fateLedger,
+        metaUpgrades,
     };
 
     const context: SceneContext<GameSceneServices> = {

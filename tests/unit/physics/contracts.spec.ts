@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { BallController, Ball, BallOptions, BallDebugInfo, Vector2 } from 'physics/contracts';
+import type { MatterBody as Body } from 'physics/matter';
 
 describe('Physics Contracts', () => {
     describe('BallController Interface', () => {
@@ -34,9 +35,10 @@ describe('Physics Contracts', () => {
 
     describe('Ball Interface', () => {
         it('should define ball properties', () => {
+            const physicsBody = { id: 123 } as unknown as Body;
             const ball: Ball = {
                 id: 'ball-1',
-                physicsBody: { id: 123 }, // Mock Matter.js body
+                physicsBody,
                 isAttached: true,
                 attachmentOffset: { x: 0, y: -10 },
                 radius: 8,

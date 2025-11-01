@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { MatterBody as Body } from 'physics/matter';
 import type {
     PaddleController,
     Paddle,
@@ -45,9 +46,10 @@ describe('Render Contracts', () => {
 
     describe('Paddle Interface', () => {
         it('should define paddle properties', () => {
+            const physicsBody = { id: 789 } as unknown as Body;
             const paddle: Paddle = {
                 id: 'paddle-1',
-                physicsBody: { id: 789 }, // Mock Matter.js body
+                physicsBody,
                 width: 80,
                 height: 12,
                 speed: 300,

@@ -229,6 +229,7 @@ describe('createGameInitializer', () => {
             setBeatCallback: vi.fn(),
             setMeasureCallback: vi.fn(),
             triggerComboAccent: vi.fn(),
+            triggerGambleCountdown: vi.fn(),
         };
         createMusicDirectorMock.mockReturnValue(musicDirectorStub);
 

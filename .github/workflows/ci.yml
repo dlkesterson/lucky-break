@@ -48,6 +48,9 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+      - name: Run typecheck
+        run: pnpm typecheck
+
       - name: Run tests
         run: pnpm test:coverage
 
@@ -63,6 +66,13 @@ jobs:
 
       - name: Verify deterministic simulation
         run: pnpm simulate:verify
+
+      - name: Upload deterministic replay artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-replay
+          path: test-results/artifacts/deterministic-simulation.json
 
       - name: Build production bundle
         run: pnpm build

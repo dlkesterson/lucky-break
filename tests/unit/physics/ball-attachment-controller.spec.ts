@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
 vi.mock('physics/world', () => ({
     createPhysicsWorld: vi.fn(),
@@ -50,26 +51,26 @@ const createStubWorld = () => {
 describe('BallAttachmentController', () => {
     let controller: BallAttachmentController;
     let stubWorld: StubWorld;
-    let setPositionSpy: ReturnType<typeof vi.spyOn>;
-    let setVelocitySpy: ReturnType<typeof vi.spyOn>;
-    let setAngularVelocitySpy: ReturnType<typeof vi.spyOn>;
+    let setPositionSpy: MockInstance<Parameters<typeof Body.setPosition>, ReturnType<typeof Body.setPosition>>;
+    let setVelocitySpy: MockInstance<Parameters<typeof Body.setVelocity>, ReturnType<typeof Body.setVelocity>>;
+    let setAngularVelocitySpy: MockInstance<Parameters<typeof Body.setAngularVelocity>, ReturnType<typeof Body.setAngularVelocity>>;
 
     beforeEach(() => {
-        setPositionSpy = vi.spyOn(Body, 'setPosition') as ReturnType<typeof vi.spyOn>;
-        setPositionSpy.mockImplementation((body: any, position: any) => {
-            body.position = { ...position };
+        setPositionSpy = vi.spyOn(Body, 'setPosition');
+        setPositionSpy.mockImplementation(((body, position) => {
+            (body as unknown as { position: Vector2 }).position = { ...position };
             return body;
-        });
-        setVelocitySpy = vi.spyOn(Body, 'setVelocity') as ReturnType<typeof vi.spyOn>;
-        setVelocitySpy.mockImplementation((body: any, velocity: any) => {
-            body.velocity = { ...velocity };
+        }) as typeof Body.setPosition);
+        setVelocitySpy = vi.spyOn(Body, 'setVelocity');
+        setVelocitySpy.mockImplementation(((body, velocity) => {
+            (body as unknown as { velocity: Vector2 }).velocity = { ...velocity };
             return body;
-        });
-        setAngularVelocitySpy = vi.spyOn(Body, 'setAngularVelocity') as ReturnType<typeof vi.spyOn>;
-        setAngularVelocitySpy.mockImplementation((body: any, angularVelocity: number) => {
-            body.angularVelocity = angularVelocity;
+        }) as typeof Body.setVelocity);
+        setAngularVelocitySpy = vi.spyOn(Body, 'setAngularVelocity');
+        setAngularVelocitySpy.mockImplementation(((body, angularVelocity) => {
+            (body as unknown as { angularVelocity: number }).angularVelocity = angularVelocity;
             return body;
-        });
+        }) as typeof Body.setAngularVelocity);
 
         stubWorld = createStubWorld();
         createPhysicsWorldMock.mockReturnValue(stubWorld as any);

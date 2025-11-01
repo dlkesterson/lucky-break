@@ -12,13 +12,14 @@
   "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
   "test:e2e": "playwright test",
-    "lint": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --no-error-on-unmatched-pattern",
-    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
+  "lint": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --no-error-on-unmatched-pattern",
+  "lint:fix": "eslint \"{src,tests}/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
+  "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,html}\"",
     "cli:simulate": "node ./dist/cli/index.js",
     "simulate:verify": "tsx scripts/ci-simulation.ts",
-    "ci": "pnpm lint && pnpm test:coverage && pnpm simulate:verify"
+  "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify"
   },
   "dependencies": {
     "@pixi/filter-glow": "^5.2.1",

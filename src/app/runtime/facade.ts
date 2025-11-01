@@ -12,8 +12,6 @@ import type { GameSessionManager } from '../state';
 import type { EntropyActionType } from '../events';
 import type { AchievementUnlock } from '../achievements';
 import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
-import { createHudDisplay } from 'render/hud-display';
-import { createMobileHudDisplay } from 'render/mobile-hud-display';
 import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
 import { gameConfig, type GameConfig } from 'config/game';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
@@ -29,7 +27,7 @@ import {
     type PaddleVisualDefaults,
 } from 'render/playfield-visuals';
 import { createVisualFactory } from 'render/visual-factory';
-import { Sprite, Container, type Graphics } from 'pixi.js';
+import { Sprite, type Graphics } from 'pixi.js';
 import {
     Body as MatterBody,
     Vector as MatterVector,
@@ -91,7 +89,7 @@ import {
     waitForPromise,
 } from './audio';
 import { createCollisionRuntime, type CollisionRuntime, type CollisionContext } from './collisions';
-import { createPhysicsAssembly, type RuntimeVisuals } from './physics-assembly';
+import type { RuntimeVisuals } from './physics-assembly';
 import {
     createForeshadowingRuntime,
     resolveBallRadius,
@@ -102,6 +100,8 @@ import { registerRuntimeScenes } from './scene-registration';
 import { createModifierPowerupServices } from './modifier-powerup-services';
 import { initializeRuntimeLifecycle } from './lifecycle-manager';
 import { setupDebugHarnessIntegrations } from './debug-harness-integration';
+import { createRuntimePhysics } from './modules/runtime-physics';
+import { createRuntimeHud } from './modules/runtime-hud';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -276,7 +276,6 @@ export const createRuntimeFacade = async ({
     const PLAYFIELD_SIZE_MAX = Math.max(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
     const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
     const hudProfile: 'desktop' | 'mobile' = uiProfile === 'mobile' ? 'mobile' : 'desktop';
-    const HALF_PLAYFIELD_WIDTH = PLAYFIELD_WIDTH / 2;
     const layoutDecorator = createBrickDecorator(sessionOrientation);
 
     const themeDefaults = createVisualThemeDefaults({
@@ -351,7 +350,6 @@ export const createRuntimeFacade = async ({
         visuals?.paddleLight?.flash(intensity);
     };
 
-    const visualBodies = new Map<Body, Container>();
     const cheatPowerUpBindings: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
         { code: 'Digit1', type: 'paddle-width' },
         { code: 'Digit2', type: 'ball-speed' },
@@ -427,16 +425,15 @@ export const createRuntimeFacade = async ({
         pendingVisualTimers.add(timer);
     };
 
-    const physicsAssembly = createPhysicsAssembly({
+    const runtimePhysics = createRuntimePhysics({
         container,
         stage,
         playfieldDimensions,
-        themeBallColors,
-        themeAccents,
         random,
         visualFactory,
-        visualBodies,
-        runtimeStateDefaults: {
+        themeBallColors,
+        themeAccents,
+        runtimeDefaults: {
             baseBallSpeed: BALL_BASE_SPEED,
             maxBallSpeed: BALL_MAX_SPEED,
             launchBallSpeed: BALL_LAUNCH_SPEED,
@@ -446,23 +443,17 @@ export const createRuntimeFacade = async ({
             paddleWidthMultiplier: MODIFIER_PADDLE_WIDTH_RANGE.default,
             speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
         },
-        physics: {
-            width: PLAYFIELD_WIDTH,
-            height: PLAYFIELD_HEIGHT,
-            gravity: 0,
-        },
         paddle: {
             width: BASE_PADDLE_WIDTH,
             height: BASE_PADDLE_HEIGHT,
             speed: BASE_PADDLE_SPEED,
-            spawnPosition: { x: HALF_PLAYFIELD_WIDTH, y: PLAYFIELD_HEIGHT - 70 },
+            spawnOffsetFromBottom: 70,
         },
         paddleSmoothing: {
             responsiveness: PADDLE_SMOOTH_RESPONSIVENESS,
             snapThreshold: PADDLE_SNAP_THRESHOLD,
         },
         ball: { radius: 10 },
-        ballMaxSpeed: BALL_MAX_SPEED,
         multiBall: {
             multiplier: MULTI_BALL_MULTIPLIER,
             maxExtraBalls: MULTI_BALL_CAPACITY,
@@ -485,7 +476,8 @@ export const createRuntimeFacade = async ({
         ballHueFilter,
         gameContainer,
         multiBallController,
-    } = physicsAssembly;
+        visualBodies,
+    } = runtimePhysics;
 
     const LOW_FPS_THRESHOLD = 45;
     const RECOVER_FPS_THRESHOLD = 55;
@@ -814,12 +806,14 @@ export const createRuntimeFacade = async ({
 
     const { manager: inputManager } = runtimeInput;
     visuals = createdVisuals;
-    createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
-    visuals.setEffectProfile(desiredVisualProfile);
+    if (createdVisuals) {
+        createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
+        createdVisuals.setEffectProfile(desiredVisualProfile);
+    }
 
-    const comboRing = createdVisuals.comboRing;
-    const inputDebugOverlay = createdVisuals.inputDebugOverlay;
-    const physicsDebugOverlay = createdVisuals.physicsDebugOverlay;
+    const comboRing = createdVisuals?.comboRing ?? null;
+    const inputDebugOverlay = createdVisuals?.inputDebugOverlay ?? null;
+    const physicsDebugOverlay = createdVisuals?.physicsDebugOverlay ?? null;
 
     if (runtimeDebug) {
         (runtimeDebug as RuntimeDebug).updateOverlays({ input: inputDebugOverlay, physics: physicsDebugOverlay });
@@ -942,54 +936,31 @@ export const createRuntimeFacade = async ({
 
     let biasCoordinator: BiasPhaseCoordinator | null = null;
 
-    const hudContainer = new Container();
-    hudContainer.eventMode = 'none';
-    hudContainer.visible = false;
-    hudContainer.zIndex = 1;
-    stage.layers.playfield.addChild(hudContainer);
-
-    const hudDisplay = hudProfile === 'mobile'
-        ? createMobileHudDisplay(GameTheme)
-        : createHudDisplay(GameTheme);
-    hudDisplay.container.zIndex = 1;
-    hudContainer.addChild(hudDisplay.container);
-    hudDisplay.setEntropyActionHandler((action) => {
-        attemptEntropyAction(action);
+    const runtimeHud = createRuntimeHud({
+        stage,
+        theme: GameTheme,
+        hudProfile,
+        playfieldWidth: PLAYFIELD_WIDTH,
+        metrics: {
+            desktop: {
+                margin: HUD_MARGIN,
+                maxScale: HUD_SCALE,
+                minScale: MIN_HUD_SCALE,
+            },
+            mobile: {
+                margin: MOBILE_HUD_MARGIN,
+                maxScale: MOBILE_HUD_MAX_SCALE,
+                minScale: MOBILE_HUD_MIN_SCALE,
+            },
+        },
+        getBrickLayoutBounds: () => brickLayoutBounds,
+        getPaddleSnapshot: () => ({ centerY: paddle.position.y, height: paddle.height }),
+        onEntropyAction: (action) => {
+            attemptEntropyAction(action);
+        },
     });
-
-    const positionHud = () => {
-        const margin = hudProfile === 'mobile' ? MOBILE_HUD_MARGIN : HUD_MARGIN;
-        const maxScale = hudProfile === 'mobile' ? MOBILE_HUD_MAX_SCALE : HUD_SCALE;
-        const minScale = hudProfile === 'mobile' ? MOBILE_HUD_MIN_SCALE : MIN_HUD_SCALE;
-        const hudWidth = hudDisplay.width;
-        const hudHeight = hudDisplay.getHeight();
-        const clampScale = (value: number) => Math.max(minScale, Math.min(maxScale, value));
-        const paddleTop = paddle.position.y - paddle.height / 2;
-        const widthScaleLimit = (PLAYFIELD_WIDTH - margin * 2) / hudWidth;
-        let scale = clampScale(Math.min(maxScale, widthScaleLimit));
-
-        const safePaddleTop = paddleTop - margin;
-        let top = Math.max(margin, safePaddleTop - hudHeight * scale);
-
-        if (brickLayoutBounds) {
-            const bricksBottom = brickLayoutBounds.maxY;
-            const preferredTop = bricksBottom + margin;
-            const availableHeight = safePaddleTop - preferredTop;
-            if (availableHeight > 0) {
-                const heightScaleLimit = availableHeight / hudHeight;
-                scale = clampScale(Math.min(scale, heightScaleLimit));
-                const maxTop = safePaddleTop - hudHeight * scale;
-                top = Math.max(margin, Math.min(maxTop, preferredTop));
-            }
-        }
-
-        const width = hudWidth * scale;
-        const x = Math.round((PLAYFIELD_WIDTH - width) / 2);
-        const y = Math.round(Math.max(margin, top));
-
-        hudDisplay.container.scale.set(scale);
-        hudDisplay.container.position.set(x, y);
-    };
+    const { container: hudContainer, display: hudDisplay } = runtimeHud;
+    const positionHud = () => runtimeHud.updateLayout();
 
     const applyRuntimeTheme = (theme: GameThemeDefinition) => {
         const snapshot = themeDefaults.applyTheme(theme);
@@ -1028,7 +999,6 @@ export const createRuntimeFacade = async ({
     applyRuntimeTheme(GameTheme);
 
     positionHud();
-    window.addEventListener('resize', positionHud);
 
     unsubscribeTheme = onThemeChange((theme, name) => {
         runtimeLogger.info('Applied theme change', { theme: name });
@@ -1943,31 +1913,41 @@ export const createRuntimeFacade = async ({
         }
 
         const shouldDisplayComboRing = comboEnergy > 0.02;
-        if (shouldDisplayComboRing) {
-            const ringPos = ball.physicsBody.position;
-            const baseRadius = ball.radius * (2 + comboIntensity * 0.55);
-            const wobble = Math.sin(runtimeState.comboRingPhase * 2) * 0.18;
-            const radius = baseRadius * (1 + wobble) + comboEnergy * ball.radius * 0.4;
+        if (comboRing) {
+            if (shouldDisplayComboRing) {
+                const ringPos = ball.physicsBody.position;
+                const baseRadius = ball.radius * (2 + comboIntensity * 0.55);
+                const wobble = Math.sin(runtimeState.comboRingPhase * 2) * 0.18;
+                const radius = baseRadius * (1 + wobble) + comboEnergy * ball.radius * 0.4;
 
-            const outerColor = mixColors(themeBallColors.highlight, themeAccents.combo, Math.min(1, comboEnergy * 0.7));
-            const innerColor = mixColors(themeAccents.combo, themeBallColors.aura, 0.3 + comboEnergy * 0.4);
-            const outerAlpha = Math.min(1, 0.35 + comboEnergy * 0.4);
-            const innerAlpha = Math.min(1, 0.28 + comboEnergy * 0.32);
-            const fillAlpha = Math.min(1, 0.05 + comboEnergy * 0.12);
-            const overallAlpha = Math.min(1, 0.25 + comboEnergy * 0.45);
+                const outerColor = mixColors(
+                    themeBallColors.highlight,
+                    themeAccents.combo,
+                    Math.min(1, comboEnergy * 0.7),
+                );
+                const innerColor = mixColors(
+                    themeAccents.combo,
+                    themeBallColors.aura,
+                    0.3 + comboEnergy * 0.4,
+                );
+                const outerAlpha = Math.min(1, 0.35 + comboEnergy * 0.4);
+                const innerAlpha = Math.min(1, 0.28 + comboEnergy * 0.32);
+                const fillAlpha = Math.min(1, 0.05 + comboEnergy * 0.12);
+                const overallAlpha = Math.min(1, 0.25 + comboEnergy * 0.45);
 
-            comboRing.update({
-                position: ringPos,
-                radius,
-                outerColor,
-                outerAlpha,
-                innerColor,
-                innerAlpha,
-                fillAlpha,
-                overallAlpha,
-            });
-        } else {
-            comboRing.hide();
+                comboRing.update({
+                    position: ringPos,
+                    radius,
+                    outerColor,
+                    outerAlpha,
+                    innerColor,
+                    innerAlpha,
+                    fillAlpha,
+                    overallAlpha,
+                });
+            } else {
+                comboRing.hide();
+            }
         }
 
         const ballPulse = Math.min(1, comboEnergy * 0.5 + runtimeState.ballGlowPulse);
@@ -2223,6 +2203,9 @@ export const createRuntimeFacade = async ({
             },
             () => {
                 cleanupVisuals();
+            },
+            () => {
+                runtimeHud.dispose();
             },
             () => {
                 runtimeInput.dispose();

@@ -139,6 +139,14 @@ describe('createIdleSimulation', () => {
                     livesLost: 0,
                     averageFps: 60,
                     bricksPerSecond: 0.35,
+                    hazardContacts: 0,
+                    hazardContactsByType: {
+                        'gravity-well': 0,
+                        'moving-bumper': 0,
+                        portal: 0,
+                    },
+                    movingBumperImpacts: 0,
+                    portalTransports: 0,
                 },
                 volley: {
                     longestVolley: 8,
@@ -147,6 +155,7 @@ describe('createIdleSimulation', () => {
                 events: [],
                 score: 0,
                 snapshot: session.snapshot(),
+                hazards: [],
             } satisfies HeadlessSimulationResult;
         });
 
