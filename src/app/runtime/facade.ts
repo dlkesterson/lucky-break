@@ -6,12 +6,12 @@ import {
     toggleTheme,
     type GameThemeDefinition,
 } from 'render/theme';
-import { createGameLoop, type LoopOptions } from '../loop';
+import { createGameLoop } from '../loop';
 import { createGameSessionManager } from '../state';
 import type { GameSessionManager } from '../state';
 import type { EntropyActionType } from '../events';
 import type { AchievementUnlock } from '../achievements';
-import { buildHudScoreboard, type HudEntropyActionDescriptor } from 'render/hud';
+import { buildHudScoreboard } from 'render/hud';
 import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
 import { gameConfig, type GameConfig } from 'config/game';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
@@ -33,8 +33,7 @@ import {
     Vector as MatterVector,
 } from 'physics/matter';
 import type { MatterBody as Body } from 'physics/matter';
-import type { MusicState, MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
-import type { MidiEngine } from 'audio/midi-engine';
+import type { MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
 import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from '../replay-buffer';
 import { createGameInitializer } from '../game-initializer';
@@ -54,17 +53,8 @@ import type { GameSceneServices } from '../scene-services';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { createGambleRuntime } from './gamble';
 import { createRuntimeScoring, type RuntimeScoringHandle } from './scoring';
-import {
-    createRoundMachine,
-    type EntropyActionState,
-    type RoundMachine,
-} from './round-machine';
+import { createRoundMachine, type RoundMachine } from './round-machine';
 import type { RuntimePowerups } from './powerups';
-import {
-    createRewardWheelOrchestrator,
-    type EntropyActionAttemptResult,
-    type RewardWheelOrchestrator,
-} from './reward-wheel';
 import type { RuntimeInput } from './input';
 import type { RuntimeDebug } from './debug';
 import type { RuntimeLifecycle } from './lifecycle';
@@ -102,6 +92,9 @@ import { initializeRuntimeLifecycle } from './lifecycle-manager';
 import { setupDebugHarnessIntegrations } from './debug-harness-integration';
 import { createRuntimePhysics } from './modules/runtime-physics';
 import { createRuntimeHud } from './modules/runtime-hud';
+import { createRuntimeAudio } from './modules/runtime-audio';
+import { createRuntimeRewards, type RuntimeRewardsHandle } from './modules/runtime-rewards';
+import { createRuntimePerformance } from './modules/runtime-performance';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -244,6 +237,7 @@ export interface RuntimeFacadeModules {
     readonly visuals: RuntimeVisuals | null;
     readonly collisions: CollisionRuntime | null;
     readonly scoring: RuntimeScoringHandle;
+    readonly rewards: RuntimeRewardsHandle;
     readonly powerups: RuntimePowerups;
     readonly roundMachine: RoundMachine;
     readonly modifiers: RuntimeModifiers;
@@ -314,21 +308,16 @@ export const createRuntimeFacade = async ({
     const performanceLogger = typeof runtimeLogger.child === 'function'
         ? runtimeLogger.child('performance')
         : runtimeLogger;
-    let userPerformancePreference = getSettings().performance;
-    let dynamicPerformanceMode = false;
-    let desiredVisualProfile: 'quality' | 'performance' = userPerformancePreference ? 'performance' : 'quality';
-    let unsubscribeSettings: (() => void) | null = null;
-    let unsubscribeMeta: (() => void) | null = null;
-
-    const applyVisualPerformanceProfile = () => {
-        desiredVisualProfile = userPerformancePreference || dynamicPerformanceMode ? 'performance' : 'quality';
-        visuals?.setEffectProfile(desiredVisualProfile);
-    };
-
-    unsubscribeSettings = subscribeSettings((snapshot) => {
-        userPerformancePreference = snapshot.performance;
-        applyVisualPerformanceProfile();
+    const runtimePerformance = createRuntimePerformance({
+        logger: performanceLogger,
+        initialPreference: Boolean(getSettings().performance),
+        subscribePreference: (listener) => {
+            return subscribeSettings((snapshot) => {
+                listener(Boolean(snapshot.performance));
+            });
+        },
     });
+    let unsubscribeMeta: (() => void) | null = null;
 
     const gambleTintArmed = toColorNumber(GAMBLE_TINT_ARMED);
     const gambleTintPrimed = toColorNumber(GAMBLE_TINT_PRIMED);
@@ -389,42 +378,6 @@ export const createRuntimeFacade = async ({
         logger: performanceLogger,
         hasPerformanceNow,
     });
-    const pendingVisualTimers = new Set<ReturnType<typeof setTimeout>>();
-    let midiEngine: MidiEngine = audioBootstrap.createMidiEngine();
-
-    const rebuildMidiEngine = () => {
-        midiEngine = audioBootstrap.rebuildMidiEngine(midiEngine);
-    };
-
-    const computeScheduledAudioTime = (offsetMs = 0): number => scheduler.predictAt(offsetMs);
-
-    const scheduleVisualEffect = (scheduledTime: number | undefined, effect: () => void): void => {
-        if (typeof scheduledTime !== 'number' || !Number.isFinite(scheduledTime)) {
-            effect();
-            return;
-        }
-
-        if (!hasPerformanceNow) {
-            effect();
-            return;
-        }
-
-        const wallNowSeconds = performance.now() / 1000;
-        const targetVisualSeconds = scheduledTime + runtimeState.audioVisualSkewSeconds;
-        const delayMs = Math.max(0, (targetVisualSeconds - wallNowSeconds) * 1000);
-
-        if (delayMs <= 2) {
-            effect();
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            pendingVisualTimers.delete(timer);
-            effect();
-        }, delayMs);
-        pendingVisualTimers.add(timer);
-    };
-
     const runtimePhysics = createRuntimePhysics({
         container,
         stage,
@@ -479,53 +432,27 @@ export const createRuntimeFacade = async ({
         visualBodies,
     } = runtimePhysics;
 
-    const LOW_FPS_THRESHOLD = 45;
-    const RECOVER_FPS_THRESHOLD = 55;
-    const LOW_FPS_TRIGGER_MS = 4_000;
-    const HIGH_FPS_RECOVER_MS = 6_000;
-
-    let accumulatedLowFpsMs = 0;
-    let accumulatedHighFpsMs = 0;
-
-    const handleFrameMetrics: LoopOptions['onFrameMetrics'] = ({ rawDeltaMs }) => {
-        if (!Number.isFinite(rawDeltaMs) || rawDeltaMs <= 0) {
-            return;
-        }
-
-        const clampedDelta = Math.max(0, rawDeltaMs);
-        const fps = clampedDelta > 0 ? 1000 / clampedDelta : Number.POSITIVE_INFINITY;
-
-        if (fps < LOW_FPS_THRESHOLD) {
-            accumulatedLowFpsMs = Math.min(LOW_FPS_TRIGGER_MS, accumulatedLowFpsMs + clampedDelta);
-            accumulatedHighFpsMs = Math.max(0, accumulatedHighFpsMs - clampedDelta * 0.5);
-        } else if (fps >= RECOVER_FPS_THRESHOLD) {
-            accumulatedHighFpsMs = Math.min(HIGH_FPS_RECOVER_MS, accumulatedHighFpsMs + clampedDelta);
-            accumulatedLowFpsMs = Math.max(0, accumulatedLowFpsMs - clampedDelta);
-        } else {
-            accumulatedLowFpsMs = Math.max(0, accumulatedLowFpsMs - clampedDelta * 0.5);
-            accumulatedHighFpsMs = Math.max(0, accumulatedHighFpsMs - clampedDelta);
-        }
-
-        if (!dynamicPerformanceMode && accumulatedLowFpsMs >= LOW_FPS_TRIGGER_MS) {
-            dynamicPerformanceMode = true;
-            accumulatedHighFpsMs = 0;
-            performanceLogger.info('Enabling performance profile due to sustained low FPS', {
-                fps: Number(fps.toFixed(1)),
-            });
-            applyVisualPerformanceProfile();
-        } else if (
-            dynamicPerformanceMode &&
-            !userPerformancePreference &&
-            accumulatedHighFpsMs >= HIGH_FPS_RECOVER_MS
-        ) {
-            dynamicPerformanceMode = false;
-            accumulatedLowFpsMs = 0;
-            performanceLogger.info('Restoring quality profile after sustained recovery', {
-                fps: Number(fps.toFixed(1)),
-            });
-            applyVisualPerformanceProfile();
-        }
+    const runtimeAudio = createRuntimeAudio({
+        audioBootstrap,
+        scheduler,
+        musicDirector,
+        hasPerformanceNow,
+        getWallClockSeconds: hasPerformanceNow
+            ? () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
+                ? performance.now() / 1000
+                : null)
+            : undefined,
+        getAudioVisualSkewSeconds: () => runtimeState.audioVisualSkewSeconds,
+    });
+    const computeScheduledAudioTime = (offsetMs = 0): number => runtimeAudio.computeScheduledAudioTime(offsetMs);
+    const scheduleVisualEffect = (scheduledTime: number | undefined, effect: () => void): void =>
+        runtimeAudio.scheduleVisualEffect(scheduledTime, effect);
+    const pushMusicState = (state: Parameters<typeof runtimeAudio.pushMusicState>[0]): void => {
+        runtimeAudio.pushMusicState(state);
     };
+    const resolveMidiEngine = () => runtimeAudio.getMidiEngine();
+
+    const handleFrameMetrics = runtimePerformance.handleFrameMetrics;
 
     const sessionNow = (): number => Math.max(0, Math.floor(runtimeState.sessionElapsedSeconds * 1000));
 
@@ -546,33 +473,6 @@ export const createRuntimeFacade = async ({
             return 1;
         }
         return 2;
-    };
-
-    let lastMusicState: MusicState | null = null;
-    const pushMusicState = (state: MusicState) => {
-        const normalizedWarble = state.warbleIntensity;
-        const normalized: MusicState = {
-            lives: state.lives,
-            combo: state.combo,
-            tempoRatio: clampUnit(state.tempoRatio ?? 0),
-            paused: state.paused,
-            warbleIntensity: normalizedWarble === undefined ? undefined : clampUnit(normalizedWarble ?? 0),
-            bricksRemainingRatio: clampUnit(state.bricksRemainingRatio ?? 1),
-        };
-
-        if (
-            lastMusicState &&
-            lastMusicState.lives === normalized.lives &&
-            Math.abs(lastMusicState.combo - normalized.combo) <= 1e-3 &&
-            Math.abs((lastMusicState.tempoRatio ?? 0) - (normalized.tempoRatio ?? 0)) <= 1e-3 &&
-            Math.abs((lastMusicState.warbleIntensity ?? 0) - (normalized.warbleIntensity ?? 0)) <= 1e-3 &&
-            Math.abs((lastMusicState.bricksRemainingRatio ?? 1) - (normalized.bricksRemainingRatio ?? 1)) <= 1e-3
-        ) {
-            return;
-        }
-
-        musicDirector.setState(normalized);
-        lastMusicState = { ...normalized };
     };
 
     let session = createSession();
@@ -721,7 +621,7 @@ export const createRuntimeFacade = async ({
         updateBrickDamage: (brick, hp) => {
             levelRuntime.updateBrickDamage(brick, hp);
         },
-        getMidiEngine: () => midiEngine,
+        getMidiEngine: () => resolveMidiEngine(),
         musicDirector,
     });
     const { manager: gambleManager } = gambleRuntime;
@@ -798,17 +698,17 @@ export const createRuntimeFacade = async ({
         const strength = event.isDownbeat ? 0.85 : 0.45;
         visuals?.playfieldBackground?.applyBeatPulse(strength);
     };
-    musicDirector.setBeatCallback(handleMusicBeat);
-    musicDirector.setMeasureCallback(handleMusicMeasure);
+    runtimeAudio.setBeatCallback(handleMusicBeat);
+    runtimeAudio.setMeasureCallback(handleMusicMeasure);
 
     const bounds = physics.factory.bounds();
     physics.add(bounds);
 
     const { manager: inputManager } = runtimeInput;
     visuals = createdVisuals;
+    runtimePerformance.updateVisuals(createdVisuals);
     if (createdVisuals) {
         createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
-        createdVisuals.setEffectProfile(desiredVisualProfile);
     }
 
     const comboRing = createdVisuals?.comboRing ?? null;
@@ -935,6 +835,7 @@ export const createRuntimeFacade = async ({
     runtimeModifiers.reset();
 
     let biasCoordinator: BiasPhaseCoordinator | null = null;
+    let handleEntropyAction: ((action: EntropyActionType) => void) | null = null;
 
     const runtimeHud = createRuntimeHud({
         stage,
@@ -956,7 +857,7 @@ export const createRuntimeFacade = async ({
         getBrickLayoutBounds: () => brickLayoutBounds,
         getPaddleSnapshot: () => ({ centerY: paddle.position.y, height: paddle.height }),
         onEntropyAction: (action) => {
-            attemptEntropyAction(action);
+            handleEntropyAction?.(action);
         },
     });
     const { container: hudContainer, display: hudDisplay } = runtimeHud;
@@ -1006,113 +907,60 @@ export const createRuntimeFacade = async ({
     });
 
     let lastComboCount = 0;
-
-    const buildEntropyHudEntries = (state: EntropyActionState, stored: number): HudEntropyActionDescriptor[] => {
-        return ENTROPY_ACTION_SEQUENCE.map((action) => {
-            const binding = ENTROPY_ACTION_BINDINGS[action];
-            const cost = ENTROPY_ACTION_COSTS[action];
-            const charges = action === 'reroll'
-                ? state.rerollTokens
-                : action === 'shield'
-                    ? state.shieldCharges
-                    : 0;
-            const lastActionTimestamp = state.lastAction?.action === action ? state.lastAction.timestamp : undefined;
-            return {
-                action,
-                label: binding.label,
-                hotkey: binding.hotkey,
-                cost,
-                charges,
-                affordable: stored >= cost,
-                lastActionTimestamp,
-            } satisfies HudEntropyActionDescriptor;
-        });
-    };
-
-    const applyImmediateReroll = (timestamp: number): boolean => {
-        const pendingReward = roundMachine.getPendingReward();
-        if (!pendingReward) {
-            return false;
-        }
-        if (roundMachine.isPendingRewardLocked()) {
-            return false;
-        }
-        if (!roundMachine.consumeRerollToken(timestamp)) {
-            return false;
-        }
-        const rerolledReward = spinWheel(random.random);
-        roundMachine.setPendingReward(rerolledReward);
-        return true;
-    };
-
-    const attemptEntropyAction = (action: EntropyActionType): EntropyActionAttemptResult => {
-        const snapshot = session.snapshot();
-        const status = snapshot.status;
-        if (action === 'reroll') {
-            if (status !== 'active' && status !== 'completed') {
-                return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
-            }
-            if (roundMachine.isPendingRewardLocked()) {
-                return { success: false, reason: 'locked' } satisfies EntropyActionAttemptResult;
-            }
-        } else if (status !== 'active') {
-            return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
-        }
-
-        const cost = ENTROPY_ACTION_COSTS[action];
-        const spend = session.spendStoredEntropy({ action, cost });
-        if (!spend.success) {
-            const reason: EntropyActionAttemptResult['reason'] = spend.reason === 'insufficient'
-                ? 'insufficient'
-                : 'invalid-state';
-            return { success: false, reason } satisfies EntropyActionAttemptResult;
-        }
-
-        const timestamp = sessionNow();
-        let applied = false;
-
-        switch (action) {
-            case 'reroll': {
-                roundMachine.grantEntropyAction(action, timestamp);
-                applied = applyImmediateReroll(timestamp);
-                if (applied) {
-                    hudDisplay.pulseCombo(0.3);
-                    renderStageSoon();
-                }
-                break;
-            }
-            case 'shield': {
-                roundMachine.grantEntropyAction(action, timestamp);
-                hudDisplay.pulseCombo(0.4);
-                applied = true;
-                break;
-            }
-            case 'bailout': {
-                roundMachine.recordBailoutActivation(timestamp);
-                clearExtraBalls();
-                reattachBallToPaddle();
-                resetAutoCompleteCountdown();
-                flashPaddleLight(0.55);
-                hudDisplay.pulseCombo(0.5);
-                renderStageSoon();
-                applied = true;
-                break;
-            }
-        }
-
-        if (applied) {
-            refreshHud();
-            return { success: true } satisfies EntropyActionAttemptResult;
-        }
-
-        return { success: false, reason: 'invalid-state' } satisfies EntropyActionAttemptResult;
-    };
-
+    let refreshHudImpl: (() => void) | null = null;
     const refreshHud = () => {
+        refreshHudImpl?.();
+    };
+
+    const runtimeRewards = createRuntimeRewards({
+        random,
+        roundMachine,
+        sessionNow,
+        getSessionSnapshot: () => session.snapshot(),
+        spendStoredEntropy: (options: Parameters<GameSessionManager['spendStoredEntropy']>[0]) =>
+            session.spendStoredEntropy(options),
+        spendCoins: (amount: Parameters<GameSessionManager['spendCoins']>[0]) => session.spendCoins(amount),
+        eventBus: bus,
+        wheelSegments: config.rewards.wheelSegments,
+        entropyCosts: ENTROPY_ACTION_COSTS,
+        entropyBindings: ENTROPY_ACTION_BINDINGS,
+        entropyOrder: ENTROPY_ACTION_SEQUENCE,
+        lockCoinCost: REWARD_LOCK_COIN_COST,
+        spinReward: (rng) => spinWheel(rng),
+        setRewardOverride,
+        createReward,
+        onRenderStageSoon: () => {
+            renderStageSoon();
+        },
+        onRequestHudRefresh: () => {
+            refreshHud();
+        },
+        onHudPulseCombo: (intensity) => {
+            hudDisplay.pulseCombo(intensity);
+        },
+        onFlashPaddleLight: (intensity) => {
+            flashPaddleLight(intensity);
+        },
+        onClearExtraBalls: () => {
+            clearExtraBalls();
+        },
+        onReattachBallToPaddle: () => {
+            reattachBallToPaddle();
+        },
+        onResetAutoCompleteCountdown: () => {
+            resetAutoCompleteCountdown();
+        },
+    });
+
+    const { rewardWheel } = runtimeRewards;
+    handleEntropyAction = (action) => {
+        runtimeRewards.attemptEntropyAction(action);
+    };
+
+    refreshHudImpl = () => {
         const snapshot = session.snapshot();
         const gambleStatus = gambleManager.snapshot();
-        const entropyState = roundMachine.getEntropyActionState();
-        const entropyActions = buildEntropyHudEntries(entropyState, snapshot.hud.entropy.stored);
+        const entropyActions = runtimeRewards.getHudEntropyActions(snapshot.hud.entropy.stored);
         const hudView = buildHudScoreboard(snapshot, gambleStatus, {
             entropyActions,
         });
@@ -1161,27 +1009,12 @@ export const createRuntimeFacade = async ({
         positionHud();
     };
 
-    const rewardWheel: RewardWheelOrchestrator = createRewardWheelOrchestrator({
-        wheelSegments: config.rewards.wheelSegments,
-        roundMachine,
-        getSessionSnapshot: () => session.snapshot(),
-        spendCoins: (amount) => session.spendCoins(amount),
-        entropyCosts: {
-            reroll: ENTROPY_COST_REROLL,
-            lockCoins: REWARD_LOCK_COIN_COST,
-        },
-        attemptEntropyAction,
-        setRewardOverride,
-        refreshHud,
-        renderStageSoon,
-        eventBus: bus,
-        createReward: (type) => createReward(type),
-    });
+    refreshHud();
 
     const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
         refreshMetaLoadout();
         applyRuntimeTheme(GameTheme);
-        rebuildMidiEngine();
+        runtimeAudio.rebuildMidiEngine();
         refreshHud();
         renderStageSoon();
         const loadout = getMetaLoadout();
@@ -1212,7 +1045,7 @@ export const createRuntimeFacade = async ({
             loop.stop();
         }
 
-        musicDirector.setEnabled(true);
+        runtimeAudio.enableMusic();
         random.reset();
         const activeSeed = random.seed();
         runtimeState.sessionElapsedSeconds = 0;
@@ -1442,7 +1275,7 @@ export const createRuntimeFacade = async ({
         loop?.stop();
         roundMachine.setPendingReward(null);
         powerups.reset();
-        musicDirector.setEnabled(false);
+        runtimeAudio.disableMusic();
 
         const sessionSnapshot = session.snapshot();
         const roundsCompleted = Math.max(1, roundMachine.getCurrentLevelIndex() + 1);
@@ -1609,7 +1442,7 @@ export const createRuntimeFacade = async ({
     collisionRuntime = createCollisionRuntime({
         engine: physics.engine,
         bus,
-        midiEngine,
+        midiEngine: resolveMidiEngine(),
         random,
         context: collisionContext,
     });
@@ -1658,12 +1491,11 @@ export const createRuntimeFacade = async ({
         powerups.tick(deltaSeconds);
         laserController?.update(deltaSeconds);
 
-        ENTROPY_ACTION_SEQUENCE.forEach((action) => {
-            const binding = ENTROPY_ACTION_BINDINGS[action];
+        for (const binding of runtimeRewards.getActionBindings()) {
             if (runtimeInput.consumeKeyPress(binding.key)) {
-                attemptEntropyAction(action);
+                runtimeRewards.attemptEntropyAction(binding.action);
             }
-        });
+        }
 
         const slowTimeScale = powerups.getSlowTimeScale();
         const slowTimeRemaining = powerups.getSlowTimeRemaining();
@@ -2156,23 +1988,18 @@ export const createRuntimeFacade = async ({
 
 
     const cleanupVisuals = () => {
-        if (pendingVisualTimers.size > 0) {
-            for (const timer of pendingVisualTimers) {
-                clearTimeout(timer);
-            }
-            pendingVisualTimers.clear();
-        }
+        runtimeAudio.clearScheduledVisualEffects();
         gambleRuntime?.dispose();
-        unsubscribeSettings?.();
-        unsubscribeSettings = null;
         unsubscribeMeta?.();
         unsubscribeMeta = null;
         unsubscribeTheme?.();
         unsubscribeTheme = null;
+        runtimePerformance.updateVisuals(null);
+        runtimePerformance.reset();
         visuals?.dispose();
         visuals = null;
-        musicDirector.setBeatCallback(null);
-        musicDirector.setMeasureCallback(null);
+        runtimeAudio.setBeatCallback(null);
+        runtimeAudio.setMeasureCallback(null);
         runtimeDebug?.resetVisibility();
         runtimeDebug?.updateOverlays({ input: null, physics: null });
         runtimeState.lastPhysicsDebugState = null;
@@ -2181,10 +2008,6 @@ export const createRuntimeFacade = async ({
         runtimeState.syncDriftPeakMs = 0;
         runtimeState.syncDriftPeakRecordedAt = runtimeState.sessionElapsedSeconds;
         syncDriftTelemetry.reset();
-        dynamicPerformanceMode = false;
-        accumulatedLowFpsMs = 0;
-        accumulatedHighFpsMs = 0;
-        applyVisualPerformanceProfile();
     };
 
     const { lifecycle, idleResumeSummary } = initializeRuntimeLifecycle({
@@ -2193,7 +2016,7 @@ export const createRuntimeFacade = async ({
         fateLedger,
         cleanupHandlers: [
             () => {
-                midiEngine.dispose();
+                runtimeAudio.dispose();
             },
             () => {
                 foreshadowing.dispose();
@@ -2203,6 +2026,9 @@ export const createRuntimeFacade = async ({
             },
             () => {
                 cleanupVisuals();
+            },
+            () => {
+                runtimePerformance.dispose();
             },
             () => {
                 runtimeHud.dispose();
@@ -2247,6 +2073,7 @@ export const createRuntimeFacade = async ({
             visuals,
             collisions: collisionRuntime,
             scoring,
+            rewards: runtimeRewards,
             powerups,
             roundMachine,
             modifiers: runtimeModifiers,
