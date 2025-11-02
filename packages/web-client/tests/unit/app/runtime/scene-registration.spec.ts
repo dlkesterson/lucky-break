@@ -284,14 +284,14 @@ describe('registerRuntimeScenes', () => {
     });
 
     it('clears overlays when quitting to the main menu even if transition fails', async () => {
-    const context = bootstrapDeps();
-    const transitionError = new Error('transition failed');
-    context.stage.setTransitionBehavior(() => Promise.resolve());
+        const context = bootstrapDeps();
+        const transitionError = new Error('transition failed');
+        context.stage.setTransitionBehavior(() => Promise.resolve());
 
-    const result = await registerRuntimeScenes(context.deps);
+        const result = await registerRuntimeScenes(context.deps);
 
-    context.stage.setTransitionBehavior(() => Promise.reject(transitionError));
-    context.stage.setStack(['main-menu', 'gameplay', 'pause', 'overlay']);
+        context.stage.setTransitionBehavior(() => Promise.reject(transitionError));
+        context.stage.setStack(['main-menu', 'gameplay', 'pause', 'overlay']);
 
         context.renderStageSoon.mockClear();
         context.loggerMocks.errorMock.mockClear();
