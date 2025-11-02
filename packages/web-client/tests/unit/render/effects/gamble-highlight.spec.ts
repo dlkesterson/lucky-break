@@ -21,13 +21,13 @@ vi.mock('@pixi/filter-glow', () => {
     return { GlowFilter: MockGlowFilter };
 });
 
-type HostWithFilters = {
+interface HostWithFilters {
     filters: unknown[] | null;
-};
+}
 
 const asHost = (host: HostWithFilters): HostWithFilters & Container => host as HostWithFilters & Container;
 
-const getFilter = (host: HostWithFilters & Container) => (host.filters?.[0] ?? null) as unknown as { [key: string]: unknown } | null;
+const getFilter = (host: HostWithFilters & Container) => (host.filters?.[0] ?? null) as unknown as Record<string, unknown> | null;
 
 describe('createGambleHighlightEffect', () => {
     it('attaches and updates a highlight filter based on state changes', () => {

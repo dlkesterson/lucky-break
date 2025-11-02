@@ -168,14 +168,16 @@ const createRuntimeDebugHarness = () => {
         getPhysicsDebugState,
     });
 
-    const inputOverlay = {
+    const inputOverlayMocks = {
         setVisible: vi.fn(),
         update: vi.fn(),
-    } as unknown as InputDebugOverlay;
-    const physicsOverlay = {
+    };
+    const inputOverlay = inputOverlayMocks as unknown as InputDebugOverlay;
+    const physicsOverlayMocks = {
         setVisible: vi.fn(),
         update: vi.fn(),
-    } as unknown as PhysicsDebugOverlay;
+    };
+    const physicsOverlay = physicsOverlayMocks as unknown as PhysicsDebugOverlay;
 
     return {
         runtimeDebug,
@@ -202,6 +204,8 @@ const createRuntimeDebugHarness = () => {
         },
         inputOverlay,
         physicsOverlay,
+        inputOverlayMocks,
+        physicsOverlayMocks,
         isPaused,
         isLoopRunning,
         getPhysicsDebugState,
@@ -211,7 +215,15 @@ const createRuntimeDebugHarness = () => {
 describe('createRuntimeDebug', () => {
     it('handles developer cheat key combinations and bindings', async () => {
         const harness = createRuntimeDebugHarness();
-        const { runtimeDebug, documentStub, developerCheats, logger, applyCheatReward, spawnCheatPowerUp, skipLevel } = harness;
+        const {
+            runtimeDebug,
+            documentStub,
+            developerCheatMocks,
+            logger,
+            applyCheatReward,
+            spawnCheatPowerUp,
+            skipLevel,
+        } = harness;
 
         runtimeDebug.install();
         const handler = documentStub.addEventListener.mock.calls[0][1] as (event: KeyboardEvent) => void;
@@ -223,7 +235,7 @@ describe('createRuntimeDebug', () => {
         const toggleEvent = createKeyEvent('F10', { ctrlKey: true, shiftKey: true });
         handler(toggleEvent);
         expect(toggleEvent.preventDefault).toHaveBeenCalled();
-        expect(developerCheats.toggleEnabled).toHaveBeenCalledTimes(1);
+        expect(developerCheatMocks.toggleEnabled).toHaveBeenCalledTimes(1);
         expect(logger.info).toHaveBeenCalledWith(
             'Developer cheats toggled',
             expect.objectContaining({ enabled: true }),
@@ -237,7 +249,7 @@ describe('createRuntimeDebug', () => {
 
         const cycleForward = createKeyEvent('KeyR', { ctrlKey: true, shiftKey: true });
         handler(cycleForward);
-        expect(developerCheats.cycleForcedReward).toHaveBeenCalledWith(1);
+        expect(developerCheatMocks.cycleForcedReward).toHaveBeenCalledWith(1);
         expect(logger.info).toHaveBeenCalledWith(
             'Developer forced reward updated',
             expect.objectContaining({ forcedReward: 'sticky-paddle' }),
@@ -245,7 +257,7 @@ describe('createRuntimeDebug', () => {
 
         const cycleBackward = createKeyEvent('KeyR', { ctrlKey: true, shiftKey: true, altKey: true });
         handler(cycleBackward);
-        expect(developerCheats.cycleForcedReward).toHaveBeenCalledWith(-1);
+        expect(developerCheatMocks.cycleForcedReward).toHaveBeenCalledWith(-1);
 
         const applyRewardEvent = createKeyEvent('KeyF', { ctrlKey: true, shiftKey: true });
         handler(applyRewardEvent);
@@ -253,7 +265,7 @@ describe('createRuntimeDebug', () => {
 
         const clearRewardEvent = createKeyEvent('Digit0', { ctrlKey: true, shiftKey: true });
         handler(clearRewardEvent);
-        expect(developerCheats.clearForcedReward).toHaveBeenCalledTimes(1);
+        expect(developerCheatMocks.clearForcedReward).toHaveBeenCalledTimes(1);
         expect(logger.info).toHaveBeenCalledWith(
             'Developer forced reward cleared',
             expect.objectContaining({ forcedReward: null }),
@@ -270,7 +282,16 @@ describe('createRuntimeDebug', () => {
 
     it('toggles overlays with keyboard shortcuts and refreshes visibility', () => {
         const harness = createRuntimeDebugHarness();
-        const { runtimeDebug, documentStub, inputOverlay, physicsOverlay, renderStageSoon, setPhysicsState } = harness;
+        const {
+            runtimeDebug,
+            documentStub,
+            inputOverlay,
+            physicsOverlay,
+            inputOverlayMocks,
+            physicsOverlayMocks,
+            renderStageSoon,
+            setPhysicsState,
+        } = harness;
 
         runtimeDebug.updateOverlays({ input: inputOverlay, physics: physicsOverlay });
         runtimeDebug.install();
@@ -279,37 +300,37 @@ describe('createRuntimeDebug', () => {
         const inputOn = createKeyEvent('F2');
         handler(inputOn);
         expect(inputOn.preventDefault).toHaveBeenCalled();
-        expect(inputOverlay.setVisible).toHaveBeenLastCalledWith(true);
-        expect(inputOverlay.update).toHaveBeenCalledTimes(1);
+        expect(inputOverlayMocks.setVisible).toHaveBeenLastCalledWith(true);
+        expect(inputOverlayMocks.update).toHaveBeenCalledTimes(1);
         expect(renderStageSoon).toHaveBeenCalledTimes(1);
 
         const inputOff = createKeyEvent('F2');
         handler(inputOff);
-        expect(inputOverlay.setVisible).toHaveBeenLastCalledWith(false);
+        expect(inputOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
         expect(renderStageSoon).toHaveBeenCalledTimes(2);
 
         setPhysicsState(null);
         const physicsOnWithoutState = createKeyEvent('F3');
         handler(physicsOnWithoutState);
-        expect(physicsOverlay.setVisible).toHaveBeenLastCalledWith(true);
-        expect(physicsOverlay.update).not.toHaveBeenCalled();
+        expect(physicsOverlayMocks.setVisible).toHaveBeenLastCalledWith(true);
+        expect(physicsOverlayMocks.update).not.toHaveBeenCalled();
         expect(renderStageSoon).toHaveBeenCalledTimes(3);
 
         setPhysicsState({} as PhysicsDebugOverlayState);
         const physicsOff = createKeyEvent('F3');
         handler(physicsOff);
-        expect(physicsOverlay.setVisible).toHaveBeenLastCalledWith(false);
+        expect(physicsOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
         expect(renderStageSoon).toHaveBeenCalledTimes(4);
 
         const physicsOn = createKeyEvent('F3');
         handler(physicsOn);
-        expect(physicsOverlay.setVisible).toHaveBeenLastCalledWith(true);
-        expect(physicsOverlay.update).toHaveBeenCalledTimes(1);
+        expect(physicsOverlayMocks.setVisible).toHaveBeenLastCalledWith(true);
+        expect(physicsOverlayMocks.update).toHaveBeenCalledTimes(1);
         expect(renderStageSoon).toHaveBeenCalledTimes(5);
 
         runtimeDebug.resetVisibility();
-        expect(inputOverlay.setVisible).toHaveBeenLastCalledWith(false);
-        expect(physicsOverlay.setVisible).toHaveBeenLastCalledWith(false);
+        expect(inputOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
+        expect(physicsOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
     });
 
     it('handles pause, resume, quit, and theme shortcuts', async () => {
@@ -372,14 +393,14 @@ describe('createRuntimeDebug', () => {
 
     it('cleans up overlays and listeners on dispose', () => {
         const harness = createRuntimeDebugHarness();
-        const { runtimeDebug, documentStub, inputOverlay, physicsOverlay } = harness;
+        const { runtimeDebug, documentStub, inputOverlay, physicsOverlay, inputOverlayMocks, physicsOverlayMocks } = harness;
 
         runtimeDebug.updateOverlays({ input: inputOverlay, physics: physicsOverlay });
         runtimeDebug.install();
         runtimeDebug.dispose();
 
         expect(documentStub.removeEventListener).toHaveBeenCalledWith('keydown', expect.any(Function));
-        expect(inputOverlay.setVisible).toHaveBeenLastCalledWith(false);
-        expect(physicsOverlay.setVisible).toHaveBeenLastCalledWith(false);
+        expect(inputOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
+        expect(physicsOverlayMocks.setVisible).toHaveBeenLastCalledWith(false);
     });
 });
