@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Rectangle, Text } from 'pixi.js';
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { BiasOptionRisk } from 'app/runtime/round-machine';
@@ -47,6 +47,7 @@ const RISK_COLOR: Record<BiasOptionRisk, string> = {
 interface OptionCard {
     readonly container: Container;
     readonly setActive: (active: boolean) => void;
+    readonly height: number;
 }
 
 const SCOREBOARD_ENTRIES: readonly {
@@ -75,11 +76,15 @@ const createOptionCard = (
     const borderColor = hexToNumber(GameTheme.hud.panelLine);
     const baseFill = hexToNumber(GameTheme.hud.panelFill);
 
+    let currentHeight = Math.max(dimensions.height, 280);
+    let activeState = false;
+
     const drawBackground = (active: boolean) => {
         background.clear();
-        background.roundRect(0, 0, dimensions.width, dimensions.height, 20)
+        background.roundRect(0, 0, dimensions.width, currentHeight, 20)
             .fill({ color: baseFill, alpha: active ? 0.95 : 0.88 })
             .stroke({ color: borderColor, width: active ? 6 : 4, alignment: 0.5 });
+        activeState = active;
     };
 
     drawBackground(false);
@@ -169,6 +174,22 @@ const createOptionCard = (
 
     container.addChild(background, riskBadge, riskLabel, title, description, effectsContainer, callout);
 
+    const reflowLayout = () => {
+        const effectsBottom = effectsContainer.children.length > 0
+            ? effectsContainer.y + effectsContainer.height
+            : description.y + description.height;
+        const calloutHeight = callout.height;
+        const requiredHeight = Math.max(dimensions.height, effectsBottom + calloutHeight + padding + 12);
+        if (requiredHeight !== currentHeight) {
+            currentHeight = requiredHeight;
+        }
+        callout.position.set(dimensions.width / 2, currentHeight - padding);
+        drawBackground(activeState);
+        container.hitArea = new Rectangle(0, 0, dimensions.width, currentHeight);
+    };
+
+    reflowLayout();
+
     const setActive = (active: boolean) => {
         drawBackground(active);
         callout.alpha = active ? 1 : 0.85;
@@ -187,7 +208,7 @@ const createOptionCard = (
         container.scale.set(1);
     });
 
-    return { container, setActive } satisfies OptionCard;
+    return { container, setActive, height: currentHeight } satisfies OptionCard;
 };
 
 const createScoreboard = (session: BiasPhaseSessionSummary, width: number): Container => {
@@ -342,6 +363,8 @@ export const createBiasPhaseScene = (
             const minAcceptableWidth = Math.min(320, maxAllowedWidth);
             scoreboardWidth = Math.max(minAcceptableWidth, scoreboardWidth);
             const scoreboard = createScoreboard(payload.session, scoreboardWidth);
+            scoreboard.eventMode = 'none';
+            scoreboard.interactiveChildren = false;
             scoreboard.position.set((width - scoreboardWidth) / 2, subtitle.y + subtitle.height + 36);
             root.addChild(scoreboard);
 
@@ -370,19 +393,12 @@ export const createBiasPhaseScene = (
                 cardWidth = Math.min(420, availableWidth);
             }
             const rowGap = baseGap + 12;
-            const cardHeight = width >= 1080 ? 420 : width >= 900 ? 400 : width >= 720 ? 380 : 340;
-            const rowCount = Math.ceil(payload.options.length / cardColumns);
+            const baseCardHeight = width >= 1080 ? 420 : width >= 900 ? 400 : width >= 720 ? 380 : 340;
             const maxRowWidth = cardColumns * cardWidth + (cardColumns - 1) * columnGap;
-            const cardsHeight = rowCount * cardHeight + Math.max(0, rowCount - 1) * rowGap;
             const scoreboardBottom = scoreboard.y + scoreboard.height;
             const footerReserve = payload.onSkip ? 140 : 80;
-            const availableHeight = Math.max(160, height - (scoreboardBottom + 48) - footerReserve);
-            const cardScale = cardsHeight > availableHeight ? Math.max(0.6, availableHeight / cardsHeight) : 1;
-            const scaledRowWidth = maxRowWidth * cardScale;
-            const cardAreaLeft = Math.max(0, (width - scaledRowWidth) / 2);
-
-            payload.options.forEach((option, index) => {
-                const card = createOptionCard(context, option, { width: cardWidth, height: cardHeight }, () => {
+            const cards: OptionCard[] = payload.options.map((option) => {
+                const card = createOptionCard(context, option, { width: cardWidth, height: baseCardHeight }, () => {
                     if (resolving) {
                         return;
                     }
@@ -397,17 +413,44 @@ export const createBiasPhaseScene = (
                             });
                     }
                 });
-                const column = index % cardColumns;
-                const row = Math.floor(index / cardColumns);
-                const cardsInRow = Math.min(cardColumns, payload.options.length - row * cardColumns);
+                cleanupCallbacks.push(() => card.container.removeAllListeners());
+                return card;
+            });
+
+            const rowCount = Math.ceil(cards.length / cardColumns);
+            const rowHeights: number[] = [];
+            for (let row = 0; row < rowCount; row += 1) {
+                const startIndex = row * cardColumns;
+                const rowCards = cards.slice(startIndex, startIndex + cardColumns);
+                const rowHeight = rowCards.reduce((maxHeight, card) => Math.max(maxHeight, card.height), 0);
+                rowHeights.push(rowHeight);
+            }
+
+            const cardsHeight = rowHeights.reduce((total, rowHeight, index) => total + rowHeight + (index > 0 ? rowGap : 0), 0);
+            const availableHeight = Math.max(160, height - (scoreboardBottom + 48) - footerReserve);
+            const minScale = 0.6;
+            const cardScale = cardsHeight > availableHeight ? Math.max(minScale, availableHeight / cardsHeight) : 1;
+            const scaledRowWidth = maxRowWidth * cardScale;
+            const cardAreaLeft = Math.max(0, (width - scaledRowWidth) / 2);
+
+            let currentRowTop = 0;
+            for (let row = 0; row < rowCount; row += 1) {
+                const rowHeight = rowHeights[row] ?? baseCardHeight;
+                const startIndex = row * cardColumns;
+                const cardsInRow = Math.min(cardColumns, cards.length - startIndex);
                 const rowWidth = cardsInRow * cardWidth + (cardsInRow - 1) * columnGap;
                 const rowOffset = (maxRowWidth - rowWidth) / 2;
-                const x = rowOffset + column * (cardWidth + columnGap);
-                const y = row * (cardHeight + rowGap);
-                card.container.position.set(x, y);
-                cardRow.addChild(card.container);
-                cleanupCallbacks.push(() => card.container.removeAllListeners());
-            });
+                for (let column = 0; column < cardsInRow; column += 1) {
+                    const card = cards[startIndex + column];
+                    const x = rowOffset + column * (cardWidth + columnGap);
+                    card.container.position.set(x, currentRowTop);
+                    cardRow.addChild(card.container);
+                }
+                currentRowTop += rowHeight;
+                if (row < rowCount - 1) {
+                    currentRowTop += rowGap;
+                }
+            }
 
             cardRow.scale.set(cardScale);
             cardRow.position.set(cardAreaLeft, scoreboardBottom + 48);
