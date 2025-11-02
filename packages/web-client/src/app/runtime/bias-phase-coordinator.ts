@@ -4,9 +4,10 @@ import type { StageHandle } from 'render/stage';
 import type { BiasPhaseSessionSummary, BiasPhaseSceneOption, BiasPhasePayload } from 'scenes/bias-phase';
 import type { GameConfig } from 'config/game';
 import type { BiasOptionRisk, BiasPhaseOption, RoundMachine } from './round-machine';
-import type { RuntimeModifiers } from './modifiers';
+import type { RuntimeModifiers, RuntimeModifierSnapshot } from './modifiers';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from './types';
+import type { LuckyBreakEventBus } from 'app/events';
 
 export interface BiasPhaseAutomation {
     select(optionId: string): void;
@@ -26,6 +27,7 @@ export interface BiasPhaseCoordinatorDeps {
     readonly replayBuffer: ReplayBuffer;
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
     readonly buildSessionSummary: (upcomingLevelIndex: number) => BiasPhaseSessionSummary;
+    readonly bus: Pick<LuckyBreakEventBus, 'publish'>;
 }
 
 export interface BiasPhaseCoordinator {
@@ -47,31 +49,43 @@ export const createBiasPhaseCoordinator = ({
     replayBuffer,
     runtimeState,
     buildSessionSummary,
+    bus,
 }: BiasPhaseCoordinatorDeps): BiasPhaseCoordinator => {
     const { gravity, restitution, paddleWidth, speedGovernor } = modifierConfig;
 
-    const biasRiskOrder: readonly BiasOptionRisk[] = ['safe', 'bold', 'volatile'];
+    const biasRiskOrder: readonly BiasOptionRisk[] = ['tilt', 'lock', 'reforge'];
 
     const biasLabels: Record<BiasOptionRisk, readonly string[]> = {
-        safe: ['Momentum Hedge', 'Steady Anchor', 'Measured Tilt'],
-        bold: ['Double Down', 'Edge Stack', 'Tempo Spike'],
-        volatile: ['Chaos Ramp', 'Glitch Push', 'Void Bet'],
+        tilt: ['Measured Tilt Table', 'Soft Cascade Table', 'Silver Thread Table'],
+        lock: ['Vault Lock Table', 'Gilded Contract Table', 'House Edge Table'],
+        reforge: ['Mirror Void Table', 'Glass Planet Table', 'Nebular Drift Table'],
     } as const;
 
     const biasDescriptions: Record<BiasOptionRisk, readonly string[]> = {
-        safe: [
-            'Pocket a modest edge while keeping the board manageable.',
-            'Steady your hand with softer tweaks and steadier odds.',
+        tilt: [
+            'Nudge Mayhaps with gentle bias and welcoming odds.',
+            'Ease into the next board with subtle physics pulls.',
         ],
-        bold: [
-            'Lean into the heat for fatter drops and sharper volleys.',
-            'Amp the tempo to chase richer streak rewards.',
+        lock: [
+            'Strike a deal with the casino—coins guaranteed on breaks.',
+            'Lock in a sure thing while the tempo hums steadily.',
         ],
-        volatile: [
-            'Spin the wheel for wild payouts and relentless speed.',
-            'Embrace chaos—huge upside with heavy gravity shifts.',
+        reforge: [
+            'Reforge Mayhaps into a volatile comet built for streaks.',
+            'All-in fabrication—heavy swings, louder rewards.',
         ],
     } as const;
+
+    interface ReforgeBundle {
+        readonly slug: string;
+        readonly label: string;
+        readonly description: string;
+        readonly build: () => {
+            readonly modifiers: Partial<RuntimeModifierSnapshot>;
+            readonly difficultyMultiplier: number;
+            readonly powerUpChanceMultiplier: number;
+        };
+    }
 
     const roundToDecimals = (value: number, decimals = 3): number => {
         if (!Number.isFinite(value)) {
@@ -84,7 +98,7 @@ export const createBiasPhaseCoordinator = ({
     const formatSigned = (value: number, decimals = 2): string => {
         const rounded = roundToDecimals(value, decimals);
         if (Math.abs(rounded) <= 1e-6) {
-            return '±0';
+            return '+/-0';
         }
         const formatted = Math.abs(rounded).toFixed(decimals).replace(/\.0+$/, '');
         return rounded > 0 ? `+${formatted}` : `-${formatted}`;
@@ -143,6 +157,15 @@ export const createBiasPhaseCoordinator = ({
             }
         }
 
+        if (option.effects.rules) {
+            if (option.effects.rules.coinsAlwaysDrop) {
+                summary.push('Coins Always Drop');
+            }
+            if (option.effects.rules.gambleBricksMoreLikely) {
+                summary.push('Gamble Bricks Favored');
+            }
+        }
+
         if (summary.length === 0) {
             summary.push('No material change');
         }
@@ -164,78 +187,169 @@ export const createBiasPhaseCoordinator = ({
         const basePaddleWidth = paddleWidth.default;
         const baseSpeedGovernor = speedGovernor.default;
 
-        return biasRiskOrder.map((risk, order) => {
-            const idSeed = random.nextInt(1_000_000);
-            const modifierEntries: {
-                gravity?: number;
-                restitution?: number;
-                paddleWidthMultiplier?: number;
-                speedGovernorMultiplier?: number;
-            } = {};
-            let difficulty: number | undefined;
-            let powerUp: number | undefined;
+        const createOptionId = (risk: BiasOptionRisk, order: number) =>
+            `bias-${upcomingLevelIndex + 1}-${risk}-${order}-${random.nextInt(1_000_000)}`;
 
-            if (risk === 'safe') {
-                modifierEntries.paddleWidthMultiplier = roundToDecimals(
-                    clampToRange(basePaddleWidth + randomBetween(0.05, 0.12), paddleWidth),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.02, 0.05)), gravity),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.04, 0.08), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.06, 0.1), 3);
-            } else if (risk === 'bold') {
-                modifierEntries.paddleWidthMultiplier = roundToDecimals(
-                    clampToRange(basePaddleWidth - randomBetween(0.05, 0.12), paddleWidth),
-                    2,
-                );
-                modifierEntries.speedGovernorMultiplier = roundToDecimals(
-                    clampToRange(baseSpeedGovernor + randomBetween(0.08, 0.15), speedGovernor),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.04, 0.08)), gravity),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.09, 0.16), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.12, 0.18), 3);
-            } else {
-                modifierEntries.speedGovernorMultiplier = roundToDecimals(
-                    clampToRange(baseSpeedGovernor + randomBetween(0.16, 0.24), speedGovernor),
-                    2,
-                );
-                modifierEntries.restitution = roundToDecimals(
-                    clampToRange(baseRestitution + randomBetween(0.02, 0.06), restitution),
-                    2,
-                );
-                modifierEntries.gravity = roundToDecimals(
-                    clampToRange(baseGravity + randomSigned(randomBetween(0.1, 0.18)), gravity),
-                    2,
-                );
-                difficulty = roundToDecimals(1 + randomBetween(0.16, 0.24), 3);
-                powerUp = roundToDecimals(1 + randomBetween(0.18, 0.26), 3);
-            }
+        const buildTiltOption = (order: number): BiasPhaseOption => {
+            const gravityShift = randomSigned(randomBetween(0.02, 0.05));
+            const difficulty = roundToDecimals(1 + randomBetween(0.05, 0.1), 3);
+            const powerUp = roundToDecimals(1 + randomBetween(0.08, 0.14), 3);
 
-            const modifiers = Object.keys(modifierEntries).length > 0 ? modifierEntries : undefined;
-            const effects = {
-                modifiers,
-                difficultyMultiplier: difficulty,
-                powerUpChanceMultiplier: powerUp,
-            } satisfies BiasPhaseOption['effects'];
+            const modifiers: Partial<RuntimeModifierSnapshot> = {
+                gravity: roundToDecimals(clampToRange(baseGravity + gravityShift, gravity), 2),
+                paddleWidthMultiplier: roundToDecimals(
+                    clampToRange(basePaddleWidth + randomBetween(0.06, 0.12), paddleWidth),
+                    2,
+                ),
+                speedGovernorMultiplier: roundToDecimals(
+                    clampToRange(baseSpeedGovernor + randomBetween(0.02, 0.06), speedGovernor),
+                    2,
+                ),
+            };
 
             return {
-                id: `bias-${upcomingLevelIndex + 1}-${risk}-${order}-${idSeed}`,
-                label: pickFrom(biasLabels[risk]),
-                description: pickFrom(biasDescriptions[risk]),
-                risk,
-                effects,
+                id: createOptionId('tilt', order),
+                label: pickFrom(biasLabels.tilt),
+                description: pickFrom(biasDescriptions.tilt),
+                risk: 'tilt',
+                effects: {
+                    modifiers,
+                    difficultyMultiplier: difficulty,
+                    powerUpChanceMultiplier: powerUp,
+                },
             } satisfies BiasPhaseOption;
-        });
+        };
+
+        const buildLockOption = (order: number): BiasPhaseOption => {
+            const modifiers: Partial<RuntimeModifierSnapshot> = {
+                restitution: roundToDecimals(
+                    clampToRange(baseRestitution + randomBetween(0.02, 0.05), restitution),
+                    2,
+                ),
+                speedGovernorMultiplier: roundToDecimals(
+                    clampToRange(baseSpeedGovernor + randomBetween(0.04, 0.08), speedGovernor),
+                    2,
+                ),
+            };
+            const difficulty = roundToDecimals(1 + randomBetween(0.04, 0.08), 3);
+            const powerUp = roundToDecimals(1 + randomBetween(0.1, 0.16), 3);
+
+            return {
+                id: createOptionId('lock', order),
+                label: pickFrom(biasLabels.lock),
+                description: pickFrom(biasDescriptions.lock),
+                risk: 'lock',
+                effects: {
+                    modifiers,
+                    difficultyMultiplier: difficulty,
+                    powerUpChanceMultiplier: powerUp,
+                    rules: {
+                        coinsAlwaysDrop: true,
+                    },
+                },
+            } satisfies BiasPhaseOption;
+        };
+
+        const reforgeBundles: readonly ReforgeBundle[] = [
+            {
+                slug: 'mirror-void',
+                label: 'Mirror Void Table',
+                description: 'Combo mirrors ignite high restitution loops.',
+                build: () => {
+                    const gravityShift = -randomBetween(0.06, 0.1);
+                    return {
+                        modifiers: {
+                            gravity: roundToDecimals(clampToRange(baseGravity + gravityShift, gravity), 2),
+                            restitution: roundToDecimals(
+                                clampToRange(baseRestitution + randomBetween(0.07, 0.11), restitution),
+                                2,
+                            ),
+                            speedGovernorMultiplier: roundToDecimals(
+                                clampToRange(baseSpeedGovernor + randomBetween(0.16, 0.22), speedGovernor),
+                                2,
+                            ),
+                        },
+                        difficultyMultiplier: roundToDecimals(1 + randomBetween(0.18, 0.26), 3),
+                        powerUpChanceMultiplier: roundToDecimals(1 + randomBetween(0.16, 0.24), 3),
+                    };
+                },
+            },
+            {
+                slug: 'glass-planet',
+                label: 'Glass Planet Table',
+                description: 'Shards of gravity crackle—razor volleys ahead.',
+                build: () => ({
+                    modifiers: {
+                        gravity: roundToDecimals(
+                            clampToRange(baseGravity + randomBetween(0.12, 0.18), gravity),
+                            2,
+                        ),
+                        paddleWidthMultiplier: roundToDecimals(
+                            clampToRange(basePaddleWidth - randomBetween(0.12, 0.18), paddleWidth),
+                            2,
+                        ),
+                        speedGovernorMultiplier: roundToDecimals(
+                            clampToRange(baseSpeedGovernor + randomBetween(0.18, 0.24), speedGovernor),
+                            2,
+                        ),
+                    },
+                    difficultyMultiplier: roundToDecimals(1 + randomBetween(0.2, 0.28), 3),
+                    powerUpChanceMultiplier: roundToDecimals(1 + randomBetween(0.14, 0.2), 3),
+                }),
+            },
+            {
+                slug: 'nebular-drift',
+                label: 'Nebular Drift Table',
+                description: 'Float through starlit lanes—wide arcs, high stakes.',
+                build: () => ({
+                    modifiers: {
+                        gravity: roundToDecimals(
+                            clampToRange(baseGravity - randomBetween(0.08, 0.12), gravity),
+                            2,
+                        ),
+                        paddleWidthMultiplier: roundToDecimals(
+                            clampToRange(basePaddleWidth + randomBetween(0.1, 0.18), paddleWidth),
+                            2,
+                        ),
+                        speedGovernorMultiplier: roundToDecimals(
+                            clampToRange(baseSpeedGovernor + randomBetween(0.14, 0.2), speedGovernor),
+                            2,
+                        ),
+                    },
+                    difficultyMultiplier: roundToDecimals(1 + randomBetween(0.16, 0.22), 3),
+                    powerUpChanceMultiplier: roundToDecimals(1 + randomBetween(0.18, 0.26), 3),
+                }),
+            },
+        ];
+
+        const buildReforgeOption = (order: number): BiasPhaseOption => {
+            const bundle = pickFrom(reforgeBundles);
+            const blueprint = bundle.build();
+
+            return {
+                id: createOptionId('reforge', order),
+                label: bundle.label,
+                description: bundle.description,
+                risk: 'reforge',
+                effects: {
+                    modifiers: blueprint.modifiers,
+                    difficultyMultiplier: blueprint.difficultyMultiplier,
+                    powerUpChanceMultiplier: blueprint.powerUpChanceMultiplier,
+                },
+            } satisfies BiasPhaseOption;
+        };
+
+        return [
+            buildTiltOption(0),
+            buildLockOption(1),
+            buildReforgeOption(2),
+        ];
     };
 
     const applySelection: BiasPhaseCoordinator['applySelection'] = (selection) => {
+        runtimeModifiers.setRules(null);
+        roundMachine.clearRoundRules();
+
         if (!selection) {
             return;
         }
@@ -254,21 +368,24 @@ export const createBiasPhaseCoordinator = ({
         }
 
         const modifiers = effects.modifiers;
-        if (!modifiers) {
-            return;
+        if (modifiers) {
+            if (modifiers.gravity !== undefined) {
+                runtimeModifiers.setGravity(modifiers.gravity);
+            }
+            if (modifiers.restitution !== undefined) {
+                runtimeModifiers.setRestitution(modifiers.restitution);
+            }
+            if (modifiers.paddleWidthMultiplier !== undefined) {
+                runtimeModifiers.setPaddleWidthMultiplier(modifiers.paddleWidthMultiplier);
+            }
+            if (modifiers.speedGovernorMultiplier !== undefined) {
+                runtimeModifiers.setSpeedGovernorMultiplier(modifiers.speedGovernorMultiplier);
+            }
         }
 
-        if (modifiers.gravity !== undefined) {
-            runtimeModifiers.setGravity(modifiers.gravity);
-        }
-        if (modifiers.restitution !== undefined) {
-            runtimeModifiers.setRestitution(modifiers.restitution);
-        }
-        if (modifiers.paddleWidthMultiplier !== undefined) {
-            runtimeModifiers.setPaddleWidthMultiplier(modifiers.paddleWidthMultiplier);
-        }
-        if (modifiers.speedGovernorMultiplier !== undefined) {
-            runtimeModifiers.setSpeedGovernorMultiplier(modifiers.speedGovernorMultiplier);
+        if (effects.rules) {
+            runtimeModifiers.setRules(effects.rules);
+            roundMachine.setRoundRules(effects.rules);
         }
     };
 
@@ -311,6 +428,11 @@ export const createBiasPhaseCoordinator = ({
                 return;
             }
             replayBuffer.recordBiasChoice(optionId, runtimeState.sessionElapsedSeconds);
+            try {
+                bus.publish('MusicModeHint', { mode: selection.risk });
+            } catch (error) {
+                logger.warn('Failed to publish music mode hint', { error, mode: selection.risk });
+            }
             advance(selection);
         };
 

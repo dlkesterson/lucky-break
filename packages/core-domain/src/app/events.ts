@@ -146,6 +146,12 @@ export interface UiSceneTransitionPayload {
     readonly action: UiSceneTransitionAction;
 }
 
+export type MusicModeHint = 'tilt' | 'lock' | 'reforge';
+
+export interface MusicModeHintPayload {
+    readonly mode: MusicModeHint;
+}
+
 export interface LuckyBreakEventMap {
     readonly BrickBreak: BrickBreakPayload;
     readonly BrickHit: BrickHitPayload;
@@ -161,6 +167,7 @@ export interface LuckyBreakEventMap {
     readonly EntropyAction: EntropyActionPayload;
     readonly RewardWheelInteraction: RewardWheelInteractionPayload;
     readonly PrestigeConversion: PrestigeConversionPayload;
+    readonly MusicModeHint: MusicModeHintPayload;
 }
 
 export type LuckyBreakEventName = keyof LuckyBreakEventMap;

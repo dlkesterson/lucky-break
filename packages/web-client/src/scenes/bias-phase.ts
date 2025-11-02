@@ -19,6 +19,13 @@ export interface BiasPhaseSessionSummary {
     readonly coins: number;
     readonly lives: number;
     readonly highestCombo: number;
+    readonly entropyDelta: number;
+    readonly gravity: number;
+    readonly gravityDelta: number;
+    readonly speedGovernor: number;
+    readonly speedDelta: number;
+    readonly coinsRuleLocked: boolean;
+    readonly seed: number | null;
 }
 
 export interface BiasPhasePayload {
@@ -32,21 +39,48 @@ const hexToNumber = (hex: string): number => Number.parseInt(hex.replace('#', ''
 
 const formatNumber = (value: number): string => value.toLocaleString();
 
+const trimTrailingZeros = (value: string): string => value.replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+
+const formatSignedDelta = (value: number, decimals = 2): string => {
+    if (!Number.isFinite(value)) {
+        return '+/-0';
+    }
+    const threshold = 10 ** -decimals;
+    if (Math.abs(value) < threshold) {
+        return '+/-0';
+    }
+    const formatted = trimTrailingZeros(Math.abs(value).toFixed(decimals));
+    return value > 0 ? `+${formatted}` : `-${formatted}`;
+};
+
+const formatGravityBias = (session: BiasPhaseSessionSummary): string => {
+    const value = trimTrailingZeros(session.gravity.toFixed(2));
+    const delta = formatSignedDelta(session.gravityDelta, 2);
+    return `${value}g (${delta})`;
+};
+
+const formatSpeedBias = (session: BiasPhaseSessionSummary): string => {
+    const multiplier = trimTrailingZeros(session.speedGovernor.toFixed(2));
+    const delta = formatSignedDelta(session.speedDelta, 2);
+    return `×${multiplier} (${delta})`;
+};
+
 const RISK_LABEL: Record<BiasOptionRisk, string> = {
-    safe: 'Safe',
-    bold: 'Bold',
-    volatile: 'Volatile',
+    tilt: 'Safe',
+    lock: 'Steady',
+    reforge: 'Bold',
 };
 
 const RISK_COLOR: Record<BiasOptionRisk, string> = {
-    safe: GameTheme.accents.combo,
-    bold: GameTheme.accents.powerUp,
-    volatile: GameTheme.hud.danger,
+    tilt: GameTheme.accents.combo,
+    lock: GameTheme.accents.powerUp,
+    reforge: GameTheme.hud.danger,
 };
 
 interface OptionCard {
+    readonly optionId: string;
     readonly container: Container;
-    readonly setActive: (active: boolean) => void;
+    readonly setSelected: (selected: boolean) => void;
     readonly height: number;
 }
 
@@ -59,13 +93,17 @@ const SCOREBOARD_ENTRIES: readonly {
         { label: 'Coins', resolve: (session) => formatNumber(session.coins) },
         { label: 'Lives', resolve: (session) => `${session.lives}` },
         { label: 'Highest Combo', resolve: (session) => `x${session.highestCombo}` },
+        { label: 'Entropy Delta', resolve: (session) => formatSignedDelta(session.entropyDelta, 0) },
+        { label: 'Gravity Bias', resolve: formatGravityBias },
+        { label: 'Speed Bias', resolve: formatSpeedBias },
+        { label: 'Coins Rule', resolve: (session) => (session.coinsRuleLocked ? 'Locked' : 'Off') },
     ];
 
 const createOptionCard = (
     context: SceneContext<GameSceneServices>,
     option: BiasPhaseSceneOption,
     dimensions: { readonly width: number; readonly height: number },
-    onSelect: () => void,
+    onFocus: () => void,
 ): OptionCard => {
     const container = new Container();
     container.eventMode = 'static';
@@ -77,17 +115,18 @@ const createOptionCard = (
     const baseFill = hexToNumber(GameTheme.hud.panelFill);
 
     let currentHeight = Math.max(dimensions.height, 280);
-    let activeState = false;
+    let isSelected = false;
+    let isHovering = false;
 
-    const drawBackground = (active: boolean) => {
+    const drawBackground = () => {
+        const active = isSelected || isHovering;
         background.clear();
         background.roundRect(0, 0, dimensions.width, currentHeight, 20)
-            .fill({ color: baseFill, alpha: active ? 0.95 : 0.88 })
+            .fill({ color: baseFill, alpha: isSelected ? 0.97 : active ? 0.92 : 0.88 })
             .stroke({ color: borderColor, width: active ? 6 : 4, alignment: 0.5 });
-        activeState = active;
     };
 
-    drawBackground(false);
+    drawBackground();
 
     const padding = 24;
     const riskBadge = new Graphics();
@@ -161,7 +200,7 @@ const createOptionCard = (
     effectsContainer.position.set(padding, description.y + description.height + 16);
 
     const callout = new Text({
-        text: 'Tap to commit this wager',
+        text: 'Tap to select this table',
         style: {
             fill: hexToNumber(GameTheme.accents.combo),
             fontFamily: GameTheme.font,
@@ -184,31 +223,34 @@ const createOptionCard = (
             currentHeight = requiredHeight;
         }
         callout.position.set(dimensions.width / 2, currentHeight - padding);
-        drawBackground(activeState);
+        drawBackground();
         container.hitArea = new Rectangle(0, 0, dimensions.width, currentHeight);
     };
 
     reflowLayout();
 
-    const setActive = (active: boolean) => {
-        drawBackground(active);
-        callout.alpha = active ? 1 : 0.85;
+    const setSelected = (selected: boolean) => {
+        isSelected = selected;
+        callout.alpha = selected ? 1 : 0.85;
+        drawBackground();
         context.renderStageSoon();
     };
 
     container.on('pointertap', () => {
-        onSelect();
+        onFocus();
     });
     container.on('pointerover', () => {
-        setActive(true);
+        isHovering = true;
+        drawBackground();
         container.scale.set(1.02);
     });
     container.on('pointerout', () => {
-        setActive(false);
+        isHovering = false;
+        drawBackground();
         container.scale.set(1);
     });
 
-    return { container, setActive, height: currentHeight } satisfies OptionCard;
+    return { optionId: option.id, container, setSelected, height: currentHeight } satisfies OptionCard;
 };
 
 const createScoreboard = (session: BiasPhaseSessionSummary, width: number): Container => {
@@ -326,7 +368,7 @@ export const createBiasPhaseScene = (
 
             const titleFontSize = width >= 1280 ? 92 : width >= 1024 ? 84 : width >= 840 ? 72 : width >= 680 ? 64 : 56;
             const title = new Text({
-                text: 'Bias Phase'.toUpperCase(),
+                text: "Luck Architect's Casino".toUpperCase(),
                 style: {
                     fill: hexToNumber(GameTheme.accents.combo),
                     fontFamily: GameTheme.font,
@@ -396,25 +438,64 @@ export const createBiasPhaseScene = (
             const baseCardHeight = width >= 1080 ? 420 : width >= 900 ? 400 : width >= 720 ? 380 : 340;
             const maxRowWidth = cardColumns * cardWidth + (cardColumns - 1) * columnGap;
             const scoreboardBottom = scoreboard.y + scoreboard.height;
-            const footerReserve = payload.onSkip ? 140 : 80;
-            const cards: OptionCard[] = payload.options.map((option) => {
+            const footerReserve = payload.onSkip ? 200 : 140;
+            const cards: OptionCard[] = [];
+            const optionById = new Map<string, BiasPhaseSceneOption>();
+            let selectedOptionId: string | null = null;
+            let commitPending = false;
+            let commitContainer: Container | undefined;
+            let commitBackground: Graphics | undefined;
+            let commitText: Text | undefined;
+
+            const updateCommitLabel = () => {
+                if (!commitText) {
+                    return;
+                }
+                if (commitPending) {
+                    commitText.text = 'Committing...';
+                    return;
+                }
+                if (!selectedOptionId) {
+                    commitText.text = 'Commit Selection';
+                    return;
+                }
+                const option = optionById.get(selectedOptionId);
+                commitText.text = option ? `Commit ${option.label}` : 'Commit Selection';
+            };
+
+            const updateCommitState = () => {
+                if (!commitContainer) {
+                    return;
+                }
+                const enabled = Boolean(selectedOptionId) && !commitPending && !resolving;
+                commitContainer.eventMode = enabled ? 'static' : 'none';
+                commitContainer.alpha = enabled ? 1 : 0.5;
+                context.renderStageSoon();
+            };
+
+            const handleCardSelect = (optionId: string) => {
+                if (resolving) {
+                    return;
+                }
+                if (selectedOptionId === optionId) {
+                    return;
+                }
+                selectedOptionId = optionId;
+                commitPending = false;
+                cards.forEach((card) => {
+                    card.setSelected(card.optionId === optionId);
+                });
+                updateCommitLabel();
+                updateCommitState();
+            };
+
+            payload.options.forEach((option) => {
+                optionById.set(option.id, option);
                 const card = createOptionCard(context, option, { width: cardWidth, height: baseCardHeight }, () => {
-                    if (resolving) {
-                        return;
-                    }
-                    resolving = true;
-                    card.setActive(true);
-                    const result = payload.onSelect(option.id);
-                    if (result) {
-                        Promise.resolve(result)
-                            .catch(() => {
-                                resolving = false;
-                                card.setActive(false);
-                            });
-                    }
+                    handleCardSelect(option.id);
                 });
                 cleanupCallbacks.push(() => card.container.removeAllListeners());
-                return card;
+                cards.push(card);
             });
 
             const rowCount = Math.ceil(cards.length / cardColumns);
@@ -456,6 +537,69 @@ export const createBiasPhaseScene = (
             cardRow.position.set(cardAreaLeft, scoreboardBottom + 48);
             root.addChild(cardRow);
 
+            const controlsBaseY = cardRow.y + cardsHeight * cardScale + 32;
+            const commitWidth = Math.min(420, Math.max(280, width * 0.45));
+            const commitHeight = 72;
+            commitContainer = new Container();
+            commitContainer.position.set((width - commitWidth) / 2, controlsBaseY);
+            commitContainer.cursor = 'pointer';
+            commitContainer.eventMode = 'none';
+            commitContainer.alpha = 0.5;
+
+            commitBackground = new Graphics();
+            commitBackground.roundRect(0, 0, commitWidth, commitHeight, 22)
+                .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.96 })
+                .stroke({ color: hexToNumber(GameTheme.accents.combo), width: 2, alignment: 0.5 });
+
+            commitText = new Text({
+                text: 'Commit Selection',
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fontFamily: GameTheme.font,
+                    fontSize: 28,
+                    fontWeight: '800',
+                },
+            });
+            commitText.anchor.set(0.5, 0.5);
+            commitText.position.set(commitWidth / 2, commitHeight / 2);
+
+            commitContainer.addChild(commitBackground, commitText);
+            commitContainer.on('pointertap', () => {
+                if (!selectedOptionId || commitPending || resolving) {
+                    return;
+                }
+                commitPending = true;
+                resolving = true;
+                updateCommitLabel();
+                updateCommitState();
+                const result = payload.onSelect(selectedOptionId);
+                if (result) {
+                    Promise.resolve(result).catch(() => {
+                        commitPending = false;
+                        resolving = false;
+                        updateCommitLabel();
+                        updateCommitState();
+                    });
+                }
+            });
+            cleanupCallbacks.push(() => commitContainer?.removeAllListeners());
+            root.addChild(commitContainer);
+
+            const seedText = new Text({
+                text: payload.session.seed !== null ? `Seed #${payload.session.seed}` : 'Seed pending -- commit to lock',
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 18,
+                },
+            });
+            seedText.anchor.set(0.5, 0);
+            seedText.position.set(width / 2, commitContainer.y + commitHeight + 8);
+            root.addChild(seedText);
+
+            updateCommitLabel();
+            updateCommitState();
+
             if (payload.onSkip) {
                 const skipText = new Text({
                     text: 'Hold for default path',
@@ -467,7 +611,7 @@ export const createBiasPhaseScene = (
                     },
                 });
                 skipText.anchor.set(0.5, 0);
-                skipText.position.set(width / 2, cardRow.y + cardsHeight * cardScale + 32);
+                skipText.position.set(width / 2, seedText.y + seedText.height + 24);
                 skipText.eventMode = 'static';
                 skipText.cursor = 'pointer';
                 skipText.on('pointertap', () => {

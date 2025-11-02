@@ -2,11 +2,17 @@ import type { GameConfig } from 'config/game';
 import type { PhysicsWorldHandle } from 'physics/world';
 import type { GameplayRuntimeState } from './types';
 
+export interface RuntimeRuleSnapshot {
+    readonly coinsAlwaysDrop: boolean;
+    readonly gambleBricksMoreLikely: boolean;
+}
+
 export interface RuntimeModifierSnapshot {
     readonly gravity: number;
     readonly restitution: number;
     readonly paddleWidthMultiplier: number;
     readonly speedGovernorMultiplier: number;
+    readonly rules: RuntimeRuleSnapshot;
 }
 
 export interface RuntimeModifiers {
@@ -15,6 +21,8 @@ export interface RuntimeModifiers {
     setRestitution(value: number): boolean;
     setPaddleWidthMultiplier(multiplier: number): boolean;
     setSpeedGovernorMultiplier(multiplier: number): boolean;
+    setRules(rules: Partial<RuntimeRuleSnapshot> | null): void;
+    getRules(): RuntimeRuleSnapshot;
     reset(): void;
 }
 
@@ -52,6 +60,11 @@ export const createRuntimeModifiers = ({
     applyPaddleBaseWidth,
     onSpeedGovernorChange,
 }: RuntimeModifiersDeps): RuntimeModifiers => {
+    let currentRules: RuntimeRuleSnapshot = {
+        coinsAlwaysDrop: false,
+        gambleBricksMoreLikely: false,
+    } satisfies RuntimeRuleSnapshot;
+
     const setGravity: RuntimeModifiers['setGravity'] = (value) => {
         const next = quantizeToStep(value, config.gravity);
         if (next === runtimeState.gravity) {
@@ -93,11 +106,32 @@ export const createRuntimeModifiers = ({
         return true;
     };
 
+    const setRules: RuntimeModifiers['setRules'] = (rules) => {
+        if (!rules) {
+            currentRules = {
+                coinsAlwaysDrop: false,
+                gambleBricksMoreLikely: false,
+            } satisfies RuntimeRuleSnapshot;
+            return;
+        }
+
+        currentRules = {
+            coinsAlwaysDrop: rules.coinsAlwaysDrop === true,
+            gambleBricksMoreLikely: rules.gambleBricksMoreLikely === true,
+        } satisfies RuntimeRuleSnapshot;
+    };
+
+    const getRules: RuntimeModifiers['getRules'] = () => ({ ...currentRules } satisfies RuntimeRuleSnapshot);
+
     const reset: RuntimeModifiers['reset'] = () => {
         runtimeState.gravity = quantizeToStep(config.gravity.default, config.gravity);
         runtimeState.ballRestitution = quantizeToStep(config.restitution.default, config.restitution);
         runtimeState.paddleBaseWidth = baseValues.paddleWidth * quantizeToStep(config.paddleWidth.default, config.paddleWidth);
         runtimeState.speedGovernorMultiplier = quantizeToStep(config.speedGovernor.default, config.speedGovernor);
+        currentRules = {
+            coinsAlwaysDrop: false,
+            gambleBricksMoreLikely: false,
+        } satisfies RuntimeRuleSnapshot;
 
         physics.setGravity(runtimeState.gravity);
         applyRestitution(runtimeState.ballRestitution);
@@ -110,6 +144,7 @@ export const createRuntimeModifiers = ({
         restitution: runtimeState.ballRestitution,
         paddleWidthMultiplier: runtimeState.paddleBaseWidth / baseValues.paddleWidth,
         speedGovernorMultiplier: runtimeState.speedGovernorMultiplier,
+        rules: { ...currentRules } satisfies RuntimeRuleSnapshot,
     });
 
     return {
@@ -118,6 +153,8 @@ export const createRuntimeModifiers = ({
         setRestitution,
         setPaddleWidthMultiplier,
         setSpeedGovernorMultiplier,
+        setRules,
+        getRules,
         reset,
     } satisfies RuntimeModifiers;
 };

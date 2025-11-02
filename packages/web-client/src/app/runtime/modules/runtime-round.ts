@@ -93,12 +93,26 @@ export const createRuntimeRoundCoordinator = ({
 }: RuntimeRoundCoordinatorOptions): RuntimeRoundCoordinatorHandle => {
     const buildBiasSessionSummary = (upcomingLevelIndex: number): BiasPhaseSessionSummary => {
         const snapshot = getSessionSnapshot();
+        const modifierState = runtimeModifiers.getState();
+        const baseGravity = modifierConfig.gravity.default;
+        const baseSpeedGovernor = modifierConfig.speedGovernor.default;
+        const entropySnapshot = snapshot.entropy;
+        const entropyTotal = Math.max(0, (entropySnapshot?.charge ?? 0) + (entropySnapshot?.stored ?? 0));
+        const entropyDelta = entropyTotal - roundMachine.getRoundEntropyBaseline();
+        const roundRules = roundMachine.getRoundRules();
         return {
             nextLevel: upcomingLevelIndex + 1,
             score: scoringState.score,
             coins: snapshot.coins,
             lives: snapshot.livesRemaining,
             highestCombo: roundMachine.getRunHighestCombo(),
+            entropyDelta,
+            gravity: modifierState.gravity,
+            gravityDelta: modifierState.gravity - baseGravity,
+            speedGovernor: modifierState.speedGovernorMultiplier,
+            speedDelta: modifierState.speedGovernorMultiplier - baseSpeedGovernor,
+            coinsRuleLocked: roundRules.coinsAlwaysDrop,
+            seed: null,
         } satisfies BiasPhaseSessionSummary;
     };
 
@@ -115,6 +129,7 @@ export const createRuntimeRoundCoordinator = ({
         replayBuffer,
         runtimeState,
         buildSessionSummary: buildBiasSessionSummary,
+        bus,
     });
 
     const presentBiasPhase = (): void => {

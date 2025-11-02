@@ -71,7 +71,7 @@ describe('round-machine bias phase state', () => {
             id: 'option-a',
             label: 'Option A',
             description: 'Test option A',
-            risk: 'safe' as const,
+            risk: 'tilt' as const,
             effects: {
                 modifiers: { gravity: 0.1 },
                 difficultyMultiplier: 1.05,
@@ -82,7 +82,7 @@ describe('round-machine bias phase state', () => {
             id: 'option-b',
             label: 'Option B',
             description: 'Test option B',
-            risk: 'bold' as const,
+            risk: 'reforge' as const,
             effects: {
                 modifiers: { paddleWidthMultiplier: 0.95 },
                 difficultyMultiplier: 1.12,
@@ -117,6 +117,21 @@ describe('round-machine bias phase state', () => {
 
         const committedMissing = machine.commitBiasSelection('missing');
         expect(committedMissing).toBeNull();
+    });
+
+    it('tracks round rules and entropy baseline', () => {
+        const machine = createSubject();
+        machine.setRoundEntropyBaseline(12.75);
+        expect(machine.getRoundEntropyBaseline()).toBeCloseTo(12.75, 5);
+
+        machine.setRoundRules({ coinsAlwaysDrop: true });
+        expect(machine.getRoundRules()).toEqual({ coinsAlwaysDrop: true, gambleBricksMoreLikely: false });
+
+        machine.setRoundRules({ gambleBricksMoreLikely: true });
+        expect(machine.getRoundRules()).toEqual({ coinsAlwaysDrop: false, gambleBricksMoreLikely: true });
+
+        machine.clearRoundRules();
+        expect(machine.getRoundRules()).toEqual({ coinsAlwaysDrop: false, gambleBricksMoreLikely: false });
     });
 
     it('clears bias state on reset', () => {

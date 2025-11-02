@@ -3,12 +3,18 @@ import type { EntropyActionType } from 'app/events';
 import type { Reward } from 'game/rewards';
 import type { RuntimeModifierSnapshot } from './modifiers';
 
-export type BiasOptionRisk = 'safe' | 'bold' | 'volatile';
+export type BiasOptionRisk = 'tilt' | 'lock' | 'reforge';
+
+export interface BiasPhaseRuleFlags {
+    readonly coinsAlwaysDrop?: boolean;
+    readonly gambleBricksMoreLikely?: boolean;
+}
 
 export interface BiasPhaseEffects {
     readonly modifiers?: Partial<RuntimeModifierSnapshot>;
     readonly difficultyMultiplier?: number;
     readonly powerUpChanceMultiplier?: number;
+    readonly rules?: BiasPhaseRuleFlags;
 }
 
 export interface BiasPhaseOption {
@@ -52,7 +58,10 @@ export interface AutoCompleteTickResult {
 
 export interface RoundMachine {
     resetForNewSession(): void;
-    startLevel(levelIndex: number, context: { resetScore: boolean; combo: number; score: number; coins: number }): void;
+    startLevel(
+        levelIndex: number,
+        context: { resetScore: boolean; combo: number; score: number; coins: number; entropyTotal: number },
+    ): void;
     getCurrentLevelIndex(): number;
     setCurrentLevelIndex(index: number): void;
     incrementLevelIndex(): number;
@@ -79,6 +88,11 @@ export interface RoundMachine {
     setRoundBaseline(score: number, coins: number): void;
     getRoundScoreBaseline(): number;
     getRoundCoinBaseline(): number;
+    setRoundEntropyBaseline(totalEntropy: number): void;
+    getRoundEntropyBaseline(): number;
+    getRoundRules(): RoundRulesState;
+    setRoundRules(rules: Partial<RoundRulesState>): void;
+    clearRoundRules(): void;
     enqueueAchievementUnlocks(unlocks: readonly AchievementUnlock[]): void;
     consumeAchievementNotifications(): readonly AchievementUnlock[];
     grantEntropyAction(action: EntropyActionType, timestamp: number): void;
@@ -103,6 +117,11 @@ export interface EntropyActionState {
     } | null;
 }
 
+export interface RoundRulesState {
+    readonly coinsAlwaysDrop: boolean;
+    readonly gambleBricksMoreLikely: boolean;
+}
+
 export const createRoundMachine = ({
     autoCompleteEnabled,
     autoCompleteCountdown,
@@ -117,6 +136,7 @@ export const createRoundMachine = ({
     let roundHighestCombo = 0;
     let roundScoreBaseline = 0;
     let roundCoinBaseline = 0;
+    let roundEntropyBaseline = 0;
     let levelAutoCompleted = false;
     let autoCompleteActive = false;
     let autoCompleteTimer = countdown;
@@ -131,6 +151,10 @@ export const createRoundMachine = ({
     let biasOptions: readonly BiasPhaseOption[] = [];
     let pendingBiasSelection: BiasPhaseOption | null = null;
     let lastBiasSelection: BiasPhaseOption | null = null;
+    let roundRules: RoundRulesState = {
+        coinsAlwaysDrop: false,
+        gambleBricksMoreLikely: false,
+    } satisfies RoundRulesState;
 
     const MAX_STORED_ACTIONS = 3;
 
@@ -287,6 +311,7 @@ export const createRoundMachine = ({
             modifiers: option.effects.modifiers ? { ...option.effects.modifiers } : undefined,
             difficultyMultiplier: option.effects.difficultyMultiplier,
             powerUpChanceMultiplier: option.effects.powerUpChanceMultiplier,
+            rules: option.effects.rules ? { ...option.effects.rules } : undefined,
         },
     });
 
@@ -330,6 +355,7 @@ export const createRoundMachine = ({
             roundHighestCombo = 0;
             roundScoreBaseline = 0;
             roundCoinBaseline = 0;
+            roundEntropyBaseline = 0;
             levelAutoCompleted = false;
             resetAutoCompleteCountdown();
             levelDifficultyMultiplier = 1;
@@ -343,15 +369,29 @@ export const createRoundMachine = ({
             biasOptions = [];
             pendingBiasSelection = null;
             lastBiasSelection = null;
+            roundRules = {
+                coinsAlwaysDrop: false,
+                gambleBricksMoreLikely: false,
+            } satisfies RoundRulesState;
         },
-        startLevel: (levelIndex, { combo, score, coins }) => {
+        startLevel: (
+            levelIndex: number,
+            { combo, score, coins, entropyTotal }: {
+                resetScore: boolean;
+                combo: number;
+                score: number;
+                coins: number;
+                entropyTotal: number;
+            },
+        ) => {
             currentLevelIndex = levelIndex;
             levelAutoCompleted = false;
             resetAutoCompleteCountdown();
             levelBricksBroken = 0;
             roundHighestCombo = combo;
             roundScoreBaseline = Math.max(0, score);
-            roundCoinBaseline = coins;
+            roundCoinBaseline = Math.max(0, coins);
+            roundEntropyBaseline = Math.max(0, Number.isFinite(entropyTotal) ? entropyTotal : 0);
         },
         getCurrentLevelIndex: () => currentLevelIndex,
         setCurrentLevelIndex: (index: number) => {
@@ -405,6 +445,25 @@ export const createRoundMachine = ({
         },
         getRoundScoreBaseline: () => roundScoreBaseline,
         getRoundCoinBaseline: () => roundCoinBaseline,
+        setRoundEntropyBaseline: (totalEntropy: number) => {
+            roundEntropyBaseline = Math.max(0, Number.isFinite(totalEntropy) ? totalEntropy : 0);
+        },
+        getRoundEntropyBaseline: () => roundEntropyBaseline,
+        getRoundRules: () => ({ ...roundRules } satisfies RoundRulesState),
+        setRoundRules: (rules: Partial<RoundRulesState>) => {
+            const coinsAlwaysDrop = rules.coinsAlwaysDrop === true;
+            const gambleBricksMoreLikely = rules.gambleBricksMoreLikely === true;
+            roundRules = {
+                coinsAlwaysDrop,
+                gambleBricksMoreLikely,
+            } satisfies RoundRulesState;
+        },
+        clearRoundRules: () => {
+            roundRules = {
+                coinsAlwaysDrop: false,
+                gambleBricksMoreLikely: false,
+            } satisfies RoundRulesState;
+        },
         enqueueAchievementUnlocks,
         consumeAchievementNotifications,
         grantEntropyAction,

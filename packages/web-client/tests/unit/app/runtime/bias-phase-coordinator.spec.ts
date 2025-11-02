@@ -5,7 +5,7 @@ import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
 import type { GameConfig } from 'config/game';
 import type { BiasPhaseOption, RoundMachine } from 'app/runtime/round-machine';
-import type { RuntimeModifierSnapshot, RuntimeModifiers } from 'app/runtime/modifiers';
+import type { RuntimeModifierSnapshot, RuntimeModifiers, RuntimeRuleSnapshot } from 'app/runtime/modifiers';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from 'app/runtime/types';
 import { createBiasPhaseCoordinator } from 'app/runtime/bias-phase-coordinator';
@@ -41,16 +41,25 @@ const createRandomStub = (): RandomManager => ({
 });
 
 const createRuntimeModifiersStub = () => {
-    const getState: Mock<[], RuntimeModifierSnapshot> = vi.fn(() => ({
+    const getState: Mock<[], RuntimeModifierSnapshot> = vi.fn((): RuntimeModifierSnapshot => ({
         gravity: 1,
         restitution: 1,
         paddleWidthMultiplier: 1,
         speedGovernorMultiplier: 1,
+        rules: {
+            coinsAlwaysDrop: false,
+            gambleBricksMoreLikely: false,
+        },
     }));
     const setGravity: Mock<[number], boolean> = vi.fn<[number], boolean>(() => true);
     const setRestitution: Mock<[number], boolean> = vi.fn<[number], boolean>(() => true);
     const setPaddleWidthMultiplier: Mock<[number], boolean> = vi.fn<[number], boolean>(() => true);
     const setSpeedGovernorMultiplier: Mock<[number], boolean> = vi.fn<[number], boolean>(() => true);
+    const setRules: Mock<[Partial<RuntimeRuleSnapshot> | null], void> = vi.fn();
+    const getRules: Mock<[], RuntimeRuleSnapshot> = vi.fn((): RuntimeRuleSnapshot => ({
+        coinsAlwaysDrop: false,
+        gambleBricksMoreLikely: false,
+    }));
     const reset: Mock<[], void> = vi.fn();
 
     const runtimeModifiers: RuntimeModifiers = {
@@ -59,6 +68,8 @@ const createRuntimeModifiersStub = () => {
         setRestitution: setRestitution as RuntimeModifiers['setRestitution'],
         setPaddleWidthMultiplier: setPaddleWidthMultiplier as RuntimeModifiers['setPaddleWidthMultiplier'],
         setSpeedGovernorMultiplier: setSpeedGovernorMultiplier as RuntimeModifiers['setSpeedGovernorMultiplier'],
+        setRules: setRules as RuntimeModifiers['setRules'],
+        getRules: getRules as RuntimeModifiers['getRules'],
         reset: reset as RuntimeModifiers['reset'],
     };
 
@@ -68,6 +79,8 @@ const createRuntimeModifiersStub = () => {
         setRestitution,
         setPaddleWidthMultiplier,
         setSpeedGovernorMultiplier,
+        setRules,
+        getRules,
     };
 };
 
@@ -99,6 +112,10 @@ const createStageStub = () => {
     };
 };
 
+const createBusStub = () => ({
+    publish: vi.fn(),
+});
+
 interface RoundMachineHarness {
     readonly roundMachine: RoundMachine;
     readonly difficulty: { value: number };
@@ -113,6 +130,11 @@ const createRoundMachineHarness = (): RoundMachineHarness => {
     const powerUp = { value: 1 };
     let options: BiasPhaseOption[] = [];
     let currentLevel = 0;
+    let roundRules: RuntimeRuleSnapshot = {
+        coinsAlwaysDrop: false,
+        gambleBricksMoreLikely: false,
+    };
+    let entropyBaseline = 0;
 
     const setBiasPhaseOptions: Mock<[readonly BiasPhaseOption[]], void> = vi.fn((next: readonly BiasPhaseOption[]) => {
         options = next.map((option) => ({ ...option }));
@@ -171,6 +193,23 @@ const createRoundMachineHarness = (): RoundMachineHarness => {
         getEntropyActionState: vi.fn(() => ({ rerollTokens: 0, shieldCharges: 0, lastAction: null })),
         lockPendingReward: vi.fn(() => false),
         isPendingRewardLocked: vi.fn(() => false),
+        setRoundEntropyBaseline: vi.fn((value: number) => {
+            entropyBaseline = value;
+        }),
+        getRoundEntropyBaseline: vi.fn(() => entropyBaseline),
+        getRoundRules: vi.fn(() => ({ ...roundRules })),
+        setRoundRules: vi.fn((rules: Partial<RuntimeRuleSnapshot>) => {
+            roundRules = {
+                coinsAlwaysDrop: rules.coinsAlwaysDrop === true,
+                gambleBricksMoreLikely: rules.gambleBricksMoreLikely === true,
+            };
+        }),
+        clearRoundRules: vi.fn(() => {
+            roundRules = {
+                coinsAlwaysDrop: false,
+                gambleBricksMoreLikely: false,
+            };
+        }),
         setBiasPhaseOptions: setBiasPhaseOptions as unknown as RoundMachine['setBiasPhaseOptions'],
         commitBiasSelection: commitBiasSelection as unknown as RoundMachine['commitBiasSelection'],
         consumePendingBiasSelection: vi.fn(() => null),
@@ -201,12 +240,20 @@ describe('createBiasPhaseCoordinator', () => {
         const replaySnapshot = vi.fn();
         const replayBuffer = { recordBiasChoice, snapshot: replaySnapshot } as unknown as ReplayBuffer;
         const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 12 };
+        const bus = createBusStub();
         const buildSessionSummary = vi.fn(() => ({
             nextLevel: 1,
             score: 0,
             coins: 0,
             lives: 3,
             highestCombo: 0,
+            entropyDelta: 0,
+            gravity: modifierConfig.gravity.default,
+            gravityDelta: 0,
+            speedGovernor: modifierConfig.speedGovernor.default,
+            speedDelta: 0,
+            coinsRuleLocked: false,
+            seed: null,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -222,13 +269,14 @@ describe('createBiasPhaseCoordinator', () => {
             replayBuffer,
             runtimeState,
             buildSessionSummary,
+            bus,
         });
 
         const selection: BiasPhaseOption = {
             id: 'bias-test',
             label: 'Test',
             description: 'Example',
-            risk: 'bold',
+            risk: 'reforge',
             effects: {
                 difficultyMultiplier: 1.25,
                 powerUpChanceMultiplier: 1.5,
@@ -264,12 +312,20 @@ describe('createBiasPhaseCoordinator', () => {
         const replaySnapshot = vi.fn();
         const replayBuffer = { recordBiasChoice, snapshot: replaySnapshot } as unknown as ReplayBuffer;
         const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 48 };
+        const bus = createBusStub();
         const buildSessionSummary = vi.fn((upcoming: number) => ({
             nextLevel: upcoming + 1,
             score: 1234,
             coins: 77,
             lives: 2,
             highestCombo: 5,
+            entropyDelta: 0,
+            gravity: modifierConfig.gravity.default,
+            gravityDelta: 0.05,
+            speedGovernor: modifierConfig.speedGovernor.default,
+            speedDelta: 0.02,
+            coinsRuleLocked: true,
+            seed: null,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -285,6 +341,7 @@ describe('createBiasPhaseCoordinator', () => {
             replayBuffer,
             runtimeState,
             buildSessionSummary,
+            bus,
         });
 
         coordinator.present();
@@ -294,7 +351,7 @@ describe('createBiasPhaseCoordinator', () => {
             'bias-phase',
             expect.objectContaining({
                 session: expect.objectContaining({ nextLevel: 2 }),
-                options: expect.arrayContaining([expect.objectContaining({ risk: 'safe' })]),
+                options: expect.arrayContaining([expect.objectContaining({ risk: 'tilt' })]),
             }),
         );
         expect(roundMachineHarness.setBiasPhaseOptions).toHaveBeenCalled();
@@ -328,12 +385,20 @@ describe('createBiasPhaseCoordinator', () => {
         const skipReplaySnapshot = vi.fn();
         const replayBuffer = { recordBiasChoice: skipRecordBiasChoice, snapshot: skipReplaySnapshot } as unknown as ReplayBuffer;
         const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 7 };
+        const bus = createBusStub();
         const buildSessionSummary = vi.fn(() => ({
             nextLevel: 2,
             score: 0,
             coins: 0,
             lives: 3,
             highestCombo: 0,
+            entropyDelta: 0,
+            gravity: modifierConfig.gravity.default,
+            gravityDelta: 0,
+            speedGovernor: modifierConfig.speedGovernor.default,
+            speedDelta: 0,
+            coinsRuleLocked: false,
+            seed: null,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -349,6 +414,7 @@ describe('createBiasPhaseCoordinator', () => {
             replayBuffer,
             runtimeState,
             buildSessionSummary,
+            bus,
         });
 
         coordinator.present();

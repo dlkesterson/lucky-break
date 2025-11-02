@@ -99,11 +99,14 @@ export const createRuntimeSessionCoordinator = ({
 
         const session = getSession();
         const snapshot = session.snapshot();
+        const entropyState = snapshot.entropy;
+        const entropyTotal = Math.max(0, (entropyState?.charge ?? 0) + (entropyState?.stored ?? 0));
         roundMachine.startLevel(levelIndex, {
             resetScore,
             combo: scoringState.combo,
             score: scoringState.score,
             coins: snapshot.coins,
+            entropyTotal,
         });
 
         const pendingBiasSelection = roundMachine.consumePendingBiasSelection();
