@@ -1,0 +1,31 @@
+{
+  "name": "@lucky-break/cli-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "lucky-break": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0 --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint \"src/**/*.ts\" --max-warnings=0 --fix --no-error-on-unmatched-pattern",
+  "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "simulate:verify": "tsx ../../scripts/ci-simulation.ts"
+  },
+  "dependencies": {
+    "@lucky-break/core-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "tsx": "4.19.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.1"
+  }
+}

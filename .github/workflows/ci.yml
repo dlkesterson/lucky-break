@@ -31,7 +31,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 8.15.4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -43,7 +43,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps
+        run: pnpm --filter @lucky-break/web-client exec playwright install --with-deps
 
       - name: Run lint
         run: pnpm lint
@@ -59,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage
+          path: packages/web-client/coverage
 
       - name: Run end-to-end tests
         run: pnpm test:e2e
@@ -72,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deterministic-replay
-          path: test-results/artifacts/deterministic-simulation.json
+          path: packages/cli-sim/test-results/artifacts/deterministic-simulation.json
 
       - name: Build production bundle
         run: pnpm build
@@ -80,8 +80,10 @@ jobs:
       - name: Copy coverage report into build
         if: github.event_name == 'push'
         run: |
-          mkdir -p dist/coverage
-          cp -R coverage/. dist/coverage/
+          if [ -d packages/web-client/coverage ]; then
+            mkdir -p packages/web-client/dist/coverage
+            cp -R packages/web-client/coverage/. packages/web-client/dist/coverage/
+          fi
 
       - name: Configure Pages
         if: github.event_name == 'push'
@@ -91,7 +93,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: packages/web-client/dist
 
   deploy:
     needs: build

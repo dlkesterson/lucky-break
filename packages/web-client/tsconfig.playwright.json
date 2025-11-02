@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/e2e/**/*.ts",
+    "../core-domain/src/**/*.ts",
+    "../cli-sim/src/**/*.ts",
+    "assets/**/*.json",
+    "../../playwright.config.ts"
+  ],
+  "exclude": [
+    "tests/integration",
+    "tests/unit",
+    "dist"
+  ]
+}

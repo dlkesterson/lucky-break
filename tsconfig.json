@@ -1,38 +1,3 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-  "skipLibCheck": true,
-    "types": [
-      "vite/client",
-      "node"
-    ],
-    "baseUrl": "./",
-    "paths": {
-      "app/*": ["src/app/*"],
-      "physics/*": ["src/physics/*"],
-      "render/*": ["src/render/*"],
-      "audio/*": ["src/audio/*"],
-      "util/*": ["src/util/*"],
-      "cli/*": ["src/cli/*"],
-      "input/*": ["src/input/*"],
-      "types/*": ["src/types/*"],
-      "scenes/*": ["src/scenes/*"],
-      "game/*": ["src/game/*"],
-      "config/*": ["src/config/*"]
-    }
-  },
-  "include": [
-    "src",
-    "tests",
-    "scripts",
-    "vite.config.ts"
-  ]
+  "extends": "./tsconfig.base.json"
 }

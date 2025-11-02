@@ -4,12 +4,18 @@ import eslintPluginImport from 'eslint-plugin-import';
 import prettierConfig from 'eslint-config-prettier';
 
 const tsconfigRootDir = fileURLToPath(new URL('.', import.meta.url));
-const tsFilePatterns = ['src/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}', '**/*.config.ts'];
+const tsFilePatterns = ['packages/**/*.{ts,tsx}', 'scripts/**/*.ts', '**/*.config.ts'];
+const projectConfigs = [
+  './packages/web-client/tsconfig.json',
+  './packages/core-domain/tsconfig.json',
+  './packages/cli-sim/tsconfig.json',
+  './scripts/tsconfig.json',
+];
 const prettierRecommendedRules = prettierConfig?.configs?.recommended?.rules ?? {};
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**'],
+    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'packages/**/dist/**'],
   },
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
@@ -17,7 +23,7 @@ export default tseslint.config(
     files: tsFilePatterns,
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.json'],
+        project: projectConfigs,
         tsconfigRootDir,
       },
     },
@@ -40,7 +46,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['tests/**/*.{ts,tsx}'],
+    files: ['tests/**/*.{ts,tsx}', 'packages/**/tests/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',

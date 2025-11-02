@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "useDefineForClassFields": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+  "skipLibCheck": true,
+    "baseUrl": "./",
+    "paths": {
+      "app/state": ["packages/core-domain/src/app/state.ts"],
+      "app/events": ["packages/core-domain/src/app/events.ts"],
+      "app/replay-buffer": ["packages/core-domain/src/app/replay-buffer.ts"],
+      "app/*": ["packages/web-client/src/app/*"],
+      "audio/*": ["packages/web-client/src/audio/*"],
+      "render/*": ["packages/web-client/src/render/*"],
+      "input/*": ["packages/web-client/src/input/*"],
+      "scenes/*": ["packages/web-client/src/scenes/*"],
+      "physics/*": ["packages/core-domain/src/physics/*"],
+      "util/*": ["packages/core-domain/src/util/*"],
+  "config/assets": ["packages/web-client/src/config/assets.ts"],
+      "config/*": ["packages/core-domain/src/config/*"],
+      "game/*": ["packages/core-domain/src/game/*"],
+      "types/*": ["packages/core-domain/src/types/*"],
+      "cli/*": ["packages/cli-sim/src/*"],
+      "core-domain/*": ["packages/core-domain/src/*"]
+    }
+  }
+}

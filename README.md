@@ -1,4 +1,4 @@
-![Lucky Break banner](assets/ui/banner.png)
+![Lucky Break banner](packages/web-client/assets/ui/banner.png)
 
 # Lucky Break
 
@@ -21,9 +21,9 @@ The latest build is published via GitHub Pages: https://dlkesterson.github.io/lu
 
 ## Tech Stack
 
-- TypeScript 5 (strict) compiled with Vite 7 and pnpm workspaces.
+- pnpm 8 workspace with TypeScript 5 (strict) across packages.
 - PixiJS 8 for rendering, post-effects, and HUD orchestration.
-- Matter.js 0.19 for deterministic physics simulation and collision contracts.
+- Matter.js 0.19 for deterministic physics simulation and collision contracts (shared via `@lucky-break/core-domain`).
 - Tone.js 14 for music direction, MIDI scheduling, and audio foreshadowing.
 - Vitest + Playwright for unit, integration, and automation coverage enforced in CI.
 
@@ -34,40 +34,37 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` boots the Vite dev server. Open the printed URL in a desktop or mobile browser—the layout adapts on the fly. Plug in a controller or use touch to feel the input tuning.
+`pnpm dev` boots the Vite dev server from `@lucky-break/web-client`. Open the printed URL in a desktop or mobile browser—the layout adapts on the fly. Plug in a controller or use touch to feel the input tuning.
 
 ### Development Commands
 
-- `pnpm build` – Production bundle with cache-busting assets.
-- `pnpm lint` – ESLint across `src/` and `tests/` with `--max-warnings=0`.
-- `pnpm test` – Vitest unit + integration suites in watchless mode.
+- `pnpm build` – Production bundle for `@lucky-break/web-client` with cache-busting assets.
+- `pnpm lint` – ESLint across `@lucky-break/core-domain`, `@lucky-break/cli-sim`, and `@lucky-break/web-client` with `--max-warnings=0`.
+- `pnpm typecheck` – TypeScript project references across every package.
+- `pnpm test` – Vitest unit + integration suites (web client).
 - `pnpm test:e2e` – Playwright end-to-end coverage (headless by default).
-- `pnpm simulate:verify` – TSX-powered deterministic simulations used in CI.
-- `pnpm run cli:simulate` – Headless CLI runner for deterministic gameplay scripts and tuning bots (requires `pnpm build`).
+- `pnpm simulate:verify` – TSX-powered deterministic simulations (CLI) used in CI.
+- `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --seed 42` – Run the headless CLI without building.
 
-## Project Layout
+## Workspace Layout
 
 ```
-src/
-  app/        # Loop, runtime modules, state machines, replays
-  audio/      # Music director, MIDI engine, SFX, foreshadowing
-  cli/        # Headless engine, tuning bots, automation scripts
-  config/     # Gameplay constants, asset registries, themes
-  game/       # Rewards, gamble bricks, achievement logic
-  input/      # Cross-platform input adapters and launch control
-  physics/    # Matter.js world setup, launches, attachments
-  render/     # Pixi scenes, HUD, effects, visual factory
-  scenes/     # Scene stack entries (menu, gameplay, pause, etc.)
-  util/       # Shared helpers (RNG, math, scoring, logs)
+packages/
+  core-domain/   # Shared deterministic loop, physics, config, rewards, utilities
+  cli-sim/       # Headless engine + deterministic regression tooling (TS + Tsx scripts)
+  web-client/    # Pixi front-end, Vite build, assets, Playwright + Vitest suites
+scripts/         # Shared CI tooling (e.g., deterministic replay generator)
 ```
 
-Tests live under `tests/` split into `unit/`, `integration/`, `e2e/`, and CLI helpers. Coverage reports publish with the game to GitHub Pages at `/coverage/` on every push to `main`.
+The web client keeps its runtime under `packages/web-client/src`, while shared logic lives in `packages/core-domain/src`. Automation and CLI helpers live in `packages/cli-sim/src` and reuse the same modules through workspace aliases.
+
+Tests live in `packages/web-client/tests/{unit,integration,e2e}` with Vitest setup in `tests/setup`. Coverage reports are emitted to `packages/web-client/coverage` and copied into the built site for GitHub Pages at `/coverage/` on every push to `main`.
 
 ## Determinism & Replays
 
 - Session state is driven by seeded RNG; replays capture inputs and layout seeds for frame-perfect playback.
 - The `game/runtime` facade exposes a diagnostics surface for latency, combo momentum, and foreshadow predictions.
-- CLI tooling (`pnpm run cli:simulate` after `pnpm build`, or `pnpm simulate:verify` during development) runs deterministic scenarios for balancing and regression tracking without spinning up Pixi.
+- CLI tooling (`pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate` for ad-hoc runs, or `pnpm simulate:verify` during development/CI) exercises deterministic scenarios for balancing and regression tracking without spinning up Pixi.
 
 ## Contributing
 
