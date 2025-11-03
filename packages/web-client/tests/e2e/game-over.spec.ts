@@ -9,6 +9,7 @@ import {
     quitToMenu,
     startGameplay,
     waitForSceneTransition,
+    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {
@@ -25,7 +26,7 @@ test('draining lives transitions to game over and returns to menu', async ({ pag
     await waitForSceneTransition(page, 'main-menu', 'enter');
 
     const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
 
     await startGameplay(page);
     await waitForSceneTransition(page, 'gameplay', 'enter');

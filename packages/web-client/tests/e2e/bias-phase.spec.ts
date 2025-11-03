@@ -14,6 +14,7 @@ import {
     getRuntimeModifiers,
     getRuntimeState,
     getReplaySnapshot,
+    e2eTimeouts,
 } from './utils/harness';
 
 type ModifierSnapshot = Awaited<ReturnType<typeof getRuntimeModifiers>>;
@@ -42,7 +43,7 @@ const enterFirstBiasPhase = async (page: Page) => {
     await levelCompleteEnter;
 
     const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
 
     await drainEvents(page);
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });
@@ -59,7 +60,7 @@ const advanceToNextBiasPhase = async (page: Page) => {
     await levelCompleteEnter;
 
     const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
 
     await drainEvents(page);
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });

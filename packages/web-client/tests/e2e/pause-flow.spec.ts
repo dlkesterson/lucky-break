@@ -10,6 +10,7 @@ import {
     startGameplay,
     waitForEvent,
     waitForSceneTransition,
+    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {
@@ -28,7 +29,7 @@ test('player can pause, resume, and quit to the main menu', async ({ page }) => 
     await waitForSceneTransition(page, 'main-menu', 'enter');
 
     const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
 
     await startGameplay(page);
     await waitForSceneTransition(page, 'gameplay', 'enter');

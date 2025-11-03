@@ -4,6 +4,8 @@ import type { BiasPhaseState } from 'app/runtime/round-machine';
 import type { RuntimeModifierSnapshot } from 'app/runtime/modifiers';
 import type { ReplayRecording } from 'app/replay-buffer';
 
+const isCI = Boolean(process.env.CI);
+
 export interface RecordedEvent {
     readonly type?: unknown;
     readonly payload?: unknown;
@@ -130,7 +132,15 @@ interface WaitForEventOptions<TEvent extends RecordedEvent> {
     readonly includeExisting?: boolean;
 }
 
-const defaultWaitTimeout = 15_000;
+const defaultWaitTimeout = isCI ? 30_000 : 15_000;
+const harnessFunctionTimeout = isCI ? 20_000 : 5_000;
+const sceneVisibilityTimeout = isCI ? 20_000 : 10_000;
+
+export const e2eTimeouts = {
+    event: defaultWaitTimeout,
+    harnessFunction: harnessFunctionTimeout,
+    sceneVisibility: sceneVisibilityTimeout,
+} as const;
 
 export const waitForEvent = async <TEvent extends RecordedEvent = RecordedEvent>(
     page: Page,
@@ -211,7 +221,7 @@ const waitForHarnessFunction = (page: Page, method: string): Promise<unknown> =>
             return typeof hooks[target] === 'function';
         },
         method,
-        { timeout: 5_000 },
+        { timeout: harnessFunctionTimeout },
     );
 
 const callHarness = async <TReturn>(page: Page, method: string, args: unknown[] = []): Promise<TReturn> => {
