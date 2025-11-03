@@ -19,12 +19,12 @@ interface OptionButton {
     readonly setSelected: (selected: boolean) => void;
 }
 
-type MutableLoadoutSelection = {
+interface MutableLoadoutSelection {
     form: LoadoutSelection['form'];
     trait: LoadoutSelection['trait'];
     sigil: LoadoutSelection['sigil'];
     voice: LoadoutSelection['voice'];
-};
+}
 
 const hexToNumber = (hex: string): number => Number.parseInt(hex.replace('#', ''), 16);
 
@@ -487,7 +487,7 @@ export const createLoadoutSelectionScene = (
             context.addToLayer('hud', rootContainer);
             context.renderStageSoon();
         },
-        update(_deltaSeconds: number) {
+        update() {
             /* no-op */
         },
         destroy() {

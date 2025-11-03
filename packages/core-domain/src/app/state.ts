@@ -190,11 +190,6 @@ export interface EntropySpendResult {
     readonly reason?: 'insufficient' | 'invalid-cost';
 }
 
-type SessionLoadoutState = {
-    readonly selection: LoadoutSelection;
-    readonly effects: LoadoutSessionEffects;
-};
-
 const DEFAULT_LIVES = 3;
 const ENTROPY_MAX_CHARGE = 100;
 const ENTROPY_MAX_STORED = 100;
@@ -371,8 +366,8 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
     let coins = 0;
 
     interface SessionLoadoutState {
-        selection: LoadoutSelection;
-        effects: LoadoutSessionEffects;
+        readonly selection: LoadoutSelection;
+        readonly effects: LoadoutSessionEffects;
     }
 
     let loadoutState: SessionLoadoutState | null = null;
@@ -403,7 +398,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
     const resolveLoadoutEffects = (): LoadoutSessionEffects => {
         const current = loadoutState;
         if (current) {
-            return (current as SessionLoadoutState).effects;
+            return current.effects;
         }
         return BASE_LOADOUT_EFFECTS;
     };
@@ -583,7 +578,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         const timestamp = now();
         const currentElapsed = computeElapsed(timestamp);
 
-        const currentLoadout = loadoutState as SessionLoadoutState | null;
+        const currentLoadout = loadoutState;
         const loadoutSnapshot = currentLoadout ? cloneLoadoutSelection(currentLoadout.selection) : null;
 
         const base: Omit<GameSessionSnapshot, 'hud' | 'updatedAt' | 'elapsedTimeMs'> = {
@@ -868,7 +863,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
     };
 
     const getLoadout: GameSessionManager['getLoadout'] = () => {
-        const current = loadoutState as SessionLoadoutState | null;
+        const current = loadoutState;
         if (!current) {
             return null;
         }
