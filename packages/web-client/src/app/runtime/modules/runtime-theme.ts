@@ -3,6 +3,7 @@ import type { VisualFactoryHandle } from 'render/visual-factory';
 import type { Ball } from 'physics/contracts';
 import type { Paddle } from 'render/contracts';
 import type { GlowFilter } from '@pixi/filter-glow';
+import type { BallVisualPalette } from 'render/playfield-visuals';
 import type { Graphics } from 'pixi.js';
 import type { MultiBallController } from '../../multi-ball-controller';
 import type { HudDisplay } from 'render/hud-display';
@@ -35,6 +36,7 @@ export interface RuntimeThemeCoordinator {
     subscribe(listener: (snapshot: VisualThemeSnapshot) => void): () => void;
     applyTheme(theme: GameThemeDefinition): void;
     cycleBackgroundAccent(delta: number): void;
+    setBallPaletteOverride(override: Partial<BallVisualPalette> | null): void;
 }
 
 export const createRuntimeThemeCoordinator = ({
@@ -55,8 +57,63 @@ export const createRuntimeThemeCoordinator = ({
     renderStageSoon,
 }: RuntimeThemeCoordinatorOptions): RuntimeThemeCoordinator => {
     let currentTheme: GameThemeDefinition = initialTheme;
-    let snapshot = defaults.getSnapshot();
+    let baseSnapshot = defaults.getSnapshot();
+    let snapshot: VisualThemeSnapshot = baseSnapshot;
     const listeners = new Set<(next: VisualThemeSnapshot) => void>();
+    let ballPaletteOverride: Partial<BallVisualPalette> | null = null;
+
+    const overridesEqual = (
+        left: Partial<BallVisualPalette> | null,
+        right: Partial<BallVisualPalette> | null,
+    ): boolean => {
+        if (!left && !right) {
+            return true;
+        }
+        if (!left || !right) {
+            return false;
+        }
+        const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+        for (const key of keys) {
+            if ((left as Record<string, unknown>)[key] !== (right as Record<string, unknown>)[key]) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const hasMeaningfulOverride = (): boolean => {
+        if (!ballPaletteOverride) {
+            return false;
+        }
+        return Object.values(ballPaletteOverride).some((value) => value !== undefined);
+    };
+
+    const applyOverrides = (input: VisualThemeSnapshot): VisualThemeSnapshot => {
+        if (!hasMeaningfulOverride()) {
+            return input;
+        }
+        const override = ballPaletteOverride!;
+        const ballDefaults = {
+            ...input.ballDefaults,
+            baseColor: override.baseColor ?? input.ballDefaults.baseColor,
+            baseAlpha: override.baseAlpha ?? input.ballDefaults.baseAlpha,
+            auraColor: override.innerColor ?? input.ballDefaults.auraColor,
+            innerAlpha: override.innerAlpha ?? input.ballDefaults.innerAlpha,
+            innerScale: override.innerScale ?? input.ballDefaults.innerScale,
+            highlightColor: override.rimColor ?? input.ballDefaults.highlightColor,
+            rimAlpha: override.rimAlpha ?? input.ballDefaults.rimAlpha,
+        } satisfies VisualThemeSnapshot['ballDefaults'];
+
+        return {
+            ...input,
+            ballDefaults,
+            ballColors: {
+                core: ballDefaults.baseColor,
+                aura: ballDefaults.auraColor,
+                highlight: ballDefaults.highlightColor,
+            },
+        } satisfies VisualThemeSnapshot;
+    };
 
     const emitSnapshot = () => {
         for (const listener of listeners) {
@@ -64,42 +121,49 @@ export const createRuntimeThemeCoordinator = ({
         }
     };
 
-    const applySnapshot = (next: VisualThemeSnapshot) => {
-        snapshot = next;
-        levelRuntime.setRowColors(snapshot.rowColors);
+    const applySnapshot = (next: VisualThemeSnapshot, updateBase = false) => {
+        if (updateBase) {
+            baseSnapshot = next;
+        }
+        snapshot = applyOverrides(next);
+        const currentSnapshot = snapshot;
+        levelRuntime.setRowColors(currentSnapshot.rowColors);
         reapplyGambleAppearances();
-        visualFactory.ball.setDefaults(snapshot.ballDefaults);
-        visualFactory.paddle.setDefaults(snapshot.paddleDefaults);
-        ballGlowFilter.color = snapshot.ballColors.highlight;
+        visualFactory.ball.setDefaults(currentSnapshot.ballDefaults);
+        visualFactory.paddle.setDefaults(currentSnapshot.paddleDefaults);
+        ballGlowFilter.color = currentSnapshot.ballColors.highlight;
 
         const visuals = visualsProvider();
 
         visualFactory.ball.draw(ballGraphics, ball.radius);
         visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height);
-        multiBallController.applyTheme(snapshot.ballColors);
+        multiBallController.applyTheme(currentSnapshot.ballColors);
 
         hudDisplay.setTheme(currentTheme);
         visuals?.roundCountdownDisplay?.setTheme(currentTheme);
         stage.applyTheme(currentTheme);
 
         visuals?.ballTrailsEffect?.applyTheme({
-            coreColor: snapshot.ballColors.core,
-            auraColor: snapshot.ballColors.aura,
-            accentColor: snapshot.accents.combo,
+            coreColor: currentSnapshot.ballColors.core,
+            auraColor: currentSnapshot.ballColors.aura,
+            accentColor: currentSnapshot.accents.combo,
         });
-        visuals?.comboBloomEffect?.applyTheme(snapshot.accents.combo);
-        visuals?.replacePaddleLight(snapshot.accents.powerUp);
+        visuals?.comboBloomEffect?.applyTheme(currentSnapshot.accents.combo);
+        visuals?.replacePaddleLight(currentSnapshot.accents.powerUp);
         visuals?.ballSpeedRing?.setPalette({
-            ringColor: snapshot.ballColors.highlight,
-            haloColor: snapshot.ballColors.aura,
+            ringColor: currentSnapshot.ballColors.highlight,
+            haloColor: currentSnapshot.ballColors.aura,
         });
-        visuals?.playfieldBackground?.setTint(snapshot.backgroundAccentColor, { immediate: true, accentMix: 0.2 });
+        visuals?.playfieldBackground?.setTint(currentSnapshot.backgroundAccentColor, {
+            immediate: true,
+            accentMix: 0.2,
+        });
 
         renderStageSoon();
         emitSnapshot();
     };
 
-    applySnapshot(snapshot);
+    applySnapshot(baseSnapshot);
 
     return {
         getSnapshot: () => snapshot,
@@ -113,11 +177,21 @@ export const createRuntimeThemeCoordinator = ({
         applyTheme(theme) {
             currentTheme = theme;
             const nextSnapshot = defaults.applyTheme(theme);
-            applySnapshot(nextSnapshot);
+            applySnapshot(nextSnapshot, true);
         },
         cycleBackgroundAccent(delta) {
             const nextSnapshot = defaults.cycleBackgroundAccent(delta);
-            applySnapshot(nextSnapshot);
+            applySnapshot(nextSnapshot, true);
+        },
+        setBallPaletteOverride(override) {
+            const normalized = override && Object.values(override).some((value) => value !== undefined)
+                ? { ...override }
+                : null;
+            if (overridesEqual(ballPaletteOverride, normalized)) {
+                return;
+            }
+            ballPaletteOverride = normalized;
+            applySnapshot(baseSnapshot);
         },
     } satisfies RuntimeThemeCoordinator;
 };

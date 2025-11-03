@@ -20,6 +20,7 @@ import {
     clampUnit,
     mixColors,
     type PaddleVisualDefaults,
+    type BallVisualPalette,
 } from 'render/playfield-visuals';
 import { createVisualFactory } from 'render/visual-factory';
 import { Sprite } from 'pixi.js';
@@ -104,7 +105,7 @@ import {
     normalizeLoadoutSelection,
     type LoadoutEffectsBundle,
 } from './loadouts';
-import type { LoadoutSelection } from 'config/loadouts';
+import type { LoadoutSelection, LoadoutBallVisualOverrides } from 'config/loadouts';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -322,6 +323,30 @@ export const createRuntimeFacade = async ({
         ball: initialThemeSnapshot.ballDefaults,
         paddle: paddleVisualDefaults,
     });
+
+    let runtimeThemeHandle: ReturnType<typeof createRuntimeThemeCoordinator> | null = null;
+    let pendingBallPaletteOverride: Partial<BallVisualPalette> | null = null;
+
+    const setLoadoutBallPalette = (override: Partial<BallVisualPalette> | null): void => {
+        pendingBallPaletteOverride = override;
+        runtimeThemeHandle?.setBallPaletteOverride(override);
+    };
+
+    const toBallPaletteOverride = (overrides: LoadoutBallVisualOverrides | undefined): Partial<BallVisualPalette> | null => {
+        if (!overrides) {
+            return null;
+        }
+        const palette: Partial<BallVisualPalette> = {
+            ...(overrides.baseColor !== undefined ? { baseColor: overrides.baseColor } : {}),
+            ...(overrides.baseAlpha !== undefined ? { baseAlpha: overrides.baseAlpha } : {}),
+            ...(overrides.innerColor !== undefined ? { innerColor: overrides.innerColor } : {}),
+            ...(overrides.innerAlpha !== undefined ? { innerAlpha: overrides.innerAlpha } : {}),
+            ...(overrides.innerScale !== undefined ? { innerScale: overrides.innerScale } : {}),
+            ...(overrides.rimColor !== undefined ? { rimColor: overrides.rimColor } : {}),
+            ...(overrides.rimAlpha !== undefined ? { rimAlpha: overrides.rimAlpha } : {}),
+        };
+        return Object.keys(palette).length > 0 ? palette : null;
+    };
 
     let ballHueShift = 0;
     let runtimeDebug: RuntimeDebug | null = null;
@@ -875,6 +900,8 @@ export const createRuntimeFacade = async ({
 
         const physicsEffects = bundle.combined.runtime.physics;
         const ruleEffects = bundle.combined.runtime.rules;
+        const ballVisualOverride = toBallPaletteOverride(bundle.combined.visuals.ball);
+        setLoadoutBallPalette(ballVisualOverride);
 
         const gravityTarget = MODIFIER_GRAVITY_RANGE.default + physicsEffects.gravityOffset;
         runtimeModifiers.setGravity(gravityTarget);
@@ -948,6 +975,9 @@ export const createRuntimeFacade = async ({
         visualsProvider: () => visuals,
         renderStageSoon,
     });
+
+    runtimeThemeHandle = runtimeTheme;
+    runtimeTheme.setBallPaletteOverride(pendingBallPaletteOverride);
 
     unsubscribeThemeSnapshot = runtimeTheme.subscribe((snapshot: VisualThemeSnapshot) => {
         rowColors = snapshot.rowColors;

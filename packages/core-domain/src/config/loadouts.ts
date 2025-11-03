@@ -67,9 +67,24 @@ export interface LoadoutRuntimeEffects {
     readonly audio: LoadoutRuntimeAudioEffects;
 }
 
+export interface LoadoutVisualEffects {
+    readonly ball?: LoadoutBallVisualOverrides;
+}
+
+export interface LoadoutBallVisualOverrides {
+    readonly baseColor?: number;
+    readonly baseAlpha?: number;
+    readonly rimColor?: number;
+    readonly rimAlpha?: number;
+    readonly innerColor?: number;
+    readonly innerAlpha?: number;
+    readonly innerScale?: number;
+}
+
 export interface LoadoutCombinedEffects {
     readonly session: LoadoutSessionEffects;
     readonly runtime: LoadoutRuntimeEffects;
+    readonly visuals: LoadoutVisualEffects;
 }
 
 interface LoadoutEffectContribution {
@@ -77,6 +92,7 @@ interface LoadoutEffectContribution {
     readonly physics?: Partial<LoadoutRuntimePhysicsEffects>;
     readonly rules?: Partial<LoadoutRuntimeRuleEffects>;
     readonly audio?: LoadoutRuntimeAudioEffects;
+    readonly visuals?: LoadoutVisualEffects;
 }
 
 interface LoadoutOptionDefinition<Id extends string> {
@@ -110,6 +126,17 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
             },
             session: {
                 comboWindowBonusSeconds: 0.25,
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0x7a6cff,
+                    baseAlpha: 0.82,
+                    rimColor: 0xe8deff,
+                    rimAlpha: 0.48,
+                    innerColor: 0xd1b5ff,
+                    innerAlpha: 0.42,
+                    innerScale: 0.58,
+                },
             },
         },
     },
@@ -452,6 +479,7 @@ export const mergeLoadoutEffects = (
         difficultyMultiplier: 1,
     };
     const audio: LoadoutRuntimeAudioEffects = {};
+    let ballVisuals: LoadoutBallVisualOverrides | undefined;
 
     for (const contribution of contributions) {
         if (contribution.session) {
@@ -483,6 +511,12 @@ export const mergeLoadoutEffects = (
                 ...(contribution.audio.paletteOverrides ?? {}),
             };
         }
+        if (contribution.visuals?.ball) {
+            ballVisuals = {
+                ...(ballVisuals ?? {}),
+                ...contribution.visuals.ball,
+            } satisfies LoadoutBallVisualOverrides;
+        }
     }
 
     return {
@@ -492,5 +526,6 @@ export const mergeLoadoutEffects = (
             rules,
             audio,
         },
+        visuals: ballVisuals ? { ball: ballVisuals } : {},
     } satisfies LoadoutCombinedEffects;
 };
