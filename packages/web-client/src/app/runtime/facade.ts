@@ -99,6 +99,12 @@ import {
     createScoringViewProvider,
 } from './modules/runtime-bridges';
 import type { InputToPhysicsBridge, RewardsWorldBridge, ScoringViewProvider } from './contracts';
+import {
+    computeLoadoutEffects,
+    normalizeLoadoutSelection,
+    type LoadoutEffectsBundle,
+} from './loadouts';
+import type { LoadoutSelection } from 'config/loadouts';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -468,10 +474,21 @@ export const createRuntimeFacade = async ({
     const inputToPhysics: InputToPhysicsBridge = createInputToPhysicsBridge(runtimeInput);
 
     let session = createSession();
+    let activeLoadoutBundle: LoadoutEffectsBundle = computeLoadoutEffects(normalizeLoadoutSelection(undefined));
+    let loadoutPhysicsMultipliers = {
+        baseSpeed: activeLoadoutBundle.combined.runtime.physics.baseSpeedMultiplier,
+        maxSpeed: activeLoadoutBundle.combined.runtime.physics.maxSpeedMultiplier,
+        launchSpeed: activeLoadoutBundle.combined.runtime.physics.launchSpeedMultiplier,
+    } satisfies {
+        baseSpeed: number;
+        maxSpeed: number;
+        launchSpeed: number;
+    };
     const getSession = () => session;
     const replaceSession = (nextSession: GameSessionManager) => {
         session = nextSession;
     };
+    const getActiveLoadoutSelection = (): LoadoutSelection => activeLoadoutBundle.selection;
     const sessionFacade: Pick<GameSessionManager, 'snapshot' | 'recordLifeLost' | 'recordEntropyEvent' | 'completeRound'> = {
         snapshot: () => session.snapshot(),
         recordLifeLost: (cause) => session.recordLifeLost(cause),
@@ -746,9 +763,9 @@ export const createRuntimeFacade = async ({
 
     runtimeState.previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
     runtimeState.lastRecordedInputTarget = null;
-    runtimeState.currentBaseSpeed = BALL_BASE_SPEED;
-    runtimeState.currentMaxSpeed = BALL_MAX_SPEED;
-    runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED;
+    runtimeState.currentBaseSpeed = BALL_BASE_SPEED * loadoutPhysicsMultipliers.baseSpeed;
+    runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
+    runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
     const reattachBallToPaddle = (): void => {
         const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
         foreshadowing.cancelForBall(ball.physicsBody.id);
@@ -837,6 +854,51 @@ export const createRuntimeFacade = async ({
     let roundCoordinator: RuntimeRoundCoordinatorHandle | null = null;
     let handleEntropyAction: ((action: EntropyActionType) => void) | null = null;
 
+    const refreshHud = () => {
+        runtimeHudCoordinator?.refresh();
+    };
+
+    const applyLoadoutBundle = (bundle: LoadoutEffectsBundle): void => {
+        activeLoadoutBundle = bundle;
+        loadoutPhysicsMultipliers = {
+            baseSpeed: bundle.combined.runtime.physics.baseSpeedMultiplier,
+            maxSpeed: bundle.combined.runtime.physics.maxSpeedMultiplier,
+            launchSpeed: bundle.combined.runtime.physics.launchSpeedMultiplier,
+        } satisfies {
+            baseSpeed: number;
+            maxSpeed: number;
+            launchSpeed: number;
+        };
+
+        const sessionManager = getSession();
+        sessionManager.setLoadout(bundle.selection, bundle.combined.session);
+
+        const physicsEffects = bundle.combined.runtime.physics;
+        const ruleEffects = bundle.combined.runtime.rules;
+
+        const gravityTarget = MODIFIER_GRAVITY_RANGE.default + physicsEffects.gravityOffset;
+        runtimeModifiers.setGravity(gravityTarget);
+        runtimeModifiers.setRestitution(BASE_BALL_RESTITUTION * physicsEffects.restitutionMultiplier);
+        runtimeModifiers.setPaddleWidthMultiplier(physicsEffects.paddleWidthMultiplier);
+        runtimeModifiers.setSpeedGovernorMultiplier(physicsEffects.speedGovernorMultiplier);
+
+        roundMachine.setLevelDifficultyMultiplier(ruleEffects.difficultyMultiplier);
+        roundMachine.setPowerUpChanceMultiplier(ruleEffects.powerUpChanceMultiplier);
+        roundMachine.setRoundRules({
+            coinsAlwaysDrop: ruleEffects.coinsAlwaysDrop,
+            gambleBricksMoreLikely: ruleEffects.gambleBricksMoreLikely,
+        });
+
+        runtimeState.currentBaseSpeed = BALL_BASE_SPEED * loadoutPhysicsMultipliers.baseSpeed;
+        runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
+        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
+
+        refreshHud();
+        renderStageSoon();
+    };
+
+    applyLoadoutBundle(activeLoadoutBundle);
+
     const runtimeHud = createRuntimeHud({
         stage,
         theme: GameTheme,
@@ -912,10 +974,6 @@ export const createRuntimeFacade = async ({
     };
     runtimeAudio.setBeatCallback(handleMusicBeat);
     runtimeAudio.setMeasureCallback(handleMusicMeasure);
-
-    const refreshHud = () => {
-        runtimeHudCoordinator?.refresh();
-    };
 
     const scoringViewProvider: ScoringViewProvider = createScoringViewProvider(scoringState);
 
@@ -1006,6 +1064,7 @@ export const createRuntimeFacade = async ({
         refreshHud,
         startLoop: startGameLoop,
         stopLoopIfRunning,
+        onLoadoutApplied: applyLoadoutBundle,
     });
 
     const { beginNewSession, startLevel } = runtimeSession;
@@ -1286,14 +1345,27 @@ export const createRuntimeFacade = async ({
         const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
         const difficultyScale = roundMachine.getLevelDifficultyMultiplier();
         const governor = runtimeState.speedGovernorMultiplier;
-        const baseTargetSpeed = BALL_BASE_SPEED * speedMultiplier * difficultyScale * governor;
-        runtimeState.currentMaxSpeed = Math.max(1, BALL_MAX_SPEED * speedMultiplier * difficultyScale * governor);
+        const baseTargetSpeed = BALL_BASE_SPEED
+            * loadoutPhysicsMultipliers.baseSpeed
+            * speedMultiplier
+            * difficultyScale
+            * governor;
+        const maxSpeedTarget = BALL_MAX_SPEED
+            * loadoutPhysicsMultipliers.maxSpeed
+            * speedMultiplier
+            * difficultyScale
+            * governor;
+        runtimeState.currentMaxSpeed = Math.max(1, maxSpeedTarget);
         runtimeState.currentBaseSpeed = getAdaptiveBaseSpeed(
             baseTargetSpeed,
             runtimeState.currentMaxSpeed,
             scoringState.combo,
         );
-        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * speedMultiplier * difficultyScale * governor;
+        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED
+            * loadoutPhysicsMultipliers.launchSpeed
+            * speedMultiplier
+            * difficultyScale
+            * governor;
 
         audioState$.next({
             combo: scoringState.combo,
@@ -1673,6 +1745,7 @@ export const createRuntimeFacade = async ({
         setIsPaused: (paused) => {
             setPaused(paused);
         },
+        getActiveLoadoutSelection,
         logger: runtimeLogger,
     });
 

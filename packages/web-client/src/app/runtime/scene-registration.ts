@@ -4,6 +4,7 @@ import { createFateLedgerScene } from 'scenes/fate-ledger';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createGameOverScene } from 'scenes/game-over';
 import { createLevelCompleteScene } from 'scenes/level-complete';
+import { createLoadoutSelectionScene, type LoadoutSelectionPayload } from 'scenes/loadout-selection';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createPauseScene } from 'scenes/pause';
 import type { StageHandle } from 'render/stage';
@@ -12,13 +13,14 @@ import type { Logger } from 'util/log';
 import type { GameLoop } from '../loop';
 import type { GameSceneServices } from '../scene-services';
 import type { RuntimeInput } from './input';
+import type { LoadoutSelection } from 'config/loadouts';
 
 export interface SceneRegistrationDeps {
     readonly stage: StageHandle;
     readonly getLoop: () => GameLoop | null;
     readonly renderStageSoon: () => void;
     readonly provideSceneServices: () => GameSceneServices;
-    readonly beginNewSession: () => Promise<void>;
+    readonly beginNewSession: (options?: { readonly loadout?: Partial<LoadoutSelection> }) => Promise<void>;
     readonly runGameplayUpdate: (deltaSeconds: number) => void;
     readonly runtimeInput: Pick<RuntimeInput, 'resetLaunchTrigger'>;
     readonly gameContainer: Container;
@@ -26,6 +28,7 @@ export interface SceneRegistrationDeps {
     readonly getScore: () => number;
     readonly getIsPaused: () => boolean;
     readonly setIsPaused: (value: boolean) => void;
+    readonly getActiveLoadoutSelection: () => LoadoutSelection;
     readonly logger: Logger;
 }
 
@@ -59,6 +62,7 @@ export const registerRuntimeScenes = async ({
     getIsPaused,
     setIsPaused,
     logger,
+    getActiveLoadoutSelection,
 }: SceneRegistrationDeps): Promise<SceneRegistrationResult> => {
     const quitToMenu = async (): Promise<void> => {
         const loop = getLoop();
@@ -86,6 +90,29 @@ export const registerRuntimeScenes = async ({
         }
 
         renderStageSoon();
+    };
+
+    const presentLoadoutSelection = (): void => {
+        const payload: LoadoutSelectionPayload = {
+            initialSelection: getActiveLoadoutSelection(),
+            onCommit: async (selection) => {
+                try {
+                    await beginNewSession({ loadout: selection });
+                } catch (error) {
+                    logger.error('Failed to begin session after loadout commit', { error });
+                    throw error;
+                }
+            },
+        };
+
+        void stage
+            .push('loadout-selection', payload)
+            .then(() => {
+                renderStageSoon();
+            })
+            .catch((error) => {
+                logger.error('Failed to push loadout selection scene', { error });
+            });
     };
 
     const resumeFromPause = (): void => {
@@ -143,7 +170,7 @@ export const registerRuntimeScenes = async ({
                 'Stack power-ups for massive combos',
             ],
             onStart: () => {
-                void beginNewSession();
+                presentLoadoutSelection();
             },
             highScoresProvider: getHighScores,
         }),
@@ -183,6 +210,10 @@ export const registerRuntimeScenes = async ({
     );
 
     stage.register('bias-phase', (context) => createBiasPhaseScene(context), {
+        provideContext: provideSceneServices,
+    });
+
+    stage.register('loadout-selection', (context) => createLoadoutSelectionScene(context), {
         provideContext: provideSceneServices,
     });
 

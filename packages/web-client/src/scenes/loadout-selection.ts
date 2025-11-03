@@ -317,14 +317,25 @@ export const createLoadoutSelectionScene = (
             subtitle.position.set(stageSize.width / 2, title.y + title.height + 8);
             rootContainer.addChild(subtitle);
 
-            const columnsContainer = new Container();
             const safeMargin = Math.max(32, stageSize.width * 0.05);
             const summaryWidth = Math.max(260, stageSize.width * 0.22);
             const availableWidth = Math.max(320, stageSize.width - safeMargin * 2 - summaryWidth - 40);
             const columnWidth = availableWidth / categories.length - 16;
             const columnHeight = Math.max(380, stageSize.height - subtitle.y - subtitle.height - 180);
-            columnsContainer.position.set(safeMargin, subtitle.y + subtitle.height + 32);
-            rootContainer.addChild(columnsContainer);
+
+            const contentStartY = subtitle.y + subtitle.height + 32;
+            const viewport = new Container();
+            viewport.eventMode = 'static';
+            viewport.cursor = 'default';
+            viewport.position.set(0, contentStartY);
+            rootContainer.addChild(viewport);
+
+            const scrollContent = new Container();
+            viewport.addChild(scrollContent);
+
+            const columnsContainer = new Container();
+            columnsContainer.position.set(safeMargin, 0);
+            scrollContent.addChild(columnsContainer);
 
             const updaterByCategory = new Map<LoadoutCategoryId, (optionId: string | null) => void>();
 
@@ -363,7 +374,7 @@ export const createLoadoutSelectionScene = (
                 .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.9 })
                 .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 3, alignment: 0.5 });
             summaryPanel.position.set(columnsContainer.x + availableWidth + 24, columnsContainer.y);
-            rootContainer.addChild(summaryPanel);
+            scrollContent.addChild(summaryPanel);
 
             const summaryTitle = new Text({
                 text: 'Selected Traits',
@@ -376,11 +387,11 @@ export const createLoadoutSelectionScene = (
             });
             summaryTitle.anchor.set(0, 0);
             summaryTitle.position.set(summaryPanel.x + 20, summaryPanel.y + 18);
-            rootContainer.addChild(summaryTitle);
+            scrollContent.addChild(summaryTitle);
 
             const summaryList = new Container();
             summaryList.position.set(summaryPanel.x + 20, summaryTitle.y + summaryTitle.height + 12);
-            rootContainer.addChild(summaryList);
+            scrollContent.addChild(summaryList);
 
             const updateSummary = () => {
                 summaryList.removeChildren();
@@ -439,7 +450,7 @@ export const createLoadoutSelectionScene = (
             commitButton.position.set(summaryPanel.x, summaryPanel.y + summaryPanel.height + 24);
             commitButton.eventMode = 'static';
             commitButton.cursor = 'pointer';
-            rootContainer.addChild(commitButton);
+            scrollContent.addChild(commitButton);
 
             const commitLabel = new Text({
                 text: 'Commune with Mayhaps',
@@ -452,7 +463,72 @@ export const createLoadoutSelectionScene = (
             });
             commitLabel.anchor.set(0.5, 0.5);
             commitLabel.position.set(commitButton.x + commitWidth / 2, commitButton.y + commitHeight / 2);
-            rootContainer.addChild(commitLabel);
+            scrollContent.addChild(commitLabel);
+
+            const availableBelow = stageSize.height - contentStartY - 16;
+            const fallbackViewportHeight = Math.max(240, stageSize.height * 0.6);
+            const maxViewportHeight = Math.max(160, stageSize.height - 32);
+            const viewportHeight = availableBelow > 0
+                ? availableBelow
+                : Math.max(160, Math.min(fallbackViewportHeight, maxViewportHeight));
+            viewport.hitArea = new Rectangle(0, 0, stageSize.width, viewportHeight);
+            const contentHeight = commitButton.y + commitHeight;
+            let maskGraphic: Graphics | null = null;
+            let scrollHint: Text | null = null;
+            let scrollOffset = 0;
+
+            if (contentHeight > viewportHeight) {
+                const bottomPadding = 32;
+                const minOffset = Math.min(0, viewportHeight - contentHeight - bottomPadding);
+                const setScroll = (next: number) => {
+                    const clamped = Math.max(minOffset, Math.min(0, next));
+                    if (clamped !== scrollOffset) {
+                        scrollOffset = clamped;
+                        scrollContent.y = scrollOffset;
+                        context.renderStageSoon();
+                    }
+                };
+
+                maskGraphic = new Graphics();
+                maskGraphic.rect(0, 0, stageSize.width, viewportHeight)
+                    .fill({ color: 0xffffff, alpha: 1 });
+                maskGraphic.position.set(0, contentStartY);
+                rootContainer.addChild(maskGraphic);
+                viewport.mask = maskGraphic;
+
+                const handleWheel = (event: WheelEvent) => {
+                    event.preventDefault?.();
+                    setScroll(scrollOffset - event.deltaY * 0.75);
+                };
+                viewport.on('wheel', handleWheel);
+                cleanupCallbacks.push(() => viewport.off('wheel', handleWheel));
+
+                scrollHint = new Text({
+                    text: 'Scroll to explore all loadouts',
+                    style: {
+                        fill: hexToNumber(GameTheme.hud.textSecondary),
+                        fontFamily: GameTheme.monoFont,
+                        fontSize: 18,
+                    },
+                });
+                scrollHint.anchor.set(1, 0);
+                scrollHint.position.set(stageSize.width - safeMargin, contentStartY - 26);
+                rootContainer.addChild(scrollHint);
+
+                cleanupCallbacks.push(() => {
+                    if (maskGraphic) {
+                        viewport.mask = null;
+                        rootContainer.removeChild(maskGraphic);
+                        maskGraphic.destroy();
+                        maskGraphic = null;
+                    }
+                    if (scrollHint) {
+                        rootContainer.removeChild(scrollHint);
+                        scrollHint.destroy();
+                        scrollHint = null;
+                    }
+                });
+            }
 
             commitButton.on('pointertap', () => {
                 if (resolving) {
@@ -465,20 +541,32 @@ export const createLoadoutSelectionScene = (
                     sigil: selection.sigil,
                     voice: selection.voice,
                 };
-                const result = payload.onCommit(submittedSelection);
-                if (result) {
-                    Promise.resolve(result)
-                        .then(() => {
-                            resolving = false;
-                            context.renderStageSoon();
-                        })
-                        .catch(() => {
-                            resolving = false;
-                            context.renderStageSoon();
-                        });
-                } else {
+                const handleSuccess = () => {
                     resolving = false;
                     context.renderStageSoon();
+                    context.popScene();
+                };
+                const handleFailure = () => {
+                    resolving = false;
+                    context.renderStageSoon();
+                };
+
+                try {
+                    const result = payload.onCommit(submittedSelection);
+                    if (result) {
+                        Promise.resolve(result)
+                            .then(() => {
+                                handleSuccess();
+                            })
+                            .catch(() => {
+                                handleFailure();
+                            });
+                    } else {
+                        handleSuccess();
+                    }
+                } catch (error) {
+                    void error;
+                    handleFailure();
                 }
             });
             cleanupCallbacks.push(() => commitButton.removeAllListeners());

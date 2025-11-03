@@ -9,6 +9,8 @@ import type { RoundMachine, BiasPhaseOption } from '../round-machine';
 import type { RuntimePowerups } from '../powerups';
 import type { RuntimeModifiers } from '../modifiers';
 import type { RuntimeScoringHandle } from '../scoring';
+import { computeLoadoutEffects, normalizeLoadoutSelection, type LoadoutEffectsBundle } from '../loadouts';
+import type { LoadoutSelection } from 'config/loadouts';
 
 export interface RuntimeSessionCoordinatorOptions {
     readonly runtimeAudio: Pick<RuntimeAudioHandle, 'enableMusic' | 'pushMusicState'>;
@@ -42,11 +44,16 @@ export interface RuntimeSessionCoordinatorOptions {
     readonly refreshHud: () => void;
     readonly startLoop: () => void;
     readonly stopLoopIfRunning: () => void;
+    readonly onLoadoutApplied: (bundle: LoadoutEffectsBundle) => void;
 }
 
 export interface RuntimeSessionCoordinator {
-    beginNewSession(this: void): Promise<void>;
+    beginNewSession(this: void, options?: BeginSessionOptions): Promise<void>;
     startLevel(this: void, levelIndex: number, options?: { readonly resetScore?: boolean }): void;
+}
+
+export interface BeginSessionOptions {
+    readonly loadout?: Partial<LoadoutSelection>;
 }
 
 export const createRuntimeSessionCoordinator = ({
@@ -78,7 +85,21 @@ export const createRuntimeSessionCoordinator = ({
     refreshHud,
     startLoop,
     stopLoopIfRunning,
+    onLoadoutApplied,
 }: RuntimeSessionCoordinatorOptions): RuntimeSessionCoordinator => {
+    const computeBundle = (selection?: Partial<LoadoutSelection>): LoadoutEffectsBundle =>
+        computeLoadoutEffects(normalizeLoadoutSelection(selection));
+
+    let activeLoadout: LoadoutEffectsBundle = computeBundle();
+
+    const setActiveLoadout = (bundle: LoadoutEffectsBundle) => {
+        activeLoadout = bundle;
+    };
+
+    const applyActiveLoadout = () => {
+        onLoadoutApplied(activeLoadout);
+    };
+
     const startLevel: RuntimeSessionCoordinator['startLevel'] = (levelIndex, options) => {
         const resetScore = options?.resetScore === true;
 
@@ -113,6 +134,7 @@ export const createRuntimeSessionCoordinator = ({
 
         powerups.reset();
         runtimeModifiers.reset();
+        applyActiveLoadout();
         clearExtraBalls();
         foreshadowing.reset();
         loadLevel(levelIndex);
@@ -133,7 +155,7 @@ export const createRuntimeSessionCoordinator = ({
         refreshHud();
     };
 
-    const beginNewSession: RuntimeSessionCoordinator['beginNewSession'] = async () => {
+    const beginNewSession: RuntimeSessionCoordinator['beginNewSession'] = async (options) => {
         stopLoopIfRunning();
 
         runtimeAudio.enableMusic();
@@ -149,8 +171,13 @@ export const createRuntimeSessionCoordinator = ({
         refreshAchievementUpgrades();
         roundMachine.resetForNewSession();
 
+        if (options?.loadout) {
+            setActiveLoadout(computeBundle(options.loadout));
+        }
+
         const session = createSession();
         replaceSession(session);
+        applyActiveLoadout();
         runtimeAudio.pushMusicState({
             lives: toMusicLives(resolveInitialLives()),
             combo: 0,
