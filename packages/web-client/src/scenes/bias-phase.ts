@@ -443,9 +443,8 @@ export const createBiasPhaseScene = (
             const optionById = new Map<string, BiasPhaseSceneOption>();
             let selectedOptionId: string | null = null;
             let commitPending = false;
-            let commitContainer: Container | undefined;
-            let commitBackground: Graphics | undefined;
-            let commitText: Text | undefined;
+            let commitContainer: Container | null = null;
+            let commitText: Text | null = null;
 
             const updateCommitLabel = () => {
                 if (!commitText) {
@@ -546,7 +545,7 @@ export const createBiasPhaseScene = (
             commitContainer.eventMode = 'none';
             commitContainer.alpha = 0.5;
 
-            commitBackground = new Graphics();
+            const commitBackground = new Graphics();
             commitBackground.roundRect(0, 0, commitWidth, commitHeight, 22)
                 .fill({ color: hexToNumber(GameTheme.hud.panelFill), alpha: 0.96 })
                 .stroke({ color: hexToNumber(GameTheme.accents.combo), width: 2, alignment: 0.5 });

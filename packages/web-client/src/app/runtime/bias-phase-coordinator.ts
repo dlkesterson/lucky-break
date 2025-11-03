@@ -53,8 +53,6 @@ export const createBiasPhaseCoordinator = ({
 }: BiasPhaseCoordinatorDeps): BiasPhaseCoordinator => {
     const { gravity, restitution, paddleWidth, speedGovernor } = modifierConfig;
 
-    const biasRiskOrder: readonly BiasOptionRisk[] = ['tilt', 'lock', 'reforge'];
-
     const biasLabels: Record<BiasOptionRisk, readonly string[]> = {
         tilt: ['Measured Tilt Table', 'Soft Cascade Table', 'Silver Thread Table'],
         lock: ['Vault Lock Table', 'Gilded Contract Table', 'House Edge Table'],
