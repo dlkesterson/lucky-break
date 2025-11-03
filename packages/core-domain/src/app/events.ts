@@ -138,7 +138,8 @@ export type UiSceneName =
     | 'level-complete'
     | 'bias-phase'
     | 'game-over'
-    | 'fate-ledger';
+    | 'fate-ledger'
+    | 'loadout-selection';
 export type UiSceneTransitionAction = 'enter' | 'exit' | 'suspend' | 'resume';
 
 export interface UiSceneTransitionPayload {

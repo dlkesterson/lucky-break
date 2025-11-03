@@ -7,6 +7,7 @@ import {
 } from './events';
 import type { RandomSource } from 'util/random';
 import type { MomentumSnapshot } from 'util/scoring';
+import type { LoadoutSelection, LoadoutSessionEffects } from 'config/loadouts';
 
 export type GameStatus = 'pending' | 'active' | 'paused' | 'completed' | 'failed';
 
@@ -129,6 +130,7 @@ export interface GameSessionSnapshot {
     readonly preferences: PlayerPreferences;
     readonly hud: HudSnapshot;
     readonly updatedAt: number;
+    readonly loadout: LoadoutSelection | null;
 }
 
 interface StartRoundConfig {
@@ -161,6 +163,8 @@ export interface GameSessionManager {
     readonly updateMomentum: (snapshot: MomentumSnapshot) => void;
     readonly spendStoredEntropy: (options: EntropySpendOptions) => EntropySpendResult;
     readonly grantStoredEntropy: (amount: number) => number;
+    readonly setLoadout: (selection: LoadoutSelection, effects: LoadoutSessionEffects) => void;
+    readonly getLoadout: () => { readonly selection: LoadoutSelection; readonly effects: LoadoutSessionEffects } | null;
 }
 
 export interface GameSessionOptions {
@@ -185,6 +189,11 @@ export interface EntropySpendResult {
     readonly chargeRemaining: number;
     readonly reason?: 'insufficient' | 'invalid-cost';
 }
+
+type SessionLoadoutState = {
+    readonly selection: LoadoutSelection;
+    readonly effects: LoadoutSessionEffects;
+};
 
 const DEFAULT_LIVES = 3;
 const ENTROPY_MAX_CHARGE = 100;
@@ -361,6 +370,44 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 
     let coins = 0;
 
+    interface SessionLoadoutState {
+        selection: LoadoutSelection;
+        effects: LoadoutSessionEffects;
+    }
+
+    let loadoutState: SessionLoadoutState | null = null;
+
+    const BASE_LOADOUT_EFFECTS: LoadoutSessionEffects = {
+        coinMultiplier: 1,
+        entropyGainMultiplier: 1,
+        entropyLossMultiplier: 1,
+        idleGrantBonus: 0,
+        comboWindowBonusSeconds: 0,
+    } satisfies LoadoutSessionEffects;
+
+    const cloneLoadoutSelection = (selection: LoadoutSelection): LoadoutSelection => ({
+        form: selection.form,
+        trait: selection.trait,
+        sigil: selection.sigil,
+        voice: selection.voice,
+    });
+
+    const cloneLoadoutEffects = (effects: LoadoutSessionEffects): LoadoutSessionEffects => ({
+        coinMultiplier: effects.coinMultiplier,
+        entropyGainMultiplier: effects.entropyGainMultiplier,
+        entropyLossMultiplier: effects.entropyLossMultiplier,
+        idleGrantBonus: effects.idleGrantBonus,
+        comboWindowBonusSeconds: effects.comboWindowBonusSeconds,
+    });
+
+    const resolveLoadoutEffects = (): LoadoutSessionEffects => {
+        const current = loadoutState;
+        if (current) {
+            return (current as SessionLoadoutState).effects;
+        }
+        return BASE_LOADOUT_EFFECTS;
+    };
+
     const entropy: Mutable<EntropySnapshot> = {
         charge: 0,
         stored: 0,
@@ -408,12 +455,27 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 
     const handleEntropyEvent = (event: EntropyEvent): void => {
         const timestamp = now();
+        const effects = resolveLoadoutEffects();
+        const gainMultiplier = Math.max(0, effects.entropyGainMultiplier);
+        const lossMultiplier = Math.max(0, effects.entropyLossMultiplier);
+        const idleBonus = Math.max(0, effects.idleGrantBonus);
+
+        const scaleChargeDelta = (delta: number, eventType: EntropyEventType) => {
+            const multiplier = delta >= 0 ? gainMultiplier : lossMultiplier;
+            applyChargeDelta(delta * multiplier, timestamp, eventType);
+        };
+
+        const scaleStoredDelta = (delta: number) => {
+            const multiplier = delta >= 0 ? gainMultiplier : lossMultiplier;
+            applyStoredDelta(delta * multiplier, timestamp);
+        };
+
         switch (event.type) {
             case 'round-start': {
                 const carryOver = Math.min(ENTROPY_MAX_CHARGE, entropy.stored * 0.4);
                 if (carryOver > 0) {
                     entropy.charge = Math.max(entropy.charge, carryOver);
-                    applyStoredDelta(-carryOver * 0.25, timestamp);
+                    scaleStoredDelta(-carryOver * 0.25);
                 }
                 entropy.trend = 'stable';
                 entropy.lastEvent = event.type;
@@ -424,39 +486,39 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
                 const comboFactor = normalizeRatio(event.comboHeat, 20);
                 const speedFactor = normalizeRatio(event.speed ?? event.impactVelocity, 24);
                 const delta = 0.8 + comboFactor * 0.7 + speedFactor * 0.4;
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'brick-break': {
                 const comboFactor = normalizeRatio(event.comboHeat, 24);
                 const speedFactor = normalizeRatio(event.speed ?? event.impactVelocity, 26);
                 const delta = 2.5 + comboFactor * 1.6 + speedFactor * 0.8;
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'paddle-hit': {
                 const speedFactor = normalizeRatio(event.speed, 24);
                 const delta = 0.35 + speedFactor * 0.55;
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'wall-hit': {
                 const speedFactor = normalizeRatio(event.speed, 24);
                 const delta = 0.2 + speedFactor * 0.35;
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'life-loss': {
                 const comboFactor = normalizeRatio(event.comboHeat, 24);
-                applyStoredDelta(-12 - comboFactor * 18, timestamp);
+                scaleStoredDelta(-12 - comboFactor * 18);
                 const delta = -(28 + comboFactor * 24);
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'round-complete': {
                 const bankable = Math.min(entropy.charge, 80);
                 if (bankable > 0) {
-                    applyStoredDelta(bankable * 0.6, timestamp);
+                    scaleStoredDelta(bankable * 0.6);
                 }
                 const previousCharge = entropy.charge;
                 const residual = Math.max(5, entropy.charge * 0.4);
@@ -469,18 +531,18 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             case 'combo-reset': {
                 const comboFactor = normalizeRatio(event.comboHeat, 18);
                 const delta = -(8 + comboFactor * 18);
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'coin-collect': {
                 const valueFactor = normalizeRatio(event.coinValue, 25);
                 const delta = 1.2 + valueFactor * 2.8;
-                applyChargeDelta(delta, timestamp, event.type);
+                scaleChargeDelta(delta, event.type);
                 return;
             }
             case 'entropy-spend': {
                 if (event.amountSpent !== undefined) {
-                    applyStoredDelta(-Math.abs(event.amountSpent), timestamp);
+                    scaleStoredDelta(-Math.abs(event.amountSpent));
                 }
                 entropy.trend = 'falling';
                 entropy.lastEvent = event.type;
@@ -490,7 +552,10 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             case 'idle-reward': {
                 const amount = Number.isFinite(event.amountGranted) ? Number(event.amountGranted) : 0;
                 if (amount > 0) {
-                    applyStoredDelta(amount, timestamp);
+                    scaleStoredDelta(amount);
+                    if (idleBonus > 0) {
+                        scaleStoredDelta(amount * idleBonus);
+                    }
                     entropy.trend = 'rising';
                 } else {
                     entropy.trend = 'stable';
@@ -518,6 +583,9 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         const timestamp = now();
         const currentElapsed = computeElapsed(timestamp);
 
+        const currentLoadout = loadoutState as SessionLoadoutState | null;
+        const loadoutSnapshot = currentLoadout ? cloneLoadoutSelection(currentLoadout.selection) : null;
+
         const base: Omit<GameSessionSnapshot, 'hud' | 'updatedAt' | 'elapsedTimeMs'> = {
             sessionId,
             status,
@@ -532,6 +600,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             audio: cloneAudio(audio),
             entropy: cloneEntropy(entropy),
             preferences: clonePreferences(preferences),
+            loadout: loadoutSnapshot,
         };
 
         const hud = toHudSnapshot(base);
@@ -689,8 +758,14 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
             return;
         }
 
-        coins = Math.max(0, coins + safeAmount);
-        score = Math.max(0, score + safeAmount);
+        const effects = resolveLoadoutEffects();
+        const adjusted = Math.max(0, Math.round(safeAmount * effects.coinMultiplier));
+        if (adjusted <= 0) {
+            return;
+        }
+
+        coins = Math.max(0, coins + adjusted);
+        score = Math.max(0, score + adjusted);
     };
 
     const spendCoins: GameSessionManager['spendCoins'] = (amount) => {
@@ -785,6 +860,24 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         return entropy.stored;
     };
 
+    const setLoadout: GameSessionManager['setLoadout'] = (selection, effects) => {
+        loadoutState = {
+            selection: cloneLoadoutSelection(selection),
+            effects: cloneLoadoutEffects(effects),
+        } satisfies SessionLoadoutState;
+    };
+
+    const getLoadout: GameSessionManager['getLoadout'] = () => {
+        const current = loadoutState as SessionLoadoutState | null;
+        if (!current) {
+            return null;
+        }
+        return {
+            selection: cloneLoadoutSelection(current.selection),
+            effects: cloneLoadoutEffects(current.effects),
+        } as const;
+    };
+
     return {
         snapshot,
         startRound,
@@ -798,5 +891,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         updateMomentum,
         spendStoredEntropy,
         grantStoredEntropy,
+        setLoadout,
+        getLoadout,
     } satisfies GameSessionManager;
 };

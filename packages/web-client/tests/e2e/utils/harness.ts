@@ -4,8 +4,6 @@ import type { BiasPhaseState } from 'app/runtime/round-machine';
 import type { RuntimeModifierSnapshot } from 'app/runtime/modifiers';
 import type { ReplayRecording } from 'app/replay-buffer';
 
-const isCI = Boolean(process.env.CI);
-
 export interface RecordedEvent {
     readonly type?: unknown;
     readonly payload?: unknown;
@@ -132,9 +130,9 @@ interface WaitForEventOptions<TEvent extends RecordedEvent> {
     readonly includeExisting?: boolean;
 }
 
-const defaultWaitTimeout = isCI ? 30_000 : 15_000;
-const harnessFunctionTimeout = isCI ? 20_000 : 5_000;
-const sceneVisibilityTimeout = isCI ? 20_000 : 10_000;
+const defaultWaitTimeout = 15_000;
+const harnessFunctionTimeout = 5_000;
+const sceneVisibilityTimeout = 10_000;
 
 export const e2eTimeouts = {
     event: defaultWaitTimeout,
