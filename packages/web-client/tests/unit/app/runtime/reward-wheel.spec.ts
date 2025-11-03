@@ -91,6 +91,7 @@ const buildSessionSnapshot = (session: { coins: number; entropyStored: number })
             controlScheme: 'keyboard',
             controlSensitivity: 0.5,
         },
+        loadout: null,
         hud: {
             score: 0,
             coins: session.coins,

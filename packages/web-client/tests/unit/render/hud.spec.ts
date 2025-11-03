@@ -43,6 +43,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
             lastEvent: 'brick-break',
             updatedAt: 120_000,
         },
+        loadout: null,
         hud: {
             score: 4250,
             coins: 18,
