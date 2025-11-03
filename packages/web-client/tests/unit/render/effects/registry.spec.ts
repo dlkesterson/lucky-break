@@ -30,6 +30,27 @@ describe('createEffectRegistry', () => {
         expect(destroy).not.toHaveBeenCalled();
     });
 
+    it('uses dispose fallback when destroy is unavailable', () => {
+        const registry = createEffectRegistry();
+        const dispose = vi.fn();
+        const handle = { dispose };
+
+        registry.track(handle);
+        registry.disposeAll();
+
+        expect(dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores handles without any disposal hooks', () => {
+        const registry = createEffectRegistry();
+        const handle = {};
+
+        registry.track(handle);
+
+        expect(registry.size).toBe(0);
+        expect(() => registry.disposeAll()).not.toThrow();
+    });
+
     it('removes and destroys tracked containers by default', () => {
         const registry = createEffectRegistry();
         const parent = new Container();
@@ -55,5 +76,39 @@ describe('createEffectRegistry', () => {
         registry.disposeAll();
 
         expect(child.parent).toBe(parent);
+    });
+
+    it('falls back to parent removal when removeFromParent is unavailable', () => {
+        const registry = createEffectRegistry();
+        const removeChild = vi.fn();
+        const destroy = vi.fn();
+        const container = {
+            parent: { removeChild },
+            destroy,
+        } as unknown as Container;
+
+        registry.trackContainer(container);
+        registry.disposeAll();
+
+        expect(removeChild).toHaveBeenCalledWith(container);
+        expect(destroy).not.toHaveBeenCalled();
+    });
+
+    it('registers additional disposers and swallows cleanup errors', () => {
+        const registry = createEffectRegistry();
+        const ok = vi.fn();
+        const faulty = vi.fn(() => {
+            throw new Error('cleanup failed');
+        });
+
+        registry.addDisposer(ok);
+        registry.addDisposer(faulty);
+        registry.addDisposer(undefined as unknown as () => void);
+
+        expect(registry.size).toBe(2);
+        expect(() => registry.disposeAll()).not.toThrow();
+        expect(ok).toHaveBeenCalledTimes(1);
+        expect(faulty).toHaveBeenCalledTimes(1);
+        expect(registry.size).toBe(0);
     });
 });

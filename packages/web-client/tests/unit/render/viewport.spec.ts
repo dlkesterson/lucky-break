@@ -47,6 +47,15 @@ describe('computeViewportFit', () => {
             contentHeight: 10,
         })).toThrowError(RangeError);
     });
+
+    it('throws when content aspect ratio is not finite', () => {
+        expect(() => computeViewportFit({
+            containerWidth: 100,
+            containerHeight: 100,
+            contentWidth: Number.NaN,
+            contentHeight: 50,
+        })).toThrowError(RangeError);
+    });
 });
 
 describe('resolveViewportSize', () => {
@@ -98,5 +107,31 @@ describe('resolveViewportSize', () => {
         });
 
         expect(result).toEqual({ width: 320, height: 180 });
+    });
+
+    it('rounds fallback dimensions when measurement fails', () => {
+        const element = {
+            getBoundingClientRect: () => {
+                throw new Error('unavailable');
+            },
+        } as unknown as Element;
+
+        const result = resolveViewportSize({
+            container: element,
+            fallbackWidth: 200.6,
+            fallbackHeight: 99.2,
+        });
+
+        expect(result).toEqual({ width: 201, height: 99 });
+    });
+
+    it('coerces fallback dimensions to non-negative values', () => {
+        const result = resolveViewportSize({
+            container: null,
+            fallbackWidth: Number.POSITIVE_INFINITY,
+            fallbackHeight: -45,
+        });
+
+        expect(result).toEqual({ width: 0, height: 0 });
     });
 });

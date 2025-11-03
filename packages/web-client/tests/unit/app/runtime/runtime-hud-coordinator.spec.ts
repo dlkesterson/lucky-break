@@ -1,0 +1,194 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { GameSessionSnapshot } from 'app/state';
+import type { GambleBrickSummary } from 'game/gamble-brick-manager';
+import type { HudScoreboardPrompt, HudScoreboardView } from 'render/hud';
+import { createRuntimeHudCoordinator } from 'app/runtime/modules/runtime-hud-coordinator';
+
+const AUTO_PROMPT_ID = 'auto-complete-countdown';
+
+const { buildHudScoreboardMock } = vi.hoisted(() => ({
+    buildHudScoreboardMock: vi.fn<[GameSessionSnapshot, GambleBrickSummary, unknown], HudScoreboardView>(),
+}));
+
+vi.mock('render/hud', () => ({
+    buildHudScoreboard: buildHudScoreboardMock,
+}));
+
+const createView = (prompts: readonly HudScoreboardPrompt[] = []): HudScoreboardView => ({
+    statusText: '',
+    summaryLine: '',
+    entries: [],
+    prompts,
+});
+
+const createPrompt = (overrides?: Partial<HudScoreboardPrompt>): HudScoreboardPrompt => ({
+    id: overrides?.id ?? 'other-prompt',
+    severity: overrides?.severity ?? 'info',
+    message: overrides?.message ?? 'placeholder',
+});
+
+describe('createRuntimeHudCoordinator', () => {
+    beforeEach(() => {
+        buildHudScoreboardMock.mockReset();
+    });
+
+    const createHarness = () => {
+        let combo = 0;
+        let comboTimer = 0;
+        let autoState = { enabled: false, active: false, timer: 0 };
+        let nextView = createView();
+
+        const hudDisplay = {
+            update: vi.fn(),
+            pulseCombo: vi.fn(),
+        };
+
+        const scoring = {
+            getScoringView: vi.fn(() => ({
+                combo,
+                comboTimer,
+            })),
+        };
+
+        const roundMachine = {
+            getAutoCompleteState: vi.fn(() => autoState),
+            getLevelDifficultyMultiplier: vi.fn(() => 1.5),
+        };
+
+        const entropyActions = [
+            {
+                action: 'burst',
+                label: 'Burst',
+                hotkey: 'B',
+                cost: 25,
+                charges: 2,
+                affordable: true,
+            },
+        ] as unknown[];
+
+        const runtimeRewards = {
+            getHudEntropyActions: vi.fn(() => entropyActions),
+        };
+
+        const powerups = {
+            collectHudPowerUps: vi.fn(() => ['shield']),
+            resolveRewardView: vi.fn(() => ({ id: 'reward' })),
+        };
+
+        const sessionSnapshot = {
+            status: 'active',
+            elapsedTimeMs: 0,
+            lastOutcome: null,
+            hud: {
+                prompts: [],
+                momentum: {
+                    comboHeat: 0,
+                    volleyLength: 0,
+                    speedPressure: 0,
+                    brickDensity: 0,
+                },
+                entropy: {
+                    stored: 42,
+                    charge: 0,
+                    trend: 'steady',
+                },
+            },
+        } as unknown as GameSessionSnapshot;
+
+        const gambleStatus: GambleBrickSummary = {
+            armedCount: 0,
+            primedCount: 0,
+            nextExpirationSeconds: null,
+            timerSeconds: 0,
+            rewardMultiplier: 1,
+        };
+
+        const onLayout = vi.fn();
+
+        buildHudScoreboardMock.mockImplementation(() => nextView);
+
+        const coordinator = createRuntimeHudCoordinator({
+            hudDisplay: hudDisplay as never,
+            scoring: scoring as never,
+            roundMachine: roundMachine as never,
+            runtimeRewards: runtimeRewards as never,
+            powerups: powerups as never,
+            getSessionSnapshot: () => sessionSnapshot,
+            getGambleStatus: () => gambleStatus,
+            onLayout,
+        });
+
+        return {
+            refresh: () => coordinator.refresh(),
+            setCombo: (value: number) => {
+                combo = value;
+            },
+            setComboTimer: (value: number) => {
+                comboTimer = value;
+            },
+            setAutoState: (state: typeof autoState) => {
+                autoState = state;
+            },
+            setBaseView: (view: HudScoreboardView) => {
+                nextView = view;
+            },
+            hudDisplay,
+            runtimeRewards,
+            powerups,
+            roundMachine,
+            onLayout,
+        };
+    };
+
+    it('adds and removes the auto-complete prompt while pulsing on combo gains', () => {
+        const harness = createHarness();
+
+        harness.setBaseView(createView([createPrompt()]));
+        harness.setAutoState({ enabled: true, active: true, timer: 12 });
+        harness.refresh();
+
+        const firstUpdate = harness.hudDisplay.update.mock.calls[0][0];
+        expect(firstUpdate.view.prompts[0]).toMatchObject({
+            id: AUTO_PROMPT_ID,
+            severity: 'info',
+            message: 'Auto clear in 12s',
+        });
+        expect(firstUpdate.view.prompts[1]).toMatchObject({ id: 'other-prompt' });
+        expect(firstUpdate.activePowerUps).toEqual(['shield']);
+        expect(firstUpdate.difficultyMultiplier).toBe(1.5);
+        expect(harness.runtimeRewards.getHudEntropyActions).toHaveBeenCalledWith(42);
+        expect(harness.hudDisplay.pulseCombo).not.toHaveBeenCalled();
+        expect(harness.onLayout).toHaveBeenCalledTimes(1);
+
+        harness.setCombo(5);
+        harness.setComboTimer(1.2);
+        harness.setAutoState({ enabled: true, active: true, timer: 2.5 });
+        harness.setBaseView(createView());
+        harness.refresh();
+
+        const secondUpdate = harness.hudDisplay.update.mock.calls[1][0];
+        expect(secondUpdate.view.prompts[0]).toMatchObject({
+            id: AUTO_PROMPT_ID,
+            severity: 'warning',
+            message: 'Auto clear in 2.5s',
+        });
+        expect(harness.hudDisplay.pulseCombo).toHaveBeenCalledWith(0.75);
+        expect(harness.onLayout).toHaveBeenCalledTimes(2);
+
+        harness.setCombo(1);
+        harness.setAutoState({ enabled: false, active: false, timer: 0 });
+        harness.setBaseView(createView([
+            createPrompt({ id: AUTO_PROMPT_ID, message: 'stale prompt' }),
+            createPrompt({ id: 'keep', message: 'keep me' }),
+        ]));
+        harness.refresh();
+
+        const thirdUpdate = harness.hudDisplay.update.mock.calls[2][0];
+        expect(
+            thirdUpdate.view.prompts.find((prompt: HudScoreboardPrompt) => prompt.id === AUTO_PROMPT_ID),
+        ).toBeUndefined();
+        expect(thirdUpdate.view.prompts[0]).toMatchObject({ id: 'keep' });
+        expect(harness.hudDisplay.pulseCombo).toHaveBeenCalledTimes(1);
+        expect(harness.onLayout).toHaveBeenCalledTimes(3);
+    });
+});
