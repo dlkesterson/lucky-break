@@ -1,5 +1,6 @@
 import { vi, type Mock } from 'vitest';
 import type { MetaUpgradeListener, MetaUpgradeLoadout, MetaUpgradeSnapshot } from 'app/meta-upgrades';
+import type { LoadoutSelection, LoadoutSessionEffects } from 'config/loadouts';
 
 const baseMetaSnapshot: MetaUpgradeSnapshot = {
     version: 1,
@@ -171,7 +172,10 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
             lastEvent: null,
             updatedAt: Date.now(),
         },
+        loadout: null as LoadoutSelection | null,
     };
+
+    let loadoutEffects: LoadoutSessionEffects | null = null;
 
     const handle = {
         startRound: vi.fn((roundOptions: { breakableBricks: number }) => {
@@ -211,6 +215,9 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
                     reducedMotion: false,
                 },
             },
+            loadout: state.loadout,
+            updatedAt: Date.now(),
+            elapsedTimeMs: 0,
         })),
         recordBrickBreak: vi.fn(),
         recordLifeLost: vi.fn(() => {
@@ -237,6 +244,41 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
                 comboTimer: Math.max(0, snapshot?.comboTimer ?? 0),
                 updatedAt: Date.now(),
             };
+        }),
+        setLoadout: vi.fn((selection: LoadoutSelection, effects: LoadoutSessionEffects) => {
+            state.loadout = {
+                form: selection.form,
+                trait: selection.trait,
+                sigil: selection.sigil,
+                voice: selection.voice,
+            } satisfies LoadoutSelection;
+            loadoutEffects = {
+                coinMultiplier: effects.coinMultiplier,
+                entropyGainMultiplier: effects.entropyGainMultiplier,
+                entropyLossMultiplier: effects.entropyLossMultiplier,
+                idleGrantBonus: effects.idleGrantBonus,
+                comboWindowBonusSeconds: effects.comboWindowBonusSeconds,
+            } satisfies LoadoutSessionEffects;
+        }),
+        getLoadout: vi.fn(() => {
+            if (!state.loadout || !loadoutEffects) {
+                return null;
+            }
+            return {
+                selection: {
+                    form: state.loadout.form,
+                    trait: state.loadout.trait,
+                    sigil: state.loadout.sigil,
+                    voice: state.loadout.voice,
+                } satisfies LoadoutSelection,
+                effects: {
+                    coinMultiplier: loadoutEffects.coinMultiplier,
+                    entropyGainMultiplier: loadoutEffects.entropyGainMultiplier,
+                    entropyLossMultiplier: loadoutEffects.entropyLossMultiplier,
+                    idleGrantBonus: loadoutEffects.idleGrantBonus,
+                    comboWindowBonusSeconds: loadoutEffects.comboWindowBonusSeconds,
+                } satisfies LoadoutSessionEffects,
+            } as const;
         }),
     };
 

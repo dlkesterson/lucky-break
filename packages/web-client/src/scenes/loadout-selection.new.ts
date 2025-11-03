@@ -15,12 +15,12 @@ export interface LoadoutSelectionPayload {
     readonly formPresets?: readonly LoadoutFormPreset[];
     readonly lockedForms?: readonly LoadoutFormId[];
     readonly initialSelection?: Partial<LoadoutSelection>;
-    readonly onCommit: (selection: LoadoutSelection) => MaybePromise<void>;
+    readonly onCommit: (selection: LoadoutSelection) => void | Promise<void>;
 }
 
-type MaybePromise<T> = T | Promise<T>;
-
 type Cleanup = () => void;
+
+type MaybePromise<T> = T | Promise<T>;
 
 interface FormCardHandle {
     readonly preset: LoadoutFormPreset;
@@ -45,44 +45,60 @@ const createBallPreview = (radius: number): BallPreviewHandle => {
     const accentOverlay = new Graphics();
     const rim = new Graphics();
     const pulse = new Graphics();
+    const spinGroup = new Container();
     const swirl = new Graphics();
+    const spark = new Graphics();
 
-    container.addChild(baseCircle, accentOverlay, pulse, swirl, rim);
+    container.addChild(baseCircle, accentOverlay, pulse, spinGroup, rim);
+    spinGroup.addChild(swirl, spark);
+
+    swirl.alpha = 0.85;
+    spark.alpha = 0.7;
+    pulse.alpha = 0.5;
 
     let pulsePhase = 0;
 
-    const draw = (baseColor: number, accentColor: number) => {
+    const drawBall = (baseColor: number, accentColor: number) => {
         baseCircle.clear();
         baseCircle.circle(0, 0, radius).fill({ color: baseColor, alpha: 0.95 });
 
         accentOverlay.clear();
-        accentOverlay.circle(0, 0, radius * 0.78).fill({ color: accentColor, alpha: 0.45 });
+        accentOverlay.circle(0, 0, radius * 0.78).fill({ color: accentColor, alpha: 0.4 });
         accentOverlay.blendMode = 'add';
 
         pulse.clear();
-        pulse.circle(0, 0, radius * 0.48).fill({ color: accentColor, alpha: 0.35 });
+        pulse.circle(0, 0, radius * 0.45).fill({ color: accentColor, alpha: 0.35 });
         pulse.blendMode = 'add';
 
         rim.clear();
-        rim.circle(0, 0, radius).stroke({ color: accentColor, width: 6, alignment: 0.5, alpha: 0.9 });
+        rim.circle(0, 0, radius)
+            .stroke({ color: accentColor, width: 6, alignment: 0.5, alpha: 0.85 });
 
         swirl.clear();
-        swirl.moveTo(-radius * 0.75, -radius * 0.3);
-        swirl.quadraticCurveTo(0, radius * 0.7, radius * 0.75, -radius * 0.25);
-        swirl.stroke({ color: accentColor, width: 5, alpha: 0.85, alignment: 0.5 });
+        swirl.moveTo(-radius * 0.8, -radius * 0.3);
+        swirl.quadraticCurveTo(0, radius * 0.7, radius * 0.8, -radius * 0.2);
+        swirl.stroke({ color: accentColor, width: 6, alpha: 0.9, alignment: 0.5 });
+        swirl.moveTo(-radius * 0.5, radius * 0.2);
+        swirl.quadraticCurveTo(0, -radius * 0.6, radius * 0.4, radius * 0.4);
+        swirl.stroke({ color: baseColor, width: 4, alpha: 0.6, alignment: 0.5 });
+
+        spark.clear();
+        spark.circle(0, -radius * 0.6, radius * 0.12).fill({ color: accentColor, alpha: 0.8 });
+        spark.blendMode = 'add';
     };
 
     const animate = (delta: number) => {
-        pulsePhase += 0.02 * delta;
-        const scale = 1 + 0.1 * Math.sin(pulsePhase);
+        spinGroup.rotation += 0.01 * delta;
+        pulsePhase += 0.015 * delta;
+        const scale = 1 + 0.08 * Math.sin(pulsePhase);
         pulse.scale.set(scale);
     };
 
     const updateColors = (baseColor: number, accentColor: number) => {
-        draw(baseColor, accentColor);
+        drawBall(baseColor, accentColor);
     };
 
-    draw(0xffffff, 0xffffff);
+    drawBall(0xffffff, 0xffffff);
 
     return {
         container,
@@ -99,31 +115,36 @@ const createFormCard = (
 ): FormCardHandle => {
     const container = new Container();
     container.eventMode = 'static';
-
-    const frame = new Graphics();
-    const hover = new Graphics();
-    const lockOverlay = new Graphics();
-    const padding = 16;
-    let isSelected = false;
-    let isHovering = false;
-    let isLocked = locked;
+    container.cursor = locked ? 'not-allowed' : 'pointer';
 
     const baseFill = hexToNumber(GameTheme.hud.panelFill);
     const borderColor = hexToNumber(GameTheme.hud.panelLine);
 
-    const redraw = () => {
-        const activeFill = isSelected ? preset.preview.baseColor : baseFill;
-        const alpha = isLocked ? 0.35 : isSelected ? 0.92 : isHovering ? 0.86 : 0.78;
+    const background = new Graphics();
+    const hoverOverlay = new Graphics();
+    const lockOverlay = new Graphics();
+    const padding = 14;
+    let isSelected = false;
+    let isHovering = false;
+    let isLocked = locked;
 
-        frame.clear();
-        frame.roundRect(0, 0, dimensions.width, dimensions.height, 18)
-            .fill({ color: activeFill, alpha })
+    const drawBackground = () => {
+        const fillColor = isSelected ? preset.preview.baseColor : baseFill;
+        const alpha = isLocked ? 0.35 : isSelected ? 0.94 : isHovering ? 0.88 : 0.82;
+        background.clear();
+        background.roundRect(0, 0, dimensions.width, dimensions.height, 18)
+            .fill({ color: fillColor, alpha })
             .stroke({ color: borderColor, width: 3, alignment: 0.5, alpha: 0.9 });
 
-        hover.clear();
+        hoverOverlay.clear();
         if (!isLocked && (isHovering || isSelected)) {
-            hover.roundRect(0, 0, dimensions.width, dimensions.height, 18)
-                .stroke({ color: preset.preview.accentColor, width: 4, alignment: 0.5, alpha: isSelected ? 0.95 : 0.6 });
+            hoverOverlay.roundRect(0, 0, dimensions.width, dimensions.height, 18)
+                .stroke({
+                    color: preset.preview.accentColor,
+                    width: 4,
+                    alignment: 0.5,
+                    alpha: isSelected ? 0.95 : 0.6,
+                });
         }
 
         lockOverlay.clear();
@@ -133,6 +154,8 @@ const createFormCard = (
         }
     };
 
+    drawBackground();
+
     const title = new Text({
         text: preset.name,
         style: {
@@ -140,6 +163,7 @@ const createFormCard = (
             fontFamily: GameTheme.font,
             fontSize: 24,
             fontWeight: '800',
+            align: 'left',
             wordWrap: true,
             wordWrapWidth: dimensions.width - padding * 2,
         },
@@ -158,13 +182,13 @@ const createFormCard = (
         },
     });
     description.anchor.set(0, 0);
-    description.position.set(padding, title.y + title.height + 8);
+    description.position.set(padding, title.y + title.height + 6);
 
-    const summaryContainer = new Container();
-    summaryContainer.position.set(padding, description.y + description.height + 10);
-    let summaryOffset = 0;
+    const summary = new Container();
+    summary.position.set(padding, description.y + description.height + 8);
+    let offset = 0;
     preset.cardSummary.slice(0, 3).forEach((line) => {
-        const entry = new Text({
+        const bullet = new Text({
             text: `• ${line}`,
             style: {
                 fill: hexToNumber(GameTheme.hud.textPrimary),
@@ -174,38 +198,13 @@ const createFormCard = (
                 wordWrapWidth: dimensions.width - padding * 2,
             },
         });
-        entry.anchor.set(0, 0);
-        entry.position.set(0, summaryOffset);
-        summaryContainer.addChild(entry);
-        summaryOffset += entry.height + 2;
+        bullet.anchor.set(0, 0);
+        bullet.position.set(0, offset);
+        summary.addChild(bullet);
+        offset += bullet.height + 2;
     });
 
-    container.addChild(frame, hover, title, description, summaryContainer, lockOverlay);
-
-    const setSelected = (selected: boolean) => {
-        isSelected = selected;
-        redraw();
-        container.cursor = selected ? 'pointer' : isLocked ? 'not-allowed' : 'pointer';
-    };
-
-    const setLockedState = (lockedState: boolean) => {
-        isLocked = lockedState;
-        container.cursor = isLocked ? 'not-allowed' : 'pointer';
-        redraw();
-    };
-
-    container.on('pointerover', () => {
-        if (isLocked) {
-            return;
-        }
-        isHovering = true;
-        redraw();
-    });
-
-    container.on('pointerout', () => {
-        isHovering = false;
-        redraw();
-    });
+    container.addChild(background, hoverOverlay, title, description, summary, lockOverlay);
 
     container.on('pointertap', () => {
         if (isLocked) {
@@ -214,8 +213,29 @@ const createFormCard = (
         onSelect(preset);
     });
 
-    redraw();
-    setLockedState(locked);
+    container.on('pointerover', () => {
+        if (isLocked) {
+            return;
+        }
+        isHovering = true;
+        drawBackground();
+    });
+
+    container.on('pointerout', () => {
+        isHovering = false;
+        drawBackground();
+    });
+
+    const setSelected = (selected: boolean) => {
+        isSelected = selected;
+        drawBackground();
+    };
+
+    const setLockedState = (lockedState: boolean) => {
+        isLocked = lockedState;
+        container.cursor = isLocked ? 'not-allowed' : 'pointer';
+        drawBackground();
+    };
 
     return {
         preset,
@@ -225,7 +245,11 @@ const createFormCard = (
     } satisfies FormCardHandle;
 };
 
-const summarizePreset = (preset: LoadoutFormPreset): readonly string[] => preset.combinedSummary.slice(0, 8);
+const summarizePreset = (preset: LoadoutFormPreset): readonly string[] => {
+    const summary: string[] = [];
+    summary.push(...preset.combinedSummary.slice(0, 8));
+    return summary;
+};
 
 const formatLinkedLabel = (label: string, option: { readonly name: string }): string => `${label}: ${option.name}`;
 
@@ -238,9 +262,9 @@ export const createLoadoutSelectionScene = (
     context: SceneContext<GameSceneServices>,
 ): Scene<LoadoutSelectionPayload, GameSceneServices> => {
     let root: Container | null = null;
-    let activeTicker: TickerCallback<void> | null = null;
     let resolving = false;
     let cleanupCallbacks: Cleanup[] = [];
+    let activeTicker: TickerCallback<void> | null = null;
 
     const emitSceneEvent = (action: UiSceneTransitionAction) => {
         context.bus.publish('UiSceneTransition', {
@@ -255,45 +279,43 @@ export const createLoadoutSelectionScene = (
                 throw new Error('LoadoutSelectionScene requires payload');
             }
 
-            const presets = payload.formPresets && payload.formPresets.length > 0
+            const presets = (payload.formPresets && payload.formPresets.length > 0)
                 ? payload.formPresets
                 : buildLoadoutFormPresets();
-
             if (presets.length === 0) {
-                throw new Error('No loadout presets are available');
+                throw new Error('No loadout forms available');
             }
 
             const lockedSet = new Set<LoadoutFormId>(payload.lockedForms ?? []);
             const normalized = normalizeLoadoutSelection(payload.initialSelection);
-
             let selectedPreset = presets.find((preset) => preset.id === normalized.form && !lockedSet.has(preset.id)) ?? null;
             selectedPreset ??= presets.find((preset) => !lockedSet.has(preset.id)) ?? presets[0];
 
             const stageSize = context.designSize;
-            const safeMargin = Math.max(32, stageSize.width * 0.05);
-
             const rootContainer = new Container();
             rootContainer.eventMode = 'static';
             rootContainer.cursor = 'default';
 
+            emitSceneEvent('enter');
+
             const overlay = new Graphics();
             overlay.rect(0, 0, stageSize.width, stageSize.height)
-                .fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.92 });
+                .fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.9 });
             overlay.eventMode = 'none';
             rootContainer.addChild(overlay);
 
             const title = new Text({
-                text: 'Awaken Mayhaps',
+                text: 'Awaken Mayhaps'.toUpperCase(),
                 style: {
-                    fill: hexToNumber(GameTheme.hud.textPrimary),
+                    fill: hexToNumber(GameTheme.accents.combo),
                     fontFamily: GameTheme.font,
-                    fontSize: stageSize.width >= 1280 ? 82 : stageSize.width >= 960 ? 68 : 56,
+                    fontSize: stageSize.width >= 1280 ? 86 : stageSize.width >= 1024 ? 72 : 58,
                     fontWeight: '900',
                     align: 'center',
                 },
             });
             title.anchor.set(0.5, 0);
-            title.position.set(stageSize.width / 2, 42);
+            title.position.set(stageSize.width / 2, 32);
             rootContainer.addChild(title);
 
             const subtitle = new Text({
@@ -306,15 +328,14 @@ export const createLoadoutSelectionScene = (
                 },
             });
             subtitle.anchor.set(0.5, 0);
-            subtitle.position.set(stageSize.width / 2, title.y + title.height + 6);
+            subtitle.position.set(stageSize.width / 2, title.y + title.height + 8);
             rootContainer.addChild(subtitle);
 
+            const safeMargin = Math.max(32, stageSize.width * 0.05);
             const previewWidth = stageSize.width - safeMargin * 2;
             const previewHeight = Math.max(stageSize.height * 0.45, 320);
-            const previewTop = subtitle.y + subtitle.height + 28;
-
             const previewContainer = new Container();
-            previewContainer.position.set(safeMargin, previewTop);
+            previewContainer.position.set(safeMargin, subtitle.y + subtitle.height + 28);
             rootContainer.addChild(previewContainer);
 
             const previewPanel = new Graphics();
@@ -324,13 +345,14 @@ export const createLoadoutSelectionScene = (
             previewPanel.eventMode = 'none';
             previewContainer.addChild(previewPanel);
 
-            const ballRadius = Math.min(previewHeight * 0.3, previewWidth * 0.18);
-            const ballHandle = createBallPreview(ballRadius);
-            ballHandle.container.position.set(previewWidth * 0.26, previewHeight * 0.52);
+            const previewBallRadius = Math.min(previewHeight * 0.35, previewWidth * 0.18);
+            const ballHandle = createBallPreview(previewBallRadius);
+            ballHandle.container.position.set(previewPanel.x + previewWidth * 0.26, previewPanel.y + previewHeight * 0.52);
             previewContainer.addChild(ballHandle.container);
 
             const detailColumn = new Container();
-            detailColumn.position.set(previewWidth * 0.46, 28);
+            const detailOffsetX = previewPanel.x + previewWidth * 0.48;
+            detailColumn.position.set(detailOffsetX, previewPanel.y + 32);
             previewContainer.addChild(detailColumn);
 
             const formName = new Text({
@@ -411,12 +433,12 @@ export const createLoadoutSelectionScene = (
                 style: {
                     fill: hexToNumber(GameTheme.hud.textSecondary),
                     fontFamily: GameTheme.font,
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: '800',
                 },
             });
             summaryTitle.anchor.set(0, 0);
-            summaryTitle.position.set(0, linkedLabels.voice.y + linkedLabels.voice.height + 12);
+            summaryTitle.position.set(0, linkedLabels.voice.y + linkedLabels.voice.height + 14);
             detailColumn.addChild(summaryTitle);
 
             const summaryList = new Container();
@@ -424,11 +446,11 @@ export const createLoadoutSelectionScene = (
             detailColumn.addChild(summaryList);
 
             const startButton = new Graphics();
-            const startRadius = Math.min(90, previewHeight * 0.14);
+            const startRadius = Math.min(96, previewHeight * 0.15);
             startButton.circle(0, 0, startRadius)
                 .fill({ color: hexToNumber(GameTheme.accents.combo), alpha: 0.96 })
                 .stroke({ color: hexToNumber(GameTheme.hud.panelLine), width: 4, alignment: 0.5 });
-            startButton.position.set(previewWidth - startRadius - 48, previewHeight - startRadius - 48);
+            startButton.position.set(previewPanel.x + previewWidth - startRadius - 48, previewPanel.y + previewHeight - startRadius - 48);
             startButton.eventMode = 'static';
             startButton.cursor = 'pointer';
             previewContainer.addChild(startButton);
@@ -440,16 +462,14 @@ export const createLoadoutSelectionScene = (
                     fontFamily: GameTheme.font,
                     fontSize: Math.round(startRadius * 0.6),
                     fontWeight: '900',
-                    align: 'center',
                 },
             });
             startLabel.anchor.set(0.5, 0.5);
             startLabel.position.set(startButton.x, startButton.y);
-            startLabel.eventMode = 'none';
             previewContainer.addChild(startLabel);
 
-            const viewportTop = previewTop + previewHeight + 28;
-            const viewportHeight = Math.max(220, stageSize.height - viewportTop - safeMargin);
+            const viewportTop = previewContainer.y + previewHeight + 32;
+            const viewportHeight = Math.max(220, stageSize.height - viewportTop - 32);
             const viewportWidth = stageSize.width - safeMargin * 2;
 
             const gridViewport = new Container();
@@ -462,63 +482,92 @@ export const createLoadoutSelectionScene = (
             gridMask.rect(0, 0, viewportWidth, viewportHeight)
                 .fill({ color: 0xffffff, alpha: 1 });
             gridMask.position.set(gridViewport.x, gridViewport.y);
-            gridMask.eventMode = 'none';
             rootContainer.addChild(gridMask);
             gridViewport.mask = gridMask;
 
             const gridContent = new Container();
             gridViewport.addChild(gridContent);
 
-            const scrollHint = new Text({
-                text: '',
-                style: {
-                    fill: hexToNumber(GameTheme.hud.textSecondary),
-                    fontFamily: GameTheme.monoFont,
-                    fontSize: 16,
-                },
-            });
-            scrollHint.anchor.set(1, 0);
-            scrollHint.position.set(stageSize.width - safeMargin, gridViewport.y - 24);
-            rootContainer.addChild(scrollHint);
+            const columns = stageSize.width >= 1280 ? 3 : stageSize.width >= 960 ? 2 : 1;
+            const cardGap = 20;
+            const cardWidth = (viewportWidth - cardGap * (columns - 1));
+            const normalizedCardWidth = cardWidth / columns;
+            const cardHeight = 220;
 
             const cards: FormCardHandle[] = [];
-
-            const columns = stageSize.width >= 1320 ? 3 : stageSize.width >= 960 ? 2 : 1;
-            const cardGap = 20;
-            const totalGap = cardGap * Math.max(0, columns - 1);
-            const normalizedCardWidth = Math.max(280, (viewportWidth - totalGap) / columns);
-            const cardHeight = 220;
-            const totalWidth = normalizedCardWidth * columns + totalGap;
+            let row = 0;
+            let column = 0;
+            const totalWidth = columns * normalizedCardWidth + (columns - 1) * cardGap;
             const horizontalOffset = Math.max(0, (viewportWidth - totalWidth) / 2);
 
-            let layoutColumn = 0;
-            let layoutRow = 0;
+            const selectPreset = (next: LoadoutFormPreset) => {
+                if (lockedSet.has(next.id)) {
+                    return;
+                }
+                selectedPreset = next;
+                cards.forEach((card) => {
+                    card.setSelected(card.preset.id === selectedPreset?.id);
+                });
+
+                formName.text = next.name;
+                formDescription.text = next.description;
+                linkedLabels.trait.text = formatLinkedLabel('Trait', next.trait);
+                linkedLabels.sigil.text = formatLinkedLabel('Sigil', next.sigil);
+                linkedLabels.voice.text = formatLinkedLabel('Voice', next.voice);
+
+                const summary = summarizePreset(next);
+                summaryList.removeChildren();
+                let offsetY = 0;
+                summary.forEach((line) => {
+                    const bullet = new Text({
+                        text: `• ${line}`,
+                        style: {
+                            fill: hexToNumber(GameTheme.hud.textPrimary),
+                            fontFamily: GameTheme.monoFont,
+                            fontSize: 18,
+                            wordWrap: true,
+                            wordWrapWidth: previewWidth * 0.45,
+                        },
+                    });
+                    bullet.anchor.set(0, 0);
+                    bullet.position.set(0, offsetY);
+                    summaryList.addChild(bullet);
+                    offsetY += bullet.height + 4;
+                });
+
+                ballHandle.updateColors(next.preview.baseColor, next.preview.accentColor);
+                startButton.alpha = 1;
+                startButton.cursor = 'pointer';
+                startLabel.alpha = 1;
+
+                context.renderStageSoon();
+            };
 
             presets.forEach((preset) => {
                 const card = createFormCard(
                     preset,
                     { width: normalizedCardWidth, height: cardHeight },
                     lockedSet.has(preset.id),
-                    (next) => selectPreset(next),
+                    selectPreset,
                 );
 
-                const cardX = horizontalOffset + layoutColumn * (normalizedCardWidth + cardGap);
-                const cardY = layoutRow * (cardHeight + cardGap);
+                const cardX = horizontalOffset + column * (normalizedCardWidth + cardGap);
+                const cardY = row * (cardHeight + cardGap);
                 card.container.position.set(cardX, cardY);
                 gridContent.addChild(card.container);
                 cards.push(card);
 
-                layoutColumn += 1;
-                if (layoutColumn >= columns) {
-                    layoutColumn = 0;
-                    layoutRow += 1;
+                column += 1;
+                if (column >= columns) {
+                    column = 0;
+                    row += 1;
                 }
             });
 
-            const contentHeight = layoutRow * (cardHeight + cardGap) + (layoutColumn > 0 ? cardHeight + cardGap : 0);
+            const contentHeight = row * (cardHeight + cardGap) + (column > 0 ? cardHeight + cardGap : 0);
 
             let scrollOffset = 0;
-            const minOffset = Math.min(0, viewportHeight - contentHeight - 12);
+            const minOffset = Math.min(0, viewportHeight - contentHeight - cardGap);
 
             const setScroll = (next: number) => {
                 const clamped = Math.max(minOffset, Math.min(0, next));
@@ -530,107 +579,70 @@ export const createLoadoutSelectionScene = (
                 context.renderStageSoon();
             };
 
-            if (contentHeight > viewportHeight) {
-                scrollHint.text = 'Scroll or drag to browse forms';
-                const handleWheel = (event: WheelEvent) => {
-                    event.preventDefault?.();
-                    setScroll(scrollOffset - event.deltaY * 0.7);
-                };
-                gridViewport.on('wheel', handleWheel);
-                cleanupCallbacks.push(() => gridViewport.off('wheel', handleWheel));
+            gridContent.y = scrollOffset;
 
-                let dragging = false;
-                let dragStartY = 0;
-                let dragStartOffset = 0;
+            const handleWheel = (event: WheelEvent) => {
+                event.preventDefault?.();
+                setScroll(scrollOffset - event.deltaY * 0.7);
+            };
 
-                const pointerDown = (event: FederatedPointerEvent) => {
-                    dragging = true;
-                    dragStartY = event.global.y;
-                    dragStartOffset = scrollOffset;
-                    gridViewport.cursor = 'grabbing';
-                };
+            gridViewport.on('wheel', handleWheel);
+            cleanupCallbacks.push(() => gridViewport.off('wheel', handleWheel));
 
-                const pointerMove = (event: FederatedPointerEvent) => {
-                    if (!dragging) {
-                        return;
-                    }
-                    const delta = event.global.y - dragStartY;
-                    setScroll(dragStartOffset + delta);
-                };
+            let dragging = false;
+            let dragStartY = 0;
+            let dragStartOffset = 0;
 
-                const endDrag = () => {
-                    if (!dragging) {
-                        return;
-                    }
-                    dragging = false;
-                    gridViewport.cursor = 'grab';
-                };
-
-                gridViewport.on('pointerdown', pointerDown);
-                gridViewport.on('pointermove', pointerMove);
-                gridViewport.on('pointerup', endDrag);
-                gridViewport.on('pointerupoutside', endDrag);
-                gridViewport.on('pointercancel', endDrag);
-
-                cleanupCallbacks.push(() => {
-                    gridViewport.off('pointerdown', pointerDown);
-                    gridViewport.off('pointermove', pointerMove);
-                    gridViewport.off('pointerup', endDrag);
-                    gridViewport.off('pointerupoutside', endDrag);
-                    gridViewport.off('pointercancel', endDrag);
-                });
-            } else {
-                scrollHint.text = '';
-            }
-
-            const updateSummary = (preset: LoadoutFormPreset) => {
-                summaryList.removeChildren();
-                const lines = summarizePreset(preset);
-                if (lines.length === 0) {
-                    const placeholder = new Text({
-                        text: 'Select a form to view combined effects.',
-                        style: {
-                            fill: hexToNumber(GameTheme.hud.textSecondary),
-                            fontFamily: GameTheme.monoFont,
-                            fontSize: 18,
-                            wordWrap: true,
-                            wordWrapWidth: previewWidth * 0.48,
-                        },
-                    });
-                    placeholder.anchor.set(0, 0);
-                    summaryList.addChild(placeholder);
+            const pointerDown = (event: FederatedPointerEvent) => {
+                if (contentHeight <= viewportHeight) {
                     return;
                 }
-
-                let offset = 0;
-                lines.forEach((line) => {
-                    const entry = new Text({
-                        text: `• ${line}`,
-                        style: {
-                            fill: hexToNumber(GameTheme.hud.textPrimary),
-                            fontFamily: GameTheme.monoFont,
-                            fontSize: 18,
-                            wordWrap: true,
-                            wordWrapWidth: previewWidth * 0.48,
-                        },
-                    });
-                    entry.anchor.set(0, 0);
-                    entry.position.set(0, offset);
-                    summaryList.addChild(entry);
-                    offset += entry.height + 4;
-                });
+                dragging = true;
+                dragStartY = event.global.y;
+                dragStartOffset = scrollOffset;
+                gridViewport.cursor = 'grabbing';
             };
 
-            const updateDetail = (preset: LoadoutFormPreset) => {
-                formName.text = preset.name;
-                formDescription.text = preset.description;
-                linkedLabels.trait.text = formatLinkedLabel('Trait', preset.trait);
-                linkedLabels.sigil.text = formatLinkedLabel('Sigil', preset.sigil);
-                linkedLabels.voice.text = formatLinkedLabel('Voice', preset.voice);
-                updateSummary(preset);
-                ballHandle.updateColors(preset.preview.baseColor, preset.preview.accentColor);
-                context.renderStageSoon();
+            const pointerMove = (event: FederatedPointerEvent) => {
+                if (!dragging) {
+                    return;
+                }
+                const delta = event.global.y - dragStartY;
+                setScroll(dragStartOffset + delta);
             };
+
+            const endDrag = () => {
+                if (!dragging) {
+                    return;
+                }
+                dragging = false;
+                gridViewport.cursor = 'grab';
+            };
+
+            gridViewport.on('pointerdown', pointerDown);
+            gridViewport.on('pointermove', pointerMove);
+            gridViewport.on('pointerup', endDrag);
+            gridViewport.on('pointerupoutside', endDrag);
+            gridViewport.on('pointercancel', endDrag);
+            cleanupCallbacks.push(() => {
+                gridViewport.off('pointerdown', pointerDown);
+                gridViewport.off('pointermove', pointerMove);
+                gridViewport.off('pointerup', endDrag);
+                gridViewport.off('pointerupoutside', endDrag);
+                gridViewport.off('pointercancel', endDrag);
+            });
+
+            const scrollHint = new Text({
+                text: contentHeight > viewportHeight ? 'Scroll or drag to view all forms' : '',
+                style: {
+                    fill: hexToNumber(GameTheme.hud.textSecondary),
+                    fontFamily: GameTheme.monoFont,
+                    fontSize: 16,
+                },
+            });
+            scrollHint.anchor.set(1, 0);
+            scrollHint.position.set(stageSize.width - safeMargin, gridViewport.y - 24);
+            rootContainer.addChild(scrollHint);
 
             const applyLockedState = () => {
                 cards.forEach((card) => {
@@ -639,20 +651,11 @@ export const createLoadoutSelectionScene = (
                 });
             };
 
-            const selectPreset = (preset: LoadoutFormPreset) => {
-                if (lockedSet.has(preset.id)) {
-                    return;
-                }
-                selectedPreset = preset;
-                cards.forEach((card) => {
-                    card.setSelected(card.preset.id === preset.id);
-                });
-                updateDetail(preset);
-            };
-
             applyLockedState();
-            if (selectedPreset) {
-                selectPreset(selectedPreset);
+
+            const originalSelected = selectedPreset;
+            if (originalSelected) {
+                selectPreset(originalSelected);
             }
 
             const tickerCallback: TickerCallback<void> = (ticker) => {
@@ -663,46 +666,36 @@ export const createLoadoutSelectionScene = (
             cleanupCallbacks.push(() => {
                 if (activeTicker) {
                     context.app.ticker.remove(activeTicker);
-                    activeTicker = null;
                 }
+                activeTicker = null;
             });
 
             const handleStart = async () => {
-                if (!selectedPreset || lockedSet.has(selectedPreset.id) || resolving) {
+                if (!selectedPreset || resolving || lockedSet.has(selectedPreset.id)) {
                     return;
                 }
-
                 resolving = true;
-                if (!startButton.destroyed) {
-                    startButton.alpha = 0.65;
-                }
-                if (!startLabel.destroyed) {
-                    startLabel.alpha = 0.75;
-                    startLabel.text = 'Starting…';
-                }
-                if (root) {
-                    context.renderStageSoon();
-                }
+                startButton.alpha = 0.6;
+                startLabel.alpha = 0.6;
+                startLabel.text = 'Starting…';
+                context.renderStageSoon();
+
+                const runCommit = () => payload.onCommit(selectedPreset!.selection);
 
                 try {
-                    await callMaybePromise(() => payload.onCommit(selectedPreset!.selection));
-                    if (root) {
-                        context.popScene();
-                    }
-                } catch (error) {
-                    console.error('Failed to start gameplay from loadout selection', error);
-                } finally {
+                    await callMaybePromise(runCommit);
                     resolving = false;
-                    if (!startButton.destroyed) {
-                        startButton.alpha = 1;
-                    }
-                    if (!startLabel.destroyed) {
-                        startLabel.alpha = 1;
-                        startLabel.text = 'Start';
-                    }
-                    if (root) {
-                        context.renderStageSoon();
-                    }
+                    startButton.alpha = 1;
+                    startLabel.alpha = 1;
+                    startLabel.text = 'Start';
+                    context.renderStageSoon();
+                    context.popScene();
+                } catch {
+                    resolving = false;
+                    startButton.alpha = 1;
+                    startLabel.alpha = 1;
+                    startLabel.text = 'Start';
+                    context.renderStageSoon();
                 }
             };
 
@@ -720,15 +713,12 @@ export const createLoadoutSelectionScene = (
             root = rootContainer;
             context.addToLayer('hud', rootContainer);
             context.renderStageSoon();
-
-            emitSceneEvent('enter');
         },
         update() {
             /* no-op */
         },
         destroy() {
             emitSceneEvent('exit');
-
             cleanupCallbacks.forEach((dispose) => {
                 try {
                     dispose();
@@ -737,12 +727,10 @@ export const createLoadoutSelectionScene = (
                 }
             });
             cleanupCallbacks = [];
-
             if (activeTicker) {
                 context.app.ticker.remove(activeTicker);
                 activeTicker = null;
             }
-
             if (root) {
                 root.removeAllListeners();
                 root.interactiveChildren = false;
@@ -750,7 +738,6 @@ export const createLoadoutSelectionScene = (
                 root.destroy({ children: true });
                 root = null;
             }
-
             resolving = false;
         },
         suspend() {

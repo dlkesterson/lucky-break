@@ -514,8 +514,7 @@ export const createBiasPhaseScene = (
             const cardsHeight = rowHeights.reduce((total, rowHeight, index) => total + rowHeight + (index > 0 ? rowGap : 0), 0);
             const cardRowTop = scoreboardBottom + gapAfterScoreboard;
             const availableHeight = Math.max(160, height - cardRowTop - footerReserve - safeBottom);
-            const minScale = height < 720 ? 0.45 : 0.6;
-            const cardScale = cardsHeight > availableHeight ? Math.max(minScale, availableHeight / cardsHeight) : 1;
+            const cardScale = cardsHeight > 0 ? Math.min(1, availableHeight / cardsHeight) : 1;
             const scaledRowWidth = maxRowWidth * cardScale;
             const innerRowWidth = Math.max(1, layoutWidth - horizontalPadding * 2);
             const cardAreaLeft = safeMarginX + horizontalPadding + Math.max(0, (innerRowWidth - scaledRowWidth) / 2);

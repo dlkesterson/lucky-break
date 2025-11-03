@@ -445,7 +445,6 @@ export const createLoadoutSelectionScene = (
             });
             startLabel.anchor.set(0.5, 0.5);
             startLabel.position.set(startButton.x, startButton.y);
-            startLabel.eventMode = 'none';
             previewContainer.addChild(startLabel);
 
             const viewportTop = previewTop + previewHeight + 28;
@@ -673,36 +672,22 @@ export const createLoadoutSelectionScene = (
                 }
 
                 resolving = true;
-                if (!startButton.destroyed) {
-                    startButton.alpha = 0.65;
-                }
-                if (!startLabel.destroyed) {
-                    startLabel.alpha = 0.75;
-                    startLabel.text = 'Starting…';
-                }
-                if (root) {
-                    context.renderStageSoon();
-                }
+                startButton.alpha = 0.65;
+                startLabel.alpha = 0.75;
+                startLabel.text = 'Starting…';
+                context.renderStageSoon();
 
                 try {
                     await callMaybePromise(() => payload.onCommit(selectedPreset!.selection));
-                    if (root) {
-                        context.popScene();
-                    }
+                    context.popScene();
                 } catch (error) {
-                    console.error('Failed to start gameplay from loadout selection', error);
+                    void error;
                 } finally {
                     resolving = false;
-                    if (!startButton.destroyed) {
-                        startButton.alpha = 1;
-                    }
-                    if (!startLabel.destroyed) {
-                        startLabel.alpha = 1;
-                        startLabel.text = 'Start';
-                    }
-                    if (root) {
-                        context.renderStageSoon();
-                    }
+                    startButton.alpha = 1;
+                    startLabel.alpha = 1;
+                    startLabel.text = 'Start';
+                    context.renderStageSoon();
                 }
             };
 

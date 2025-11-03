@@ -80,6 +80,7 @@ const EXPECTED: SimulationResult = {
             controlScheme: 'keyboard',
             controlSensitivity: 0.5,
         },
+        loadout: null,
         elapsedTimeMs: 120_008,
         hud: {
             score: 10,

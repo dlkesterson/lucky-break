@@ -5,6 +5,7 @@ import type { RuntimeInput } from 'app/runtime/input';
 import type { Logger } from 'util/log';
 import type { GameLoop } from 'app/loop';
 import type { Container } from 'pixi.js';
+import { defaultLoadoutSelection, type LoadoutSelection } from 'config/loadouts';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -135,6 +136,7 @@ const bootstrapDeps = () => {
 
     const runtimeInput = createRuntimeInputStub();
     const renderStageSoon = vi.fn();
+    const getActiveLoadoutSelection = vi.fn<[], LoadoutSelection>(() => ({ ...defaultLoadoutSelection }));
     const provideSceneServices = vi.fn();
     const beginNewSession = vi.fn<[], Promise<void>>(() => Promise.resolve());
     const runGameplayUpdate = vi.fn<[number], void>(() => undefined);
@@ -160,6 +162,7 @@ const bootstrapDeps = () => {
         getScore,
         getIsPaused,
         setIsPaused,
+        getActiveLoadoutSelection,
         logger: loggerMocks.logger,
     } as SceneRegistrationDeps;
 
@@ -180,8 +183,9 @@ const bootstrapDeps = () => {
         beginNewSession,
         runGameplayUpdate,
         getScore,
-        getIsPaused,
-        setIsPaused,
+    getIsPaused,
+    setIsPaused,
+    getActiveLoadoutSelection,
         logger: loggerMocks.logger,
         loggerMocks,
         gameContainer,

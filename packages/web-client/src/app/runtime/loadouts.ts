@@ -8,6 +8,10 @@ import {
     type LoadoutSelection,
     type LoadoutCategoryId,
     type LoadoutCombinedEffects,
+    type LoadoutFormId,
+    type LoadoutTraitId,
+    type LoadoutSigilId,
+    type LoadoutVoiceId,
 } from 'config/loadouts';
 
 export interface LoadoutSceneOption {
@@ -27,6 +31,22 @@ export interface LoadoutSceneCategory {
 export interface LoadoutEffectsBundle {
     readonly selection: LoadoutSelection;
     readonly combined: LoadoutCombinedEffects;
+}
+
+export interface LoadoutFormPreset {
+    readonly id: LoadoutFormId;
+    readonly name: string;
+    readonly description: string;
+    readonly cardSummary: readonly string[];
+    readonly combinedSummary: readonly string[];
+    readonly selection: LoadoutSelection;
+    readonly trait: LoadoutSceneOption & { readonly id: LoadoutTraitId };
+    readonly sigil: LoadoutSceneOption & { readonly id: LoadoutSigilId };
+    readonly voice: LoadoutSceneOption & { readonly id: LoadoutVoiceId };
+    readonly preview: {
+        readonly baseColor: number;
+        readonly accentColor: number;
+    };
 }
 
 const mapToSceneOption = <Id extends string>(definition: { id: Id; name: string; description: string; effectSummary: readonly string[] }): LoadoutSceneOption => ({
@@ -66,6 +86,102 @@ export const buildLoadoutSceneCategories = (): readonly LoadoutSceneCategory[] =
 const findOption = <Definition extends { id: string }>(collection: readonly Definition[], id: string): Definition | null => {
     return collection.find((item) => item.id === id) ?? null;
 };
+
+const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: LoadoutSigilId; voice: LoadoutVoiceId }> = {
+    'ivory-orb': {
+        trait: 'fortune-favored',
+        sigil: 'luck-rune',
+        voice: 'chime',
+    },
+    'nebular-jelly': {
+        trait: "drifters-calm",
+        sigil: 'serene-eye',
+        voice: 'whisper',
+    },
+    'd6-diceform': {
+        trait: 'entropy-bound',
+        sigil: 'chaos-knot',
+        voice: 'pulse',
+    },
+    'crystal-probability': {
+        trait: 'stable-bias',
+        sigil: 'void-bloom',
+        voice: 'static-choir',
+    },
+    'entropy-core': {
+        trait: 'double-edged',
+        sigil: 'mirror-spiral',
+        voice: 'coinfall',
+    },
+};
+
+const FORM_PREVIEW_COLORS: Record<LoadoutFormId, { baseColor: number; accentColor: number }> = {
+    'ivory-orb': { baseColor: 0xf0d9b5, accentColor: 0xfff2d6 },
+    'nebular-jelly': { baseColor: 0x7a6cff, accentColor: 0xd1b5ff },
+    'd6-diceform': { baseColor: 0xf4f1ff, accentColor: 0xff9f6c },
+    'crystal-probability': { baseColor: 0x5be4ff, accentColor: 0xb8f6ff },
+    'entropy-core': { baseColor: 0xff6b6b, accentColor: 0xffd26f },
+};
+
+const uniqueSummary = (entries: readonly string[]): readonly string[] => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const entry of entries) {
+        if (seen.has(entry)) {
+            continue;
+        }
+        seen.add(entry);
+        ordered.push(entry);
+    }
+    return ordered;
+};
+
+const resolveSceneOption = <Id extends string>(collection: readonly { id: Id; name: string; description: string; effectSummary: readonly string[] }[], id: Id): (LoadoutSceneOption & { readonly id: Id }) => {
+    const option = findOption(collection, id);
+    if (!option) {
+        throw new Error(`Expected loadout option with id "${id}"`);
+    }
+    return {
+        id: option.id,
+        name: option.name,
+        description: option.description,
+        effectSummary: option.effectSummary,
+    };
+};
+
+export const buildLoadoutFormPresets = (): readonly LoadoutFormPreset[] =>
+    loadoutForms.map((form) => {
+        const mapping = FORM_PRESETS[form.id] ?? FORM_PRESETS[defaultLoadoutSelection.form];
+        const trait = resolveSceneOption(loadoutTraits, mapping.trait);
+        const sigil = resolveSceneOption(loadoutSigils, mapping.sigil);
+        const voice = resolveSceneOption(loadoutVoices, mapping.voice);
+        const selection: LoadoutSelection = {
+            form: form.id,
+            trait: trait.id,
+            sigil: sigil.id,
+            voice: voice.id,
+        };
+        const combinedSummary = uniqueSummary([
+            ...form.effectSummary,
+            ...trait.effectSummary,
+            ...sigil.effectSummary,
+            ...voice.effectSummary,
+        ]);
+        const cardSummary = uniqueSummary(form.effectSummary);
+        const preview = FORM_PREVIEW_COLORS[form.id] ?? FORM_PREVIEW_COLORS[defaultLoadoutSelection.form];
+        return {
+            id: form.id,
+            name: form.name,
+            description: form.description,
+            cardSummary,
+            combinedSummary,
+            selection,
+            trait,
+            sigil,
+            voice,
+            preview,
+        } satisfies LoadoutFormPreset;
+    });
 
 export const normalizeLoadoutSelection = (selection: Partial<LoadoutSelection> | null | undefined): LoadoutSelection => ({
     form: selection?.form && findOption(loadoutForms, selection.form) ? selection.form : defaultLoadoutSelection.form,
