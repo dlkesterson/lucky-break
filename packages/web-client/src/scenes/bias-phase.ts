@@ -360,6 +360,10 @@ export const createBiasPhaseScene = (
             root.cursor = 'default';
 
             const { width, height } = context.designSize;
+            const safeMarginX = Math.max(24, Math.round(width * 0.04));
+            const safeTop = Math.max(48, Math.round(height * 0.06));
+            const safeBottom = Math.max(48, Math.round(height * 0.06));
+            const layoutWidth = Math.max(200, width - safeMarginX * 2);
             const overlay = new Graphics();
             overlay.rect(0, 0, width, height)
                 .fill({ color: hexToNumber(GameTheme.background.from), alpha: 0.82 });
@@ -379,7 +383,7 @@ export const createBiasPhaseScene = (
                 },
             });
             title.anchor.set(0.5, 0);
-            title.position.set(width / 2, 64);
+            title.position.set(width / 2, safeTop);
             root.addChild(title);
 
             const subtitleFontSize = width >= 1024 ? 26 : width >= 840 ? 24 : 22;
@@ -393,29 +397,29 @@ export const createBiasPhaseScene = (
                 },
             });
             subtitle.anchor.set(0.5, 0);
-            subtitle.position.set(width / 2, title.y + title.height + 12);
+            const subtitleSpacing = Math.max(12, Math.round(safeTop * 0.15));
+            subtitle.position.set(width / 2, title.y + title.height + subtitleSpacing);
             root.addChild(subtitle);
 
-            const widthMargin = Math.max(0, width - 24);
-            const maxAllowedWidth = Math.min(width, Math.max(180, widthMargin));
-            let scoreboardWidth = Math.min(880, Math.max(360, width * 0.8));
-            if (scoreboardWidth > maxAllowedWidth) {
-                scoreboardWidth = maxAllowedWidth;
-            }
+            const maxAllowedWidth = layoutWidth;
+            let scoreboardWidth = Math.min(880, Math.max(360, layoutWidth * 0.85));
+            scoreboardWidth = Math.min(scoreboardWidth, maxAllowedWidth);
             const minAcceptableWidth = Math.min(320, maxAllowedWidth);
             scoreboardWidth = Math.max(minAcceptableWidth, scoreboardWidth);
             const scoreboard = createScoreboard(payload.session, scoreboardWidth);
             scoreboard.eventMode = 'none';
             scoreboard.interactiveChildren = false;
-            scoreboard.position.set((width - scoreboardWidth) / 2, subtitle.y + subtitle.height + 36);
+            const scoreboardSpacing = Math.max(28, Math.round(safeTop * 0.35));
+            const scoreboardY = subtitle.y + subtitle.height + scoreboardSpacing;
+            scoreboard.position.set((width - scoreboardWidth) / 2, scoreboardY);
             root.addChild(scoreboard);
 
             const cardRow = new Container();
             const baseGap = width >= 1280 ? 36 : width >= 1024 ? 32 : width >= 840 ? 28 : width >= 680 ? 24 : 18;
-            const horizontalPadding = width < 640 ? 16 : baseGap;
+            const horizontalPadding = Math.max(width < 640 ? 16 : baseGap, Math.round(safeMarginX * 0.25));
             const maxColumns = Math.min(payload.options.length, 3);
             const minCardWidth = width >= 1080 ? 320 : width >= 900 ? 300 : width >= 720 ? 280 : 240;
-            const availableWidth = Math.max(1, width - horizontalPadding * 2);
+            const availableWidth = Math.max(1, layoutWidth - horizontalPadding * 2);
             let cardColumns = maxColumns;
             let columnGap = cardColumns > 1 ? baseGap : 0;
             let cardWidth = 0;
@@ -437,7 +441,8 @@ export const createBiasPhaseScene = (
             const rowGap = baseGap + 12;
             const baseCardHeight = width >= 1080 ? 420 : width >= 900 ? 400 : width >= 720 ? 380 : 340;
             const maxRowWidth = cardColumns * cardWidth + (cardColumns - 1) * columnGap;
-            const scoreboardBottom = scoreboard.y + scoreboard.height;
+            const scoreboardBottom = scoreboardY + scoreboard.height;
+            const gapAfterScoreboard = Math.max(36, Math.round(safeTop * 0.4));
             const footerReserve = payload.onSkip ? 200 : 140;
             const cards: OptionCard[] = [];
             const optionById = new Map<string, BiasPhaseSceneOption>();
@@ -507,11 +512,13 @@ export const createBiasPhaseScene = (
             }
 
             const cardsHeight = rowHeights.reduce((total, rowHeight, index) => total + rowHeight + (index > 0 ? rowGap : 0), 0);
-            const availableHeight = Math.max(160, height - (scoreboardBottom + 48) - footerReserve);
-            const minScale = 0.6;
+            const cardRowTop = scoreboardBottom + gapAfterScoreboard;
+            const availableHeight = Math.max(160, height - cardRowTop - footerReserve - safeBottom);
+            const minScale = height < 720 ? 0.45 : 0.6;
             const cardScale = cardsHeight > availableHeight ? Math.max(minScale, availableHeight / cardsHeight) : 1;
             const scaledRowWidth = maxRowWidth * cardScale;
-            const cardAreaLeft = Math.max(0, (width - scaledRowWidth) / 2);
+            const innerRowWidth = Math.max(1, layoutWidth - horizontalPadding * 2);
+            const cardAreaLeft = safeMarginX + horizontalPadding + Math.max(0, (innerRowWidth - scaledRowWidth) / 2);
 
             let currentRowTop = 0;
             for (let row = 0; row < rowCount; row += 1) {
@@ -533,14 +540,15 @@ export const createBiasPhaseScene = (
             }
 
             cardRow.scale.set(cardScale);
-            cardRow.position.set(cardAreaLeft, scoreboardBottom + 48);
+            cardRow.position.set(cardAreaLeft, cardRowTop);
             root.addChild(cardRow);
 
-            const controlsBaseY = cardRow.y + cardsHeight * cardScale + 32;
-            const commitWidth = Math.min(420, Math.max(280, width * 0.45));
+            const spacingAfterCards = Math.max(28, Math.round(safeTop * 0.25));
+            const controlsBaseY = cardRow.y + cardsHeight * cardScale + spacingAfterCards;
+            const commitWidth = Math.min(420, Math.max(280, Math.min(width * 0.45, layoutWidth)));
             const commitHeight = 72;
             commitContainer = new Container();
-            commitContainer.position.set((width - commitWidth) / 2, controlsBaseY);
+            commitContainer.position.set(safeMarginX + (layoutWidth - commitWidth) / 2, controlsBaseY);
             commitContainer.cursor = 'pointer';
             commitContainer.eventMode = 'none';
             commitContainer.alpha = 0.5;
@@ -593,7 +601,7 @@ export const createBiasPhaseScene = (
                 },
             });
             seedText.anchor.set(0.5, 0);
-            seedText.position.set(width / 2, commitContainer.y + commitHeight + 8);
+            seedText.position.set(commitContainer.x + commitWidth / 2, commitContainer.y + commitHeight + 8);
             root.addChild(seedText);
 
             updateCommitLabel();
@@ -610,7 +618,7 @@ export const createBiasPhaseScene = (
                     },
                 });
                 skipText.anchor.set(0.5, 0);
-                skipText.position.set(width / 2, seedText.y + seedText.height + 24);
+                skipText.position.set(commitContainer.x + commitWidth / 2, seedText.y + seedText.height + 24);
                 skipText.eventMode = 'static';
                 skipText.cursor = 'pointer';
                 skipText.on('pointertap', () => {
