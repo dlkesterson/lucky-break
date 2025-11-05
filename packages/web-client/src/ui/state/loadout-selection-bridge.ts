@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import type { LoadoutSelection } from 'config/loadouts';
-import type { LoadoutFormId } from 'config/loadouts';
+import type { LoadoutSelection, LoadoutFormId } from 'config/loadouts';
 import type { LoadoutFormPreset } from 'app/runtime/loadouts';
 
 export interface LoadoutSelectionUiPayload {

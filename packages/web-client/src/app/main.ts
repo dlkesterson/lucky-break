@@ -185,7 +185,6 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 container,
                 playfieldDimensions: initialLayout.dimensions,
                 layoutOrientation: initialLayout.orientation,
-                uiProfile: initialLayout.isMobile ? 'mobile' : 'desktop',
                 random,
                 replayBuffer,
                 onAudioBlocked: (error) => {

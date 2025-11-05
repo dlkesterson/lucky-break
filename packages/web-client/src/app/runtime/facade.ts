@@ -35,7 +35,7 @@ import { mulberry32, type RandomManager } from 'util/random';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import { createGameInitializer } from '../game-initializer';
 import type { MultiBallColors } from '../multi-ball-controller';
-import { createLevelRuntime, type BrickLayoutBounds } from '../level-runtime';
+import { createLevelRuntime } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
 import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
 import {
@@ -225,7 +225,6 @@ export interface GameRuntimeOptions {
     readonly container: HTMLElement;
     readonly playfieldDimensions?: { readonly width: number; readonly height: number };
     readonly layoutOrientation?: 'portrait' | 'landscape';
-    readonly uiProfile?: 'desktop' | 'mobile';
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
     readonly onAudioBlocked?: (error: unknown) => void;
@@ -258,7 +257,6 @@ export const createRuntimeFacade = async ({
     container,
     playfieldDimensions = PLAYFIELD_DEFAULT,
     layoutOrientation,
-    uiProfile,
     random,
     replayBuffer,
     onAudioBlocked,
@@ -275,7 +273,6 @@ export const createRuntimeFacade = async ({
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const PLAYFIELD_SIZE_MAX = Math.max(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
     const sessionOrientation = layoutOrientation ?? (PLAYFIELD_WIDTH >= PLAYFIELD_HEIGHT ? 'landscape' : 'portrait');
-    const hudProfile: 'desktop' | 'mobile' = uiProfile === 'mobile' ? 'mobile' : 'desktop';
     const layoutDecorator = createBrickDecorator(sessionOrientation);
 
     const themeDefaults = createVisualThemeDefaults({
@@ -570,8 +567,6 @@ export const createRuntimeFacade = async ({
     };
     const getIsPaused = () => isPaused;
 
-    let brickLayoutBounds: BrickLayoutBounds | null = null;
-
     const sharedSceneServices: GameSceneServices = {
         bus,
         scheduler,
@@ -722,10 +717,9 @@ export const createRuntimeFacade = async ({
 
     const loadLevel = (levelIndex: number) => {
         gambleRuntime?.prepareLevel();
-        const result = levelRuntime.loadLevel(levelIndex);
+    const result = levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
         roundMachine.setLevelDifficultyMultiplier(result.difficultyMultiplier);
-        brickLayoutBounds = result.layoutBounds;
         session.startRound({ breakableBricks: result.breakableBricks });
         visuals?.brickParticles?.reset();
         visuals?.heatRippleEffect?.clear();
