@@ -6,6 +6,7 @@ import {
 } from 'app/runtime/loadouts';
 import {
     defaultLoadoutSelection,
+    type LoadoutFormId,
     type LoadoutSelection,
     type LoadoutTraitId,
     type LoadoutSigilId,
@@ -70,5 +71,23 @@ describe('runtime loadouts', () => {
 
         expect(crystal.runtime.physics.gravityOffset).not.toBe(entropy.runtime.physics.gravityOffset);
         expect(crystal.session.comboWindowBonusSeconds).toBeGreaterThan(entropy.session.comboWindowBonusSeconds);
+    });
+
+    it('applies a ball palette override for each form', () => {
+        const expectedBaseColors: Record<LoadoutFormId, number> = {
+            'ivory-orb': 0xf0d9b5,
+            'nebular-jelly': 0x7a6cff,
+            'd6-diceform': 0xf4f1ff,
+            'crystal-probability': 0x5be4ff,
+            'entropy-core': 0xff6b6b,
+        };
+
+        (Object.keys(expectedBaseColors) as LoadoutFormId[]).forEach((form) => {
+            const bundle = computeLoadoutEffects({ ...defaultLoadoutSelection, form }).combined;
+            const ballVisuals = bundle.visuals.ball;
+
+            expect(ballVisuals).toBeDefined();
+            expect(ballVisuals?.baseColor).toBe(expectedBaseColors[form]);
+        });
     });
 });

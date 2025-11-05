@@ -8,6 +8,8 @@ const toHexColor = (value: number): string => `#${value.toString(16).padStart(6,
 const summarize = (preset: LoadoutFormPreset | null): readonly string[] =>
   preset?.combinedSummary.slice(0, 8) ?? [];
 
+let stagePointerBlockCount = 0;
+
 export const LoadoutSelectionApp = (): JSX.Element | null => {
   const { theme } = useGameTheme();
   const { visible, suspended, presets, lockedForms, defaultFormId, commitSelection } =
@@ -15,7 +17,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   const lockedSet = useMemo(() => new Set(lockedForms), [lockedForms]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(defaultFormId);
   const [pending, setPending] = useState(false);
-  const gridRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(false);
 
   const selectedPreset = useMemo(
@@ -52,8 +54,14 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   }, [defaultFormId, presets]);
 
   useEffect(() => {
-    const node = gridRef.current;
-    if (!node || typeof window === 'undefined' || typeof ResizeObserver === 'undefined') {
+    const node = surfaceRef.current;
+    if (
+      !visible ||
+      suspended ||
+      !node ||
+      typeof window === 'undefined' ||
+      typeof ResizeObserver === 'undefined'
+    ) {
       setShowScrollHint(false);
       return;
     }
@@ -69,7 +77,35 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
     return () => {
       observer.disconnect();
     };
-  }, [presets]);
+  }, [visible, suspended, presets]);
+
+  useEffect(() => {
+    if (!visible || suspended) {
+      return;
+    }
+
+    const surface = surfaceRef.current;
+    const documentRef =
+      surface?.ownerDocument ?? (typeof document !== 'undefined' ? document : null);
+    if (!documentRef) {
+      return;
+    }
+
+    const stage = documentRef.getElementById('stage-wrap');
+    if (!stage) {
+      return;
+    }
+
+    stagePointerBlockCount += 1;
+    stage.classList.add('ui-stage-blocked');
+
+    return () => {
+      stagePointerBlockCount = Math.max(0, stagePointerBlockCount - 1);
+      if (stagePointerBlockCount === 0) {
+        stage.classList.remove('ui-stage-blocked');
+      }
+    };
+  }, [visible, suspended]);
 
   if (!visible || suspended || presets.length === 0 || !commitSelection) {
     return null;
@@ -94,7 +130,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   return (
     <div className="loadout-overlay" style={overlayStyle}>
       <div className="loadout-backdrop" />
-      <div className="loadout-surface ui-interactive">
+      <div className="loadout-surface ui-interactive" ref={surfaceRef}>
         <header className="loadout-header">
           <h1>Awaken Mayhaps</h1>
           <p>Shape Mayhaps before the first coin toss</p>
@@ -146,8 +182,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
         </section>
 
         {showScrollHint && <div className="loadout-scroll-hint">Scroll to browse forms</div>}
-
-        <section className="loadout-grid" ref={gridRef} aria-label="Available forms">
+        <section className="loadout-grid" aria-label="Available forms">
           {presets.map((preset) => {
             const locked = lockedSet.has(preset.id);
             const selected = preset.id === selectedFormId;

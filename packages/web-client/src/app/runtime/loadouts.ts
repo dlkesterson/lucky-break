@@ -115,13 +115,10 @@ const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: Loadou
     },
 };
 
-const FORM_PREVIEW_COLORS: Record<LoadoutFormId, { baseColor: number; accentColor: number }> = {
-    'ivory-orb': { baseColor: 0xf0d9b5, accentColor: 0xfff2d6 },
-    'nebular-jelly': { baseColor: 0x7a6cff, accentColor: 0xd1b5ff },
-    'd6-diceform': { baseColor: 0xf4f1ff, accentColor: 0xff9f6c },
-    'crystal-probability': { baseColor: 0x5be4ff, accentColor: 0xb8f6ff },
-    'entropy-core': { baseColor: 0xff6b6b, accentColor: 0xffd26f },
-};
+const DEFAULT_PREVIEW_COLORS = {
+    baseColor: 0xf4f4f4,
+    accentColor: 0xffcc66,
+} as const;
 
 const uniqueSummary = (entries: readonly string[]): readonly string[] => {
     const seen = new Set<string>();
@@ -168,7 +165,15 @@ export const buildLoadoutFormPresets = (): readonly LoadoutFormPreset[] =>
             ...voice.effectSummary,
         ]);
         const cardSummary = uniqueSummary(form.effectSummary);
-        const preview = FORM_PREVIEW_COLORS[form.id] ?? FORM_PREVIEW_COLORS[defaultLoadoutSelection.form];
+        const previewVisuals = form.contribution.visuals?.ball;
+        const preview = previewVisuals
+            ? {
+                baseColor: previewVisuals.baseColor ?? DEFAULT_PREVIEW_COLORS.baseColor,
+                accentColor: previewVisuals.innerColor
+                    ?? previewVisuals.rimColor
+                    ?? DEFAULT_PREVIEW_COLORS.accentColor,
+            }
+            : DEFAULT_PREVIEW_COLORS;
         return {
             id: form.id,
             name: form.name,

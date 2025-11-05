@@ -109,7 +109,19 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
         name: 'Polished Ivory Orb',
         description: 'A balanced Mayhaps that mirrors the house standard.',
         effectSummary: ['Baseline control', 'Neutral bounce profile'],
-        contribution: {},
+        contribution: {
+            visuals: {
+                ball: {
+                    baseColor: 0xf0d9b5,
+                    baseAlpha: 0.84,
+                    rimColor: 0xfff2d6,
+                    rimAlpha: 0.44,
+                    innerColor: 0xfff2d6,
+                    innerAlpha: 0.36,
+                    innerScale: 0.54,
+                },
+            },
+        },
     },
     {
         id: 'nebular-jelly',
@@ -156,6 +168,17 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
             rules: {
                 gambleBricksMoreLikely: true,
             },
+            visuals: {
+                ball: {
+                    baseColor: 0xf4f1ff,
+                    baseAlpha: 0.86,
+                    rimColor: 0xffb583,
+                    rimAlpha: 0.48,
+                    innerColor: 0xff9f6c,
+                    innerAlpha: 0.4,
+                    innerScale: 0.46,
+                },
+            },
         },
     },
     {
@@ -171,6 +194,17 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
             session: {
                 coinMultiplier: 1.1,
                 entropyGainMultiplier: 1.08,
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0x5be4ff,
+                    baseAlpha: 0.84,
+                    rimColor: 0xc3f7ff,
+                    rimAlpha: 0.5,
+                    innerColor: 0xb8f6ff,
+                    innerAlpha: 0.42,
+                    innerScale: 0.56,
+                },
             },
         },
     },
@@ -193,6 +227,17 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
             },
             rules: {
                 difficultyMultiplier: 1.08,
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0xff6b6b,
+                    baseAlpha: 0.88,
+                    rimColor: 0xffd26f,
+                    rimAlpha: 0.58,
+                    innerColor: 0xffd26f,
+                    innerAlpha: 0.45,
+                    innerScale: 0.48,
+                },
             },
         },
     },

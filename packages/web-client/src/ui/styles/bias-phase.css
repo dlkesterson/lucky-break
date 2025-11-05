@@ -21,13 +21,17 @@
 }
 
 .bias-phase-surface {
+  --bias-surface-margin: clamp(16px, 5vh, 48px);
   position: relative;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: clamp(16px, 2.4vmin, 28px);
   width: min(1120px, 92vw);
-  margin: clamp(16px, 5vh, 48px) auto;
+  margin: var(--bias-surface-margin) auto;
+  max-height: calc(100vh - var(--bias-surface-margin) * 2);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
   padding: clamp(20px, 3vmin, 36px);
   border-radius: 32px;
   background: linear-gradient(160deg, rgba(26, 18, 48, 0.94), rgba(40, 24, 68, 0.78));
