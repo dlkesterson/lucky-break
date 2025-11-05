@@ -7,6 +7,8 @@ import { createGameRuntime, type GameRuntimeHandle } from './game-runtime';
 import { createPreloader } from './preloader';
 import { createReplayBuffer, type ReplayRecording } from 'app/replay-buffer';
 import '../ui/styles/hud.css';
+import '../ui/styles/bias-phase.css';
+import '../ui/styles/loadout-selection.css';
 import { initializeReactUi } from '../ui/boot/react-root';
 
 export interface LuckyBreakOptions {

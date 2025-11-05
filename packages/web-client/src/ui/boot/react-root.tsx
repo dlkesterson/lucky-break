@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-import { HudApp } from '../HudApp';
+import { UiRoot } from '../UiRoot';
 
 let reactRoot: Root | null = null;
 
@@ -13,7 +13,7 @@ const mountHud = (container: HTMLElement): void => {
   reactRoot = createRoot(container);
   reactRoot.render(
     <StrictMode>
-      <HudApp />
+      <UiRoot />
     </StrictMode>,
   );
 };

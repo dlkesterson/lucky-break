@@ -29,6 +29,7 @@ export default defineConfig({
             { find: "app", replacement: resolveFromPackage("./src/app") },
             { find: "physics", replacement: resolveFromCore("./src/physics") },
             { find: "render", replacement: resolveFromPackage("./src/render") },
+            { find: "ui", replacement: resolveFromPackage("./src/ui") },
             { find: "audio", replacement: resolveFromPackage("./src/audio") },
             { find: "util", replacement: resolveFromCore("./src/util") },
             { find: "cli", replacement: resolveFromCli("./src") },

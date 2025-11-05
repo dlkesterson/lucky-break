@@ -1,0 +1,265 @@
+.bias-phase-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  font-family: 'Overpass', 'Overpass Mono', system-ui, sans-serif;
+  color: var(--bias-text-primary, #fbeedd);
+  z-index: 5;
+}
+
+.bias-phase-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 55%),
+    radial-gradient(circle at 80% 15%, rgba(255, 200, 120, 0.15), transparent 60%),
+    linear-gradient(160deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.62));
+  mix-blend-mode: lighten;
+}
+
+.bias-phase-surface {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 2.4vmin, 28px);
+  width: min(1120px, 92vw);
+  margin: clamp(16px, 5vh, 48px) auto;
+  padding: clamp(20px, 3vmin, 36px);
+  border-radius: 32px;
+  background: linear-gradient(160deg, rgba(26, 18, 48, 0.94), rgba(40, 24, 68, 0.78));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 32px 68px rgba(10, 5, 25, 0.48);
+  backdrop-filter: blur(18px) saturate(1.3);
+}
+
+.bias-phase-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bias-phase-header h1 {
+  margin: 0;
+  font-size: clamp(42px, 6vw, 72px);
+  font-family: 'Luckiest Guy', 'Overpass', system-ui;
+  letter-spacing: 0.06em;
+  color: var(--bias-accent-combo, #ffd45c);
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.bias-phase-header p {
+  margin: 0;
+  font-size: clamp(16px, 2.2vmin, 22px);
+  letter-spacing: 0.04em;
+  color: var(--bias-text-secondary, #ffc45a);
+}
+
+.bias-phase-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: clamp(12px, 1.6vmin, 18px);
+  padding: clamp(16px, 2vmin, 22px);
+  background: linear-gradient(150deg, rgba(24, 16, 40, 0.86), rgba(36, 22, 58, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+}
+
+.bias-phase-score {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bias-phase-score-label {
+  font-size: clamp(11px, 1.1vmin, 13px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 224, 180, 0.68);
+}
+
+.bias-phase-score-value {
+  font-size: clamp(16px, 2.2vmin, 26px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.bias-phase-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: clamp(16px, 2.4vmin, 28px);
+}
+
+.bias-phase-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+  padding: clamp(18px, 2.2vmin, 26px);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(155deg, rgba(32, 22, 58, 0.84), rgba(20, 14, 36, 0.78));
+  color: inherit;
+  text-align: left;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 220ms ease,
+    background 220ms ease;
+  cursor: pointer;
+}
+
+.bias-phase-card:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.bias-phase-card:hover:not(:disabled),
+.bias-phase-card.is-selected {
+  transform: translateY(-4px);
+  border-color: var(--bias-accent-combo, #ffd45c);
+  box-shadow: 0 18px 36px rgba(255, 212, 92, 0.18);
+  background: linear-gradient(155deg, rgba(48, 34, 76, 0.92), rgba(24, 16, 44, 0.82));
+}
+
+.bias-phase-card-risk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: clamp(11px, 1.1vmin, 13px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #0a0314;
+  background: var(--bias-accent-combo, #ffd45c);
+}
+
+.bias-phase-card-title {
+  font-size: clamp(20px, 2.6vmin, 32px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.bias-phase-card-description {
+  display: block;
+  font-size: clamp(14px, 1.6vmin, 18px);
+  color: var(--bias-text-secondary, #ffc45a);
+  line-height: 1.45;
+}
+
+.bias-phase-card-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: clamp(13px, 1.4vmin, 16px);
+  color: var(--bias-text-primary, #fbeedd);
+}
+
+.bias-phase-card-effects span::before {
+  content: '• ';
+  color: rgba(255, 224, 180, 0.9);
+}
+
+.bias-phase-card-callout {
+  margin-top: auto;
+  font-size: clamp(12px, 1.3vmin, 15px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 224, 180, 0.92);
+}
+
+.bias-phase-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(12px, 1.6vmin, 18px);
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.bias-phase-footer-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bias-phase-seed {
+  font-size: clamp(13px, 1.4vmin, 16px);
+  color: rgba(255, 224, 180, 0.82);
+}
+
+.bias-phase-commit {
+  padding: clamp(12px, 1.8vmin, 16px) clamp(24px, 3.6vmin, 42px);
+  border-radius: 999px;
+  border: 2px solid var(--bias-accent-combo, #ffd45c);
+  background: linear-gradient(135deg, rgba(255, 212, 92, 0.92), rgba(255, 160, 67, 0.92));
+  color: #120610;
+  font-size: clamp(16px, 1.9vmin, 20px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 180ms ease,
+    opacity 160ms ease;
+}
+
+.bias-phase-commit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+.bias-phase-commit:not(:disabled):hover,
+.bias-phase-commit:not(:disabled):focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 42px rgba(255, 212, 92, 0.32);
+}
+
+.bias-phase-skip {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--bias-text-secondary, #ffc45a);
+  font-size: clamp(12px, 1.3vmin, 15px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.bias-phase-skip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.bias-phase-skip:not(:disabled):hover,
+.bias-phase-skip:not(:disabled):focus-visible {
+  color: var(--bias-accent-power, #ff7b33);
+  border-color: var(--bias-accent-power, #ff7b33);
+}
+
+@media (max-width: 720px) {
+  .bias-phase-surface {
+    width: min(96vw, 680px);
+    margin: 12px;
+    padding: clamp(16px, 4vw, 24px);
+  }
+
+  .bias-phase-scoreboard {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
