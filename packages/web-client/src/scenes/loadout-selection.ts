@@ -18,6 +18,8 @@ type MaybePromise<T> = T | Promise<T>;
 export const createLoadoutSelectionScene = (
     context: SceneContext<GameSceneServices>,
 ): Scene<LoadoutSelectionPayload, GameSceneServices> => {
+    let destroyed = false;
+
     const emitSceneEvent = (action: UiSceneTransitionAction) => {
         context.bus.publish('UiSceneTransition', {
             scene: 'loadout-selection',
@@ -27,6 +29,7 @@ export const createLoadoutSelectionScene = (
 
     return {
         init(payload) {
+            destroyed = false;
             if (!payload) {
                 throw new Error('LoadoutSelectionScene requires payload');
             }
@@ -44,7 +47,9 @@ export const createLoadoutSelectionScene = (
 
             const commitSelection = async (selection: LoadoutSelection): Promise<void> => {
                 await payload.onCommit(selection);
-                context.popScene();
+                if (!destroyed) {
+                    context.popScene();
+                }
             };
 
             loadoutSelectionUiBridge.enter({
@@ -61,6 +66,7 @@ export const createLoadoutSelectionScene = (
             /* no-op */
         },
         destroy() {
+            destroyed = true;
             emitSceneEvent('exit');
             loadoutSelectionUiBridge.exit();
             context.renderStageSoon();
