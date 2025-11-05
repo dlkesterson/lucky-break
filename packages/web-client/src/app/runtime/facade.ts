@@ -269,6 +269,24 @@ export const createRuntimeFacade = async ({
         throw error;
     });
 
+    const runtimeContainer = (() => {
+        if (container.id === 'stage-wrap') {
+            return container;
+        }
+        const descendant = container.querySelector<HTMLElement>('#stage-wrap');
+        if (descendant) {
+            return descendant;
+        }
+        const doc = container.ownerDocument ?? (typeof document !== 'undefined' ? document : null);
+        if (doc) {
+            const fromDocument = doc.getElementById('stage-wrap');
+            if (fromDocument instanceof HTMLElement) {
+                return fromDocument;
+            }
+        }
+        return container;
+    })();
+
     const PLAYFIELD_WIDTH = playfieldDimensions.width;
     const PLAYFIELD_HEIGHT = playfieldDimensions.height;
     const PLAYFIELD_SIZE_MAX = Math.max(PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT);
@@ -370,7 +388,7 @@ export const createRuntimeFacade = async ({
         renderStageSoon,
         dispose: disposeInitializer,
     } = await createGameInitializer({
-        container,
+        container: runtimeContainer,
         playfieldSize: playfieldDimensions,
         pulseControls: {
             boostCombo: ({ ring, ball }) => {
@@ -392,7 +410,7 @@ export const createRuntimeFacade = async ({
         hasPerformanceNow,
     });
     const runtimePhysics = createRuntimePhysics({
-        container,
+        container: runtimeContainer,
         stage,
         playfieldDimensions,
         random,
@@ -548,15 +566,21 @@ export const createRuntimeFacade = async ({
     };
 
     let loop: ReturnType<typeof createGameLoop> | null = null;
+    let hudMetricsInterval: ReturnType<typeof setInterval> | null = null;
+    let startHudMetricsBridge: () => void = () => { };
+    let stopHudMetricsBridge: () => void = () => { };
     const startGameLoop = () => {
         loop?.start();
+        startHudMetricsBridge();
     };
     const stopGameLoop = () => {
         loop?.stop();
+        stopHudMetricsBridge();
     };
     const stopLoopIfRunning = () => {
         if (loop?.isRunning()) {
             loop.stop();
+            stopHudMetricsBridge();
         }
     };
     let collisionRuntime: CollisionRuntime | null = null;
@@ -869,6 +893,30 @@ export const createRuntimeFacade = async ({
 
     const refreshHud = () => {
         runtimeHudCoordinator?.refresh();
+    };
+
+    startHudMetricsBridge = () => {
+        if (hudMetricsInterval !== null) {
+            return;
+        }
+        if (typeof setInterval !== 'function') {
+            return;
+        }
+        hudSetters.setVisibility(true);
+        refreshHud();
+        hudMetricsInterval = setInterval(() => {
+            refreshHud();
+        }, 500);
+    };
+
+    stopHudMetricsBridge = () => {
+        if (hudMetricsInterval === null) {
+            return;
+        }
+        if (typeof clearInterval === 'function') {
+            clearInterval(hudMetricsInterval);
+        }
+        hudMetricsInterval = null;
     };
 
     const applyLoadoutBundle = (bundle: LoadoutEffectsBundle): void => {
@@ -1753,6 +1801,8 @@ export const createRuntimeFacade = async ({
             setPaused(paused);
         },
         getActiveLoadoutSelection,
+        onLoopStarted: startHudMetricsBridge,
+        onLoopStopped: stopHudMetricsBridge,
         logger: runtimeLogger,
     });
 
@@ -1869,6 +1919,9 @@ export const createRuntimeFacade = async ({
             },
             () => {
                 runtimePerformance.dispose();
+            },
+            () => {
+                stopHudMetricsBridge();
             },
             () => {
                 hudSetters.setEntropyActionHandler(undefined);

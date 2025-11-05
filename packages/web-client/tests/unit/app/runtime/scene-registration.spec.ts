@@ -145,6 +145,8 @@ const bootstrapDeps = () => {
     const setIsPaused = vi.fn((value: boolean) => {
         paused = value;
     });
+    const onLoopStarted = vi.fn();
+    const onLoopStopped = vi.fn();
     const loggerMocks = createLoggerStub();
     const gameContainer = createContainer();
     const hudContainer = createContainer();
@@ -163,6 +165,8 @@ const bootstrapDeps = () => {
         getIsPaused,
         setIsPaused,
         getActiveLoadoutSelection,
+        onLoopStarted,
+        onLoopStopped,
         logger: loggerMocks.logger,
     } as SceneRegistrationDeps;
 
@@ -191,6 +195,8 @@ const bootstrapDeps = () => {
         gameContainer,
         hudContainer,
         getPausedState: () => paused,
+        onLoopStarted,
+        onLoopStopped,
     } as const;
 };
 
@@ -208,6 +214,8 @@ describe('registerRuntimeScenes', () => {
         context.setIsPaused.mockClear();
         context.startMock.mockClear();
         context.stopMock.mockClear();
+        context.onLoopStarted.mockClear();
+        context.onLoopStopped.mockClear();
 
         context.stage.setStack(['main-menu', 'gameplay']);
         context.gameContainer.visible = true;
@@ -217,6 +225,7 @@ describe('registerRuntimeScenes', () => {
 
         expect(context.setIsPaused).toHaveBeenCalledWith(true);
         expect(context.stopMock).toHaveBeenCalledTimes(1);
+        expect(context.onLoopStopped).toHaveBeenCalledTimes(1);
         expect(context.stage.pushSpy).toHaveBeenCalledWith(
             'pause',
             expect.objectContaining({
@@ -244,6 +253,7 @@ describe('registerRuntimeScenes', () => {
         expect(context.stage.popSpy).toHaveBeenCalledTimes(1);
         expect(context.setIsPaused).toHaveBeenLastCalledWith(false);
         expect(context.startMock).toHaveBeenCalledTimes(1);
+        expect(context.onLoopStarted).toHaveBeenCalledTimes(1);
         expect(context.renderStageSoon).toHaveBeenCalledTimes(2);
 
         context.stage.setStack(['main-menu', 'gameplay', 'bonus-overlay', 'pause']);
@@ -252,6 +262,7 @@ describe('registerRuntimeScenes', () => {
         await flushPromises();
 
         expect(context.stopMock).toHaveBeenCalledTimes(2);
+        expect(context.onLoopStopped).toHaveBeenCalledTimes(2);
         expect(context.gameContainer.visible).toBe(false);
         expect(context.hudContainer.visible).toBe(false);
         expect(context.renderStageSoon).toHaveBeenCalledTimes(3);
@@ -271,6 +282,8 @@ describe('registerRuntimeScenes', () => {
         context.startMock.mockClear();
         context.stopMock.mockClear();
         context.loggerMocks.errorMock.mockClear();
+        context.onLoopStarted.mockClear();
+        context.onLoopStopped.mockClear();
 
         context.stage.setStack(['main-menu', 'gameplay']);
         result.pauseGame();
@@ -281,6 +294,8 @@ describe('registerRuntimeScenes', () => {
         expect(context.setIsPaused).toHaveBeenLastCalledWith(false);
         expect(context.stopMock).toHaveBeenCalledTimes(1);
         expect(context.startMock).toHaveBeenCalledTimes(1);
+        expect(context.onLoopStopped).toHaveBeenCalledTimes(1);
+        expect(context.onLoopStarted).toHaveBeenCalledTimes(1);
         expect(context.loggerMocks.errorMock).toHaveBeenCalledWith(
             'Failed to push pause overlay',
             { error: pushError },
@@ -302,12 +317,15 @@ describe('registerRuntimeScenes', () => {
         context.stage.popSpy.mockClear();
         context.stopMock.mockClear();
         context.setIsPaused.mockClear();
+        context.onLoopStarted.mockClear();
+        context.onLoopStopped.mockClear();
 
         await result.quitToMenu();
 
         expect(context.stage.popSpy).toHaveBeenCalledTimes(2);
         expect(context.setIsPaused).toHaveBeenCalledWith(false);
         expect(context.stopMock).toHaveBeenCalledTimes(1);
+        expect(context.onLoopStopped).toHaveBeenCalledTimes(1);
         expect(context.loggerMocks.errorMock).toHaveBeenCalledWith(
             'Failed to transition to main menu',
             { error: transitionError },

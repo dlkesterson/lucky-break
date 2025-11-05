@@ -124,7 +124,7 @@ export class GameInputManager implements InputManager {
             return;
         }
 
-        const mouseTarget = this.canvas ?? this.container;
+        const mouseTarget = this.container;
         this.mouseEventTarget = mouseTarget;
 
         if (mouseTarget) {

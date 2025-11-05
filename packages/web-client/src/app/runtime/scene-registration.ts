@@ -29,6 +29,8 @@ export interface SceneRegistrationDeps {
     readonly getIsPaused: () => boolean;
     readonly setIsPaused: (value: boolean) => void;
     readonly getActiveLoadoutSelection: () => LoadoutSelection;
+    readonly onLoopStarted: () => void;
+    readonly onLoopStopped: () => void;
     readonly logger: Logger;
 }
 
@@ -63,6 +65,8 @@ export const registerRuntimeScenes = async ({
     setIsPaused,
     logger,
     getActiveLoadoutSelection,
+    onLoopStarted,
+    onLoopStopped,
 }: SceneRegistrationDeps): Promise<SceneRegistrationResult> => {
     const quitToMenu = async (): Promise<void> => {
         const loop = getLoop();
@@ -80,6 +84,7 @@ export const registerRuntimeScenes = async ({
 
         setIsPaused(false);
         loop.stop();
+        onLoopStopped();
         gameContainer.visible = false;
         hudContainer.visible = false;
 
@@ -95,7 +100,7 @@ export const registerRuntimeScenes = async ({
     const presentLoadoutSelection = (): void => {
         const payload: LoadoutSelectionPayload = {
             initialSelection: getActiveLoadoutSelection(),
-            onCommit: async (selection) => {
+            onCommit: async (selection: LoadoutSelection) => {
                 try {
                     await beginNewSession({ loadout: selection });
                 } catch (error) {
@@ -128,6 +133,7 @@ export const registerRuntimeScenes = async ({
         hudContainer.visible = true;
         setIsPaused(false);
         loop.start();
+        onLoopStarted();
         renderStageSoon();
     };
 
@@ -139,6 +145,7 @@ export const registerRuntimeScenes = async ({
 
         setIsPaused(true);
         loop.stop();
+        onLoopStopped();
 
         hudContainer.visible = false;
 
@@ -161,6 +168,7 @@ export const registerRuntimeScenes = async ({
             .catch((error) => {
                 setIsPaused(false);
                 loop.start();
+                onLoopStarted();
                 hudContainer.visible = true;
                 logger.error('Failed to push pause overlay', { error });
             });

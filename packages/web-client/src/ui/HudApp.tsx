@@ -113,7 +113,7 @@ export const HudApp = (): JSX.Element | null => {
   return (
     <div className="hud-layout">
       {/* TOP BAR */}
-      <section className="hud-top ui-interactive" aria-live="polite">
+      <section className="hud-top" aria-live="polite">
         <header className="hud-header">
           <div className="hud-status-text">{scoreboard.statusText}</div>
           {scoreboard.summaryLine && <div className="hud-summary">{scoreboard.summaryLine}</div>}
@@ -147,7 +147,7 @@ export const HudApp = (): JSX.Element | null => {
       </section>
 
       {/* RIGHT RAIL */}
-      <aside className="hud-right ui-interactive">
+      <aside className="hud-right">
         {momentum && (
           <section className="hud-momentum" aria-label="Momentum metrics">
             <h3>Momentum</h3>
@@ -173,7 +173,7 @@ export const HudApp = (): JSX.Element | null => {
         )}
 
         {entropyActions.length > 0 && (
-          <section className="hud-entropy" aria-label="Entropy actions">
+          <section className="hud-entropy ui-interactive" aria-label="Entropy actions">
             <h3>Entropy Actions</h3>
             <ul>
               {entropyActions.map((entry) => {
@@ -189,7 +189,7 @@ export const HudApp = (): JSX.Element | null => {
                   <li key={entry.action}>
                     <button
                       type="button"
-                      className={`hud-entropy-action${variantClass}`}
+                      className={`hud-entropy-action ui-interactive${variantClass}`}
                       onClick={() => {
                         if (disabled || !attemptEntropyAction) {
                           return;
@@ -234,7 +234,7 @@ export const HudApp = (): JSX.Element | null => {
       </aside>
 
       {/* BOTTOM BAR */}
-      <section className="hud-bottom ui-interactive" aria-live="polite">
+      <section className="hud-bottom" aria-live="polite">
         <div className="hud-bottom-left">
           {reward ? (
             <div className="hud-reward" aria-label="Reward status">
