@@ -106,6 +106,7 @@ import {
     type LoadoutEffectsBundle,
 } from './loadouts';
 import type { LoadoutSelection, LoadoutBallVisualOverrides } from 'config/loadouts';
+import { noop } from 'util/index';
 import { hudSetters } from '../../ui/state/game-bridge';
 
 const runtimeLogger = rootLogger.child('game-runtime');
@@ -567,8 +568,8 @@ export const createRuntimeFacade = async ({
 
     let loop: ReturnType<typeof createGameLoop> | null = null;
     let hudMetricsInterval: ReturnType<typeof setInterval> | null = null;
-    let startHudMetricsBridge: () => void = () => { };
-    let stopHudMetricsBridge: () => void = () => { };
+    let startHudMetricsBridge: () => void = noop;
+    let stopHudMetricsBridge: () => void = noop;
     const startGameLoop = () => {
         loop?.start();
         startHudMetricsBridge();
