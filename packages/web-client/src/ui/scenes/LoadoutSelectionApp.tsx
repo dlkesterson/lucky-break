@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useLoadoutSelectionUi } from '../state/loadout-selection-bridge';
+import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
 import type { LoadoutFormPreset } from 'app/runtime/loadouts';
 
 const toHexColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
 const summarize = (preset: LoadoutFormPreset | null): readonly string[] =>
   preset?.combinedSummary.slice(0, 8) ?? [];
-
-let stagePointerBlockCount = 0;
 
 export const LoadoutSelectionApp = (): JSX.Element | null => {
   const { theme } = useGameTheme();
@@ -19,6 +18,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   const [pending, setPending] = useState(false);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(false);
+  const resolveDocument = useCallback(() => surfaceRef.current?.ownerDocument ?? null, []);
 
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.id === selectedFormId) ?? null,
@@ -79,33 +79,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
     };
   }, [visible, suspended, presets]);
 
-  useEffect(() => {
-    if (!visible || suspended) {
-      return;
-    }
-
-    const surface = surfaceRef.current;
-    const documentRef =
-      surface?.ownerDocument ?? (typeof document !== 'undefined' ? document : null);
-    if (!documentRef) {
-      return;
-    }
-
-    const stage = documentRef.getElementById('stage-wrap');
-    if (!stage) {
-      return;
-    }
-
-    stagePointerBlockCount += 1;
-    stage.classList.add('ui-stage-blocked');
-
-    return () => {
-      stagePointerBlockCount = Math.max(0, stagePointerBlockCount - 1);
-      if (stagePointerBlockCount === 0) {
-        stage.classList.remove('ui-stage-blocked');
-      }
-    };
-  }, [visible, suspended]);
+  useStagePointerBlocker(visible && !suspended, resolveDocument);
 
   if (!visible || suspended || presets.length === 0 || !commitSelection) {
     return null;

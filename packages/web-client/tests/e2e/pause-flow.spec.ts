@@ -45,11 +45,28 @@ test('player can pause, resume, and quit to the main menu', async ({ page }) => 
     await pauseGameplay(page);
     await Promise.all([pauseEnterPromise, suspendPromise]);
 
+    const pauseOverlay = page.locator('.pause-overlay');
+    const pauseState = await page.evaluate(async () => {
+        // @ts-expect-error dynamic import uses Vite alias in browser context
+        const module = await import('ui/state/pause-bridge.ts');
+        return module.usePauseUi.getState();
+    });
+    expect(pauseState.visible).toBe(true);
+    expect(pauseState.suspended).toBe(false);
+    expect(pauseState.snapshot).not.toBeNull();
+    const stageBlocked = await page.evaluate(() =>
+        document.getElementById('stage-wrap')?.classList.contains('ui-stage-blocked') ?? false,
+    );
+    expect(stageBlocked).toBe(true);
+    await expect(pauseOverlay).toHaveCount(1, { timeout: e2eTimeouts.sceneVisibility });
+    await expect(pauseOverlay.locator('.pause-surface')).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
+
     await drainEvents(page);
     const pauseExitPromise = waitForSceneTransition(page, 'pause', 'exit', { includeExisting: false });
     const resumePromise = waitForSceneTransition(page, 'gameplay', 'resume', { includeExisting: false });
     await resumeGameplay(page);
     await Promise.all([pauseExitPromise, resumePromise]);
+    await expect(pauseOverlay).toHaveCount(0, { timeout: e2eTimeouts.sceneVisibility });
 
     await drainEvents(page);
     pauseEnterPromise = waitForSceneTransition(page, 'pause', 'enter', { includeExisting: false });

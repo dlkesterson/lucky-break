@@ -82,6 +82,8 @@ import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
 import { createGameOverScene } from 'scenes/game-over';
 import { Container, Text } from 'pixi.js';
+import { usePauseUi } from 'ui/state/pause-bridge';
+import { useGameOverUi } from 'ui/state/game-over-bridge';
 import * as ThemeModule from 'render/theme';
 import type { Application } from 'pixi.js';
 
@@ -331,6 +333,8 @@ describe('scene interaction lifecycles', () => {
             resumeLabel: 'Resume',
         });
 
+        usePauseUi.setState({ visible: false, suspended: false, snapshot: null }, true);
+
         void scene.init({
             score: 42,
             legendTitle: 'Legend',
@@ -340,22 +344,25 @@ describe('scene interaction lifecycles', () => {
         });
 
         const container = getLastAdded();
-        expect(container).not.toBeNull();
-        expect(container?.eventMode).toBe('static');
+        expect(container).toBeNull();
+
+        const initialState = usePauseUi.getState();
+        expect(initialState.visible).toBe(true);
+        expect(initialState.suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'pause',
             action: 'enter',
         });
 
         void scene.suspend?.();
-        expect(container?.eventMode).toBe('none');
+        expect(usePauseUi.getState().suspended).toBe(true);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'pause',
             action: 'suspend',
         });
 
         void scene.resume?.();
-        expect(container?.eventMode).toBe('static');
+        expect(usePauseUi.getState().suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'pause',
             action: 'resume',
@@ -438,25 +445,30 @@ describe('scene interaction lifecycles', () => {
             onRestart: vi.fn(),
         });
 
+        useGameOverUi.setState({ visible: false, suspended: false, snapshot: null }, true);
+
         void scene.init({ score: 500 });
 
         const container = getLastAdded();
-        expect(container).not.toBeNull();
-        expect(container?.eventMode).toBe('static');
+        expect(container).toBeNull();
+
+        const initialState = useGameOverUi.getState();
+        expect(initialState.visible).toBe(true);
+        expect(initialState.suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'game-over',
             action: 'enter',
         });
 
         void scene.suspend?.();
-        expect(container?.eventMode).toBe('none');
+        expect(useGameOverUi.getState().suspended).toBe(true);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'game-over',
             action: 'suspend',
         });
 
         void scene.resume?.();
-        expect(container?.eventMode).toBe('static');
+        expect(useGameOverUi.getState().suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'game-over',
             action: 'resume',
@@ -469,13 +481,14 @@ describe('scene interaction lifecycles', () => {
             onRestart: vi.fn(),
         });
 
+        useGameOverUi.setState({ visible: false, suspended: false, snapshot: null }, true);
+
         void scene.init({ score: 1200, dustAwarded: 7 });
 
         const container = getLastAdded();
-        expect(container).not.toBeNull();
-        const dustText = container?.children.find(
-            (child): child is Text => child instanceof Text && child.text.includes('Certainty Dust Banked'),
-        );
-        expect(dustText?.text).toContain('7');
+        expect(container).toBeNull();
+
+        const snapshot = useGameOverUi.getState().snapshot;
+        expect(snapshot?.dustAwarded).toBe(7);
     });
 });

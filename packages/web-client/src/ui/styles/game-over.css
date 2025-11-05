@@ -1,0 +1,184 @@
+.game-over-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Overpass', 'Overpass Mono', system-ui, sans-serif;
+  color: var(--game-over-text-primary, #f6f1ff);
+  z-index: 7;
+}
+
+.game-over-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 146, 132, 0.24), transparent 58%),
+    radial-gradient(circle at 80% 70%, rgba(118, 176, 255, 0.18), transparent 52%),
+    linear-gradient(158deg, rgba(10, 6, 18, 0.92), rgba(18, 10, 28, 0.78));
+  filter: saturate(1.1);
+}
+
+.game-over-surface {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 3vmin, 34px);
+  width: min(720px, 92vw);
+  padding: clamp(26px, 4vmin, 44px);
+  border-radius: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(160deg, rgba(26, 16, 44, 0.96), rgba(20, 12, 32, 0.86)),
+    linear-gradient(320deg, rgba(255, 108, 132, 0.18), rgba(120, 178, 255, 0.14));
+  box-shadow: 0 44px 120px rgba(4, 3, 16, 0.65);
+}
+
+.game-over-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.game-over-header h1 {
+  margin: 0;
+  font-size: clamp(46px, 6.4vw, 84px);
+  font-family: 'Luckiest Guy', 'Overpass', system-ui;
+  letter-spacing: 0.1em;
+  color: var(--game-over-accent, #ff6c84);
+  text-shadow: 0 16px 36px rgba(0, 0, 0, 0.65);
+  text-transform: uppercase;
+}
+
+.game-over-header p {
+  margin: 0;
+  font-size: clamp(14px, 1.8vmin, 18px);
+  color: var(--game-over-text-secondary, #d8c6ff);
+  letter-spacing: 0.05em;
+}
+
+.game-over-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  text-align: center;
+}
+
+.game-over-score,
+.game-over-dust {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: clamp(18px, 2.6vmin, 24px);
+  border-radius: 24px;
+  background: linear-gradient(150deg, rgba(34, 22, 52, 0.82), rgba(18, 10, 32, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.game-over-score-label,
+.game-over-dust-label {
+  font-size: clamp(12px, 1.4vmin, 14px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 225, 245, 0.7);
+}
+
+.game-over-score-value {
+  font-size: clamp(36px, 5.4vmin, 60px);
+  font-weight: 800;
+}
+
+.game-over-dust-value {
+  font-size: clamp(26px, 3.8vmin, 40px);
+  font-weight: 700;
+  color: var(--game-over-highlight, #ffd45c);
+}
+
+.game-over-achievements {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: linear-gradient(150deg, rgba(32, 20, 52, 0.78), rgba(18, 12, 36, 0.68));
+  border-radius: 24px;
+  padding: clamp(22px, 3vmin, 30px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.game-over-achievements h2 {
+  margin: 0;
+  font-size: clamp(20px, 2.6vmin, 26px);
+  letter-spacing: 0.06em;
+  color: var(--game-over-highlight, #ffd45c);
+  text-transform: uppercase;
+}
+
+.game-over-achievements ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.game-over-achievements li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: clamp(13px, 1.7vmin, 16px);
+}
+
+.game-over-achievement-title {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.game-over-achievement-description {
+  color: var(--game-over-text-secondary, #d8c6ff);
+}
+
+.game-over-achievements-empty {
+  margin: 0;
+  font-size: clamp(13px, 1.6vmin, 16px);
+  color: rgba(255, 225, 245, 0.75);
+}
+
+.game-over-restart {
+  align-self: center;
+  min-width: clamp(200px, 28vmin, 260px);
+  padding: 18px 28px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 202, 140, 0.6);
+  background: linear-gradient(140deg, rgba(255, 198, 108, 0.95), rgba(255, 146, 132, 0.95));
+  color: #1a060a;
+  font-size: clamp(18px, 2.4vmin, 24px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 200ms ease,
+    opacity 160ms ease;
+}
+
+.game-over-restart:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
+}
+
+.game-over-restart:not(:disabled):hover,
+.game-over-restart:not(:disabled):focus-visible {
+  transform: translateY(-4px);
+  box-shadow: 0 30px 60px rgba(255, 172, 140, 0.45);
+}
+
+@media (max-width: 680px) {
+  .game-over-surface {
+    width: min(96vw, 520px);
+  }
+}

@@ -1,0 +1,144 @@
+.fate-ledger-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Overpass', 'Overpass Mono', system-ui, sans-serif;
+  color: var(--ledger-text-primary, #f5f0ff);
+  z-index: 7;
+}
+
+.fate-ledger-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(160deg, rgba(18, 12, 30, 0.82), rgba(12, 8, 24, 0.74)),
+    radial-gradient(circle at 24% 24%, rgba(114, 178, 255, 0.18), transparent 54%),
+    radial-gradient(circle at 78% 72%, rgba(255, 166, 146, 0.16), transparent 56%);
+}
+
+.fate-ledger-surface {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(18px, 2.8vmin, 28px);
+  width: min(820px, 94vw);
+  max-height: calc(100vh - clamp(40px, 8vmin, 80px));
+  padding: clamp(26px, 4vmin, 44px);
+  border-radius: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(26, 18, 46, 0.94), rgba(18, 10, 32, 0.84));
+  box-shadow: 0 40px 120px rgba(4, 3, 16, 0.62);
+  overflow: hidden auto;
+}
+
+.fate-ledger-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fate-ledger-header h1 {
+  margin: 0;
+  font-size: clamp(40px, 6vw, 70px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: 'Luckiest Guy', 'Overpass', system-ui;
+  color: var(--ledger-highlight, #ffd45c);
+  text-shadow: 0 14px 32px rgba(0, 0, 0, 0.6);
+}
+
+.fate-ledger-header p {
+  margin: 0;
+  font-size: clamp(14px, 1.8vmin, 18px);
+  color: var(--ledger-text-secondary, #d0c0ff);
+  letter-spacing: 0.04em;
+}
+
+.fate-ledger-summary ul,
+.fate-ledger-entries ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fate-ledger-summary {
+  background: linear-gradient(150deg, rgba(32, 24, 54, 0.72), rgba(18, 10, 32, 0.62));
+  border-radius: 24px;
+  padding: clamp(20px, 3vmin, 28px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: clamp(13px, 1.7vmin, 16px);
+}
+
+.fate-ledger-summary li::before {
+  content: '✦ ';
+  color: var(--ledger-highlight, #ffd45c);
+}
+
+.fate-ledger-entries {
+  background: linear-gradient(150deg, rgba(28, 18, 44, 0.74), rgba(16, 10, 30, 0.64));
+  border-radius: 24px;
+  padding: clamp(20px, 3vmin, 30px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'Overpass Mono', 'Overpass', monospace;
+  font-size: clamp(12px, 1.5vmin, 14px);
+  line-height: 1.6;
+}
+
+.fate-ledger-entries p {
+  margin: 0;
+  color: var(--ledger-text-secondary, #d0c0ff);
+}
+
+.fate-ledger-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-size: clamp(12px, 1.4vmin, 14px);
+  color: rgba(255, 240, 255, 0.7);
+  flex-wrap: wrap;
+}
+
+.fate-ledger-close {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
+  color: var(--ledger-text-primary, #f5f0ff);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: clamp(12px, 1.4vmin, 14px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    transform 140ms ease;
+}
+
+.fate-ledger-close:hover,
+.fate-ledger-close:focus-visible {
+  border-color: var(--ledger-highlight, #ffd45c);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 720px) {
+  .fate-ledger-surface {
+    width: min(96vw, 560px);
+  }
+
+  .fate-ledger-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fate-ledger-close {
+    align-self: flex-end;
+  }
+}
