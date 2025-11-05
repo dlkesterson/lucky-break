@@ -7,7 +7,6 @@ import {
 import {
     defaultLoadoutSelection,
     type LoadoutSelection,
-    type LoadoutFormId,
     type LoadoutTraitId,
     type LoadoutSigilId,
     type LoadoutVoiceId,
@@ -69,7 +68,7 @@ describe('runtime loadouts', () => {
             voice: 'static-choir',
         }).combined;
 
-    expect(crystal.runtime.physics.gravityOffset).not.toBe(entropy.runtime.physics.gravityOffset);
-    expect(crystal.session.comboWindowBonusSeconds).toBeGreaterThan(entropy.session.comboWindowBonusSeconds);
+        expect(crystal.runtime.physics.gravityOffset).not.toBe(entropy.runtime.physics.gravityOffset);
+        expect(crystal.session.comboWindowBonusSeconds).toBeGreaterThan(entropy.session.comboWindowBonusSeconds);
     });
 });

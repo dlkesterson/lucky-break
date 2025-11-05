@@ -717,7 +717,7 @@ export const createRuntimeFacade = async ({
 
     const loadLevel = (levelIndex: number) => {
         gambleRuntime?.prepareLevel();
-    const result = levelRuntime.loadLevel(levelIndex);
+        const result = levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
         roundMachine.setLevelDifficultyMultiplier(result.difficultyMultiplier);
         session.startRound({ breakableBricks: result.breakableBricks });

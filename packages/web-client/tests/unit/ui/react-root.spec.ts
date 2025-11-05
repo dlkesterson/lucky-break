@@ -9,12 +9,12 @@ vi.mock('react-dom/client', () => ({
 }));
 
 describe('initializeReactUi', () => {
-    beforeEach(async () => {
+    beforeEach(() => {
         renderMock.mockClear();
         unmountMock.mockClear();
         createRootMock.mockClear();
         document.body.innerHTML = '';
-        await vi.resetModules();
+        void vi.resetModules();
     });
 
     it('mounts the HUD when the container exists', async () => {

@@ -11,6 +11,13 @@ Lucky Break is a high-tempo brick breaker with deterministic physics, multi-ball
 
 The latest build is published via GitHub Pages: https://dlkesterson.github.io/lucky-break/
 
+## Gameplay Overview
+
+- Lean paddle-and-ball play: aim the paddle, keep volleys alive, and clear wagered bricks before the countdown expires.
+- Stackable power-ups: collect drops to widen the paddle, add multi-ball chaos, or trigger score multipliers that reshape the rally.
+- Gamble bricks and reward wheel: risk stored entropy for bigger payouts, then spend it mid-run on reroll, shield, or bailout actions.
+- Deterministic sessions: seeded layouts, physics, and audio ensure replays and CLI simulations stay frame-perfect across devices.
+
 ## Core Systems
 
 - `Deterministic loop` keeps physics, audio, and replays in lockstep via a fixed timestep, seeded RNG, and saved session snapshots.
@@ -36,6 +43,23 @@ pnpm dev
 
 `pnpm dev` boots the Vite dev server from `@lucky-break/web-client`. Open the printed URL in a desktop or mobile browser—the layout adapts on the fly. Plug in a controller or use touch to feel the input tuning.
 
+## Keyboard Shortcuts
+
+- `Arrow Left` / `KeyA` and `Arrow Right` / `KeyD` – Move the paddle when you prefer keyboard over pointer control.
+- `Space` – Launch the attached ball without clicking or tapping.
+- `KeyP` or `Escape` – Pause or resume the current run.
+- `KeyQ` (while paused) – Quit to the main menu.
+- `Shift` + `KeyC` – Toggle the high-contrast theme for better visibility.
+- `KeyR`, `KeyS`, `KeyB` – Trigger reroll, shield, and bailout entropy actions (only when the HUD marks them as ready).
+- `F2` / `F3` – Show or hide the input and physics debug overlays during development builds.
+
+## Accessibility & Settings
+
+- High-contrast mode: press `Shift` + `C` or toggle from the main menu to swap to the accessibility palette on the fly.
+- Input smoothing & aim assists: adaptive paddle smoothing keeps keyboard and touch control responsive; long-press on touch to lock an aim vector before launch.
+- Multi-input parity: mouse, touch, keyboard, and gamepad share the same launch manager so replays stay deterministic regardless of device.
+- Audio telegraphing: Tone.js scheduler foreshadows key impacts and combo spikes, helping players anticipate hectic volleys.
+
 ### Development Commands
 
 - `pnpm build` – Production bundle for `@lucky-break/web-client` with cache-busting assets.
@@ -59,6 +83,13 @@ scripts/         # Shared CI tooling (e.g., deterministic replay generator)
 The web client keeps its runtime under `packages/web-client/src`, while shared logic lives in `packages/core-domain/src`. Automation and CLI helpers live in `packages/cli-sim/src` and reuse the same modules through workspace aliases.
 
 Tests live in `packages/web-client/tests/{unit,integration,e2e}` with Vitest setup in `tests/setup`. Coverage reports are emitted to `packages/web-client/coverage` and copied into the built site for GitHub Pages at `/coverage/` on every push to `main`.
+
+## Testing Strategy
+
+- Vitest unit and integration suites (`pnpm test`) validate rendering, audio hooks, and deterministic physics adapters under JSDOM.
+- Playwright end-to-end coverage (`pnpm test:e2e`) exercises the browser client with the same Vite aliases used in production builds.
+- CLI simulations (`pnpm simulate:verify`) replay seeded sessions headlessly to guarantee physics determinism and entropy flows stay intact.
+- Coverage thresholds (80% statements/lines, 75% branches/functions) are enforced in CI; failing thresholds gate merges until addressed.
 
 ## Determinism & Replays
 
