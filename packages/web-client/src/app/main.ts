@@ -6,6 +6,8 @@ import { createRandomManager } from 'util/random';
 import { createGameRuntime, type GameRuntimeHandle } from './game-runtime';
 import { createPreloader } from './preloader';
 import { createReplayBuffer, type ReplayRecording } from 'app/replay-buffer';
+import '../ui/styles/hud.css';
+import { initializeReactUi } from '../ui/boot/react-root';
 
 export interface LuckyBreakOptions {
     readonly container?: HTMLElement;
@@ -253,7 +255,10 @@ const resolveSeedFromQuery = (): number | undefined => {
 };
 
 const appContainer = document.getElementById('app');
-if (appContainer) {
+const stageContainer = document.getElementById('stage-wrap');
+const bootstrapContainer = stageContainer ?? appContainer ?? document.body;
+if (bootstrapContainer) {
     const seed = resolveSeedFromQuery();
-    bootstrapLuckyBreak({ container: appContainer, seed });
+    bootstrapLuckyBreak({ container: bootstrapContainer, seed });
+    initializeReactUi();
 }

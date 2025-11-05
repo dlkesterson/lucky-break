@@ -24,6 +24,7 @@ import {
 } from 'render/playfield-visuals';
 import { createVisualFactory } from 'render/visual-factory';
 import { Sprite } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import {
     Body as MatterBody,
     Vector as MatterVector,
@@ -86,7 +87,6 @@ import { createModifierPowerupServices } from './modifier-powerup-services';
 import { initializeRuntimeLifecycle } from './lifecycle-manager';
 import { setupDebugHarnessIntegrations } from './debug-harness-integration';
 import { createRuntimePhysics } from './modules/runtime-physics';
-import { createRuntimeHud } from './modules/runtime-hud';
 import { createRuntimeHudCoordinator, type RuntimeHudCoordinator } from './modules/runtime-hud-coordinator';
 import { createRuntimeAudio } from './modules/runtime-audio';
 import { createRuntimeRewards, type RuntimeRewardsHandle } from './modules/runtime-rewards';
@@ -106,6 +106,7 @@ import {
     type LoadoutEffectsBundle,
 } from './loadouts';
 import type { LoadoutSelection, LoadoutBallVisualOverrides } from 'config/loadouts';
+import { hudSetters } from '../../ui/state/game-bridge';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -114,12 +115,6 @@ const PLAYFIELD_DEFAULT = config.playfield;
 const BRICK_LIGHT_RADIUS = config.bricks.lighting.radius;
 const BRICK_REST_ALPHA = config.bricks.lighting.restAlpha;
 const BASE_COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
-const HUD_SCALE = config.hud.scale;
-const HUD_MARGIN = config.hud.margin;
-const MIN_HUD_SCALE = config.hud.minScale;
-const MOBILE_HUD_MARGIN = Math.max(16, Math.round(HUD_MARGIN * 0.6));
-const MOBILE_HUD_MAX_SCALE = 1;
-const MOBILE_HUD_MIN_SCALE = 0.7;
 const BALL_BASE_SPEED = config.ball.baseSpeed;
 const BALL_MAX_SPEED = config.ball.maxSpeed;
 const BALL_LAUNCH_SPEED = config.ball.launchSpeed;
@@ -877,7 +872,6 @@ export const createRuntimeFacade = async ({
 
     let runtimeHudCoordinator: RuntimeHudCoordinator | null = null;
     let roundCoordinator: RuntimeRoundCoordinatorHandle | null = null;
-    let handleEntropyAction: ((action: EntropyActionType) => void) | null = null;
 
     const refreshHud = () => {
         runtimeHudCoordinator?.refresh();
@@ -926,31 +920,23 @@ export const createRuntimeFacade = async ({
 
     applyLoadoutBundle(activeLoadoutBundle);
 
-    const runtimeHud = createRuntimeHud({
-        stage,
-        theme: GameTheme,
-        hudProfile,
-        playfieldWidth: PLAYFIELD_WIDTH,
-        metrics: {
-            desktop: {
-                margin: HUD_MARGIN,
-                maxScale: HUD_SCALE,
-                minScale: MIN_HUD_SCALE,
-            },
-            mobile: {
-                margin: MOBILE_HUD_MARGIN,
-                maxScale: MOBILE_HUD_MAX_SCALE,
-                minScale: MOBILE_HUD_MIN_SCALE,
-            },
+    const hudContainer = {} as Pick<Container, 'visible'>;
+    let hudVisible = false;
+    Object.defineProperty(hudContainer, 'visible', {
+        get: () => hudVisible,
+        set: (next: boolean) => {
+            if (hudVisible === next) {
+                return;
+            }
+            hudVisible = next;
+            hudSetters.setVisibility(next);
+            if (!next) {
+                hudSetters.reset();
+            }
         },
-        getBrickLayoutBounds: () => brickLayoutBounds,
-        getPaddleSnapshot: () => ({ centerY: paddle.position.y, height: paddle.height }),
-        onEntropyAction: (action) => {
-            handleEntropyAction?.(action);
-        },
+        enumerable: true,
+        configurable: true,
     });
-    const { container: hudContainer, display: hudDisplay } = runtimeHud;
-    const positionHud = () => runtimeHud.updateLayout();
 
     const runtimeTheme = createRuntimeThemeCoordinator({
         defaults: themeDefaults,
@@ -970,7 +956,6 @@ export const createRuntimeFacade = async ({
         paddleGraphics,
         ballGlowFilter,
         multiBallController,
-        hudDisplay,
         stage,
         visualsProvider: () => visuals,
         renderStageSoon,
@@ -996,8 +981,6 @@ export const createRuntimeFacade = async ({
         runtimeTheme.applyTheme(theme);
     });
 
-    positionHud();
-
     const handleMusicMeasure = (_event: MusicMeasureEvent) => {
         void _event;
         runtimeTheme.cycleBackgroundAccent(1);
@@ -1015,7 +998,7 @@ export const createRuntimeFacade = async ({
             refreshHud();
         },
         pulseHudCombo: (intensity: number) => {
-            hudDisplay.pulseCombo(intensity);
+            hudSetters.pulseCombo(intensity);
         },
         flashPaddleLight: (intensity: number) => {
             flashPaddleLight(intensity);
@@ -1051,15 +1034,17 @@ export const createRuntimeFacade = async ({
         worldBridge: rewardsWorldBridge,
     });
 
+    hudSetters.setEntropyActionHandler((action) => {
+        runtimeRewards.attemptEntropyAction(action);
+    });
+
     runtimeHudCoordinator = createRuntimeHudCoordinator({
-        hudDisplay,
         scoring: scoringViewProvider,
         roundMachine,
         runtimeRewards,
         powerups,
         getSessionSnapshot: () => session.snapshot(),
         getGambleStatus: () => gambleManager.snapshot(),
-        onLayout: positionHud,
     });
 
     const runtimeSession = createRuntimeSessionCoordinator({
@@ -1102,9 +1087,6 @@ export const createRuntimeFacade = async ({
     refreshHud();
 
     const { rewardWheel } = runtimeRewards;
-    handleEntropyAction = (action) => {
-        runtimeRewards.attemptEntropyAction(action);
-    };
 
     roundCoordinator = createRuntimeRoundCoordinator({
         logger: runtimeLogger,
@@ -1143,6 +1125,7 @@ export const createRuntimeFacade = async ({
         bus,
         computePrestigeDust: (input) => computePrestigeDust(input, PRESTIGE_CONFIG),
         recordHighScore,
+        hudContainer,
     });
 
     const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
@@ -1268,7 +1251,7 @@ export const createRuntimeFacade = async ({
                 flashPaddleLight(intensity ?? 0.3);
             },
             hudPulseCombo: (intensity: number) => {
-                hudDisplay.pulseCombo(intensity);
+                hudSetters.pulseCombo(intensity);
             },
             applyGambleAppearance,
             clearGhostEffect,
@@ -1894,7 +1877,10 @@ export const createRuntimeFacade = async ({
                 runtimePerformance.dispose();
             },
             () => {
-                runtimeHud.dispose();
+                hudSetters.setEntropyActionHandler(undefined);
+            },
+            () => {
+                hudSetters.reset();
             },
             () => {
                 runtimeInput.dispose();
@@ -1916,7 +1902,7 @@ export const createRuntimeFacade = async ({
     });
     if (idleResumeSummary) {
         refreshHud();
-        hudDisplay.pulseCombo(0.35);
+        hudSetters.pulseCombo(0.35);
         renderStageSoon();
     }
 

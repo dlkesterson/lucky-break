@@ -3,6 +3,7 @@ import type { GameSessionSnapshot } from 'app/state';
 import type { GambleBrickSummary } from 'game/gamble-brick-manager';
 import type { HudScoreboardPrompt, HudScoreboardView } from 'render/hud';
 import { createRuntimeHudCoordinator } from 'app/runtime/modules/runtime-hud-coordinator';
+import { hudSetters } from '../../../../src/ui/state/game-bridge';
 
 const AUTO_PROMPT_ID = 'auto-complete-countdown';
 
@@ -29,6 +30,7 @@ const createPrompt = (overrides?: Partial<HudScoreboardPrompt>): HudScoreboardPr
 
 describe('createRuntimeHudCoordinator', () => {
     beforeEach(() => {
+        vi.restoreAllMocks();
         buildHudScoreboardMock.mockReset();
     });
 
@@ -38,10 +40,9 @@ describe('createRuntimeHudCoordinator', () => {
         let autoState = { enabled: false, active: false, timer: 0 };
         let nextView = createView();
 
-        const hudDisplay = {
-            update: vi.fn(),
-            pulseCombo: vi.fn(),
-        };
+        const updateSpy = vi.spyOn(hudSetters, 'updateFromRuntime').mockImplementation(() => { });
+        const pulseSpy = vi.spyOn(hudSetters, 'pulseCombo').mockImplementation(() => { });
+        const resetSpy = vi.spyOn(hudSetters, 'reset').mockImplementation(() => { });
 
         const scoring = {
             getScoringView: vi.fn(() => ({
@@ -103,19 +104,15 @@ describe('createRuntimeHudCoordinator', () => {
             rewardMultiplier: 1,
         };
 
-        const onLayout = vi.fn();
-
         buildHudScoreboardMock.mockImplementation(() => nextView);
 
         const coordinator = createRuntimeHudCoordinator({
-            hudDisplay: hudDisplay as never,
             scoring: scoring as never,
             roundMachine: roundMachine as never,
             runtimeRewards: runtimeRewards as never,
             powerups: powerups as never,
             getSessionSnapshot: () => sessionSnapshot,
             getGambleStatus: () => gambleStatus,
-            onLayout,
         });
 
         return {
@@ -132,11 +129,12 @@ describe('createRuntimeHudCoordinator', () => {
             setBaseView: (view: HudScoreboardView) => {
                 nextView = view;
             },
-            hudDisplay,
+            updateSpy,
+            pulseSpy,
+            resetSpy,
             runtimeRewards,
             powerups,
             roundMachine,
-            onLayout,
         };
     };
 
@@ -147,18 +145,19 @@ describe('createRuntimeHudCoordinator', () => {
         harness.setAutoState({ enabled: true, active: true, timer: 12 });
         harness.refresh();
 
-        const firstUpdate = harness.hudDisplay.update.mock.calls[0][0];
-        expect(firstUpdate.view.prompts[0]).toMatchObject({
+        expect(harness.resetSpy).toHaveBeenCalledTimes(1);
+
+        const firstUpdate = harness.updateSpy.mock.calls[0][0];
+        expect(firstUpdate.scoreboard.prompts[0]).toMatchObject({
             id: AUTO_PROMPT_ID,
             severity: 'info',
             message: 'Auto clear in 12s',
         });
-        expect(firstUpdate.view.prompts[1]).toMatchObject({ id: 'other-prompt' });
+        expect(firstUpdate.scoreboard.prompts[1]).toMatchObject({ id: 'other-prompt' });
         expect(firstUpdate.activePowerUps).toEqual(['shield']);
         expect(firstUpdate.difficultyMultiplier).toBe(1.5);
         expect(harness.runtimeRewards.getHudEntropyActions).toHaveBeenCalledWith(42);
-        expect(harness.hudDisplay.pulseCombo).not.toHaveBeenCalled();
-        expect(harness.onLayout).toHaveBeenCalledTimes(1);
+        expect(harness.pulseSpy).not.toHaveBeenCalled();
 
         harness.setCombo(5);
         harness.setComboTimer(1.2);
@@ -166,14 +165,13 @@ describe('createRuntimeHudCoordinator', () => {
         harness.setBaseView(createView());
         harness.refresh();
 
-        const secondUpdate = harness.hudDisplay.update.mock.calls[1][0];
-        expect(secondUpdate.view.prompts[0]).toMatchObject({
+        const secondUpdate = harness.updateSpy.mock.calls[1][0];
+        expect(secondUpdate.scoreboard.prompts[0]).toMatchObject({
             id: AUTO_PROMPT_ID,
             severity: 'warning',
             message: 'Auto clear in 2.5s',
         });
-        expect(harness.hudDisplay.pulseCombo).toHaveBeenCalledWith(0.75);
-        expect(harness.onLayout).toHaveBeenCalledTimes(2);
+        expect(harness.pulseSpy).toHaveBeenCalledWith(0.75);
 
         harness.setCombo(1);
         harness.setAutoState({ enabled: false, active: false, timer: 0 });
@@ -183,12 +181,11 @@ describe('createRuntimeHudCoordinator', () => {
         ]));
         harness.refresh();
 
-        const thirdUpdate = harness.hudDisplay.update.mock.calls[2][0];
+        const thirdUpdate = harness.updateSpy.mock.calls[2][0];
         expect(
-            thirdUpdate.view.prompts.find((prompt: HudScoreboardPrompt) => prompt.id === AUTO_PROMPT_ID),
+            thirdUpdate.scoreboard.prompts.find((prompt: HudScoreboardPrompt) => prompt.id === AUTO_PROMPT_ID),
         ).toBeUndefined();
-        expect(thirdUpdate.view.prompts[0]).toMatchObject({ id: 'keep' });
-        expect(harness.hudDisplay.pulseCombo).toHaveBeenCalledTimes(1);
-        expect(harness.onLayout).toHaveBeenCalledTimes(3);
+        expect(thirdUpdate.scoreboard.prompts[0]).toMatchObject({ id: 'keep' });
+        expect(harness.pulseSpy).toHaveBeenCalledTimes(1);
     });
 });

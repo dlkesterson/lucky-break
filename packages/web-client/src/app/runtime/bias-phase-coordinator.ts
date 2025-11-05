@@ -1,3 +1,4 @@
+import type { Container } from 'pixi.js';
 import type { Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
@@ -28,6 +29,7 @@ export interface BiasPhaseCoordinatorDeps {
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
     readonly buildSessionSummary: (upcomingLevelIndex: number) => BiasPhaseSessionSummary;
     readonly bus: Pick<LuckyBreakEventBus, 'publish'>;
+    readonly hudContainer: Pick<Container, 'visible'>;
 }
 
 export interface BiasPhaseCoordinator {
@@ -50,6 +52,7 @@ export const createBiasPhaseCoordinator = ({
     runtimeState,
     buildSessionSummary,
     bus,
+    hudContainer,
 }: BiasPhaseCoordinatorDeps): BiasPhaseCoordinator => {
     const { gravity, restitution, paddleWidth, speedGovernor } = modifierConfig;
 
@@ -456,6 +459,7 @@ export const createBiasPhaseCoordinator = ({
             },
         } satisfies BiasPhaseAutomation;
 
+        hudContainer.visible = false;
         void stage.push('bias-phase', payload)
             .then(() => {
                 renderStageSoon();

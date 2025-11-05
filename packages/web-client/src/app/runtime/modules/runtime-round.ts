@@ -1,3 +1,4 @@
+import type { Container } from 'pixi.js';
 import type { Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
@@ -31,6 +32,7 @@ export interface RuntimeRoundCoordinatorOptions {
     readonly renderStageSoon: () => void;
     readonly replayBuffer: ReplayBuffer;
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
+    readonly hudContainer: Pick<Container, 'visible'>;
     readonly getSessionSnapshot: () => GameSessionSnapshot;
     readonly achievements: Pick<AchievementManager, 'recordRoundComplete' | 'recordSessionSummary'>;
     readonly refreshAchievementUpgrades: () => void;
@@ -72,6 +74,7 @@ export const createRuntimeRoundCoordinator = ({
     renderStageSoon,
     replayBuffer,
     runtimeState,
+    hudContainer,
     getSessionSnapshot,
     achievements,
     refreshAchievementUpgrades,
@@ -130,6 +133,7 @@ export const createRuntimeRoundCoordinator = ({
         runtimeState,
         buildSessionSummary: buildBiasSessionSummary,
         bus,
+        hudContainer,
     });
 
     const presentBiasPhase = (): void => {
@@ -311,6 +315,7 @@ export const createRuntimeRoundCoordinator = ({
             });
         }
 
+        hudContainer.visible = false;
         void stage.push('game-over', {
             score: scoringState.score,
             achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,

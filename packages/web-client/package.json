@@ -21,13 +21,19 @@
     "@lucky-break/core-domain": "workspace:*",
     "@pixi/filter-glow": "^5.2.1",
     "pixi.js": "^8.14.0",
-    "tone": "^15.1.22"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tone": "^15.1.22",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",
     "@testing-library/dom": "^10.4.1",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.7.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",

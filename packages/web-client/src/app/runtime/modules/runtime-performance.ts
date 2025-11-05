@@ -1,5 +1,6 @@
 import type { LoopOptions } from '../../loop';
 import type { RuntimeVisuals } from '../physics-assembly';
+import { hudSetters } from '../../../ui/state/game-bridge';
 
 interface PerformanceLogger {
     info(message: string, context?: Record<string, unknown>): void;
@@ -35,6 +36,10 @@ export const createRuntimePerformance = ({
     let desiredProfile: 'quality' | 'performance' = userPreference ? 'performance' : 'quality';
     let accumulatedLowFpsMs = 0;
     let accumulatedHighFpsMs = 0;
+    let hudFpsAccumulatorMs = 0;
+    let hudFpsSampleTotal = 0;
+    let hudFpsSampleCount = 0;
+    let lastReportedHudFps = Number.NaN;
 
     const applyProfile = () => {
         desiredProfile = userPreference || dynamicPerformanceMode ? 'performance' : 'quality';
@@ -53,6 +58,24 @@ export const createRuntimePerformance = ({
 
         const clampedDelta = Math.max(0, rawDeltaMs);
         const fps = clampedDelta > 0 ? 1000 / clampedDelta : Number.POSITIVE_INFINITY;
+
+        if (Number.isFinite(fps)) {
+            hudFpsAccumulatorMs += clampedDelta;
+            hudFpsSampleTotal += fps;
+            hudFpsSampleCount += 1;
+
+            if (hudFpsAccumulatorMs >= 500 && hudFpsSampleCount > 0) {
+                const averageFps = hudFpsSampleTotal / hudFpsSampleCount;
+                const roundedFps = Math.max(0, Math.round(averageFps));
+                if (roundedFps !== lastReportedHudFps) {
+                    lastReportedHudFps = roundedFps;
+                    hudSetters.setFps(roundedFps);
+                }
+                hudFpsAccumulatorMs = 0;
+                hudFpsSampleTotal = 0;
+                hudFpsSampleCount = 0;
+            }
+        }
 
         if (fps < LOW_FPS_THRESHOLD) {
             accumulatedLowFpsMs = Math.min(LOW_FPS_TRIGGER_MS, accumulatedLowFpsMs + clampedDelta);
@@ -93,11 +116,17 @@ export const createRuntimePerformance = ({
         dynamicPerformanceMode = false;
         accumulatedLowFpsMs = 0;
         accumulatedHighFpsMs = 0;
+        hudFpsAccumulatorMs = 0;
+        hudFpsSampleTotal = 0;
+        hudFpsSampleCount = 0;
+        lastReportedHudFps = Number.NaN;
+        hudSetters.setFps(undefined);
         applyProfile();
     };
 
     const dispose = () => {
         unsubscribePreference?.();
+        hudSetters.setFps(undefined);
     };
 
     const getProfile = () => desiredProfile;

@@ -1,21 +1,19 @@
 import { buildHudScoreboard, type HudScoreboardPrompt, type HudScoreboardView } from 'render/hud';
-import type { HudDisplay } from 'render/hud-display';
 import type { GambleBrickSummary } from 'game/gamble-brick-manager';
 import type { GameSessionSnapshot } from 'app/state';
 import type { RuntimePowerups } from '../powerups';
 import type { RoundMachine } from '../round-machine';
 import type { RuntimeRewardsHandle } from './runtime-rewards';
 import type { ScoringViewProvider } from '../contracts';
+import { hudSetters } from '../../../ui/state/game-bridge';
 
 export interface RuntimeHudCoordinatorOptions {
-    readonly hudDisplay: HudDisplay;
     readonly scoring: ScoringViewProvider;
     readonly roundMachine: Pick<RoundMachine, 'getAutoCompleteState' | 'getLevelDifficultyMultiplier'>;
     readonly runtimeRewards: Pick<RuntimeRewardsHandle, 'getHudEntropyActions'>;
     readonly powerups: Pick<RuntimePowerups, 'collectHudPowerUps' | 'resolveRewardView'>;
     readonly getSessionSnapshot: () => GameSessionSnapshot;
     readonly getGambleStatus: () => GambleBrickSummary;
-    readonly onLayout: () => void;
 }
 
 export interface RuntimeHudCoordinator {
@@ -63,16 +61,16 @@ const applyAutoCompletePrompt = (
 };
 
 export const createRuntimeHudCoordinator = ({
-    hudDisplay,
     scoring,
     roundMachine,
     runtimeRewards,
     powerups,
     getSessionSnapshot,
     getGambleStatus,
-    onLayout,
 }: RuntimeHudCoordinatorOptions): RuntimeHudCoordinator => {
     let lastComboCount = scoring.getScoringView().combo;
+
+    hudSetters.reset();
 
     const refresh = () => {
         const sessionSnapshot = getSessionSnapshot();
@@ -81,25 +79,33 @@ export const createRuntimeHudCoordinator = ({
         const baseView = buildHudScoreboard(sessionSnapshot, gambleStatus, { entropyActions });
         const viewWithCountdown = applyAutoCompletePrompt(baseView, roundMachine.getAutoCompleteState());
         const scoringView = scoring.getScoringView();
+        const difficultyMultiplier = roundMachine.getLevelDifficultyMultiplier();
+        const activePowerUps = powerups.collectHudPowerUps();
+        const rewardView = powerups.resolveRewardView();
 
-        hudDisplay.update({
-            view: viewWithCountdown,
-            difficultyMultiplier: roundMachine.getLevelDifficultyMultiplier(),
-            comboCount: scoringView.combo,
+        hudSetters.updateFromRuntime({
+            score: sessionSnapshot.hud.score,
+            lives: sessionSnapshot.hud.lives,
+            coins: sessionSnapshot.hud.coins,
+            combo: scoringView.combo,
+            difficultyMultiplier,
             comboTimer: scoringView.comboTimer,
-            activePowerUps: powerups.collectHudPowerUps(),
-            reward: powerups.resolveRewardView(),
-            momentum: sessionSnapshot.hud.momentum,
+            brickRemaining: sessionSnapshot.hud.brickRemaining,
+            brickTotal: sessionSnapshot.hud.brickTotal,
+            scoreboard: viewWithCountdown,
+            activePowerUps,
+            reward: rewardView,
             entropyActions,
+            momentum: sessionSnapshot.hud.momentum,
+            prompts: viewWithCountdown.prompts,
         });
 
         if (scoringView.combo > lastComboCount) {
             const pulseStrength = Math.min(1, 0.55 + scoringView.combo * 0.04);
-            hudDisplay.pulseCombo(pulseStrength);
+            hudSetters.pulseCombo(pulseStrength);
         }
 
         lastComboCount = scoringView.combo;
-        onLayout();
     };
 
     return {

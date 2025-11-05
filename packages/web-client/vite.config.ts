@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 import { URL, fileURLToPath } from "node:url";
 
 const resolveFromPackage = (relativePath: string) =>
@@ -15,6 +16,7 @@ const isProduction = process.env.NODE_ENV === "production";
 export default defineConfig({
     appType: "spa",
     base: isProduction ? "/lucky-break/" : "/",
+    plugins: [react()],
     build: {
         outDir: "dist",
         sourcemap: true

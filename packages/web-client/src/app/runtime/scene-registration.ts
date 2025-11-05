@@ -24,7 +24,7 @@ export interface SceneRegistrationDeps {
     readonly runGameplayUpdate: (deltaSeconds: number) => void;
     readonly runtimeInput: Pick<RuntimeInput, 'resetLaunchTrigger'>;
     readonly gameContainer: Container;
-    readonly hudContainer: Container;
+    readonly hudContainer: Pick<Container, 'visible'>;
     readonly getScore: () => number;
     readonly getIsPaused: () => boolean;
     readonly setIsPaused: (value: boolean) => void;
@@ -125,6 +125,7 @@ export const registerRuntimeScenes = async ({
             stage.pop();
         }
 
+        hudContainer.visible = true;
         setIsPaused(false);
         loop.start();
         renderStageSoon();
@@ -138,6 +139,8 @@ export const registerRuntimeScenes = async ({
 
         setIsPaused(true);
         loop.stop();
+
+        hudContainer.visible = false;
 
         const payload = {
             score: getScore(),
@@ -158,6 +161,7 @@ export const registerRuntimeScenes = async ({
             .catch((error) => {
                 setIsPaused(false);
                 loop.start();
+                hudContainer.visible = true;
                 logger.error('Failed to push pause overlay', { error });
             });
     };

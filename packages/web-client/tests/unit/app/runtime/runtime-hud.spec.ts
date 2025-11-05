@@ -1,207 +1,153 @@
-import { Container } from 'pixi.js';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRuntimeHud } from 'app/runtime/modules/runtime-hud';
-import type { GameThemeDefinition } from 'render/theme';
-import type { BrickLayoutBounds } from 'app/level-runtime';
-import type { StageHandle } from 'render/stage';
-import { createHudDisplay } from 'render/hud-display';
-import { createMobileHudDisplay } from 'render/mobile-hud-display';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HudScoreboardView, HudScoreboardPrompt, HudEntropyActionDescriptor } from 'render/hud';
+import type { HudPowerUpView, HudRewardView } from 'render/hud-display';
+import type { EntropyActionType } from 'app/events';
+import { hudSetters, useHud } from '../../../../src/ui/state/game-bridge';
 
-type MockFn = ReturnType<typeof vi.fn>;
-
-interface DisplayConfig {
-    width: number;
-    height: number;
-}
-
-interface DisplayStub {
-    container: Container;
-    width: number;
-    getHeight: () => number;
-    update: MockFn;
-    pulseCombo: MockFn;
-    setTheme: MockFn;
-    setEntropyActionHandler: MockFn;
-}
-
-const displayState = vi.hoisted(() => ({
-    desktopQueue: [] as DisplayConfig[],
-    mobileQueue: [] as DisplayConfig[],
-    lastEntropyHandler: null as ((action: unknown) => void) | null,
-}));
-
-function createStubDisplay(config?: DisplayConfig): DisplayStub {
-    const width = config?.width ?? 420;
-    const height = config?.height ?? 120;
-    const container = new Container();
-    const setEntropyActionHandler = vi.fn();
-    setEntropyActionHandler.mockImplementation((handler: unknown) => {
-        displayState.lastEntropyHandler = handler as ((action: unknown) => void) | null;
-    });
-
-    const stub: DisplayStub = {
-        container,
-        width,
-        getHeight: () => height,
-        update: vi.fn(),
-        pulseCombo: vi.fn(),
-        setTheme: vi.fn(),
-        setEntropyActionHandler,
-    };
-    return stub;
-}
-
-vi.mock('render/hud-display', () => {
-    return {
-        createHudDisplay: vi.fn(() => {
-            const config = displayState.desktopQueue.shift();
-            return createStubDisplay(config);
-        }),
-    };
+const createScoreboard = (prompts: readonly HudScoreboardPrompt[] = []): HudScoreboardView => ({
+    statusText: 'Round 1 — Active',
+    summaryLine: 'Elapsed 60s',
+    entries: [
+        { id: 'score', label: 'Score', value: '1,200' },
+        { id: 'coins', label: 'Coins', value: '42c' },
+    ],
+    prompts,
 });
 
-vi.mock('render/mobile-hud-display', () => {
-    return {
-        createMobileHudDisplay: vi.fn(() => {
-            const config = displayState.mobileQueue.shift();
-            return createStubDisplay(config);
-        }),
-    };
+const createEntropyAction = (action: EntropyActionType): HudEntropyActionDescriptor => ({
+    action,
+    label: action.toUpperCase(),
+    hotkey: action.charAt(0),
+    cost: 25,
+    charges: action === 'shield' ? 2 : 0,
+    affordable: action !== 'bailout',
 });
 
-const baseTheme: GameThemeDefinition = {
-    background: { from: '#000000', to: '#111111', starAlpha: 0.2 },
-    brickColors: ['#ff0000'],
-    paddle: { gradient: ['#ffffff'], glow: 0.5 },
-    ball: { core: '#ffffff', aura: '#eeeeee', highlight: '#dddddd' },
-    font: 'sans-serif',
-    monoFont: 'monospace',
-    hud: {
-        panelFill: '#111111',
-        panelLine: '#222222',
-        textPrimary: '#ffffff',
-        textSecondary: '#cccccc',
-        accent: '#ffcc00',
-        danger: '#ff3300',
-    },
-    accents: { combo: '#ffcc00', powerUp: '#00ccff' },
+const samplePowerUps: readonly HudPowerUpView[] = [
+    { label: 'Shield', remaining: '8s' },
+    { label: 'Laser', remaining: 'Ready' },
+];
+
+const sampleReward: HudRewardView = {
+    label: 'Jackpot',
+    remaining: '12s',
 };
 
-afterEach(() => {
-    displayState.desktopQueue.length = 0;
-    displayState.mobileQueue.length = 0;
-    displayState.lastEntropyHandler = null;
-    vi.clearAllMocks();
-});
-
-const createStage = () => {
-    const playfield = new Container();
-    const stage = {
-        layers: {
-            playfield,
-        },
-    } as unknown as StageHandle;
-    return { stage, playfield };
-};
-
-describe('createRuntimeHud', () => {
-    it('positions desktop HUD based on paddle and brick layout', () => {
-        displayState.desktopQueue.push({ width: 400, height: 100 });
-        const { stage, playfield } = createStage();
-        const onEntropyAction = vi.fn();
-        let layoutBounds: BrickLayoutBounds | null = {
-            minX: 0,
-            maxX: 600,
-            minY: 100,
-            maxY: 500,
-        };
-
-        const handle = createRuntimeHud({
-            stage,
-            theme: baseTheme,
-            hudProfile: 'desktop',
-            playfieldWidth: 800,
-            metrics: {
-                desktop: { margin: 20, minScale: 0.6, maxScale: 1.2 },
-                mobile: { margin: 12, minScale: 0.8, maxScale: 0.9 },
-            },
-            getBrickLayoutBounds: () => layoutBounds,
-            getPaddleSnapshot: () => ({ centerY: 700, height: 60 }),
-            onEntropyAction,
-        });
-
-        expect(createHudDisplay).toHaveBeenCalledTimes(1);
-        expect(displayState.lastEntropyHandler).toBe(onEntropyAction);
-        expect(playfield.children.includes(handle.container)).toBe(true);
-
-        handle.updateLayout();
-
-        expect(handle.display.container.scale.x).toBeCloseTo(1.2, 3);
-        expect(handle.display.container.scale.y).toBeCloseTo(1.2, 3);
-        expect(handle.display.container.position.x).toBe(160);
-        expect(handle.display.container.position.y).toBe(520);
-
-        layoutBounds = null;
-        handle.updateLayout();
-        expect(handle.display.container.position.y).toBe(530);
+describe('React HUD bridge', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        hudSetters.reset();
     });
 
-    it('applies mobile layout metrics and clamps to minimum scale', () => {
-        displayState.mobileQueue.push({ width: 320, height: 140 });
-        const { stage } = createStage();
-
-        const handle = createRuntimeHud({
-            stage,
-            theme: baseTheme,
-            hudProfile: 'mobile',
-            playfieldWidth: 260,
-            metrics: {
-                desktop: { margin: 20, minScale: 0.6, maxScale: 1.2 },
-                mobile: { margin: 12, minScale: 0.8, maxScale: 0.9 },
-            },
-            getBrickLayoutBounds: () => ({ minX: 0, maxX: 240, minY: 50, maxY: 170 }),
-            getPaddleSnapshot: () => ({ centerY: 200, height: 40 }),
-            onEntropyAction: vi.fn(),
-        });
-
-        expect(createMobileHudDisplay).toHaveBeenCalledTimes(1);
-
-        handle.updateLayout();
-
-        expect(handle.display.container.scale.x).toBeCloseTo(0.8, 3);
-        expect(handle.display.container.scale.y).toBeCloseTo(0.8, 3);
-        expect(handle.display.container.position.x).toBe(2);
-        expect(handle.display.container.position.y).toBe(56);
+    afterEach(() => {
+        hudSetters.reset();
+        vi.useRealTimers();
     });
 
-    it('removes resize listener and detaches container on dispose', () => {
-        displayState.desktopQueue.push({ width: 400, height: 120 });
-        const { stage, playfield } = createStage();
-        const addListenerSpy = vi.spyOn(window, 'addEventListener');
-        const removeListenerSpy = vi.spyOn(window, 'removeEventListener');
+    it('hydrates the Zustand store from runtime payloads', () => {
+        hudSetters.pulseCombo(0.9);
+        const initialPulse = useHud.getState().comboPulse;
 
-        const handle = createRuntimeHud({
-            stage,
-            theme: baseTheme,
-            hudProfile: 'desktop',
-            playfieldWidth: 700,
-            metrics: {
-                desktop: { margin: 18, minScale: 0.5, maxScale: 1.1 },
-                mobile: { margin: 12, minScale: 0.8, maxScale: 0.9 },
+        const payload = {
+            score: 4800,
+            lives: 2,
+            coins: 77,
+            combo: 6,
+            difficultyMultiplier: 1.45,
+            comboTimer: 1.3,
+            brickRemaining: 15,
+            brickTotal: 90,
+            scoreboard: createScoreboard(),
+            activePowerUps: samplePowerUps,
+            reward: sampleReward,
+            entropyActions: [
+                createEntropyAction('reroll'),
+                createEntropyAction('shield'),
+            ],
+            momentum: {
+                comboHeat: 0.6,
+                volleyLength: 12,
+                speedPressure: 0.55,
+                brickDensity: 0.3,
+                comboTimer: 1.8,
             },
-            getBrickLayoutBounds: () => null,
-            getPaddleSnapshot: () => ({ centerY: 500, height: 48 }),
-            onEntropyAction: vi.fn(),
+            prompts: [
+                { id: 'alert', severity: 'warning', message: 'Brace yourself!' },
+            ],
+        } as const;
+
+        hudSetters.updateFromRuntime(payload);
+
+        const state = useHud.getState();
+        expect(state.score).toBe(payload.score);
+        expect(state.lives).toBe(payload.lives);
+        expect(state.coins).toBe(payload.coins);
+        expect(state.combo).toBe(payload.combo);
+        expect(state.comboTimer).toBe(payload.comboTimer);
+        expect(state.comboPulse).toBe(initialPulse);
+        expect(state.difficultyMultiplier).toBe(payload.difficultyMultiplier);
+        expect(state.brickRemaining).toBe(payload.brickRemaining);
+        expect(state.brickTotal).toBe(payload.brickTotal);
+        expect(state.scoreboard).toBe(payload.scoreboard);
+        expect(state.activePowerUps).toEqual(samplePowerUps);
+        expect(state.reward).toEqual(sampleReward);
+        expect(state.entropyActions).toEqual(payload.entropyActions);
+        expect(state.momentum).toEqual(payload.momentum);
+        expect(state.prompts).toEqual(payload.prompts);
+    });
+
+    it('pulses the combo meter with clamped intensity and timed decay', () => {
+        hudSetters.pulseCombo(1.8);
+        expect(useHud.getState().comboPulse).toBeCloseTo(1.6, 5);
+
+        hudSetters.pulseCombo(0.4);
+        expect(useHud.getState().comboPulse).toBeCloseTo(1.6, 5);
+
+        vi.advanceTimersByTime(221);
+        expect(useHud.getState().comboPulse).toBe(0);
+    });
+
+    it('clears timers and restores defaults on reset', () => {
+        hudSetters.updateFromRuntime({
+            score: 900,
+            lives: 1,
+            coins: 12,
+            combo: 3,
+            difficultyMultiplier: 1.1,
+            comboTimer: 0.9,
+            brickRemaining: 4,
+            brickTotal: 50,
+            scoreboard: createScoreboard(),
+            activePowerUps: samplePowerUps,
+            reward: sampleReward,
+            entropyActions: [createEntropyAction('shield')],
+            momentum: {
+                comboHeat: 0.2,
+                volleyLength: 5,
+                speedPressure: 0.1,
+                brickDensity: 0.4,
+                comboTimer: 0.6,
+            },
+            prompts: [],
         });
 
-        expect(addListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+        hudSetters.pulseCombo(1);
+        hudSetters.reset();
+        expect(useHud.getState()).toMatchObject({
+            score: 0,
+            lives: 3,
+            coins: 0,
+            combo: 0,
+            comboPulse: 0,
+            scoreboard: null,
+            activePowerUps: [],
+            reward: null,
+            entropyActions: [],
+            momentum: null,
+            prompts: [],
+        });
 
-        handle.dispose();
-
-        expect(removeListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function));
-        expect(playfield.children.includes(handle.container)).toBe(false);
-
-        addListenerSpy.mockRestore();
-        removeListenerSpy.mockRestore();
+        vi.advanceTimersByTime(1000);
+        expect(useHud.getState().comboPulse).toBe(0);
     });
 });

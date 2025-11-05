@@ -99,16 +99,24 @@ export const createGameInitializer = async ({
         throw error;
     });
 
+    const existingCanvas = container.querySelector<HTMLCanvasElement>('#pixi-canvas')
+        ?? container.querySelector<HTMLCanvasElement>('canvas')
+        ?? undefined;
+
     const stage = await createStage({
         parent: container,
         theme: GameTheme,
         width: playfieldSize.width,
         height: playfieldSize.height,
+        view: existingCanvas,
     });
     stage.layers.playfield.sortableChildren = true;
     stage.layers.effects.sortableChildren = true;
 
     const canvas = stage.canvas;
+    if (!canvas.id) {
+        canvas.id = 'pixi-canvas';
+    }
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     canvas.style.position = 'absolute';

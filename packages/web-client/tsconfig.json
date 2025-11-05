@@ -5,11 +5,15 @@
     "rootDir": "../..",
     "outDir": "dist/types",
     "tsBuildInfoFile": "dist/.tsbuildinfo",
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "tests/**/*.ts",
+    "tests/**/*.tsx",
     "../core-domain/src/**/*.ts",
     "../cli-sim/src/**/*.ts",
     "assets/**/*.json",

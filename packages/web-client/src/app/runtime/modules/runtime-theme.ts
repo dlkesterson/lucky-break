@@ -6,7 +6,6 @@ import type { GlowFilter } from '@pixi/filter-glow';
 import type { BallVisualPalette } from 'render/playfield-visuals';
 import type { Graphics } from 'pixi.js';
 import type { MultiBallController } from '../../multi-ball-controller';
-import type { HudDisplay } from 'render/hud-display';
 import type { StageHandle } from 'render/stage';
 import type { RuntimeVisuals } from '../physics-assembly';
 import type { VisualThemeDefaults, VisualThemeSnapshot } from '../visual-theme-defaults';
@@ -25,7 +24,6 @@ export interface RuntimeThemeCoordinatorOptions {
     readonly paddleGraphics: Graphics;
     readonly ballGlowFilter: GlowFilter;
     readonly multiBallController: MultiBallController;
-    readonly hudDisplay: HudDisplay;
     readonly stage: StageHandle;
     readonly visualsProvider: () => RuntimeVisuals | null;
     readonly renderStageSoon: () => void;
@@ -51,7 +49,6 @@ export const createRuntimeThemeCoordinator = ({
     paddleGraphics,
     ballGlowFilter,
     multiBallController,
-    hudDisplay,
     stage,
     visualsProvider,
     renderStageSoon,
@@ -139,7 +136,6 @@ export const createRuntimeThemeCoordinator = ({
         visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height);
         multiBallController.applyTheme(currentSnapshot.ballColors);
 
-        hudDisplay.setTheme(currentTheme);
         visuals?.roundCountdownDisplay?.setTheme(currentTheme);
         stage.applyTheme(currentTheme);
 
