@@ -114,6 +114,14 @@ export const MainMenuApp = (): JSX.Element | null => {
     }
   };
 
+  const handleShowStory = async () => {
+    try {
+      await snapshot.onShowStory();
+    } catch (error) {
+      console.error('Failed to open narrative intro from main menu overlay', error);
+    }
+  };
+
   const performanceLabel = snapshot.performanceEnabled ? 'On' : 'Off';
   const themeLabel = getThemeLabel(themeName);
 
@@ -171,6 +179,13 @@ export const MainMenuApp = (): JSX.Element | null => {
 
         <footer className="main-menu-footer">
           <div className="main-menu-actions">
+            <button
+              type="button"
+              className="main-menu-action ui-interactive"
+              onClick={handleShowStory}
+            >
+              Story So Far
+            </button>
             <button
               type="button"
               className="main-menu-action ui-interactive"

@@ -13,6 +13,7 @@ import '../ui/styles/main-menu.css';
 import '../ui/styles/pause.css';
 import '../ui/styles/game-over.css';
 import '../ui/styles/fate-ledger.css';
+import '../ui/styles/intro.css';
 import { initializeReactUi } from '../ui/boot/react-root';
 
 export interface LuckyBreakOptions {

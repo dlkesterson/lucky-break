@@ -46,6 +46,7 @@ export interface RuntimePowerups {
     reset(): void;
     activateReward(reward: Reward | null): void;
     getActiveReward(): Reward | null;
+    setBaselineDoublePointsMultiplier(multiplier: number): void;
     getDoublePointsMultiplier(): number;
     getSlowTimeScale(): number;
     getSlowTimeRemaining(): number;
@@ -73,7 +74,8 @@ export const createRuntimePowerups = ({
     const manager = new PowerUpManager();
 
     let activeReward: Reward | null = null;
-    let doublePointsMultiplier = 1;
+    let baselineDoublePointsMultiplier = 1;
+    let rewardDoublePointsMultiplier = 1;
     let doublePointsTimer = 0;
     let rewardPaddleWidthMultiplier = defaults.paddleWidthMultiplier;
     let slowTimeTimer = 0;
@@ -84,7 +86,7 @@ export const createRuntimePowerups = ({
     let activeLaserReward: LaserPaddleReward | null = null;
 
     const resetRewardState = () => {
-        doublePointsMultiplier = 1;
+        rewardDoublePointsMultiplier = 1;
         doublePointsTimer = 0;
         rewardPaddleWidthMultiplier = defaults.paddleWidthMultiplier;
         slowTimeTimer = 0;
@@ -114,7 +116,7 @@ export const createRuntimePowerups = ({
                 manager.refresh('sticky-paddle', { defaultDuration: reward.duration });
                 break;
             case 'double-points':
-                doublePointsMultiplier = reward.multiplier;
+                rewardDoublePointsMultiplier = Math.max(1, reward.multiplier);
                 doublePointsTimer = reward.duration;
                 break;
             case 'ghost-brick':
@@ -305,7 +307,7 @@ export const createRuntimePowerups = ({
         if (doublePointsTimer > 0) {
             doublePointsTimer = Math.max(0, doublePointsTimer - deltaSeconds);
             if (doublePointsTimer === 0 && activeReward?.type === 'double-points') {
-                doublePointsMultiplier = 1;
+                rewardDoublePointsMultiplier = 1;
                 activeReward = null;
             }
         }
@@ -367,7 +369,15 @@ export const createRuntimePowerups = ({
         return calculatePaddleWidthScale(widthEffect, { paddleWidthMultiplier });
     };
 
-    const getDoublePointsMultiplier = () => doublePointsMultiplier;
+    const setBaselineDoublePointsMultiplier = (multiplier: number): void => {
+        if (!Number.isFinite(multiplier) || multiplier <= 0) {
+            baselineDoublePointsMultiplier = 1;
+            return;
+        }
+        baselineDoublePointsMultiplier = multiplier;
+    };
+
+    const getDoublePointsMultiplier = () => baselineDoublePointsMultiplier * rewardDoublePointsMultiplier;
     const getActiveReward = () => activeReward;
     const getSlowTimeScale = () => (slowTimeTimer > 0 ? slowTimeScale : 1);
     const getSlowTimeRemaining = () => slowTimeTimer;
@@ -378,6 +388,7 @@ export const createRuntimePowerups = ({
         reset,
         activateReward,
         getActiveReward,
+        setBaselineDoublePointsMultiplier,
         getDoublePointsMultiplier,
         getSlowTimeScale,
         getSlowTimeRemaining,

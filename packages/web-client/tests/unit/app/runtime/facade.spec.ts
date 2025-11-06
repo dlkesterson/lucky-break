@@ -728,6 +728,7 @@ vi.mock('app/level-runtime', () => ({
             updateBrickLighting: vi.fn(),
             updateBrickDamage: vi.fn(),
             setRowColors: vi.fn(),
+            setHazardIntensityMultiplier: vi.fn(),
             findPowerUp: vi.fn(() => null),
             removePowerUp: vi.fn(),
             clearGhostEffect: vi.fn(),

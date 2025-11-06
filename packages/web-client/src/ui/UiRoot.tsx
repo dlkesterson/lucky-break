@@ -1,4 +1,5 @@
 import { HudApp } from './HudApp';
+import { IntroOverlayApp } from './components/IntroOverlayApp';
 import { MainMenuApp } from './scenes/MainMenuApp';
 import { BiasPhaseApp } from './scenes/BiasPhaseApp';
 import { LoadoutSelectionApp } from './scenes/LoadoutSelectionApp';
@@ -9,6 +10,7 @@ import { FateLedgerApp } from './scenes/FateLedgerApp';
 export const UiRoot = (): JSX.Element => (
   <>
     <HudApp />
+    <IntroOverlayApp />
     <MainMenuApp />
     <BiasPhaseApp />
     <LoadoutSelectionApp />

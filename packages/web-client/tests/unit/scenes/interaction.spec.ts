@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MetaUpgradeManager } from 'app/meta-upgrades';
 
 vi.mock('pixi.js', () => {
@@ -264,7 +264,7 @@ describe('scene interaction lifecycles', () => {
             onStart: vi.fn(),
         });
 
-        scene.init();
+        void scene.init();
 
         const initialState = useMainMenuUi.getState();
         expect(initialState.visible).toBe(true);
@@ -280,21 +280,21 @@ describe('scene interaction lifecycles', () => {
             action: 'enter',
         });
 
-        scene.suspend?.();
+        void scene.suspend?.();
         expect(useMainMenuUi.getState().suspended).toBe(true);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'main-menu',
             action: 'suspend',
         });
 
-        scene.resume?.();
+        void scene.resume?.();
         expect(useMainMenuUi.getState().suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'main-menu',
             action: 'resume',
         });
 
-        scene.destroy?.();
+        void scene.destroy?.();
         expect(useMainMenuUi.getState().visible).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'main-menu',
@@ -335,18 +335,18 @@ describe('scene interaction lifecycles', () => {
             onStart: vi.fn(),
         });
 
-        scene.init();
+        void scene.init();
 
         const snapshot = useMainMenuUi.getState().snapshot;
         expect(snapshot).not.toBeNull();
-        snapshot?.onToggleTheme();
+        void snapshot?.onToggleTheme?.();
         expect(toggleSpy).toHaveBeenCalledTimes(1);
 
-        snapshot?.onTogglePerformance();
+        void snapshot?.onTogglePerformance?.();
         expect(updateSettingsSpy).toHaveBeenCalledWith({ performance: true });
         expect(useMainMenuUi.getState().snapshot?.performanceEnabled).toBe(true);
 
-        scene.destroy?.();
+        void scene.destroy?.();
 
         toggleSpy.mockRestore();
         getSettingsSpy.mockRestore();

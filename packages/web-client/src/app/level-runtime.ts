@@ -128,6 +128,7 @@ export interface LevelRuntimeHandle {
         hpLabel?: BrickHpLabel | null;
         isBreakable: boolean;
     }>;
+    setHazardIntensityMultiplier(multiplier: number): void;
     loadLevel(levelIndex: number): LevelLoadResult;
     setRowColors(rowColors: readonly number[]): void;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
@@ -194,6 +195,7 @@ export const createLevelRuntime = ({
     const activeHazards: ActiveHazardEntry[] = [];
     const hazardByBody = new Map<Body, LevelHazardDescriptor>();
     const brickTextures = createBrickTextureCache(stage.app.renderer);
+    let hazardIntensityMultiplier = 1;
     const ensureHpLabel = (
         visual: Sprite,
         existing: BrickHpLabel | null | undefined,
@@ -391,6 +393,14 @@ export const createLevelRuntime = ({
         brickVisualState.clear();
     };
 
+    const setHazardIntensityMultiplier: LevelRuntimeHandle['setHazardIntensityMultiplier'] = (value) => {
+        if (!Number.isFinite(value) || value <= 0) {
+            hazardIntensityMultiplier = 1;
+            return;
+        }
+        hazardIntensityMultiplier = value;
+    };
+
     const orientation = layoutOrientation ?? 'landscape';
 
     const remapHpForSwappedRows = (
@@ -568,7 +578,8 @@ export const createLevelRuntime = ({
                 const minRadius = Math.max(brickSize.width, brickSize.height) * 2.5;
                 const maxRadius = Math.max(playfieldWidth, Math.max(brickSize.width, brickSize.height) * 10) * 0.45;
                 const radius = Math.max(minRadius, Math.min(maxRadius, baseRadius));
-                const strength = 0.0012 + loopCount * 0.00035;
+                const baseStrength = 0.0012 + loopCount * 0.00035;
+                const strength = baseStrength * hazardIntensityMultiplier;
 
                 const hazard = createGravityWellHazard({
                     id: `gravity-well-${levelIndex}`,
@@ -629,6 +640,8 @@ export const createLevelRuntime = ({
                     stage.addToLayer('effects', bumperVisual);
 
                     const descriptorDirection = { x: 0, y: 0 };
+                    const baseImpulse = 4 + loopCount * 0.6;
+                    const impulse = baseImpulse * hazardIntensityMultiplier;
 
                     const movingBumper = createMovingBumperHazard({
                         id: `moving-bumper-${levelIndex}`,
@@ -636,7 +649,7 @@ export const createLevelRuntime = ({
                         end: { x: travelEndX, y: centerY },
                         radius: bumperRadius,
                         speed: Math.max(80, layoutWidth / 2),
-                        impulse: 4 + loopCount * 0.6,
+                        impulse,
                         onPositionChange: (pos, direction) => {
                             bumperVisual.position.set(pos.x, pos.y);
                             descriptorDirection.x = direction.x;
@@ -699,12 +712,14 @@ export const createLevelRuntime = ({
                 exitVisual.eventMode = 'none';
                 stage.addToLayer('effects', exitVisual);
 
+                const cooldownSeconds = Math.max(0.2, 0.45 / hazardIntensityMultiplier);
+
                 const portalHazard = createPortalHazard({
                     id: `portal-${levelIndex}`,
                     entry: { x: centerX, y: entryY },
                     exit: portalExit,
                     radius: portalRadius,
-                    cooldownSeconds: 0.45,
+                    cooldownSeconds,
                 });
 
                 physics.addHazard(portalHazard);
@@ -1029,6 +1044,7 @@ export const createLevelRuntime = ({
         brickHealth,
         brickMetadata,
         brickVisualState,
+        setHazardIntensityMultiplier,
         loadLevel,
         setRowColors: applyRowColors,
         updateBrickLighting,

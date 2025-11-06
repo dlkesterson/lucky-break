@@ -6,6 +6,7 @@ import type { RandomManager } from 'util/random';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { FateLedger } from './fate-ledger';
 import type { MetaUpgradeManager } from './meta-upgrades';
+import type { NarrativeService } from './narrative-service';
 
 export interface GameSceneServices {
     readonly bus: LuckyBreakEventBus;
@@ -17,4 +18,5 @@ export interface GameSceneServices {
     readonly renderStageSoon: () => void;
     readonly fateLedger: FateLedger;
     readonly metaUpgrades: MetaUpgradeManager;
+    readonly narrative?: NarrativeService;
 }

@@ -53,6 +53,8 @@ export interface LoadoutRuntimeRuleEffects {
     gambleBricksMoreLikely: boolean;
     powerUpChanceMultiplier: number;
     difficultyMultiplier: number;
+    doublePointsMultiplier: number;
+    hazardIntensityMultiplier: number;
 }
 
 export type LoadoutVoicePaletteOverrides = Record<string, unknown>;
@@ -284,6 +286,8 @@ export const loadoutTraits: readonly LoadoutOptionDefinition<LoadoutTraitId>[] =
             },
             rules: {
                 difficultyMultiplier: 1.12,
+                doublePointsMultiplier: 2,
+                hazardIntensityMultiplier: 1.35,
             },
         },
     },
@@ -522,6 +526,8 @@ export const mergeLoadoutEffects = (
         gambleBricksMoreLikely: false,
         powerUpChanceMultiplier: 1,
         difficultyMultiplier: 1,
+        doublePointsMultiplier: 1,
+        hazardIntensityMultiplier: 1,
     };
     const audio: LoadoutRuntimeAudioEffects = {};
     let ballVisuals: LoadoutBallVisualOverrides | undefined;
@@ -549,6 +555,8 @@ export const mergeLoadoutEffects = (
                 rules.gambleBricksMoreLikely || contribution.rules.gambleBricksMoreLikely === true;
             rules.powerUpChanceMultiplier *= contribution.rules.powerUpChanceMultiplier ?? 1;
             rules.difficultyMultiplier *= contribution.rules.difficultyMultiplier ?? 1;
+            rules.doublePointsMultiplier *= contribution.rules.doublePointsMultiplier ?? 1;
+            rules.hazardIntensityMultiplier *= contribution.rules.hazardIntensityMultiplier ?? 1;
         }
         if (contribution.audio) {
             audio.paletteOverrides = {

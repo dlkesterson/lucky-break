@@ -14,6 +14,14 @@ export interface HudSettings {
 
 type HudSettingsUpdate = Partial<Pick<HudSettings, "muted" | "masterVolume">>;
 
+export type HudFlavorTone = 'info' | 'hype' | 'warning';
+
+export interface HudFlavorMessage {
+    readonly id: string;
+    readonly text: string;
+    readonly tone: HudFlavorTone;
+}
+
 export interface RuntimeHudPayload {
     readonly score: number;
     readonly lives: number;
@@ -53,6 +61,7 @@ export interface HudState {
     readonly attemptEntropyAction?: (action: EntropyActionType) => void;
     readonly settings: HudSettings;
     readonly updateSettings?: (changes: HudSettingsUpdate) => void;
+    readonly flavor: HudFlavorMessage | null;
 }
 
 const createInitialState = (): HudState => ({
@@ -80,6 +89,7 @@ const createInitialState = (): HudState => ({
         reducedMotion: false,
     },
     updateSettings: undefined,
+    flavor: null,
 });
 
 export const useHud = create<HudState>(createInitialState);
@@ -88,6 +98,7 @@ let comboPulseResetHandle: ReturnType<typeof setTimeout> | undefined;
 let comboPulseRevision = 0;
 let entropyActionHandler: ((action: EntropyActionType) => void) | undefined;
 let settingsUpdateHandler: ((changes: HudSettingsUpdate) => void) | undefined;
+let flavorResetHandle: ReturnType<typeof setTimeout> | undefined;
 
 export const hudSetters = {
     setVisibility: (visible: boolean): void => {
@@ -167,11 +178,39 @@ export const hudSetters = {
         settingsUpdateHandler = handler;
         useHud.setState((previous) => (previous.updateSettings === handler ? previous : { ...previous, updateSettings: handler }));
     },
+    showFlavor: (flavor: HudFlavorMessage | null, options?: { readonly durationMs?: number }): void => {
+        const durationMs = options?.durationMs;
+        useHud.setState((previous) => {
+            if (flavor === null) {
+                return previous.flavor === null ? previous : { ...previous, flavor: null };
+            }
+            if (previous.flavor?.id === flavor.id) {
+                return previous;
+            }
+            return { ...previous, flavor } satisfies HudState;
+        });
+
+        if (flavorResetHandle !== undefined) {
+            clearTimeout(flavorResetHandle);
+            flavorResetHandle = undefined;
+        }
+
+        if (flavor && Number.isFinite(durationMs) && durationMs !== undefined && durationMs > 0) {
+            flavorResetHandle = setTimeout(() => {
+                flavorResetHandle = undefined;
+                useHud.setState((previous) => (previous.flavor === null ? previous : { ...previous, flavor: null }));
+            }, durationMs);
+        }
+    },
     reset: (): void => {
         comboPulseRevision += 1;
         if (comboPulseResetHandle !== undefined) {
             clearTimeout(comboPulseResetHandle);
             comboPulseResetHandle = undefined;
+        }
+        if (flavorResetHandle !== undefined) {
+            clearTimeout(flavorResetHandle);
+            flavorResetHandle = undefined;
         }
         const baseline = createInitialState();
         const nextState: HudState = {

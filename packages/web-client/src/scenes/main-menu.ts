@@ -104,6 +104,21 @@ export const createMainMenuScene = (
         }
     };
 
+    const handleShowStory = async () => {
+        if (destroyed) {
+            return;
+        }
+        const narrative = context.narrative;
+        if (!narrative) {
+            return;
+        }
+        try {
+            await narrative.openIntro('story');
+        } catch (error) {
+            console.error('Failed to open narrative intro from main menu scene', error);
+        }
+    };
+
     const handleTogglePerformance = () => {
         if (destroyed) {
             return;
@@ -145,12 +160,17 @@ export const createMainMenuScene = (
                 onToggleTheme: () => {
                     toggleTheme();
                 },
+                onShowStory: () => handleShowStory(),
             });
 
             attachSettingsSubscription();
             pushIdleAudioState();
             emitSceneEvent('enter');
             context.renderStageSoon();
+            const showIntroPromise = context.narrative?.showIntroIfNeeded?.();
+            showIntroPromise?.catch((error) => {
+                console.error('Failed to auto-launch narrative intro', error);
+            });
         },
         update(deltaSeconds) {
             void deltaSeconds;

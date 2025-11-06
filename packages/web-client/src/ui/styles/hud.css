@@ -315,6 +315,39 @@
   opacity: 0.78;
 }
 
+.hud-flavor {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: var(--t--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
+  white-space: normal;
+  max-width: min(420px, 90vw);
+}
+
+.hud-flavor-info {
+  color: #d8e9ff;
+  border: 1px solid rgba(152, 200, 255, 0.42);
+  background: rgba(80, 122, 255, 0.22);
+}
+
+.hud-flavor-hype {
+  color: #ffe0c0;
+  border: 1px solid rgba(255, 186, 102, 0.5);
+  background: rgba(255, 156, 92, 0.2);
+}
+
+.hud-flavor-warning {
+  color: #ffdcdc;
+  border: 1px solid rgba(255, 128, 144, 0.46);
+  background: rgba(255, 102, 128, 0.22);
+}
+
 .hud-momentum ul {
   display: flex;
   flex-direction: column;

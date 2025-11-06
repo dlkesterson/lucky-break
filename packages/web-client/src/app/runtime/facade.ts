@@ -109,6 +109,7 @@ import {
 import type { LoadoutSelection, LoadoutBallVisualOverrides } from 'config/loadouts';
 import { noop } from 'util/index';
 import { hudSetters } from '../../ui/state/game-bridge';
+import { createNarrativeService, type NarrativeService } from '../narrative-service';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -406,6 +407,13 @@ export const createRuntimeFacade = async ({
         onAudioBlocked,
     });
 
+    const narrativeService: NarrativeService = createNarrativeService({
+        bus,
+        random,
+        logger: runtimeLogger,
+        now: Date.now,
+    });
+
     const hasPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';
     const syncDriftTelemetry = createSyncDriftTelemetry({
         logger: performanceLogger,
@@ -645,6 +653,7 @@ export const createRuntimeFacade = async ({
         renderStageSoon,
         fateLedger,
         metaUpgrades,
+        narrative: narrativeService,
     };
 
     const provideSceneServices = (): GameSceneServices => sharedSceneServices;
@@ -982,6 +991,9 @@ export const createRuntimeFacade = async ({
         const ruleEffects = bundle.combined.runtime.rules;
         const ballVisualOverride = toBallPaletteOverride(bundle.combined.visuals.ball);
         setLoadoutBallPalette(ballVisualOverride);
+
+        powerups.setBaselineDoublePointsMultiplier(ruleEffects.doublePointsMultiplier);
+        levelRuntime.setHazardIntensityMultiplier(ruleEffects.hazardIntensityMultiplier);
 
         const gravityTarget = MODIFIER_GRAVITY_RANGE.default + physicsEffects.gravityOffset;
         runtimeModifiers.setGravity(gravityTarget);
@@ -1973,6 +1985,9 @@ export const createRuntimeFacade = async ({
         fateLedger,
         cleanupHandlers: [
             () => {
+                narrativeService.dispose();
+            },
+            () => {
                 runtimeAudio.dispose();
             },
             () => {
@@ -2017,6 +2032,7 @@ export const createRuntimeFacade = async ({
     if (idleResumeSummary) {
         refreshHud();
         hudSetters.pulseCombo(0.35);
+        narrativeService.handleIdleResume(idleResumeSummary);
         renderStageSoon();
     }
 

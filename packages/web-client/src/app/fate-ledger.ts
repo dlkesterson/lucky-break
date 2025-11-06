@@ -1,4 +1,6 @@
 import { rootLogger, type Logger } from 'util/log';
+import type { RandomManager } from 'util/random';
+import idleNarrativeTemplates from '../../assets/narrative/idle/fate-ledger-templates.json';
 
 const STORAGE_KEY = 'lucky-break::fate-ledger::v1';
 const STATE_VERSION = 1;
@@ -63,6 +65,106 @@ interface PersistedFateLedgerState {
 }
 
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
+
+interface FateLedgerTemplateManifest {
+    readonly intro: readonly string[];
+    readonly action: readonly string[];
+    readonly coda: readonly string[];
+}
+
+const DEFAULT_IDLE_TEMPLATES: FateLedgerTemplateManifest = {
+    intro: [
+        'Mayhaps drifted through a nebula of forgotten bets',
+        'Across the fault lines of fate, Mayhaps traced the roulette wakes',
+    ],
+    action: [
+        'gathering {{entropy}} Luck Sparks from the void',
+        'balancing {{entropy}} wagers upon the rim of possibility',
+    ],
+    coda: [
+        'and returned with {{dust}} grains of Certainty Dust.',
+        'before stowing {{dust}} shimmering motes within the Fate Ledger.',
+    ],
+};
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+
+const sanitizeTemplateLines = (value: unknown, fallback: readonly string[]): readonly string[] => {
+    if (!Array.isArray(value)) {
+        return [...fallback];
+    }
+    const sanitized = value
+        .map((entry) => (isString(entry) ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0);
+    return sanitized.length > 0 ? sanitized : [...fallback];
+};
+
+const idleTemplateManifest: FateLedgerTemplateManifest = (() => {
+    const candidate = idleNarrativeTemplates as Partial<FateLedgerTemplateManifest> | undefined;
+    return {
+        intro: sanitizeTemplateLines(candidate?.intro, DEFAULT_IDLE_TEMPLATES.intro),
+        action: sanitizeTemplateLines(candidate?.action, DEFAULT_IDLE_TEMPLATES.action),
+        coda: sanitizeTemplateLines(candidate?.coda, DEFAULT_IDLE_TEMPLATES.coda),
+    } satisfies FateLedgerTemplateManifest;
+})();
+
+const applyTemplatePlaceholders = (template: string, fields: Record<string, string>): string =>
+    template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
+        const replacement = fields[key];
+        return replacement ?? '';
+    });
+
+const selectTemplate = (random: RandomManager, entries: readonly string[]): string => {
+    if (entries.length === 0) {
+        return '';
+    }
+    const index = Math.floor(random.next() * entries.length);
+    return entries[Math.max(0, Math.min(entries.length - 1, index))] ?? entries[0];
+};
+
+const formatNumber = (value: number, options: Intl.NumberFormatOptions): string => {
+    const safe = Number.isFinite(value) ? value : 0;
+    return safe.toLocaleString(undefined, options);
+};
+
+export interface FateLedgerIdleNarrativeContext {
+    readonly durationMs: number;
+    readonly entropyEarned: number;
+    readonly certaintyDustEarned: number;
+    readonly bricksBroken?: number;
+}
+
+export const generateFateLedgerIdleNarrative = (
+    random: RandomManager,
+    context: FateLedgerIdleNarrativeContext,
+): string => {
+    const entropyLabel = formatNumber(Math.max(0, context.entropyEarned), { maximumFractionDigits: 0 });
+    const dustLabel = formatNumber(Math.max(0, context.certaintyDustEarned), {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    });
+    const bricksLabel = formatNumber(Math.max(0, context.bricksBroken ?? 0), { maximumFractionDigits: 0 });
+
+    const replacements: Record<string, string> = {
+        entropy: entropyLabel,
+        dust: dustLabel,
+        bricks: bricksLabel,
+    };
+
+    const segments: string[] = [
+        selectTemplate(random, idleTemplateManifest.intro),
+        selectTemplate(random, idleTemplateManifest.action),
+        selectTemplate(random, idleTemplateManifest.coda),
+    ]
+        .map((segment) => applyTemplatePlaceholders(segment, replacements).trim())
+        .filter((segment) => segment.length > 0);
+
+    if (segments.length === 0) {
+        return 'Mayhaps drifted between wagers and returned with fresh certainty.';
+    }
+
+    return segments.join(' ');
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;

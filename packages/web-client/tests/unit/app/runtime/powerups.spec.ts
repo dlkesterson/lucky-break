@@ -227,6 +227,25 @@ describe('createRuntimePowerups', () => {
         expect(runtime.getActiveReward()).toBeNull();
     });
 
+    it('applies baseline double points multipliers and stacks with rewards', () => {
+        const { runtime } = createRuntime();
+
+        runtime.setBaselineDoublePointsMultiplier(2);
+        expect(runtime.getDoublePointsMultiplier()).toBe(2);
+
+        const reward: Reward = { type: 'double-points', duration: 1.5, multiplier: 3 };
+        runtime.activateReward(reward);
+
+        expect(runtime.getDoublePointsMultiplier()).toBe(6);
+
+        runtime.tick(1.5);
+
+        expect(runtime.getDoublePointsMultiplier()).toBe(2);
+
+        runtime.setBaselineDoublePointsMultiplier(0);
+        expect(runtime.getDoublePointsMultiplier()).toBe(1);
+    });
+
     it('handles power-up activation feedback and optional laser reward creation', () => {
         const { runtime, flashBallLight, flashPaddleLight, spawnExtraBalls, enableLaserReward } = createRuntime();
 

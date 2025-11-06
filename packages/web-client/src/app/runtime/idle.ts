@@ -1,6 +1,7 @@
 import { rootLogger, type Logger } from 'util/log';
 import type { GameSessionManager } from 'app/state';
 import type { FateLedger } from '../fate-ledger';
+import { generateFateLedgerIdleNarrative } from '../fate-ledger';
 import type { RuntimeLifecycle } from './lifecycle';
 import type { RandomManager } from 'util/random';
 import {
@@ -149,16 +150,6 @@ const computeDustAward = (entropyAwarded: number): number => {
     return Math.max(0, Number(dust.toFixed(2)));
 };
 
-const buildNotes = (
-    round: number,
-    metrics: HeadlessSimulationResult['metrics'],
-    volley: HeadlessSimulationResult['volley'],
-): string => {
-    const bricks = Math.max(0, Math.trunc(metrics.bricksBroken));
-    const longestVolley = Math.max(0, Math.trunc(volley.longestVolley));
-    return `Round ${round} auto-played ${bricks} bricks, longest volley ${longestVolley}`;
-};
-
 export interface IdleSimulationOptions {
     readonly session: GameSessionManager;
     readonly random: RandomManager;
@@ -257,11 +248,18 @@ export const createIdleSimulation = ({
             session.grantStoredEntropy(entropyAwarded);
         }
 
+        const idleNotes = generateFateLedgerIdleNarrative(random, {
+            durationMs,
+            entropyEarned: entropyAwarded,
+            certaintyDustEarned: certaintyDustAwarded,
+            bricksBroken,
+        });
+
         fateLedger.recordIdleRoll({
             durationMs,
             entropyEarned: entropyAwarded,
             certaintyDustEarned: certaintyDustAwarded,
-            notes: buildNotes(persisted.round, simulation.metrics, simulation.volley),
+            notes: idleNotes,
             recordedAt: nowMs,
         });
 

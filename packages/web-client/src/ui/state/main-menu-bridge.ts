@@ -21,6 +21,7 @@ export interface MainMenuUiSnapshot {
     readonly onOpenLedger: () => Promise<void>;
     readonly onTogglePerformance: () => MaybePromise<void>;
     readonly onToggleTheme: () => void;
+    readonly onShowStory: () => MaybePromise<void>;
 }
 
 interface MainMenuUiState {

@@ -538,6 +538,41 @@ describe('createLevelRuntime', () => {
         expect(stage.layers.effects.removeChild).toHaveBeenCalled();
     });
 
+    it('scales hazard intensity when the multiplier increases', () => {
+        const layout = {
+            bricks: [
+                { row: 0, col: 0, x: 120, y: 80, hp: 1 },
+                { row: 0, col: 3, x: 320, y: 80, hp: 1 },
+                { row: 3, col: 0, x: 120, y: 220, hp: 1 },
+                { row: 3, col: 3, x: 320, y: 220, hp: 1 },
+            ],
+            breakableCount: 4,
+            spec: { powerUpChanceMultiplier: 1 },
+        } satisfies TestLayout;
+
+        const baseline = createRuntime({ layout, presetCount: 5 });
+        baseline.runtime.loadLevel(15);
+        expect(baseline.physics.addHazard).toHaveBeenCalledTimes(3);
+        const [baseGravityCall, baseBumperCall, basePortalCall] = baseline.physics.addHazard.mock.calls;
+        const baseGravity = baseGravityCall[0];
+        const baseBumper = baseBumperCall[0];
+        const basePortal = basePortalCall[0];
+
+        const boosted = createRuntime({ layout, presetCount: 5 });
+        boosted.runtime.setHazardIntensityMultiplier(1.6);
+        boosted.runtime.loadLevel(15);
+        expect(boosted.physics.addHazard).toHaveBeenCalledTimes(3);
+        const [boostGravityCall, boostBumperCall, boostPortalCall] = boosted.physics.addHazard.mock.calls;
+        const boostGravity = boostGravityCall[0];
+        const boostBumper = boostBumperCall[0];
+        const boostPortal = boostPortalCall[0];
+
+        expect(boostGravity.strength).toBeCloseTo(baseGravity.strength * 1.6, 6);
+        expect(boostBumper.impulse).toBeCloseTo(baseBumper.impulse * 1.6, 6);
+        const expectedCooldown = Math.max(0.2, basePortal.cooldownSeconds / 1.6);
+        expect(boostPortal.cooldownSeconds).toBeCloseTo(expectedCooldown, 6);
+    });
+
     it('spawns moving bumpers and portals on deeper loops and cleans them up', () => {
         const layout = {
             bricks: [

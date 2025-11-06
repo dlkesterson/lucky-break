@@ -137,32 +137,32 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Create narrative assets structure**
+- [x] **Create narrative assets structure**
   - Plan narrative asset locations in `packages/web-client/assets/`
   - Create placeholder text files for narrative content
   - Document narrative structure (intro, in-game, idle, etc.)
 
-- [ ] **Add intro/tutorial sequence**
+- [x] **Add intro/tutorial sequence**
   - Extend `packages/web-client/src/scenes/main-menu.ts` or create new intro scene
   - Add "Story" button or auto-trigger on first launch
   - Create cinematic text overlay (PixiJS or React)
   - Display: "You are Mayhaps, a ball of pure luck. In this cosmic casino, every bounce is a bet."
   - Store first-launch flag in localStorage
 
-- [ ] **Create narrative service**
+- [x] **Create narrative service**
   - Create `packages/web-client/src/app/narrative-service.ts`
   - Define narrative event types (tutorial, combo-milestone, idle-return, etc.)
   - Create event emitter for narrative triggers
   - Integrate with existing event bus (`packages/core-domain/src/app/events.ts`)
 
-- [ ] **Add in-game flavor text**
+- [x] **Add in-game flavor text**
   - Extend HUD to show flavor text on events
   - Hook into paddle hits: "Luck rebounds!"
   - Hook into combo milestones: "The cosmos favors you—chain the entropy!"
   - Use event bus to trigger narrative events
   - Display in React HUD or as floating text
 
-- [ ] **Create Fate Ledger narrative generator**
+- [x] **Create Fate Ledger narrative generator**
   - Extend `packages/web-client/src/app/fate-ledger.ts`
   - Create template system for procedural stories
   - Generate stories like: "Mayhaps drifted through a nebula of forgotten bets, gathering 42 Luck Dust."
@@ -202,11 +202,12 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement other form effects (elasticity, size, etc.)
   - Use `packages/core-domain/src/util/random.ts` for seeded RNG
 
-- [ ] **Implement core trait effects**
+- [x] **Implement core trait effects**
   - Edit `packages/core-domain/src/util/scoring.ts`
   - Modify `awardBrickPoints` to check core trait
   - Implement "Double-Edged": double points but risk hazards
   - Apply trait modifiers to scoring calculations
+  - Completed 2025-11-06: Double-Edged now boosts double-points baseline and hazard intensity via runtime facade
 
 - [x] **Implement sigil effects**
   - Edit `packages/core-domain/src/game/rewards.ts`
@@ -320,7 +321,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Load timestamp on game start
   - Calculate time difference
 
-- [ ] **Generate Fate Ledger stories** _(procedural narrative hooks still outstanding)_
+- [x] **Generate Fate Ledger stories** _(procedural narrative hooks now live via narrative service)_
   - Extend narrative service with procedural story generation
   - Create template system with random fills
   - Generate stories like: "While you slumbered, Mayhaps wandered the voids..."
