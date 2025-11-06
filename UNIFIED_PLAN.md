@@ -10,28 +10,28 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Install React dependencies**
+- [x] **Install React dependencies**
   - Run: `pnpm -F @lucky-break/web-client add react react-dom zustand`
   - Run: `pnpm -F @lucky-break/web-client add -D @types/react @types/react-dom @vitejs/plugin-react`
-- [ ] **Configure Vite for React**
+- [x] **Configure Vite for React**
   - Edit `packages/web-client/vite.config.ts`
   - Import `react` from `@vitejs/plugin-react`
   - Add `react()` to plugins array
   - Verify JSX transformation works
 
-- [ ] **Update TypeScript configuration**
+- [x] **Update TypeScript configuration**
   - Edit `packages/web-client/tsconfig.json`
   - Add `"jsx": "react-jsx"` to compilerOptions
   - Ensure `"lib": ["ES2022", "DOM", "DOM.Iterable"]` is present
   - Verify no type errors
 
-- [ ] **Update HTML structure**
+- [x] **Update HTML structure**
   - Edit `packages/web-client/index.html`
   - Wrap canvas in `#stage-wrap` container
   - Add `#ui-root` div adjacent to `#pixi-canvas`
   - Ensure container structure: `<div id="stage-wrap"><canvas id="pixi-canvas"></canvas><div id="ui-root"></div></div>`
 
-- [ ] **Verify build**
+- [x] **Verify build** 
   - Run `pnpm build` to ensure no errors
   - Run `pnpm typecheck` to verify TypeScript config
   - Test that existing PixiJS code still works
@@ -44,13 +44,13 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Create React root bootstrapper**
+- [x] **Create React root bootstrapper**
   - Create `packages/web-client/src/ui/boot/react-root.tsx`
   - Use `createRoot` from `react-dom/client`
   - Mount to `#ui-root` element
   - Export initialization function
 
-- [ ] **Create HUD CSS styles**
+- [x] **Create HUD CSS styles**
   - Create `packages/web-client/src/ui/styles/hud.css`
   - Define CSS variables for typography (`--t--1`, `--t-0`, `--t-1`, `--t-2`, `--pad`)
   - Style `#ui-root` with fixed positioning, pointer-events: none
@@ -58,21 +58,21 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Define `.hud-row` layout with CSS Grid
   - Include safe-area-inset support
 
-- [ ] **Create Zustand game bridge**
+- [x] **Create Zustand game bridge**
   - Create `packages/web-client/src/ui/state/game-bridge.ts`
   - Define `HudState` type with: `score`, `lives`, `combo`, `fps?`
   - Create Zustand store with `useHud`
   - Export `hudSetters` object with: `setScore`, `setLives`, `setCombo`, `setFps`
   - Keep store read-only from React side
 
-- [ ] **Create initial HUD component**
+- [x] **Create initial HUD component**
   - Create `packages/web-client/src/ui/HudApp.tsx`
   - Subscribe to `useHud` store
   - Render score, lives, combo, fps in `.hud-row` layout
   - Use CSS variables for typography
   - Mark interactive areas with `.ui-interactive`
 
-- [ ] **Integrate React boot into main entry**
+- [x] **Integrate React boot into main entry**
   - Edit `packages/web-client/src/app/main.ts` (or `game-runtime.ts` if needed)
   - Import React root bootstrapper after PIXI initialization
   - Import `HudApp` component
@@ -80,7 +80,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Call bootstrap after PIXI stage is ready
   - Verify React renders without errors
 
-- [ ] **Test initial render**
+- [x] **Test initial render** 
   - Run `pnpm dev`
   - Verify React HUD appears over canvas
   - Verify HUD shows default values (0, 3, 0, no fps)
@@ -94,35 +94,35 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Locate runtime state sources**
+- [x] **Locate runtime state sources**
   - Identify where score is computed (`packages/web-client/src/app/runtime/*` or `packages/core-domain/src/util/scoring.ts`)
   - Identify where lives are tracked (likely in session state)
   - Identify where combo is calculated (scoring system)
   - Identify where FPS is available (PIXI app.ticker.FPS)
 
-- [ ] **Wire score updates**
+- [x] **Wire score updates**
   - Find score update location (likely in `runtime-hud-coordinator.ts` or scoring module)
   - Import `hudSetters` from bridge
   - Call `hudSetters.setScore()` when score changes
   - Verify score updates in React HUD
 
-- [ ] **Wire lives updates**
+- [x] **Wire lives updates**
   - Find lives tracking location (session state or game runtime)
   - Call `hudSetters.setLives()` when lives change
   - Verify lives update in React HUD
 
-- [ ] **Wire combo updates**
+- [x] **Wire combo updates**
   - Find combo calculation (likely in scoring system)
   - Call `hudSetters.setCombo()` when combo changes
   - Verify combo updates in React HUD
 
-- [ ] **Wire FPS updates**
+- [x] **Wire FPS updates**
   - Find PIXI app instance (likely in stage or game-runtime)
   - Set up interval (1-2 Hz) to read `app.ticker.FPS`
   - Call `hudSetters.setFps()` with rounded value
   - Verify FPS displays in React HUD
 
-- [ ] **Test state synchronization**
+- [x] **Test state synchronization** 
   - Play game and verify HUD updates match gameplay
   - Check that score increments correctly
   - Check that lives decrement on ball loss
@@ -182,7 +182,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Create customization domain models**
+- [x] **Create customization domain models**
   - Create `packages/core-domain/src/util/mayhaps-customization.ts`
   - Define `MayhapsForm` enum/type (PolishedIvoryOrb, D6Diceform, etc.)
   - Define `CoreTrait` enum/type (FortuneFavored, DoubleEdged, etc.)
@@ -190,12 +190,12 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Define `Voice` enum/type (Chime, Pulse, etc.)
   - Define `MayhapsCustomization` interface combining all aspects
 
-- [ ] **Extend session state**
+- [x] **Extend session state**
   - Edit `packages/core-domain/src/app/state.ts`
   - Add `mayhaps` field to session state with default customization
   - Ensure state is serializable for saves
 
-- [ ] **Implement form physics effects**
+- [x] **Implement form physics effects**
   - Edit `packages/core-domain/src/physics/ball-launch.ts`
   - Extend `createBall` factory to accept form parameter
   - Implement "D6 Diceform" with random velocity jitter
@@ -208,7 +208,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement "Double-Edged": double points but risk hazards
   - Apply trait modifiers to scoring calculations
 
-- [ ] **Implement sigil effects**
+- [x] **Implement sigil effects**
   - Edit `packages/core-domain/src/game/rewards.ts`
   - Add sigil bonus calculations (e.g., +10% coin drop)
   - Apply sigil modifiers to reward generation
@@ -219,20 +219,20 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement "Pulse" voice: modulate Tone.js synths on bounces
   - Hook into bounce events to trigger voice effects
 
-- [ ] **Create customization UI (React)**
+- [x] **Create customization UI (React)**
   - Create `packages/web-client/src/ui/components/MayhapsCustomizer.tsx`
   - Display grid of unlockable forms, traits, sigils, voices
   - Show previews (PixiJS render of ball with effects)
   - Add unlock logic (tied to prestige currency later)
   - Store selections in game state
 
-- [ ] **Integrate customization into gameplay**
+- [x] **Integrate customization into gameplay**
   - Load customization from session state on game start
   - Apply physics, scoring, reward, and audio modifiers
   - Verify all effects work correctly
   - Test with different customization combinations
 
-- [ ] **Add customization tests**
+- [ ] **Add customization tests** _(targeted physics/scoring coverage still outstanding)_
   - Create `packages/web-client/tests/unit/mayhaps-customization.spec.ts`
   - Test form physics effects
   - Test trait scoring modifiers
@@ -247,13 +247,13 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Extend entropy storage**
+- [x] **Extend entropy storage**
   - Edit `packages/core-domain/src/app/state.ts`
   - Ensure `entropyStored` is tracked in session
   - Hook `BrickBreak` event to accumulate entropy
   - Add entropy spending logic
 
-- [ ] **Extend bias phase coordinator**
+- [ ] **Extend bias phase coordinator** _(entropy wager flow still pending)_
   - Edit `packages/web-client/src/app/runtime/bias-phase-coordinator.ts`
   - Add wagering logic for entropy
   - Implement "Tilt" option: nudge odds (+20% crit bricks)
@@ -261,7 +261,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement "Reforge" option: reroll physics (gravity, etc.)
   - Use seeded RNG for deterministic outcomes
 
-- [ ] **Create casino hub React scene**
+- [x] **Create casino hub React scene**
   - Create `packages/web-client/src/ui/scenes/CasinoHub.tsx`
   - Design casino aesthetic (cosmic Las Vegas theme)
   - Display entropy balance
@@ -269,13 +269,13 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Add roulette wheel visual (PixiJS spinner or React component)
   - Add slots mini-game placeholder
 
-- [ ] **Migrate bias phase scene to React**
+- [x] **Migrate bias phase scene to React**
   - Replace `packages/web-client/src/scenes/bias-phase.ts` logic with React
   - Keep scene registration for transition
   - Create React component that renders casino hub
   - Maintain existing coordinator interface
 
-- [ ] **Implement modifier application**
+- [x] **Implement modifier application**
   - Edit `packages/web-client/src/app/runtime/modifiers.ts`
   - Apply "Tilt" modifiers to brick generation
   - Apply "Lock" rules to game mechanics
@@ -308,39 +308,39 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Extend idle system**
+- [x] **Extend idle system**
   - Edit `packages/web-client/src/app/runtime/idle.ts`
   - Calculate yields on return based on time away
   - Generate "Luck Dust" (rate based on biases)
   - Implement max cap (24 hours) to prevent exploits
 
-- [ ] **Create idle storage**
+- [x] **Create idle storage**
   - Extend `packages/web-client/src/app/meta-progress-service.ts`
   - Save timestamp in localStorage on game exit
   - Load timestamp on game start
   - Calculate time difference
 
-- [ ] **Generate Fate Ledger stories**
+- [ ] **Generate Fate Ledger stories** _(procedural narrative hooks still outstanding)_
   - Extend narrative service with procedural story generation
   - Create template system with random fills
   - Generate stories like: "While you slumbered, Mayhaps wandered the voids..."
   - Include rewards in stories
 
-- [ ] **Create idle return UI**
+- [ ] **Create idle return UI** _(dialog still to be implemented)_
   - Create `packages/web-client/src/ui/components/IdleReturnDialog.tsx`
   - Display Fate Ledger story
   - Show accumulated Luck Dust
   - Show artifacts found during drift
   - Add "Continue" button to dismiss
 
-- [ ] **Integrate idle check**
+- [x] **Integrate idle check**
   - Edit `packages/web-client/src/app/game-initializer.ts` or `game-runtime.ts`
   - Check for idle timestamp on game start
   - Calculate rewards if idle time > threshold
   - Present idle return dialog
   - Grant rewards to player
 
-- [ ] **Test idle mechanics**
+- [ ] **Test idle mechanics** _(suite missing for persistence/reward validation)_
   - Test timestamp saving on exit
   - Test reward calculation for various time periods
   - Test max cap enforcement
@@ -355,44 +355,44 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
 
 ### Checklist
 
-- [ ] **Migrate main menu**
+- [x] **Migrate main menu**
   - Create `packages/web-client/src/ui/scenes/MainMenu.tsx`
   - Replace `packages/web-client/src/scenes/main-menu.ts` logic
   - Keep scene registration for transition
   - Add "Story" button for narrative
   - Maintain existing functionality (high scores, start game)
 
-- [ ] **Migrate pause menu**
+- [x] **Migrate pause menu**
   - Create `packages/web-client/src/ui/scenes/PauseMenu.tsx`
   - Replace `packages/web-client/src/scenes/pause.ts` logic
   - Add resume, quit, settings options
   - Implement focus trapping for accessibility
 
-- [ ] **Migrate loadout selection**
+- [x] **Migrate loadout selection**
   - Create `packages/web-client/src/ui/scenes/LoadoutSelection.tsx`
   - Replace `packages/web-client/src/scenes/loadout-selection.ts` logic
   - Display loadout grid with previews
   - Maintain existing loadout system integration
 
-- [ ] **Migrate game over screen**
+- [x] **Migrate game over screen**
   - Create `packages/web-client/src/ui/scenes/GameOver.tsx`
   - Replace `packages/web-client/src/scenes/game-over.ts` logic
   - Show final score, stats, restart option
 
-- [ ] **Migrate reward dialogs**
+- [ ] **Migrate reward dialogs** _(React component still to be introduced)_
   - Create `packages/web-client/src/ui/components/RewardDialog.tsx`
   - Replace any PixiJS reward display logic
   - Show rewards in scrollable list
   - Add animations for reward reveals
 
-- [ ] **Create settings panel**
+- [ ] **Create settings panel** _(dedicated React settings component pending)_
   - Create `packages/web-client/src/ui/components/SettingsPanel.tsx`
   - Add volume controls
   - Add control scheme options
   - Add reduced motion toggle
   - Persist settings in localStorage
 
-- [ ] **Maintain scene compatibility**
+- [x] **Maintain scene compatibility**
   - Keep old PixiJS scene files as thin adapters during transition
   - Re-export React components through scene registration
   - Ensure call-sites don't break
