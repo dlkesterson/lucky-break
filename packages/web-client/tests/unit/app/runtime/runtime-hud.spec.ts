@@ -74,6 +74,11 @@ describe('React HUD bridge', () => {
             prompts: [
                 { id: 'alert', severity: 'warning', message: 'Brace yourself!' },
             ],
+            settings: {
+                muted: false,
+                masterVolume: 0.8,
+                reducedMotion: false,
+            },
         } as const;
 
         hudSetters.updateFromRuntime(payload);
@@ -94,6 +99,7 @@ describe('React HUD bridge', () => {
         expect(state.entropyActions).toEqual(payload.entropyActions);
         expect(state.momentum).toEqual(payload.momentum);
         expect(state.prompts).toEqual(payload.prompts);
+        expect(state.settings).toEqual(payload.settings);
     });
 
     it('pulses the combo meter with clamped intensity and timed decay', () => {
@@ -129,6 +135,11 @@ describe('React HUD bridge', () => {
                 comboTimer: 0.6,
             },
             prompts: [],
+            settings: {
+                muted: true,
+                masterVolume: 0,
+                reducedMotion: true,
+            },
         });
 
         hudSetters.pulseCombo(1);
@@ -145,6 +156,11 @@ describe('React HUD bridge', () => {
             entropyActions: [],
             momentum: null,
             prompts: [],
+            settings: {
+                muted: false,
+                masterVolume: 1,
+                reducedMotion: false,
+            },
         });
 
         vi.advanceTimersByTime(1000);

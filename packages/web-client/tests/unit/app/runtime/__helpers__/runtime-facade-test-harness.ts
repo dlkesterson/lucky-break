@@ -173,6 +173,13 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
             updatedAt: Date.now(),
         },
         loadout: null as LoadoutSelection | null,
+        preferences: {
+            masterVolume: 1,
+            muted: false,
+            reducedMotion: false,
+            controlScheme: 'keyboard',
+            controlSensitivity: 0.5,
+        },
     };
 
     let loadoutEffects: LoadoutSessionEffects | null = null;
@@ -184,6 +191,7 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
         }),
         snapshot: vi.fn(() => ({
             ...state,
+            preferences: { ...state.preferences },
             hud: {
                 score: state.score,
                 coins: state.coins,
@@ -210,9 +218,9 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
                 },
                 prompts: [],
                 settings: {
-                    muted: false,
-                    masterVolume: 1,
-                    reducedMotion: false,
+                    muted: state.preferences.muted,
+                    masterVolume: state.preferences.masterVolume,
+                    reducedMotion: state.preferences.reducedMotion,
                 },
             },
             loadout: state.loadout,
@@ -233,6 +241,25 @@ export const createGameSessionManagerMock = vi.fn((options: Record<string, unkno
             const safeAmount = Math.max(0, Math.floor(amount));
             state.coins += safeAmount;
             state.score += safeAmount;
+        }),
+        updatePreferences: vi.fn((partial: Partial<{ masterVolume: number; muted: boolean; reducedMotion: boolean }>) => {
+            if (partial.masterVolume !== undefined) {
+                const normalized = Math.max(0, Math.min(1, Number(partial.masterVolume)));
+                state.preferences.masterVolume = normalized;
+            }
+            if (partial.muted !== undefined) {
+                state.preferences.muted = Boolean(partial.muted);
+            }
+            if (partial.reducedMotion !== undefined) {
+                state.preferences.reducedMotion = Boolean(partial.reducedMotion);
+            }
+            return {
+                masterVolume: state.preferences.masterVolume,
+                muted: state.preferences.muted,
+                reducedMotion: state.preferences.reducedMotion,
+                controlScheme: state.preferences.controlScheme,
+                controlSensitivity: state.preferences.controlSensitivity,
+            } as const;
         }),
         getEntropyState: vi.fn(() => ({ ...state.entropy })),
         updateMomentum: vi.fn((snapshot: Partial<Record<string, number>>) => {

@@ -6,6 +6,14 @@ import type { HudSnapshot } from "app/state";
 
 type HudMomentum = HudSnapshot["momentum"];
 
+export interface HudSettings {
+    readonly muted: boolean;
+    readonly masterVolume: number;
+    readonly reducedMotion: boolean;
+}
+
+type HudSettingsUpdate = Partial<Pick<HudSettings, "muted" | "masterVolume">>;
+
 export interface RuntimeHudPayload {
     readonly score: number;
     readonly lives: number;
@@ -21,6 +29,7 @@ export interface RuntimeHudPayload {
     readonly entropyActions: readonly HudEntropyActionDescriptor[];
     readonly momentum: HudMomentum;
     readonly prompts: readonly HudScoreboardPrompt[];
+    readonly settings: HudSettings;
 }
 
 export interface HudState {
@@ -42,6 +51,8 @@ export interface HudState {
     readonly prompts: readonly HudScoreboardPrompt[];
     readonly visible: boolean;
     readonly attemptEntropyAction?: (action: EntropyActionType) => void;
+    readonly settings: HudSettings;
+    readonly updateSettings?: (changes: HudSettingsUpdate) => void;
 }
 
 const createInitialState = (): HudState => ({
@@ -63,6 +74,12 @@ const createInitialState = (): HudState => ({
     prompts: [],
     visible: false,
     attemptEntropyAction: undefined,
+    settings: {
+        muted: false,
+        masterVolume: 1,
+        reducedMotion: false,
+    },
+    updateSettings: undefined,
 });
 
 export const useHud = create<HudState>(createInitialState);
@@ -70,6 +87,7 @@ export const useHud = create<HudState>(createInitialState);
 let comboPulseResetHandle: ReturnType<typeof setTimeout> | undefined;
 let comboPulseRevision = 0;
 let entropyActionHandler: ((action: EntropyActionType) => void) | undefined;
+let settingsUpdateHandler: ((changes: HudSettingsUpdate) => void) | undefined;
 
 export const hudSetters = {
     setVisibility: (visible: boolean): void => {
@@ -93,6 +111,7 @@ export const hudSetters = {
             entropyActions: payload.entropyActions,
             momentum: payload.momentum,
             prompts: payload.prompts,
+            settings: payload.settings,
         }));
     },
     pulseCombo: (intensity: number): void => {
@@ -132,6 +151,22 @@ export const hudSetters = {
         entropyActionHandler = handler;
         useHud.setState((previous) => (previous.attemptEntropyAction === handler ? previous : { ...previous, attemptEntropyAction: handler }));
     },
+    applySettings: (settings: HudSettings): void => {
+        useHud.setState((previous) => {
+            if (
+                previous.settings.masterVolume === settings.masterVolume &&
+                previous.settings.muted === settings.muted &&
+                previous.settings.reducedMotion === settings.reducedMotion
+            ) {
+                return previous;
+            }
+            return { ...previous, settings };
+        });
+    },
+    setSettingsUpdater: (handler: ((changes: HudSettingsUpdate) => void) | undefined): void => {
+        settingsUpdateHandler = handler;
+        useHud.setState((previous) => (previous.updateSettings === handler ? previous : { ...previous, updateSettings: handler }));
+    },
     reset: (): void => {
         comboPulseRevision += 1;
         if (comboPulseResetHandle !== undefined) {
@@ -139,7 +174,11 @@ export const hudSetters = {
             comboPulseResetHandle = undefined;
         }
         const baseline = createInitialState();
-        const nextState = entropyActionHandler ? { ...baseline, attemptEntropyAction: entropyActionHandler } : baseline;
+        const nextState: HudState = {
+            ...baseline,
+            ...(entropyActionHandler ? { attemptEntropyAction: entropyActionHandler } : {}),
+            ...(settingsUpdateHandler ? { updateSettings: settingsUpdateHandler } : {}),
+        };
         useHud.setState(nextState, true);
     },
 } as const;

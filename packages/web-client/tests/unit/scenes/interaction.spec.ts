@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { MetaUpgradeManager } from 'app/meta-upgrades';
 
 vi.mock('pixi.js', () => {
@@ -81,10 +81,12 @@ import { createPauseScene } from 'scenes/pause';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createLevelCompleteScene } from 'scenes/level-complete';
 import { createGameOverScene } from 'scenes/game-over';
-import { Container, Text } from 'pixi.js';
+import { Container } from 'pixi.js';
 import { usePauseUi } from 'ui/state/pause-bridge';
 import { useGameOverUi } from 'ui/state/game-over-bridge';
+import { useMainMenuUi, mainMenuUiBridge } from 'ui/state/main-menu-bridge';
 import * as ThemeModule from 'render/theme';
+import * as SettingsModule from 'util/settings';
 import type { Application } from 'pixi.js';
 
 interface SceneTestHarness {
@@ -251,19 +253,23 @@ const createSceneHarness = (): SceneTestHarness => {
     };
 };
 
+beforeEach(() => {
+    mainMenuUiBridge.exit();
+});
+
 describe('scene interaction lifecycles', () => {
-    it('toggles main menu interaction when suspended and resumed', () => {
-        const { context, getLastAdded, services } = createSceneHarness();
+    it('tracks main menu overlay lifecycle via bridge state', () => {
+        const { context, services } = createSceneHarness();
         const scene = createMainMenuScene(context, {
             onStart: vi.fn(),
         });
 
-        void scene.init();
-        const container = getLastAdded();
-        expect(container).not.toBeNull();
-        expect(container?.eventMode).toBe('static');
-        expect(container?.cursor).toBe('pointer');
+        scene.init();
 
+        const initialState = useMainMenuUi.getState();
+        expect(initialState.visible).toBe(true);
+        expect(initialState.suspended).toBe(false);
+        expect(initialState.snapshot).not.toBeNull();
         expect(services.audioState$.next).toHaveBeenCalledWith({
             combo: 0,
             activePowerUps: [],
@@ -274,57 +280,78 @@ describe('scene interaction lifecycles', () => {
             action: 'enter',
         });
 
-        void scene.suspend?.();
-        expect(container?.eventMode).toBe('none');
-        expect(container?.cursor).toBe('default');
+        scene.suspend?.();
+        expect(useMainMenuUi.getState().suspended).toBe(true);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'main-menu',
             action: 'suspend',
         });
 
-        void scene.resume?.();
-        expect(container?.eventMode).toBe('static');
-        expect(container?.cursor).toBe('pointer');
+        scene.resume?.();
+        expect(useMainMenuUi.getState().suspended).toBe(false);
         expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
             scene: 'main-menu',
             action: 'resume',
         });
 
         scene.destroy?.();
+        expect(useMainMenuUi.getState().visible).toBe(false);
+        expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
+            scene: 'main-menu',
+            action: 'exit',
+        });
     });
 
-    it('provides a clickable color mode toggle on the main menu', () => {
+    it('exposes theme and performance controls on the main menu snapshot', () => {
         const toggleSpy = vi.spyOn(ThemeModule, 'toggleTheme').mockImplementation(() => 'colorBlind');
-        const { context, getLastAdded } = createSceneHarness();
+        let performanceEnabled = false;
+        const settingsListeners = new Set<(snapshot: SettingsModule.SettingsSnapshot) => void>();
+
+        const getSettingsSpy = vi
+            .spyOn(SettingsModule, 'getSettings')
+            .mockImplementation(() => ({ version: 1, performance: performanceEnabled }));
+        const updateSettingsSpy = vi
+            .spyOn(SettingsModule, 'updateSettings')
+            .mockImplementation((changes) => {
+                if (typeof changes.performance === 'boolean') {
+                    performanceEnabled = changes.performance;
+                }
+                const snapshot: SettingsModule.SettingsSnapshot = { version: 1, performance: performanceEnabled };
+                settingsListeners.forEach((listener) => listener(snapshot));
+                return snapshot;
+            });
+        const subscribeSettingsSpy = vi
+            .spyOn(SettingsModule, 'subscribeSettings')
+            .mockImplementation((listener) => {
+                settingsListeners.add(listener);
+                listener({ version: 1, performance: performanceEnabled });
+                return () => {
+                    settingsListeners.delete(listener);
+                };
+            });
+
+        const { context } = createSceneHarness();
         const scene = createMainMenuScene(context, {
             onStart: vi.fn(),
         });
 
-        void scene.init();
-        const container = getLastAdded();
-        expect(container).not.toBeNull();
+        scene.init();
 
-        const themeNode = container?.children.find(
-            (child): child is Text => child instanceof Text && child.text.toUpperCase().includes('COLOR MODE'),
-        );
-        expect(themeNode).toBeTruthy();
-        if (!themeNode) {
-            throw new Error('theme toggle label missing');
-        }
-        expect(themeNode.cursor).toBe('pointer');
-        expect(themeNode.eventMode).toBe('static');
-
-        const onMock = Reflect.get(themeNode, 'on') as Mock;
-        const handler = onMock.mock.calls.find((call) => call[0] === 'pointertap')?.[1] as
-            | ((event: { stopPropagation: () => void }) => void)
-            | undefined;
-        expect(handler).toBeTypeOf('function');
-
-        handler?.({ stopPropagation: vi.fn() });
+        const snapshot = useMainMenuUi.getState().snapshot;
+        expect(snapshot).not.toBeNull();
+        snapshot?.onToggleTheme();
         expect(toggleSpy).toHaveBeenCalledTimes(1);
 
-        toggleSpy.mockRestore();
+        snapshot?.onTogglePerformance();
+        expect(updateSettingsSpy).toHaveBeenCalledWith({ performance: true });
+        expect(useMainMenuUi.getState().snapshot?.performanceEnabled).toBe(true);
+
         scene.destroy?.();
+
+        toggleSpy.mockRestore();
+        getSettingsSpy.mockRestore();
+        updateSettingsSpy.mockRestore();
+        subscribeSettingsSpy.mockRestore();
     });
 
     it('disables pause overlay interaction while suspended', () => {

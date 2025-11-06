@@ -165,6 +165,7 @@ export interface GameSessionManager {
     readonly grantStoredEntropy: (amount: number) => number;
     readonly setLoadout: (selection: LoadoutSelection, effects: LoadoutSessionEffects) => void;
     readonly getLoadout: () => { readonly selection: LoadoutSelection; readonly effects: LoadoutSessionEffects } | null;
+    readonly updatePreferences: (preferences: Partial<PlayerPreferences>) => PlayerPreferences;
 }
 
 export interface GameSessionOptions {
@@ -309,7 +310,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         const suffix = value.toString(16).padStart(8, '0');
         return `session-${suffix}`;
     })();
-    const preferences: PlayerPreferences = { ...INITIAL_PREFERENCES, ...options.preferences };
+    const preferences: Mutable<PlayerPreferences> = { ...INITIAL_PREFERENCES, ...options.preferences };
     const scoringEvents = options.eventBus ? createScoringEventEmitter(options.eventBus) : undefined;
 
     let status: GameStatus = 'pending';
@@ -873,6 +874,41 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         } as const;
     };
 
+    const updatePreferences: GameSessionManager['updatePreferences'] = (partial) => {
+        if (!partial) {
+            return clonePreferences(preferences);
+        }
+
+        if (partial.masterVolume !== undefined) {
+            const requested = Number.isFinite(partial.masterVolume) ? Number(partial.masterVolume) : preferences.masterVolume;
+            preferences.masterVolume = clamp01(requested);
+        }
+
+        if (partial.muted !== undefined) {
+            preferences.muted = Boolean(partial.muted);
+        }
+
+        if (partial.reducedMotion !== undefined) {
+            preferences.reducedMotion = Boolean(partial.reducedMotion);
+        }
+
+        if (partial.controlScheme !== undefined) {
+            const scheme = partial.controlScheme;
+            if (scheme === 'touch' || scheme === 'mouse' || scheme === 'keyboard') {
+                preferences.controlScheme = scheme;
+            }
+        }
+
+        if (partial.controlSensitivity !== undefined) {
+            const requested = Number.isFinite(partial.controlSensitivity)
+                ? Number(partial.controlSensitivity)
+                : preferences.controlSensitivity;
+            preferences.controlSensitivity = clamp01(requested);
+        }
+
+        return clonePreferences(preferences);
+    };
+
     return {
         snapshot,
         startRound,
@@ -888,5 +924,6 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         grantStoredEntropy,
         setLoadout,
         getLoadout,
+        updatePreferences,
     } satisfies GameSessionManager;
 };

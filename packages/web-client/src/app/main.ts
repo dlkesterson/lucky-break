@@ -9,6 +9,7 @@ import { createReplayBuffer, type ReplayRecording } from 'app/replay-buffer';
 import '../ui/styles/hud.css';
 import '../ui/styles/bias-phase.css';
 import '../ui/styles/loadout-selection.css';
+import '../ui/styles/main-menu.css';
 import '../ui/styles/pause.css';
 import '../ui/styles/game-over.css';
 import '../ui/styles/fate-ledger.css';

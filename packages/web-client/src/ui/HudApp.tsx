@@ -1,5 +1,4 @@
 import { useMemo, type CSSProperties } from 'react';
-import type { HudEntropyActionDescriptor, HudScoreboardPrompt } from 'render/hud';
 
 import { useHud } from './state/game-bridge';
 
@@ -32,20 +31,6 @@ const clampUnit = (value: number): number => {
   return Math.max(0, Math.min(1, value));
 };
 
-const formatEntropyDetail = (descriptor: HudEntropyActionDescriptor): string => {
-  const cost = Math.max(0, Math.round(descriptor.cost));
-  const status =
-    descriptor.charges > 0
-      ? `Charges ×${descriptor.charges}`
-      : descriptor.affordable
-        ? 'Ready'
-        : 'Locked';
-  return `${descriptor.hotkey.toUpperCase()} · Cost ${cost}% · ${status}`;
-};
-
-const isEntropyActionAvailable = (descriptor: HudEntropyActionDescriptor): boolean =>
-  descriptor.charges > 0 || descriptor.affordable;
-
 const momentumDescriptor = [
   { key: 'comboHeat', label: 'Heat' },
   { key: 'speedPressure', label: 'Speed' },
@@ -67,10 +52,8 @@ export const HudApp = (): JSX.Element | null => {
     scoreboard,
     activePowerUps,
     reward,
-    entropyActions,
     momentum,
     visible,
-    attemptEntropyAction,
   } = useHud();
 
   const fpsLabel = useMemo(() => {
@@ -95,13 +78,11 @@ export const HudApp = (): JSX.Element | null => {
       entry.id !== 'coins' &&
       entry.id !== 'lives' &&
       entry.id !== 'momentum' &&
-      entry.id !== 'entropy-actions' &&
       entry.id !== 'bricks',
   );
 
   const summaryCoins = formatCoins(coins);
   const summaryLives = formatLives(lives);
-
   const comboTimerLabel =
     Number.isFinite(comboTimer) && comboTimer > 0
       ? `${comboTimer.toFixed(1)}s window`
@@ -172,41 +153,6 @@ export const HudApp = (): JSX.Element | null => {
           </section>
         )}
 
-        {entropyActions.length > 0 && (
-          <section className="hud-entropy ui-interactive" aria-label="Entropy actions">
-            <h3>Entropy Actions</h3>
-            <ul>
-              {entropyActions.map((entry) => {
-                const available = isEntropyActionAvailable(entry);
-                const variantClass =
-                  entry.charges > 0
-                    ? ' hud-entropy-action--charged'
-                    : available
-                      ? ' hud-entropy-action--ready'
-                      : ' hud-entropy-action--locked';
-                const disabled = !available || !attemptEntropyAction;
-                return (
-                  <li key={entry.action}>
-                    <button
-                      type="button"
-                      className={`hud-entropy-action ui-interactive${variantClass}`}
-                      onClick={() => {
-                        if (disabled || !attemptEntropyAction) {
-                          return;
-                        }
-                        attemptEntropyAction(entry.action);
-                      }}
-                      disabled={disabled}
-                    >
-                      <span className="hud-entropy-label">{entry.label}</span>
-                      <span className="hud-entropy-detail">{formatEntropyDetail(entry)}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        )}
         {activePowerUps.length > 0 && (
           <section className="hud-powerups" aria-label="Active power ups">
             <h3>Power-Ups</h3>

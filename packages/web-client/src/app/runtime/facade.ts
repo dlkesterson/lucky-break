@@ -7,7 +7,7 @@ import {
 } from 'render/theme';
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
-import type { GameSessionManager } from 'app/state';
+import type { GameSessionManager, PlayerPreferences } from 'app/state';
 import type { EntropyActionType } from 'app/events';
 import type { AchievementUnlock } from '../achievements';
 import { gameConfig, type GameConfig } from 'config/game';
@@ -75,6 +75,7 @@ import {
     isPromiseLike,
     waitForPromise,
 } from './audio';
+import { Destination } from 'tone';
 import { createCollisionRuntime, type CollisionRuntime, type CollisionContext } from './collisions';
 import type { RuntimeVisuals } from './physics-assembly';
 import {
@@ -484,6 +485,34 @@ export const createRuntimeFacade = async ({
     };
     const resolveMidiEngine = () => runtimeAudio.getMidiEngine();
 
+    const volumeToDecibels = (value: number): number => {
+        if (!Number.isFinite(value) || value <= 0) {
+            return -60;
+        }
+        const clamped = Math.max(1e-3, Math.min(1, value));
+        return Math.max(-60, 20 * Math.log10(clamped));
+    };
+
+    const applyAudioPreferences = (preferences: PlayerPreferences) => {
+        const volume = Math.max(0, Math.min(1, preferences.masterVolume));
+        const shouldMute = preferences.muted || volume <= 1e-3;
+
+        try {
+            if (Destination) {
+                Destination.mute = shouldMute;
+                Destination.volume.value = shouldMute ? -60 : volumeToDecibels(volume);
+            }
+        } catch (error) {
+            runtimeLogger.warn('Failed to apply audio preferences', { error });
+        }
+
+        if (shouldMute) {
+            runtimeAudio.disableMusic();
+        } else {
+            runtimeAudio.enableMusic();
+        }
+    };
+
     const handleFrameMetrics = runtimePerformance.handleFrameMetrics;
 
     const sessionNow = (): number => Math.max(0, Math.floor(runtimeState.sessionElapsedSeconds * 1000));
@@ -510,6 +539,13 @@ export const createRuntimeFacade = async ({
     const inputToPhysics: InputToPhysicsBridge = createInputToPhysicsBridge(runtimeInput);
 
     let session = createSession();
+    const initialPreferences = session.snapshot().preferences;
+    applyAudioPreferences(initialPreferences);
+    hudSetters.applySettings({
+        muted: initialPreferences.muted,
+        masterVolume: initialPreferences.masterVolume,
+        reducedMotion: initialPreferences.reducedMotion,
+    });
     let activeLoadoutBundle: LoadoutEffectsBundle = computeLoadoutEffects(normalizeLoadoutSelection(undefined));
     let loadoutPhysicsMultipliers = {
         baseSpeed: activeLoadoutBundle.combined.runtime.physics.baseSpeedMultiplier,
@@ -523,6 +559,13 @@ export const createRuntimeFacade = async ({
     const getSession = () => session;
     const replaceSession = (nextSession: GameSessionManager) => {
         session = nextSession;
+        const preferences = session.snapshot().preferences;
+        applyAudioPreferences(preferences);
+        hudSetters.applySettings({
+            muted: preferences.muted,
+            masterVolume: preferences.masterVolume,
+            reducedMotion: preferences.reducedMotion,
+        });
     };
     const getActiveLoadoutSelection = (): LoadoutSelection => activeLoadoutBundle.selection;
     const sessionFacade: Pick<GameSessionManager, 'snapshot' | 'recordLifeLost' | 'recordEntropyEvent' | 'completeRound'> = {
@@ -1079,6 +1122,29 @@ export const createRuntimeFacade = async ({
 
     hudSetters.setEntropyActionHandler((action) => {
         runtimeRewards.attemptEntropyAction(action);
+    });
+
+    hudSetters.setSettingsUpdater((changes) => {
+        const updates: { masterVolume?: number; muted?: boolean } = {};
+        if (changes.masterVolume !== undefined) {
+            updates.masterVolume = changes.masterVolume;
+        }
+        if (changes.muted !== undefined) {
+            updates.muted = changes.muted;
+        }
+
+        if (updates.masterVolume === undefined && updates.muted === undefined) {
+            return;
+        }
+
+        const nextPreferences = session.updatePreferences(updates);
+        hudSetters.applySettings({
+            muted: nextPreferences.muted,
+            masterVolume: nextPreferences.masterVolume,
+            reducedMotion: nextPreferences.reducedMotion,
+        });
+        applyAudioPreferences(nextPreferences);
+        refreshHud();
     });
 
     runtimeHudCoordinator = createRuntimeHudCoordinator({

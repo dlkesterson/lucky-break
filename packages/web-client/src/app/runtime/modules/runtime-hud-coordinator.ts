@@ -98,6 +98,7 @@ export const createRuntimeHudCoordinator = ({
             entropyActions,
             momentum: sessionSnapshot.hud.momentum,
             prompts: viewWithCountdown.prompts,
+            settings: sessionSnapshot.hud.settings,
         });
 
         if (scoringView.combo > lastComboCount) {
