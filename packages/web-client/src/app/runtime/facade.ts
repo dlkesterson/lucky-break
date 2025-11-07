@@ -1,4 +1,5 @@
 import { createAudioBootstrap, clampMidiNote } from './audio-bootstrap';
+import type { MidiEngine, MidiPaletteConfig } from 'audio/midi-engine';
 
 import {
     GameTheme,
@@ -76,7 +77,7 @@ import {
     waitForPromise,
 } from './audio';
 import { Destination } from 'tone';
-import { createCollisionRuntime, type CollisionRuntime, type CollisionContext } from './collisions';
+import { createCollisionRuntime, type CollisionRuntime, type CollisionContext, type CollisionRuntimeDeps } from './collisions';
 import type { RuntimeVisuals } from './physics-assembly';
 import {
     createForeshadowingRuntime,
@@ -106,13 +107,52 @@ import {
     normalizeLoadoutSelection,
     type LoadoutEffectsBundle,
 } from './loadouts';
-import type { LoadoutSelection, LoadoutBallVisualOverrides, LoadoutBallShape } from 'config/loadouts';
+import {
+    defaultLoadoutSelection,
+    type LoadoutSelection,
+    type LoadoutBallVisualOverrides,
+    type LoadoutBallShape,
+    type LoadoutVoiceId,
+    type LoadoutVoicePaletteOverrides,
+} from 'config/loadouts';
 import { noop } from 'util/index';
 import { hudSetters } from '../../ui/state/game-bridge';
 import { createNarrativeService, type NarrativeService } from '../narrative-service';
 import { normalizeBallShape, toPhysicsBallBodyShape } from './ball-shape';
 
 const runtimeLogger = rootLogger.child('game-runtime');
+
+const runtimeVoiceState: {
+    voiceId: LoadoutVoiceId;
+    overrides: Partial<MidiPaletteConfig> | undefined;
+} = {
+    voiceId: defaultLoadoutSelection.voice,
+    overrides: undefined,
+};
+
+type MutableCollisionDeps = CollisionRuntimeDeps & { midiEngine: MidiEngine };
+
+const sanitizeVoiceOverrides = (
+    overrides: LoadoutVoicePaletteOverrides | undefined,
+): Partial<MidiPaletteConfig> | undefined => {
+    if (!overrides || typeof overrides !== 'object') {
+        return undefined;
+    }
+    if (Object.keys(overrides).length === 0) {
+        return undefined;
+    }
+    return { ...(overrides as Partial<MidiPaletteConfig>) };
+};
+
+const setRuntimeVoiceState = (
+    voiceId: LoadoutVoiceId,
+    overrides: LoadoutVoicePaletteOverrides | undefined,
+): void => {
+    runtimeVoiceState.voiceId = voiceId;
+    runtimeVoiceState.overrides = sanitizeVoiceOverrides(overrides);
+};
+
+setRuntimeVoiceState(defaultLoadoutSelection.voice, undefined);
 
 const config: GameConfig = gameConfig;
 const PLAYFIELD_DEFAULT = config.playfield;
@@ -223,6 +263,8 @@ refreshMetaLoadout();
 const audioBootstrap = createAudioBootstrap({
     logger: runtimeLogger,
     getPaletteConfig: () => getMetaLoadout().audioPalette.config,
+    getPaletteOverrides: () => runtimeVoiceState.overrides,
+    getVoiceId: () => runtimeVoiceState.voiceId,
 });
 
 export interface GameRuntimeOptions {
@@ -639,12 +681,20 @@ export const createRuntimeFacade = async ({
         }
     };
     let collisionRuntime: CollisionRuntime | null = null;
+    let collisionDeps: CollisionRuntimeDeps | null = null;
     let laserController: LaserController | null = null;
     let isPaused = false;
     const setPaused = (paused: boolean) => {
         isPaused = paused;
     };
     const getIsPaused = () => isPaused;
+
+    const rebuildMidiEngine = () => {
+        const engine = runtimeAudio.rebuildMidiEngine();
+        if (collisionDeps) {
+            (collisionDeps as MutableCollisionDeps).midiEngine = engine;
+        }
+    };
 
     const sharedSceneServices: GameSceneServices = {
         bus,
@@ -1046,6 +1096,7 @@ export const createRuntimeFacade = async ({
 
     const applyLoadoutBundle = (bundle: LoadoutEffectsBundle): void => {
         activeLoadoutBundle = bundle;
+        setRuntimeVoiceState(bundle.selection.voice, bundle.combined.runtime.audio.paletteOverrides);
         loadoutPhysicsMultipliers = {
             baseSpeed: bundle.combined.runtime.physics.baseSpeedMultiplier,
             maxSpeed: bundle.combined.runtime.physics.maxSpeedMultiplier,
@@ -1085,6 +1136,7 @@ export const createRuntimeFacade = async ({
         runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
         runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
 
+        rebuildMidiEngine();
         refreshHud();
         renderStageSoon();
     };
@@ -1325,7 +1377,7 @@ export const createRuntimeFacade = async ({
     const applyMetaSnapshot = (snapshotReason: 'loadout-changed' | 'dust-updated', details?: unknown) => {
         refreshMetaLoadout();
         runtimeTheme.applyTheme(GameTheme);
-        runtimeAudio.rebuildMidiEngine();
+        rebuildMidiEngine();
         refreshHud();
         renderStageSoon();
         const loadout = getMetaLoadout();
@@ -1463,13 +1515,14 @@ export const createRuntimeFacade = async ({
         },
     } satisfies CollisionContext;
 
-    collisionRuntime = createCollisionRuntime({
+    collisionDeps = {
         engine: physics.engine,
         bus,
         midiEngine: resolveMidiEngine(),
         random,
         context: collisionContext,
-    });
+    };
+    collisionRuntime = createCollisionRuntime(collisionDeps);
     collisionRuntime.wire();
 
     laserController = createLaserController({
@@ -2094,6 +2147,7 @@ export const createRuntimeFacade = async ({
             () => {
                 collisionRuntime?.unwire();
                 collisionRuntime = null;
+                collisionDeps = null;
             },
             () => {
                 bindLaserController(null);

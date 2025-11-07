@@ -496,6 +496,7 @@ export const createMultiBallControllerStub = () => ({
     isExtraBallBody: vi.fn(() => false),
     applyTheme: vi.fn(),
     setRestitution: vi.fn(),
+    setShape: vi.fn(),
     updateSpeedIndicators: vi.fn(),
     visitActiveBalls: vi.fn((visitor?: (entry: { body: { id: number; position: { x: number; y: number }; velocity: { x: number; y: number } }; isPrimary: boolean }) => void) => {
         if (typeof visitor === 'function') {

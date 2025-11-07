@@ -1,5 +1,6 @@
 import { MembraneSynth, PolySynth, Synth, now as toneNow } from 'tone';
 import type { ToneOscillatorType } from 'tone';
+import type { LoadoutVoiceId } from 'config/loadouts';
 const sanitizeOscillatorType = (value: unknown, fallback: ToneOscillatorType): ToneOscillatorType => {
     if (typeof value !== 'string') {
         return fallback;
@@ -62,6 +63,7 @@ export interface MidiPaletteConfig {
 
 export interface MidiEngineOptions {
     readonly palette?: MidiPaletteConfig;
+    readonly voiceId?: LoadoutVoiceId;
 }
 
 export interface MidiWallHitOptions {
