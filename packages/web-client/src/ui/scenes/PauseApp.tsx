@@ -8,7 +8,7 @@ import {
   type ChangeEvent,
   type MouseEvent,
 } from 'react';
-import { Button, Panel, cn } from '@lucky-break/design-system';
+import { Button, Panel, Heading, Label, Mono, cn } from '@lucky-break/design-system';
 import { toggleTheme, getThemeLabel } from 'render/theme';
 import type { HudEntropyActionDescriptor } from 'render/hud';
 
@@ -222,15 +222,15 @@ export const PauseApp = (): JSX.Element | null => {
         }}
       >
         <header className="flex flex-col items-center gap-3 text-center">
-          <h1
+          <Heading
             id="pause-title"
-            className="font-display text-[clamp(44px,6vw,72px)] uppercase tracking-[0.08em] text-[color:var(--pause-accent,#ffd45c)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+            className="text-[clamp(44px,6vw,72px)] uppercase tracking-[0.08em] text-[color:var(--pause-accent,#ffd45c)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
           >
             {snapshot.title}
-          </h1>
-          <p className="text-[clamp(15px,2vmin,20px)] tracking-[0.04em] text-[color:var(--pause-text-secondary,#cdb6ff)]">
+          </Heading>
+          <Label className="text-[clamp(15px,2vmin,20px)] tracking-[0.04em] text-[color:var(--pause-text-secondary,#cdb6ff)]">
             Run paused — the odds wait for no one.
-          </p>
+          </Label>
         </header>
 
         <Panel
@@ -239,7 +239,7 @@ export const PauseApp = (): JSX.Element | null => {
           className="pointer-events-auto flex flex-col items-center gap-2 rounded-[24px] text-center"
           style={scorePanelStyle}
         >
-          <span className="font-mono text-xs uppercase tracking-[0.12em] text-white/70">Score</span>
+          <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">Score</Mono>
           <span className="text-[clamp(32px,5.2vmin,54px)] font-extrabold">
             {formatScore(snapshot.score)}
           </span>
@@ -258,14 +258,14 @@ export const PauseApp = (): JSX.Element | null => {
           }}
         >
           <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="font-display text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+            <Heading className="text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
               Entropy Actions
-            </h2>
+            </Heading>
             <div className="flex flex-col items-end gap-1 font-mono text-xs uppercase tracking-[0.12em] text-white/70">
-              <span>Coins</span>
-              <strong className="text-[color:var(--pause-accent,#ffd45c)] text-[clamp(18px,2.6vmin,22px)]">
+              <Mono className="text-xs">Coins</Mono>
+              <Mono className="text-[color:var(--pause-accent,#ffd45c)] text-[clamp(18px,2.6vmin,22px)] font-bold">
                 {coinDisplay}
-              </strong>
+              </Mono>
             </div>
           </header>
 
@@ -311,17 +311,17 @@ export const PauseApp = (): JSX.Element | null => {
               })}
             </ul>
           ) : (
-            <p className="text-sm text-[color:var(--pause-text-secondary,#cdb6ff)]">
+            <Label className="text-sm text-[color:var(--pause-text-secondary,#cdb6ff)]">
               No entropy plays available — build combo and coins to unlock new options.
-            </p>
+            </Label>
           )}
 
           <div className="flex flex-col gap-4">
-            <h3 className="font-display text-[clamp(18px,2.6vmin,22px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+            <Heading className="text-[clamp(18px,2.6vmin,22px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
               Audio
-            </h3>
+            </Heading>
             <label className="flex flex-col gap-2 text-sm text-white/75">
-              <span>Master Volume {volumePercent}%</span>
+              <Label className="text-sm">Master Volume {volumePercent}%</Label>
               <input
                 type="range"
                 min={0}
@@ -341,7 +341,7 @@ export const PauseApp = (): JSX.Element | null => {
                 disabled={!updateSettings}
                 className="accent-[color:var(--pause-accent,#ffd45c)]"
               />
-              Mute audio
+              <Label className="text-sm">Mute audio</Label>
             </label>
           </div>
         </Panel>
@@ -353,9 +353,9 @@ export const PauseApp = (): JSX.Element | null => {
           style={legendPanelStyle}
         >
           {snapshot.legendTitle ? (
-            <h2 className="font-display text-[clamp(18px,2.6vmin,24px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+            <Heading className="text-[clamp(18px,2.6vmin,24px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
               {snapshot.legendTitle}
-            </h2>
+            </Heading>
           ) : null}
           {legendLines.length > 0 ? (
             <ul className="list-disc space-y-2 pl-5 text-sm text-[color:var(--pause-text-primary,#fdf8ff)]">
@@ -364,9 +364,9 @@ export const PauseApp = (): JSX.Element | null => {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-[color:var(--pause-text-secondary,#d0bcff)]">
+            <Label className="text-sm text-[color:var(--pause-text-secondary,#d0bcff)]">
               No legend entries yet — experiment to reveal mysteries.
-            </p>
+            </Label>
           )}
         </Panel>
 

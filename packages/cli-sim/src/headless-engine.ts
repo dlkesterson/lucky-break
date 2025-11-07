@@ -486,7 +486,10 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
     }
 
     const { bricks, total, hazards: hazardSummaries, hazardLookup } = setupBricks(physics, random, options.round);
-    session.startRound({ breakableBricks: total });
+    session.startRound({
+        breakableBricks: total,
+        roundNumber: options.round,
+    });
 
     const scoring = createScoring();
     session.updateMomentum(getMomentumMetrics(scoring));

@@ -73,7 +73,7 @@ describe('createGameSessionManager', () => {
     it('enters active state when a round starts and tracks brick inventory', () => {
         const { manager, clock } = createSnapshot();
 
-        manager.startRound({ breakableBricks: 12 });
+        manager.startRound({ breakableBricks: 12, roundNumber: 1 });
         clock.tick(500);
 
         const snapshot = manager.snapshot();
@@ -90,7 +90,7 @@ describe('createGameSessionManager', () => {
     it('records brick breaks by awarding score and reducing remaining brick count', () => {
         const { manager } = createSnapshot();
 
-        manager.startRound({ breakableBricks: 3 });
+        manager.startRound({ breakableBricks: 3, roundNumber: 1 });
         manager.recordBrickBreak({ points: 150 });
         manager.recordBrickBreak({ points: 200 });
 
@@ -108,7 +108,7 @@ describe('createGameSessionManager', () => {
     it('syncs supplied momentum metrics when provided by gameplay systems', () => {
         const { manager } = createSnapshot();
 
-        manager.startRound({ breakableBricks: 5 });
+        manager.startRound({ breakableBricks: 5, roundNumber: 1 });
         manager.recordBrickBreak({
             points: 120,
             momentum: {
@@ -140,7 +140,7 @@ describe('createGameSessionManager', () => {
     it('allows direct momentum updates between brick breaks', () => {
         const { manager, clock } = createSnapshot();
 
-        manager.startRound({ breakableBricks: 10 });
+        manager.startRound({ breakableBricks: 10, roundNumber: 1 });
         clock.tick(320);
 
         manager.updateMomentum({
@@ -180,7 +180,7 @@ describe('createGameSessionManager', () => {
         const clock = createFakeClock();
         const manager = createGameSessionManager({ sessionId: 'session-002', now: clock.now });
 
-        manager.startRound({ breakableBricks: 2 });
+        manager.startRound({ breakableBricks: 2, roundNumber: 1 });
         manager.recordBrickBreak({ points: 100 });
         clock.tick(1000);
         manager.recordBrickBreak({ points: 250 });
@@ -202,6 +202,34 @@ describe('createGameSessionManager', () => {
         expect(hud.prompts[0]).toMatchObject({ id: 'round-complete' });
     });
 
+    it('applies an explicit round number when a round starts', () => {
+        const { manager } = createSnapshot();
+
+        manager.startRound({ breakableBricks: 4, roundNumber: 3 });
+
+        const snapshot = manager.snapshot();
+        expect(snapshot.round).toBe(3);
+        expect(snapshot.hud.round).toBe(3);
+    });
+
+    it('increments the round after a completion when none is supplied', () => {
+        const { manager } = createSnapshot();
+
+        manager.startRound({ breakableBricks: 1, roundNumber: 1 });
+        manager.recordBrickBreak({ points: 25 });
+        manager.completeRound();
+
+        const afterCompletion = manager.snapshot();
+        expect(afterCompletion.round).toBe(1);
+        expect(afterCompletion.status).toBe('completed');
+
+        manager.startRound({ breakableBricks: 2 });
+
+        const nextSnapshot = manager.snapshot();
+        expect(nextSnapshot.round).toBe(2);
+        expect(nextSnapshot.hud.round).toBe(2);
+    });
+
     it('emits brick break events with scoring details when available', () => {
         const bus = createEventBus();
         const publishSpy: unknown[] = [];
@@ -214,7 +242,7 @@ describe('createGameSessionManager', () => {
             eventBus: bus,
         });
 
-        manager.startRound({ breakableBricks: 1 });
+        manager.startRound({ breakableBricks: 1, roundNumber: 1 });
         manager.recordBrickBreak({
             points: 125,
             event: {
@@ -257,7 +285,7 @@ describe('createGameSessionManager', () => {
             eventBus: bus,
         });
 
-        manager.startRound({ breakableBricks: 1 });
+        manager.startRound({ breakableBricks: 1, roundNumber: 1 });
         clock.tick(250);
         manager.recordBrickBreak({ points: 50 });
         clock.tick(500);
@@ -291,7 +319,7 @@ describe('createGameSessionManager', () => {
             eventBus: bus,
         });
 
-        manager.startRound({ breakableBricks: 2 });
+        manager.startRound({ breakableBricks: 2, roundNumber: 1 });
         clock.tick(275);
         manager.recordLifeLost('ball-drop');
 
@@ -313,7 +341,7 @@ describe('createGameSessionManager', () => {
             eventBus: bus,
         });
 
-        manager.startRound({ breakableBricks: 10 });
+        manager.startRound({ breakableBricks: 10, roundNumber: 1 });
         clock.tick(250);
         manager.recordLifeLost('ball-drop');
 
@@ -334,7 +362,7 @@ describe('createGameSessionManager', () => {
         const clock = createFakeClock();
         const manager = createGameSessionManager({ sessionId: 'session-003', now: clock.now, initialLives: 2 });
 
-        manager.startRound({ breakableBricks: 5 });
+        manager.startRound({ breakableBricks: 5, roundNumber: 1 });
         manager.recordLifeLost('ball-drop');
         clock.tick(750);
         manager.recordLifeLost('ball-drop');

@@ -8,17 +8,21 @@ export type ProgressProps = ProgressPrimitive.ProgressProps;
 export const Progress = forwardRef<
   ElementRef<typeof ProgressPrimitive.Root>,
   ProgressPrimitive.ProgressProps
->(({ className, value = 0, ...props }, ref) => (
-  <ProgressPrimitive.Root
-    ref={ref}
-    className={cn('relative h-3 w-full overflow-hidden rounded-full bg-muted/30', className)}
-    {...props}
-  >
-    <ProgressPrimitive.Indicator
-      className="h-full w-full flex-1 bg-powerup shadow-[0_0_12px_rgba(0,255,157,0.45)] transition-all"
-      style={{ transform: `translateX(-${100 - Math.min(100, Math.max(0, value ?? 0))}%)` }}
-    />
-  </ProgressPrimitive.Root>
-));
+>(({ className, value = 0, ...props }, ref) => {
+  const clampedValue = Math.min(100, Math.max(0, value ?? 0));
+  return (
+    <ProgressPrimitive.Root
+      ref={ref}
+      className={cn('relative h-3 w-full overflow-hidden rounded-full bg-muted/30', className)}
+      value={clampedValue}
+      {...props}
+    >
+      <ProgressPrimitive.Indicator
+        className="h-full w-full flex-1 bg-powerup shadow-[0_0_12px_rgba(0,255,157,0.45)] transition-all"
+        style={{ transform: `translateX(-${100 - clampedValue}%)` }}
+      />
+    </ProgressPrimitive.Root>
+  );
+});
 
 Progress.displayName = ProgressPrimitive.Root.displayName ?? 'Progress';

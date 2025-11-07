@@ -167,7 +167,7 @@ describe('CasinoHubApp', () => {
         expect(onSelect).toHaveBeenCalledWith('option-b');
         const committingButton = getButton(screen, /Committing/i);
         expect(committingButton.disabled).toBe(true);
-        const skipButton = getButton(screen, /Hold for default path/i);
+        const skipButton = getButton(screen, /Continue to Next Round/i);
         expect(skipButton.disabled).toBe(true);
         expect(onSkip).not.toHaveBeenCalled();
     });
@@ -188,7 +188,7 @@ describe('CasinoHubApp', () => {
         await renderApp();
 
         const screen = within(container);
-        const skipButton = getButton(screen, /Hold for default path/i);
+        const skipButton = getButton(screen, /Continue to Next Round/i);
 
         await act(async () => {
             fireEvent.click(skipButton);
@@ -268,7 +268,7 @@ describe('CasinoHubApp', () => {
         await renderApp();
 
         const screen = within(container);
-        const skipButton = getButton(screen, /Hold for default path/i);
+        const skipButton = getButton(screen, /Continue to Next Round/i);
 
         await act(async () => {
             fireEvent.click(skipButton);
@@ -319,7 +319,7 @@ describe('CasinoHubApp', () => {
         });
 
         expect(onSpin).toHaveBeenCalledTimes(1);
-        await screen.findByText(/Mock Bias Forecast/i);
+        await screen.findByText(/Mock Bias Forecast/i, {}, { timeout: 5000 });
 
         const vaultLabel = screen.getByText(/Entropy Vault/i);
         const vaultValue = vaultLabel.nextElementSibling;

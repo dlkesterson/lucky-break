@@ -1,5 +1,7 @@
 import { useMemo, type CSSProperties } from 'react';
 
+import { Heading, Label, Mono, Progress } from '@lucky-break/design-system';
+
 import { useHud } from './state/game-bridge';
 
 const formatScore = (score: number): string => {
@@ -104,34 +106,29 @@ export const HudApp = (): JSX.Element | null => {
       {/* TOP BAR */}
       <section className="hud-top" aria-live="polite">
         <header className="hud-header">
-          <div className="hud-status-text">{scoreboard.statusText}</div>
-          {scoreboard.summaryLine && <div className="hud-summary">{scoreboard.summaryLine}</div>}
+          <Label className="hud-status-text">{scoreboard.statusText}</Label>
+          {scoreboard.summaryLine && (
+            <Label className="hud-summary">{scoreboard.summaryLine}</Label>
+          )}
         </header>
 
         <div className="hud-primary-metrics">
-          <div className="hud-score">Score {formatScore(score)}</div>
+          <Heading className="hud-score">Score {formatScore(score)}</Heading>
           {combo > 0 && (
             <div className="hud-combo" style={comboPulseStyle}>
-              <span className="hud-combo-value">Combo ×{combo}</span>
-              <span className="hud-combo-timer">{comboTimerLabel}</span>
+              <Mono className="hud-combo-value">Combo ×{combo}</Mono>
+              <Mono className="hud-combo-timer">{comboTimerLabel}</Mono>
             </div>
           )}
         </div>
 
         <section className="hud-bricks" aria-label="Brick progress">
-          <div className="hud-bricks-label">Bricks {remainingLabel}</div>
-          <div
+          <Mono className="hud-bricks-label">Bricks {remainingLabel}</Mono>
+          <Progress
+            value={brickProgress * 100}
             className="hud-bricks-bar"
-            role="progressbar"
-            aria-valuenow={Math.round(brickProgress * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div
-              className="hud-bricks-fill"
-              style={{ width: `${Math.round(brickProgress * 100)}%` }}
-            />
-          </div>
+            aria-label="Brick progress"
+          />
         </section>
       </section>
 
@@ -139,36 +136,38 @@ export const HudApp = (): JSX.Element | null => {
       <aside className="hud-right">
         {momentum && (
           <section className="hud-momentum" aria-label="Momentum metrics">
-            <h3>Momentum</h3>
+            <Heading className="hud-momentum-title">Momentum</Heading>
             <ul>
               {momentumDescriptor.map((descriptor) => {
                 const value = clampUnit(momentum[descriptor.key]);
                 const percent = Math.round(value * 100);
                 return (
                   <li key={descriptor.key}>
-                    <span className="hud-momentum-label">{descriptor.label}</span>
-                    <div className="hud-momentum-bar" role="presentation">
-                      <div className="hud-momentum-fill" style={{ width: `${percent}%` }} />
-                    </div>
-                    <span className="hud-momentum-value">{percent}%</span>
+                    <Label className="hud-momentum-label">{descriptor.label}</Label>
+                    <Progress
+                      value={percent}
+                      className="hud-momentum-bar"
+                      aria-label={`${descriptor.label} momentum`}
+                    />
+                    <Mono className="hud-momentum-value">{percent}%</Mono>
                   </li>
                 );
               })}
             </ul>
-            <div className="hud-momentum-volley">
+            <Mono className="hud-momentum-volley">
               Volley {Math.max(0, Math.round(momentum.volleyLength))}
-            </div>
+            </Mono>
           </section>
         )}
 
         {activePowerUps.length > 0 && (
           <section className="hud-powerups" aria-label="Active power ups">
-            <h3>Power-Ups</h3>
+            <Heading className="hud-powerups-title">Power-Ups</Heading>
             <ul>
               {activePowerUps.map((powerUp, index) => (
                 <li key={`${powerUp.label}-${index}`}>
-                  <span className="hud-powerup-label">{powerUp.label}</span>
-                  <span className="hud-powerup-remaining">{powerUp.remaining}</span>
+                  <Label className="hud-powerup-label">{powerUp.label}</Label>
+                  <Mono className="hud-powerup-remaining">{powerUp.remaining}</Mono>
                 </li>
               ))}
             </ul>
@@ -179,8 +178,8 @@ export const HudApp = (): JSX.Element | null => {
           <dl className="hud-entry-list">
             {secondaryEntries.map((entry) => (
               <div className="hud-entry" key={entry.id}>
-                <dt>{entry.label}</dt>
-                <dd>{entry.value}</dd>
+                <Label className="hud-entry-label">{entry.label}</Label>
+                <Mono className="hud-entry-value">{entry.value}</Mono>
               </div>
             ))}
           </dl>
@@ -192,32 +191,32 @@ export const HudApp = (): JSX.Element | null => {
         <div className="hud-bottom-left">
           {reward ? (
             <div className="hud-reward" aria-label="Reward status">
-              <span className="hud-reward-label">{reward.label}</span>
+              <Label className="hud-reward-label">{reward.label}</Label>
               {reward.remaining ? (
-                <span className="hud-reward-remaining">{reward.remaining}</span>
+                <Mono className="hud-reward-remaining">{reward.remaining}</Mono>
               ) : null}
             </div>
           ) : null}
           {flavor ? (
             <div className={flavorClass} aria-live="polite">
-              {flavor.text}
+              <Label>{flavor.text}</Label>
             </div>
           ) : null}
         </div>
         <div className="hud-bottom-right">
-          <div className="hud-difficulty">Difficulty ×{difficultyMultiplier.toFixed(2)}</div>
+          <Mono className="hud-difficulty">Difficulty ×{difficultyMultiplier.toFixed(2)}</Mono>
           {fpsLabel && (
-            <div className="hud-fps" aria-label="Frame rate">
+            <Mono className="hud-fps" aria-label="Frame rate">
               {fpsLabel}
-            </div>
+            </Mono>
           )}
           <div className="hud-primary-row">
-            <span className="hud-primary-metric" aria-label="Lives">
+            <Mono className="hud-primary-metric" aria-label="Lives">
               {summaryLives}
-            </span>
-            <span className="hud-primary-metric" aria-label="Coins">
+            </Mono>
+            <Mono className="hud-primary-metric" aria-label="Coins">
               {summaryCoins}
-            </span>
+            </Mono>
           </div>
         </div>
       </section>

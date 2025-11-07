@@ -17,6 +17,26 @@ export const formatSignedDelta = (value: number, decimals = 2): string => {
     return value > 0 ? `+${formatted}` : `-${formatted}`;
 };
 
+export const formatDuration = (milliseconds: number): string => {
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+        return '0:00';
+    }
+
+    const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+export const formatPercentage = (value: number): string => {
+    if (!Number.isFinite(value)) {
+        return '0%';
+    }
+
+    const clamped = Math.max(0, Math.min(1, value));
+    return `${Math.round(clamped * 100)}%`;
+};
+
 export const formatGravityBias = (session: BiasPhaseSessionSummary): string => {
     const value = trimTrailingZeros(session.gravity.toFixed(2));
     const delta = formatSignedDelta(session.gravityDelta, 2);

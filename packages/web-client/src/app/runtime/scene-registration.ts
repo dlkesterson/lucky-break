@@ -3,7 +3,6 @@ import { createBiasPhaseScene } from 'scenes/bias-phase';
 import { createFateLedgerScene } from 'scenes/fate-ledger';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createGameOverScene } from 'scenes/game-over';
-import { createLevelCompleteScene } from 'scenes/level-complete';
 import { createLoadoutSelectionScene, type LoadoutSelectionPayload } from 'scenes/loadout-selection';
 import { createMainMenuScene } from 'scenes/main-menu';
 import { createPauseScene } from 'scenes/pause';
@@ -210,13 +209,6 @@ export const registerRuntimeScenes = async ({
         createPauseScene(context, {
             resumeLabel: 'Tap to resume',
             quitLabel,
-        }),
-        { provideContext: provideSceneServices },
-    );
-
-    stage.register('level-complete', (context) =>
-        createLevelCompleteScene(context, {
-            prompt: 'Tap to continue',
         }),
         { provideContext: provideSceneServices },
     );

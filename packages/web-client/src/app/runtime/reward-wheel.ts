@@ -1,12 +1,6 @@
 import type { GameConfig } from 'config/game';
 import type { Reward, RewardOverride, RewardType } from 'game/rewards';
 import type {
-    LevelCompleteRewardWheelPayload,
-    RewardWheelActions,
-    RewardWheelState,
-    RewardWheelUpdateResult,
-} from 'scenes/level-complete';
-import type {
     LuckyBreakEventBus,
     RewardEntropyAction,
     RewardWheelInteractionType,
@@ -14,6 +8,38 @@ import type {
 } from 'app/events';
 import type { GameSessionSnapshot } from 'app/state';
 import type { RoundMachine } from './round-machine';
+
+export interface RewardWheelState {
+    readonly reward: Reward | null;
+    readonly locked: boolean;
+    readonly entropyStored: number;
+    readonly coins: number;
+    readonly rerollCost: number;
+    readonly lockCost: number;
+    readonly canReroll: boolean;
+    readonly canLock: boolean;
+}
+
+export interface RewardWheelUpdateResult {
+    readonly success: boolean;
+    readonly message: string;
+    readonly state: RewardWheelState;
+}
+
+export interface RewardWheelActions {
+    readonly reroll: () => Promise<RewardWheelUpdateResult>;
+    readonly lock: () => Promise<RewardWheelUpdateResult>;
+}
+
+export interface LevelCompleteRewardWheelPayload {
+    readonly odds: readonly {
+        readonly reward: Reward;
+        readonly weight: number;
+        readonly chance: number;
+    }[];
+    readonly state: RewardWheelState;
+    readonly actions: RewardWheelActions;
+}
 
 export interface EntropyActionAttemptResult {
     readonly success: boolean;

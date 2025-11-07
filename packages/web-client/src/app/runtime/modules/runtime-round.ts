@@ -10,10 +10,10 @@ import type { RuntimeModifiers } from '../modifiers';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from '../types';
 import type { RewardWheelOrchestrator } from '../reward-wheel';
-import type { AchievementManager } from '../../achievements';
+import type { AchievementManager, AchievementUnlock } from '../../achievements';
 import type { MetaUpgradeManager } from '../../meta-upgrades';
 import { createBiasPhaseCoordinator, type BiasPhaseCoordinator } from '../bias-phase-coordinator';
-import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
+import type { BiasPhaseSessionSummary, RoundRecapMetrics } from 'scenes/bias-phase';
 import type { GameSessionManager, GameSessionSnapshot } from 'app/state';
 import type { PrestigeAwardInput } from 'util/prestige';
 import type { GameConfig } from 'config/game';
@@ -96,6 +96,15 @@ export const createRuntimeRoundCoordinator = ({
     computePrestigeDust,
     recordHighScore,
 }: RuntimeRoundCoordinatorOptions): RuntimeRoundCoordinatorHandle => {
+    interface LevelCompleteData {
+        readonly recap: RoundRecapMetrics;
+        readonly reward?: Reward;
+        readonly achievements?: readonly AchievementUnlock[];
+        readonly milestones?: readonly string[];
+    }
+
+    let pendingLevelCompleteData: LevelCompleteData | null = null;
+
     const buildBiasSessionSummary = (upcomingLevelIndex: number): BiasPhaseSessionSummary => {
         const snapshot = getSessionSnapshot();
         const modifierState = runtimeModifiers.getState();
@@ -106,7 +115,7 @@ export const createRuntimeRoundCoordinator = ({
         const entropyStored = Math.max(0, entropySnapshot?.stored ?? 0);
         const entropyDelta = entropyTotal - roundMachine.getRoundEntropyBaseline();
         const roundRules = roundMachine.getRoundRules();
-        return {
+        const summary: BiasPhaseSessionSummary = {
             nextLevel: upcomingLevelIndex + 1,
             score: scoringState.score,
             coins: snapshot.coins,
@@ -120,7 +129,19 @@ export const createRuntimeRoundCoordinator = ({
             speedDelta: modifierState.speedGovernorMultiplier - baseSpeedGovernor,
             coinsRuleLocked: roundRules.coinsAlwaysDrop,
             seed: random.seed(),
-        } satisfies BiasPhaseSessionSummary;
+            ...(pendingLevelCompleteData
+                ? {
+                    levelCompleteRecap: pendingLevelCompleteData.recap,
+                    reward: pendingLevelCompleteData.reward,
+                    achievements: pendingLevelCompleteData.achievements,
+                    milestones: pendingLevelCompleteData.milestones,
+                }
+                : {}),
+        };
+
+        pendingLevelCompleteData = null;
+
+        return summary;
     };
 
     const biasCoordinator = createBiasPhaseCoordinator({
@@ -222,26 +243,7 @@ export const createRuntimeRoundCoordinator = ({
         roundMachine.setRoundHighestCombo(scoringState.combo);
         roundMachine.resetLevelBricksBroken();
 
-        const completedLevel = roundMachine.getCurrentLevelIndex() + 1;
-        let handled = false;
-        const continueToNextLevel = () => {
-            if (handled) {
-                return;
-            }
-            handled = true;
-            if (stage.getCurrentScene() === 'level-complete') {
-                stage.pop();
-            }
-            presentBiasPhase();
-        };
-
-        const rewardWheelPayload = rewardWheel.buildPayload();
-
-        void stage.push('level-complete', {
-            level: completedLevel,
-            score: scoringState.score,
-            reward: roundMachine.getPendingReward() ?? undefined,
-            achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,
+        pendingLevelCompleteData = {
             recap: {
                 roundScore: roundScoreGain,
                 totalScore: scoringState.score,
@@ -253,17 +255,12 @@ export const createRuntimeRoundCoordinator = ({
                 coinsCollected,
                 durationMs,
             },
+            reward: roundMachine.getPendingReward() ?? undefined,
+            achievements: achievementsToShow.length > 0 ? achievementsToShow : undefined,
             milestones: milestones.length > 0 ? milestones : undefined,
-            rewardWheel: rewardWheelPayload,
-            onContinue: continueToNextLevel,
-        })
-            .then(() => {
-                renderStageSoon();
-            })
-            .catch((error) => {
-                logger.error('Failed to push level-complete overlay', { error });
-                continueToNextLevel();
-            });
+        };
+
+        presentBiasPhase();
     };
 
     const handleGameOver = (): void => {

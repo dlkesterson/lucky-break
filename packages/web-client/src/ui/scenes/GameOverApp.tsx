@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Button, Panel } from '@lucky-break/design-system';
+import { Button, Panel, Heading, Label, Mono } from '@lucky-break/design-system';
 
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
@@ -122,15 +122,15 @@ export const GameOverApp = (): JSX.Element | null => {
         aria-labelledby="game-over-title"
       >
         <header className="flex flex-col items-center gap-4 text-center">
-          <h1
+          <Heading
             id="game-over-title"
-            className="font-display text-[clamp(46px,6.4vw,84px)] uppercase tracking-[0.1em] text-[color:var(--game-over-accent,#ff6c84)] drop-shadow-[0_16px_36px_rgba(0,0,0,0.65)]"
+            className="text-[clamp(46px,6.4vw,84px)] uppercase tracking-[0.1em] text-[color:var(--game-over-accent,#ff6c84)] drop-shadow-[0_16px_36px_rgba(0,0,0,0.65)]"
           >
             {snapshot.title}
-          </h1>
-          <p className="text-[clamp(14px,1.8vmin,18px)] tracking-[0.05em] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+          </Heading>
+          <Label className="text-[clamp(14px,1.8vmin,18px)] tracking-[0.05em] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
             {snapshot.scoreLabel}
-          </p>
+          </Label>
         </header>
 
         <Panel
@@ -141,18 +141,16 @@ export const GameOverApp = (): JSX.Element | null => {
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col items-center gap-2 text-center">
-              <span className="font-mono text-xs uppercase tracking-[0.12em] text-white/70">
-                Final Score
-              </span>
+              <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">Final Score</Mono>
               <span className="text-[clamp(36px,5.4vmin,60px)] font-extrabold">
                 {formatScore(snapshot.score)}
               </span>
             </div>
             {dustLabel ? (
               <div className="flex flex-col items-center gap-2 text-center">
-                <span className="font-mono text-xs uppercase tracking-[0.12em] text-white/70">
+                <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">
                   Certainty Dust
-                </span>
+                </Mono>
                 <span className="text-[clamp(26px,3.8vmin,40px)] font-bold text-[color:var(--game-over-highlight,#ffd45c)]">
                   {dustLabel}
                 </span>
@@ -169,24 +167,24 @@ export const GameOverApp = (): JSX.Element | null => {
         >
           {snapshot.achievements.length > 0 ? (
             <>
-              <h2 className="font-display text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--game-over-highlight,#ffd45c)]">
+              <Heading className="text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--game-over-highlight,#ffd45c)]">
                 Achievements Unlocked
-              </h2>
+              </Heading>
               <ul className="flex flex-col gap-3 text-sm text-[color:var(--game-over-text-primary,#f6f1ff)]">
                 {snapshot.achievements.map((achievement) => (
                   <li key={achievement.id} className="flex flex-col gap-1">
-                    <span className="font-semibold tracking-[0.04em]">{achievement.title}</span>
-                    <span className="text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+                    <Label className="font-semibold tracking-[0.04em]">{achievement.title}</Label>
+                    <Label className="text-[color:var(--game-over-text-secondary,#d8c6ff)]">
                       {achievement.description}
-                    </span>
+                    </Label>
                   </li>
                 ))}
               </ul>
             </>
           ) : (
-            <p className="text-sm text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+            <Label className="text-sm text-[color:var(--game-over-text-secondary,#d8c6ff)]">
               No new achievements this run — fortune favours persistence.
-            </p>
+            </Label>
           )}
         </Panel>
 

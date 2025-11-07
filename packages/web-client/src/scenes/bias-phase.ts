@@ -3,6 +3,8 @@ import type { GameSceneServices } from 'app/scene-services';
 import type { NebulaSlotsSpinOutcome } from 'app/runtime/casino-games';
 import type { BiasOptionRisk, BiasPhaseWager } from 'app/runtime/round-machine';
 import type { UiSceneTransitionAction } from 'app/events';
+import type { Reward } from 'game/rewards';
+import type { AchievementUnlock } from 'app/achievements';
 import { biasPhaseUiBridge } from 'ui/state/bias-phase-bridge';
 
 export interface BiasPhaseSceneOption {
@@ -13,6 +15,18 @@ export interface BiasPhaseSceneOption {
     readonly wager: BiasPhaseWager;
     readonly effectSummary: readonly string[];
     readonly affordable: boolean;
+}
+
+export interface RoundRecapMetrics {
+    readonly roundScore: number;
+    readonly totalScore: number;
+    readonly bricksBroken: number;
+    readonly brickTotal: number;
+    readonly bestCombo: number;
+    readonly volleyLength: number;
+    readonly speedPressure: number;
+    readonly coinsCollected: number;
+    readonly durationMs: number;
 }
 
 export interface BiasPhaseSessionSummary {
@@ -29,6 +43,10 @@ export interface BiasPhaseSessionSummary {
     readonly coinsRuleLocked: boolean;
     readonly seed: number | null;
     readonly entropyStored: number;
+    readonly levelCompleteRecap?: RoundRecapMetrics;
+    readonly reward?: Reward;
+    readonly achievements?: readonly AchievementUnlock[];
+    readonly milestones?: readonly string[];
 }
 
 export interface NebulaSlotsSpinResult extends NebulaSlotsSpinOutcome {

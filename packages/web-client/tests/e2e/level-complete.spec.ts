@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
     await installEventHarness(page, { enableDeveloperCheats: true });
 });
 
-test('skipping a level shows the recap and resumes gameplay', async ({ page }) => {
+test('skipping a level shows the recap in casino hub and allows continuing', async ({ page }) => {
     await gotoLuckyBreak(page);
 
     await page.waitForSelector('.lb-preloader[data-state="loading"]');
@@ -33,14 +33,14 @@ test('skipping a level shows the recap and resumes gameplay', async ({ page }) =
     await drainEvents(page);
 
     const roundCompletedPromise = waitForEvent(page, 'RoundCompleted', { includeExisting: false });
-    const levelCompleteEnterPromise = waitForSceneTransition(page, 'level-complete', 'enter', {
+    const biasPhaseEnterPromise = waitForSceneTransition(page, 'bias-phase', 'enter', {
         includeExisting: false,
     });
 
     await skipLevel(page);
 
     const roundCompleted = await roundCompletedPromise;
-    await levelCompleteEnterPromise;
+    await biasPhaseEnterPromise;
 
     const events = await readEvents(page);
     const suspendEvent = events.find(
@@ -55,10 +55,18 @@ test('skipping a level shows the recap and resumes gameplay', async ({ page }) =
     const scoreAwarded = (roundCompleted?.payload as { scoreAwarded?: number })?.scoreAwarded;
     expect(typeof scoreAwarded === 'number' && Number.isFinite(scoreAwarded)).toBe(true);
 
+    // Verify level complete recap is displayed in casino hub
+    const levelCompletePanel = page.getByText(/Level \d+ Complete!/i);
+    await expect(levelCompletePanel).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
+
     await drainEvents(page);
-    await canvas.click();
+
+    // Click the continue button in casino hub
+    const continueButton = page.getByRole('button', { name: /Continue to Next Round/i });
+    await continueButton.click();
+
     await Promise.all([
-        waitForSceneTransition(page, 'level-complete', 'exit'),
+        waitForSceneTransition(page, 'bias-phase', 'exit'),
         waitForSceneTransition(page, 'gameplay', 'resume'),
     ]);
 });

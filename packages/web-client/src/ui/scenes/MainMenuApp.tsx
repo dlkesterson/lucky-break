@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Button, Panel } from '@lucky-break/design-system';
+import { Button, Panel, Heading, Label, Mono, cn } from '@lucky-break/design-system';
 import { getThemeLabel } from 'render/theme';
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
@@ -177,12 +177,12 @@ export const MainMenuApp = (): JSX.Element | null => {
         aria-labelledby="main-menu-title"
       >
         <header className="flex flex-col items-center gap-4 text-center sm:gap-5">
-          <h1
+          <Heading
             id="main-menu-title"
-            className="font-display text-[clamp(48px,6vw,92px)] uppercase tracking-[0.08em] text-[color:var(--menu-accent,#ffd04a)] drop-shadow-[0_12px_26px_rgba(0,0,0,0.5)]"
+            className="text-[clamp(48px,6vw,92px)] uppercase tracking-[0.08em] text-[color:var(--menu-accent,#ffd04a)] drop-shadow-[0_12px_26px_rgba(0,0,0,0.5)]"
           >
             {snapshot.title}
-          </h1>
+          </Heading>
           <Button
             className="ui-interactive mt-2 w-full max-w-xs rounded-full border-2 border-[color:var(--menu-panel-line,#ff9242)] bg-gradient-to-br from-[rgba(255,210,110,0.9)] via-[rgba(255,240,190,0.95)] to-[rgba(255,164,70,0.92)] text-lg font-black uppercase tracking-[0.08em] text-stone-950 shadow-[0_20px_40px_rgba(255,214,110,0.32)] transition-transform duration-150 ease-out hover:-translate-y-1 focus-visible:-translate-y-1 disabled:translate-y-0"
             onClick={handleStart}
@@ -202,16 +202,16 @@ export const MainMenuApp = (): JSX.Element | null => {
               className="ui-interactive col-span-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-secondary,#ffc45a)]"
               style={{ ...panelStyle, ...prologueStyle }}
             >
-              <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+              <Heading className="text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
                 {snapshot.prologue.heading}
-              </h2>
+              </Heading>
               {snapshot.prologue.body.map((paragraph, index) => (
-                <p
+                <Label
                   key={`main-menu-prologue-${index}`}
                   className="font-sans text-[clamp(14px,1.8vmin,18px)] leading-relaxed tracking-[0.03em]"
                 >
                   {paragraph}
-                </p>
+                </Label>
               ))}
             </Panel>
           ) : null}
@@ -222,9 +222,9 @@ export const MainMenuApp = (): JSX.Element | null => {
             className="ui-interactive h-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-secondary,#ffc45a)]"
             style={panelStyle}
           >
-            <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+            <Heading className="text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
               How to Play
-            </h2>
+            </Heading>
             <ul className="flex list-disc flex-col gap-3 pl-6 text-[clamp(14px,1.7vmin,18px)] leading-relaxed">
               {snapshot.helpLines.map((line, index) => (
                 <li key={`main-menu-help-${index}`}>{line}</li>
@@ -238,9 +238,9 @@ export const MainMenuApp = (): JSX.Element | null => {
             className="ui-interactive h-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-primary,#ffe9d6)]"
             style={panelStyle}
           >
-            <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+            <Heading className="text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
               High Scores
-            </h2>
+            </Heading>
             {scores.length > 0 ? (
               <ol className="flex flex-col gap-3 text-[clamp(14px,1.7vmin,18px)] tracking-[0.04em]">
                 {scores.map((entry) => (
@@ -248,9 +248,9 @@ export const MainMenuApp = (): JSX.Element | null => {
                     key={entry.id}
                     className="grid grid-cols-[36px_minmax(0,110px)_54px_minmax(0,1fr)] items-baseline gap-3 sm:grid-cols-[42px_minmax(0,120px)_60px_minmax(0,1fr)]"
                   >
-                    <span className="font-mono text-sm text-[color:var(--menu-text-secondary,#ffc45a)]">
+                    <Mono className="text-sm text-[color:var(--menu-text-secondary,#ffc45a)]">
                       {entry.rank}.
-                    </span>
+                    </Mono>
                     <span className="font-semibold">{entry.scoreLabel}</span>
                     <span className="text-[color:var(--menu-text-secondary,#ffc45a)]">
                       {entry.roundLabel}
@@ -260,9 +260,9 @@ export const MainMenuApp = (): JSX.Element | null => {
                 ))}
               </ol>
             ) : (
-              <p className="text-[clamp(14px,1.6vmin,18px)] text-[color:var(--menu-text-secondary,#ffc45a)]">
+              <Label className="text-[clamp(14px,1.6vmin,18px)] text-[color:var(--menu-text-secondary,#ffc45a)]">
                 No runs recorded yet — your first streak awaits.
-              </p>
+              </Label>
             )}
           </Panel>
         </div>
@@ -302,9 +302,9 @@ export const MainMenuApp = (): JSX.Element | null => {
               View Fate Ledger
             </Button>
           </div>
-          <p className="font-sans text-xs uppercase tracking-[0.12em] text-white/60">
+          <Label className="font-sans text-xs uppercase tracking-[0.12em] text-white/60">
             Tip: Toggle performance mode if your device needs a lighter glow.
-          </p>
+          </Label>
         </footer>
       </div>
     </div>

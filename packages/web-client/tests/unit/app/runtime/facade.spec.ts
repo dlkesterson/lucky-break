@@ -219,10 +219,6 @@ vi.mock('scenes/gameplay', () => ({
     createGameplayScene: vi.fn(() => createMockScene()),
 }));
 
-vi.mock('scenes/level-complete', () => ({
-    createLevelCompleteScene: vi.fn(() => createMockScene()),
-}));
-
 vi.mock('scenes/game-over', () => ({
     createGameOverScene: vi.fn(() => createMockScene()),
 }));

@@ -129,8 +129,9 @@ describe('HudApp', () => {
         screen.getByText('Combo ×4');
         screen.getByText('3.2s window');
         screen.getByText('Bricks 12 / 40');
-    const progressBar = screen.getByRole('progressbar');
-        expect(progressBar.getAttribute('aria-valuenow')).toBe('70');
+        const progressBars = screen.getAllByRole('progressbar');
+        // First progress bar should be the brick progress with 70% value
+        expect(progressBars[0]?.getAttribute('aria-valuenow')).toBe('70');
 
         const momentumSection = screen.getByRole('heading', { name: 'Momentum' }).closest('section');
         expect(momentumSection).not.toBeNull();

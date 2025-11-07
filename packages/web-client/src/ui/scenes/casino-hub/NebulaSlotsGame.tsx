@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Button, cn } from '@lucky-break/design-system';
 import type { NebulaSlotsSpinResult } from 'scenes/bias-phase';
 import { NEBULA_SLOT_SYMBOLS, type NebulaSlotSymbol } from 'app/runtime/casino-games';
@@ -17,11 +17,10 @@ const SLOT_SYMBOL_EMOJI: Record<NebulaSlotSymbol, string> = {
 
 const REEL_COUNT = 3;
 const REEL_ITEM_HEIGHT = 68;
-const REEL_VISIBLE_COUNT = 3;
-const REEL_VISIBLE_CENTER_OFFSET = Math.floor(REEL_VISIBLE_COUNT / 2);
-const REEL_WINDOW_HEIGHT = REEL_ITEM_HEIGHT * 2;
-const REEL_CENTER_SHIFT =
-  (REEL_WINDOW_HEIGHT - REEL_ITEM_HEIGHT) / 2 - REEL_VISIBLE_CENTER_OFFSET * REEL_ITEM_HEIGHT;
+const REEL_VISIBLE_COUNT = 1;
+const REEL_VISIBLE_CENTER_OFFSET = 0;
+const REEL_WINDOW_HEIGHT = REEL_ITEM_HEIGHT;
+const REEL_CENTER_SHIFT = 0;
 const REEL_REPEAT_COUNT = 12;
 const IS_TEST_ENV = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
@@ -60,7 +59,7 @@ const getReelSymbolAt = (position: number, offset = 0): NebulaSlotSymbol => {
 };
 
 const BASE_LOOP_OFFSET = slotSymbols.length * Math.floor(REEL_REPEAT_COUNT / 2);
-const SPIN_INTERVALS_MS: readonly number[] = [52, 60, 72];
+const SPIN_INTERVALS_MS: readonly number[] = [30, 36, 42];
 const CELEBRATION_FLASH_DURATION_MS = 2600;
 const DEFAULT_ERROR_MESSAGE = 'Nebula slots jammed. Try again shortly.';
 
@@ -108,7 +107,7 @@ const symbolsToPositions = (symbols: readonly NebulaSlotSymbol[]): number[] =>
   symbols.map((symbol) => {
     const symbolIndex = slotSymbols.indexOf(symbol);
     const resolvedIndex = symbolIndex >= 0 ? symbolIndex : 0;
-    return BASE_LOOP_OFFSET + resolvedIndex - REEL_VISIBLE_CENTER_OFFSET;
+    return BASE_LOOP_OFFSET + resolvedIndex;
   });
 
 const computeTargetIndex = (currentTop: number, symbol: NebulaSlotSymbol): number => {
@@ -119,7 +118,7 @@ const computeTargetIndex = (currentTop: number, symbol: NebulaSlotSymbol): numbe
 
   for (const loopOffset of [0, cycleLength]) {
     for (const index of indices) {
-      const candidateTop = cycleBase + loopOffset + index - REEL_VISIBLE_CENTER_OFFSET;
+      const candidateTop = cycleBase + loopOffset + index;
       if (candidateTop >= currentTop) {
         return candidateTop;
       }
@@ -127,10 +126,68 @@ const computeTargetIndex = (currentTop: number, symbol: NebulaSlotSymbol): numbe
   }
 
   const fallbackIndex = indices[0] ?? 0;
-  return cycleBase + cycleLength + fallbackIndex - REEL_VISIBLE_CENTER_OFFSET;
+  return cycleBase + cycleLength + fallbackIndex;
 };
 
 const getSymbolEmoji = (symbol: NebulaSlotSymbol): string => SLOT_SYMBOL_EMOJI[symbol] ?? '✨';
+
+type ReelPhase = 'idle' | 'spinning' | 'settling';
+
+interface CelebrationParticle {
+  readonly id: number;
+  readonly left: number;
+  readonly top: number;
+  readonly dx: number;
+  readonly dy: number;
+  readonly scale: number;
+  readonly delay: number;
+}
+
+type CelebrationParticleStyle = CSSProperties & {
+  '--burst-dx': string;
+  '--burst-dy': string;
+  '--burst-scale': string;
+};
+
+const ensureNebulaSlotsStyles = () => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  if (document.getElementById('nebula-slots-style')) {
+    return;
+  }
+  const style = document.createElement('style');
+  style.id = 'nebula-slots-style';
+  style.textContent = `
+    @keyframes nebula-slot-particle-burst {
+      0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(var(--burst-scale, 1));
+      }
+      55% {
+        opacity: 0.9;
+        transform: translate(calc(-50% + var(--burst-dx, 0px)), calc(-50% + var(--burst-dy, 0px)))
+          scale(calc(var(--burst-scale, 1) * 1.18));
+      }
+      100% {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--burst-dx, 0px)), calc(-50% + var(--burst-dy, 0px)))
+          scale(calc(var(--burst-scale, 1) * 0.78));
+      }
+    }
+
+    @keyframes nebula-slot-gentle-bob {
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-6px);
+      }
+    }
+  `;
+  document.head.appendChild(style);
+};
 
 interface SlotSymbolCardProps {
   readonly symbol: NebulaSlotSymbol;
@@ -170,18 +227,26 @@ interface SlotReelProps {
   readonly spinning: boolean;
   readonly highlight: boolean;
   readonly reelIndex: number;
+  readonly phase: ReelPhase;
 }
 
-const SlotReel = ({ position, accentColor, spinning, highlight }: SlotReelProps) => {
+const SlotReel = ({ position, accentColor, spinning, highlight, phase }: SlotReelProps) => {
   const doubledTrack = useMemo(
     () => [...EXTENDED_REEL_SYMBOLS, ...EXTENDED_REEL_SYMBOLS] as readonly NebulaSlotSymbol[],
     [],
   );
-  const centerHighlightIndex = modulo(position + REEL_VISIBLE_CENTER_OFFSET, EXTENDED_REEL_LENGTH);
-  const translateY = -(position * REEL_ITEM_HEIGHT) + REEL_CENTER_SHIFT;
+  const centerHighlightIndex = modulo(position, EXTENDED_REEL_LENGTH);
+  const translateY = -(position * REEL_ITEM_HEIGHT);
 
-  const transitionDuration = spinning ? '90ms' : '720ms';
-  const transitionTiming = spinning ? 'linear' : 'cubic-bezier(0.18, 0.9, 0.16, 1)';
+  const transitionDuration =
+    phase === 'spinning' ? '90ms' : phase === 'settling' ? '460ms' : '680ms';
+  const transitionTiming =
+    phase === 'spinning'
+      ? 'linear'
+      : phase === 'settling'
+        ? 'cubic-bezier(0.18, 0.9, 0.16, 1)'
+        : 'cubic-bezier(0.24, 0.78, 0.24, 0.98)';
+  const isIdle = phase === 'idle';
 
   return (
     <div
@@ -195,13 +260,6 @@ const SlotReel = ({ position, accentColor, spinning, highlight }: SlotReelProps)
       role="presentation"
     >
       <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'linear-gradient(0deg, rgba(12,6,20,0.92) 0%, rgba(12,6,20,0.62) 10%, transparent 38%, transparent 62%, rgba(12,6,20,0.62) 90%, rgba(12,6,20,0.92) 100%)',
-        }}
-      />
-      <div
         className="flex w-full flex-col items-center will-change-transform"
         style={{
           transform: `translateY(${translateY}px)`,
@@ -212,6 +270,14 @@ const SlotReel = ({ position, accentColor, spinning, highlight }: SlotReelProps)
       >
         {doubledTrack.map((symbol, index) => {
           const showHighlight = highlight && index % EXTENDED_REEL_LENGTH === centerHighlightIndex;
+          const isCenter = index % EXTENDED_REEL_LENGTH === centerHighlightIndex;
+          const emojiStyle =
+            isIdle && isCenter
+              ? {
+                  animation: 'nebula-slot-gentle-bob 2600ms ease-in-out infinite',
+                  animationDelay: `${(index % EXTENDED_REEL_LENGTH) * 24}ms`,
+                }
+              : undefined;
           return (
             <div
               key={`nebula-reel-symbol-${index}`}
@@ -221,7 +287,7 @@ const SlotReel = ({ position, accentColor, spinning, highlight }: SlotReelProps)
               )}
               aria-hidden="true"
             >
-              <span>{getSymbolEmoji(symbol)}</span>
+              <span style={emojiStyle}>{getSymbolEmoji(symbol)}</span>
               <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
                 {symbol}
               </span>
@@ -326,13 +392,21 @@ export const NebulaSlotsGame = ({
   const [error, setError] = useState<string | null>(null);
   const [reelStopped, setReelStopped] = useState<boolean[]>([false, false, false]);
   const [celebrating, setCelebrating] = useState(false);
+  const [reelPhase, setReelPhase] = useState<ReelPhase[]>(['idle', 'idle', 'idle']);
+  const [particles, setParticles] = useState<CelebrationParticle[]>([]);
 
   const reelIntervalsRef = useRef<Array<number | null>>([null, null, null]);
   const reelStopTimeoutsRef = useRef<number[]>([]);
   const aliveRef = useRef(true);
+  const particleIdRef = useRef(0);
+  const machineRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    ensureNebulaSlotsStyles();
+  }, []);
 
   const displaySymbols = useMemo(
-    () => positions.map((position) => getReelSymbolAt(position, REEL_VISIBLE_CENTER_OFFSET)),
+    () => positions.map((position) => getReelSymbolAt(position, 0)),
     [positions],
   );
 
@@ -364,9 +438,47 @@ export const NebulaSlotsGame = ({
 
   const scheduleCelebrationReset = useCallback(() => {
     const timeoutId = window.setTimeout(() => {
-      if (aliveRef.current) setCelebrating(false);
+      if (!aliveRef.current) {
+        return;
+      }
+      setCelebrating(false);
+      setParticles([]);
     }, CELEBRATION_FLASH_DURATION_MS);
     reelStopTimeoutsRef.current.push(timeoutId);
+  }, []);
+
+  const spawnCelebrationParticles = useCallback(() => {
+    const container = machineRef.current;
+    if (!container) {
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    const particleCount = 18;
+    const created: CelebrationParticle[] = Array.from({ length: particleCount }, () => {
+      const angle = Math.random() * Math.PI * 2;
+      const radial = rect.width * (0.16 + Math.random() * 0.24);
+      const drift = rect.height * 0.22;
+      const dx = Math.cos(angle) * radial;
+      const dy = Math.sin(angle) * drift;
+      const id = particleIdRef.current++;
+      return {
+        id,
+        left: rect.width / 2,
+        top: rect.height / 2,
+        dx,
+        dy,
+        scale: 0.75 + Math.random() * 0.55,
+        delay: Math.random() * 180,
+      } satisfies CelebrationParticle;
+    });
+    setParticles((previous) => [...previous, ...created]);
+    const cleanupId = window.setTimeout(() => {
+      if (!aliveRef.current) {
+        return;
+      }
+      setParticles([]);
+    }, 1200);
+    reelStopTimeoutsRef.current.push(cleanupId);
   }, []);
 
   const spinsAvailable = Math.max(0, Math.floor(Math.max(0, entropy) / Math.max(1, spinCost)));
@@ -430,6 +542,11 @@ export const NebulaSlotsGame = ({
       next[reelIndex] = true;
       return next;
     });
+    setReelPhase((previous) => {
+      const next = [...previous];
+      next[reelIndex] = 'spinning';
+      return next;
+    });
     const intervalId = window.setInterval(() => {
       setPositions((previous) => {
         const next = [...previous];
@@ -455,6 +572,11 @@ export const NebulaSlotsGame = ({
       next[reelIndex] = false;
       return next;
     });
+    setReelPhase((previous) => {
+      const next = [...previous];
+      next[reelIndex] = 'settling';
+      return next;
+    });
 
     const intervalId = reelIntervalsRef.current[reelIndex];
     if (intervalId !== null && intervalId !== undefined) {
@@ -466,7 +588,7 @@ export const NebulaSlotsGame = ({
       const next = [...previous];
       const current = previous[reelIndex];
       let baseTarget = computeTargetIndex(current, finalSymbol);
-      const minAdvance = Math.ceil(EXTENDED_REEL_LENGTH * 0.25);
+      const minAdvance = Math.ceil(EXTENDED_REEL_LENGTH * 0.4);
       if (baseTarget - current < minAdvance) {
         baseTarget += EXTENDED_REEL_LENGTH;
       }
@@ -488,6 +610,11 @@ export const NebulaSlotsGame = ({
       setReelStopped((previous) => {
         const next = [...previous];
         next[reelIndex] = true;
+        return next;
+      });
+      setReelPhase((previous) => {
+        const next = [...previous];
+        next[reelIndex] = 'idle';
         return next;
       });
       setPositions((current) =>
@@ -513,7 +640,9 @@ export const NebulaSlotsGame = ({
     setError(null);
     setOutcome(null);
     setCelebrating(false);
+    setParticles([]);
     setReelStopped([false, false, false]);
+    setReelPhase(['spinning', 'spinning', 'spinning']);
 
     const previewOffset = Math.floor(performance.now() % 997);
     const teaserSymbols = generatePreviewSymbols(seed, entropy, previewOffset);
@@ -533,17 +662,20 @@ export const NebulaSlotsGame = ({
       setIsSpinning(false);
       setReelSpinning([false, false, false]);
       setReelStopped([false, false, false]);
+      setReelPhase(['idle', 'idle', 'idle']);
       return;
     }
 
     if (!aliveRef.current) {
+      setIsSpinning(false);
       return;
     }
 
-    const delays = IS_TEST_ENV ? [180, 260, 360] : [900, 1250, 1600];
+    const delays = IS_TEST_ENV ? [180, 260, 360] : [1800, 2100, 2400];
     delays.forEach((delay, reelIndex) => {
       const timeoutId = window.setTimeout(() => {
         if (!aliveRef.current) {
+          setIsSpinning(false);
           return;
         }
         const finalSymbol = result.symbols[reelIndex] ?? slotSymbols[0];
@@ -553,6 +685,7 @@ export const NebulaSlotsGame = ({
         if (isFinal) {
           const revealId = window.setTimeout(() => {
             if (!aliveRef.current) {
+              setIsSpinning(false);
               return;
             }
             setOutcome(result);
@@ -564,6 +697,7 @@ export const NebulaSlotsGame = ({
             if (result.rarity === 'jackpot' || result.rarity === 'bias') {
               setCelebrating(true);
               scheduleCelebrationReset();
+              spawnCelebrationParticles();
             }
             setIsSpinning(false);
           }, 820);
@@ -576,8 +710,32 @@ export const NebulaSlotsGame = ({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className={machineClass}>
+      <div className={machineClass} ref={machineRef}>
         <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-0 overflow-visible">
+          {particles.map((particle) => {
+            const style: CelebrationParticleStyle = {
+              left: `${particle.left}px`,
+              top: `${particle.top}px`,
+              animation: 'nebula-slot-particle-burst 900ms ease-out forwards',
+              animationDelay: `${particle.delay}ms`,
+              transform: 'translate(-50%, -50%)',
+              '--burst-dx': `${particle.dx}px`,
+              '--burst-dy': `${particle.dy}px`,
+              '--burst-scale': `${particle.scale}`,
+            };
+            return (
+              <span
+                key={`nebula-slot-particle-${particle.id}`}
+                className="absolute text-2xl text-white/90 drop-shadow-[0_0_12px_rgba(255,255,255,0.75)]"
+                style={style}
+                aria-hidden="true"
+              >
+                ✨
+              </span>
+            );
+          })}
+        </div>
         <div className="flex justify-center gap-6 p-6">
           {positions.map((position, index) => (
             <SlotReel
@@ -589,6 +747,7 @@ export const NebulaSlotsGame = ({
                 !error && reelStopped[index] && outcome?.symbols[index] === displaySymbols[index]
               }
               reelIndex={index}
+              phase={reelPhase[index] ?? 'idle'}
             />
           ))}
         </div>

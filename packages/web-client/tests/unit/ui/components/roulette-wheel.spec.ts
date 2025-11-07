@@ -6,7 +6,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { RouletteWheel } from '../../../../src/ui/scenes/casino-hub/RouletteWheel';
 
 declare global {
-    // eslint-disable-next-line no-var
+     
     var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
 
@@ -103,6 +103,6 @@ describe('RouletteWheel', () => {
 });
 
 function extractAngle(element: HTMLElement): number {
-    const match = element.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+    const match = /rotate\(([-\d.]+)deg\)/.exec(element.style.transform);
     return match ? parseFloat(match[1]) : Number.NaN;
 }

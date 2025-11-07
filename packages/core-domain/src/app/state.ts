@@ -135,6 +135,7 @@ export interface GameSessionSnapshot {
 
 interface StartRoundConfig {
     readonly breakableBricks: number;
+    readonly roundNumber?: number;
 }
 
 interface BrickBreakDetails {
@@ -609,10 +610,19 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         };
     };
 
-    const startRound: GameSessionManager['startRound'] = ({ breakableBricks }) => {
+    const startRound: GameSessionManager['startRound'] = ({ breakableBricks, roundNumber }) => {
         const timestamp = now();
+        const previousStatus = status;
+
         status = 'active';
-        round = Math.max(1, round);
+
+        const resolvedRound = Number.isFinite(roundNumber)
+            ? Math.max(1, Math.floor(Number(roundNumber)))
+            : previousStatus === 'completed'
+                ? Math.max(1, round + 1)
+                : Math.max(1, round);
+
+        round = resolvedRound;
         brickTotal = Math.max(0, breakableBricks);
         brickRemaining = brickTotal;
         startedAt = timestamp;

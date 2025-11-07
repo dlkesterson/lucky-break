@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, type CSSProperties } from 'react';
-import { Button, Panel } from '@lucky-break/design-system';
+import { Button, Panel, Heading, Label, Mono } from '@lucky-break/design-system';
 import type { FateLedgerEntry, FateLedgerSnapshot } from 'app/fate-ledger';
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
@@ -174,15 +174,15 @@ export const FateLedgerApp = (): JSX.Element | null => {
         }}
       >
         <header className="flex flex-col items-center gap-3 text-center">
-          <h1
+          <Heading
             id="fate-ledger-title"
-            className="font-display text-[clamp(40px,6vw,70px)] uppercase tracking-[0.12em] text-[color:var(--ledger-highlight,#ffd45c)] drop-shadow-[0_18px_40px_rgba(0,0,0,0.58)]"
+            className="text-[clamp(40px,6vw,70px)] uppercase tracking-[0.12em] text-[color:var(--ledger-highlight,#ffd45c)] drop-shadow-[0_18px_40px_rgba(0,0,0,0.58)]"
           >
             Fate Ledger
-          </h1>
-          <p className="text-[clamp(14px,1.8vmin,18px)] tracking-[0.04em] text-[color:var(--ledger-text-secondary,#d0c0ff)]">
+          </Heading>
+          <Label className="text-[clamp(14px,1.8vmin,18px)] tracking-[0.04em] text-[color:var(--ledger-text-secondary,#d0c0ff)]">
             Chronicle of idle rolls and entropy dividends
-          </p>
+          </Label>
         </header>
 
         <Panel
@@ -219,14 +219,16 @@ export const FateLedgerApp = (): JSX.Element | null => {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-[color:var(--ledger-text-secondary,#d0c0ff)]">
+            <Label className="text-sm text-[color:var(--ledger-text-secondary,#d0c0ff)]">
               No idle rolls recorded yet. Complete idle simulations to chronicle your fate.
-            </p>
+            </Label>
           )}
         </Panel>
 
         <footer className="flex flex-wrap items-center justify-between gap-4 text-[clamp(12px,1.4vmin,14px)] text-[rgba(255,240,255,0.75)]">
-          <span>Tap anywhere outside this panel to close</span>
+          <Label className="text-[clamp(12px,1.4vmin,14px)]">
+            Tap anywhere outside this panel to close
+          </Label>
           <Button
             variant="outline"
             size="sm"

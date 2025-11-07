@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import { Button, cn } from '@lucky-break/design-system';
+import { Button, Heading, Label, Mono, cn } from '@lucky-break/design-system';
 
 import { introOverlayBridge, useIntroOverlay } from '../state/intro-bridge';
 
@@ -120,9 +120,9 @@ export const IntroOverlayApp = (): JSX.Element | null => {
         onKeyDown={handleKeyDown}
       >
         <header className="flex items-center justify-between gap-6">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-[rgba(255,220,160,0.85)]">
+          <Mono className="text-xs uppercase tracking-[0.18em] text-[rgba(255,220,160,0.85)]">
             {reasonLabel}
-          </p>
+          </Mono>
           <div className="inline-flex items-center gap-2" aria-hidden="true">
             {slides.map((candidate, index) => (
               <span key={candidate.id} className={progressDotClass(index)} />
@@ -131,23 +131,25 @@ export const IntroOverlayApp = (): JSX.Element | null => {
         </header>
 
         <article className="flex flex-col gap-5 text-[rgba(248,244,255,0.92)]">
-          <h2
+          <Heading
             id="intro-overlay-heading"
-            className="font-display text-[clamp(32px,5vw,44px)] uppercase tracking-[0.06em] text-[#ffd271] drop-shadow-[0_16px_32px_rgba(0,0,0,0.45)]"
+            className="text-[clamp(32px,5vw,44px)] uppercase tracking-[0.06em] text-[#ffd271] drop-shadow-[0_16px_32px_rgba(0,0,0,0.45)]"
           >
             {slide.heading}
-          </h2>
+          </Heading>
           {slide.body.map((paragraph, index) => (
-            <p
+            <Label
               key={`${slide.id}-p-${index}`}
               className="text-[clamp(16px,2.1vmin,20px)] leading-relaxed tracking-[0.04em]"
             >
               {paragraph}
-            </p>
+            </Label>
           ))}
           {slide.caption ? (
-            <footer className="mt-4 font-mono text-xs uppercase tracking-[0.12em] text-[rgba(255,213,187,0.72)]">
-              {slide.caption}
+            <footer className="mt-4">
+              <Mono className="text-xs uppercase tracking-[0.12em] text-[rgba(255,213,187,0.72)]">
+                {slide.caption}
+              </Mono>
             </footer>
           ) : null}
         </article>

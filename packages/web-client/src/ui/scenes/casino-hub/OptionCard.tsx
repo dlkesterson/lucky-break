@@ -1,4 +1,4 @@
-import { cn } from '@lucky-break/design-system';
+import { cn, Label, Mono } from '@lucky-break/design-system';
 import type { BiasPhaseSceneOption } from 'scenes/bias-phase';
 
 const riskLabel: Record<BiasPhaseSceneOption['risk'], string> = {
@@ -37,21 +37,21 @@ export const OptionCard = ({ option, selected, disabled, locked, onSelect }: Opt
     }}
     disabled={disabled}
   >
-    <span
-      className="inline-flex w-fit items-center justify-center rounded-full px-4 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-stone-950"
+    <Mono
+      className="inline-flex w-fit items-center justify-center rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-stone-950"
       style={{ backgroundColor: 'rgba(255, 214, 110, 0.86)' }}
     >
       {riskLabel[option.risk]}
-    </span>
+    </Mono>
     <span className="text-[clamp(20px,2.6vmin,30px)] font-extrabold tracking-[0.04em] text-white">
       {option.label}
     </span>
-    <p className="text-[clamp(14px,1.6vmin,18px)] leading-relaxed text-[rgba(255,224,180,0.8)]">
+    <Label className="text-[clamp(14px,1.6vmin,18px)] leading-relaxed text-[rgba(255,224,180,0.8)]">
       {option.description}
-    </p>
-    <span className="font-mono text-xs uppercase tracking-[0.14em] text-[rgba(255,224,180,0.78)]">
+    </Label>
+    <Mono className="text-xs uppercase tracking-[0.14em] text-[rgba(255,224,180,0.78)]">
       {option.wager.label}
-    </span>
+    </Mono>
     <ul className="flex flex-col gap-1 text-[clamp(12px,1.4vmin,15px)] text-white/85">
       {option.effectSummary.map((line, index) => (
         <li
@@ -62,12 +62,12 @@ export const OptionCard = ({ option, selected, disabled, locked, onSelect }: Opt
         </li>
       ))}
     </ul>
-    <span className="mt-auto text-xs uppercase tracking-[0.12em] text-white/70">
+    <Label className="mt-auto text-xs uppercase tracking-[0.12em] text-white/70">
       {locked
         ? 'Earn more entropy to unlock'
         : selected
           ? 'Selected — tap to change'
           : 'Tap to select this table'}
-    </span>
+    </Label>
   </button>
 );

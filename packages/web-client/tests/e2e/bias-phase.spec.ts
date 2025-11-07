@@ -38,35 +38,27 @@ const enterFirstBiasPhase = async (page: Page) => {
     await waitForSceneTransition(page, 'gameplay', 'enter');
 
     await drainEvents(page);
-    const levelCompleteEnter = waitForSceneTransition(page, 'level-complete', 'enter', { includeExisting: false });
-    await skipLevel(page);
-    await levelCompleteEnter;
-
-    const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
-
-    await drainEvents(page);
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });
-    const levelCompleteExit = waitForSceneTransition(page, 'level-complete', 'exit', { includeExisting: false });
-    await canvas.click();
-    await Promise.all([biasEnter, levelCompleteExit]);
+    await skipLevel(page);
+    await biasEnter;
+
+    // Click continue button in casino hub to proceed
+    const continueButton = page.getByRole('button', { name: /Continue to Next Round/i });
+    await expect(continueButton).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
+
     await drainEvents(page);
 };
 
 const advanceToNextBiasPhase = async (page: Page) => {
     await drainEvents(page);
-    const levelCompleteEnter = waitForSceneTransition(page, 'level-complete', 'enter', { includeExisting: false });
-    await skipLevel(page);
-    await levelCompleteEnter;
-
-    const canvas = page.locator('canvas').first();
-    await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
-
-    await drainEvents(page);
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });
-    const levelCompleteExit = waitForSceneTransition(page, 'level-complete', 'exit', { includeExisting: false });
-    await canvas.click();
-    await Promise.all([biasEnter, levelCompleteExit]);
+    await skipLevel(page);
+    await biasEnter;
+
+    // Click continue button in casino hub to proceed
+    const continueButton = page.getByRole('button', { name: /Continue to Next Round/i });
+    await expect(continueButton).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
+
     await drainEvents(page);
 };
 

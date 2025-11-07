@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+
+import { Heading, Label, Mono } from '@lucky-break/design-system';
+
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useLoadoutSelectionUi } from '../state/loadout-selection-bridge';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
@@ -318,8 +321,8 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
       <div className="loadout-backdrop" />
       <div className="loadout-surface ui-interactive" ref={surfaceRef}>
         <header className="loadout-header">
-          <h1>Choose Your Ball</h1>
-          <p>Shape Mayhaps before the first coin toss</p>
+          <Heading>Choose Your Ball</Heading>
+          <Label>Shape Mayhaps before the first coin toss</Label>
         </header>
 
         <section className="loadout-preview" aria-label="Selected form">
@@ -385,30 +388,36 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
           </div>
 
           <div className="loadout-preview-details">
-            <h2>{selectedPreset?.name ?? 'Select a form to begin'}</h2>
-            <p>
+            <Heading className="loadout-preview-title">
+              {selectedPreset?.name ?? 'Select a form to begin'}
+            </Heading>
+            <Label className="loadout-preview-description">
               {selectedPreset?.description ??
                 'Choose a Mayhaps form to preview its combined effects and bonuses.'}
-            </p>
+            </Label>
             <dl className="loadout-links">
               <div>
-                <dt>Trait</dt>
-                <dd>{selectedPreset?.trait.name ?? '—'}</dd>
+                <Mono className="loadout-link-label">Trait</Mono>
+                <Label className="loadout-link-value">{selectedPreset?.trait.name ?? '—'}</Label>
               </div>
               <div>
-                <dt>Sigil</dt>
-                <dd>{selectedPreset?.sigil.name ?? '—'}</dd>
+                <Mono className="loadout-link-label">Sigil</Mono>
+                <Label className="loadout-link-value">{selectedPreset?.sigil.name ?? '—'}</Label>
               </div>
               <div>
-                <dt>Voice</dt>
-                <dd>{selectedPreset?.voice.name ?? '—'}</dd>
+                <Mono className="loadout-link-label">Voice</Mono>
+                <Label className="loadout-link-value">{selectedPreset?.voice.name ?? '—'}</Label>
               </div>
             </dl>
             <div className="loadout-summary" aria-live="polite">
               {combinedSummary.length > 0 ? (
-                combinedSummary.map((line, index) => <span key={`summary-${index}`}>{line}</span>)
+                combinedSummary.map((line, index) => (
+                  <Label key={`summary-${index}`} className="loadout-summary-line">
+                    {line}
+                  </Label>
+                ))
               ) : (
-                <span>Select a form to view combined effects.</span>
+                <Label>Select a form to view combined effects.</Label>
               )}
             </div>
           </div>
@@ -423,7 +432,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
           </button>
         </section>
 
-        {showScrollHint && <div className="loadout-scroll-hint">Scroll to browse forms</div>}
+        {showScrollHint && <Label className="loadout-scroll-hint">Scroll to browse forms</Label>}
         <section className="loadout-grid" aria-label="Available forms">
           {presets.map((preset) => {
             const locked = lockedSet.has(preset.id);
@@ -441,14 +450,19 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
                 }}
                 disabled={pending || locked}
               >
-                <span className="loadout-card-title">{preset.name}</span>
-                <span className="loadout-card-description">{preset.description}</span>
-                <span className="loadout-card-summary">
+                <Heading className="loadout-card-title">{preset.name}</Heading>
+                <Label className="loadout-card-description">{preset.description}</Label>
+                <div className="loadout-card-summary">
                   {preset.cardSummary.slice(0, 3).map((line, index) => (
-                    <span key={`card-summary-${preset.id}-${index}`}>{line}</span>
+                    <Mono
+                      key={`card-summary-${preset.id}-${index}`}
+                      className="loadout-card-summary-line"
+                    >
+                      {line}
+                    </Mono>
                   ))}
-                </span>
-                {locked && <span className="loadout-card-lock">Locked</span>}
+                </div>
+                {locked && <Mono className="loadout-card-lock">Locked</Mono>}
               </button>
             );
           })}
