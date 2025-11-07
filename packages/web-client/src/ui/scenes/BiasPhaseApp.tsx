@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
 import type { BiasPhaseSceneOption } from 'scenes/bias-phase';
+import { Button, Panel, cn } from '@lucky-break/design-system';
 import { useBiasPhaseUi } from '../state/bias-phase-bridge';
 import { useGameTheme } from '../hooks/useGameTheme';
 
@@ -84,6 +85,33 @@ export const BiasPhaseApp = (): JSX.Element | null => {
     [theme],
   );
 
+  const surfaceStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(160deg, rgba(26, 18, 48, 0.94), rgba(40, 24, 68, 0.78))',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }) as CSSProperties,
+    [],
+  );
+
+  const scoreboardStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(150deg, rgba(24, 16, 40, 0.86), rgba(36, 22, 58, 0.72))',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }) as CSSProperties,
+    [],
+  );
+
+  const optionStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(155deg, rgba(32, 22, 58, 0.84), rgba(20, 14, 36, 0.78))',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }) as CSSProperties,
+    [],
+  );
+
   if (!visible || suspended || !payload) {
     return null;
   }
@@ -134,24 +162,53 @@ export const BiasPhaseApp = (): JSX.Element | null => {
   };
 
   return (
-    <div className="bias-phase-overlay" style={overlayStyle}>
-      <div className="bias-phase-backdrop" />
-      <div className="bias-phase-surface ui-interactive">
-        <header className="bias-phase-header">
-          <h1>Luck Architect&apos;s Casino</h1>
-          <p>Stake your trajectory before the next volley</p>
+    <div
+      className="pointer-events-none absolute inset-0 z-[5] flex items-stretch justify-center px-4 py-6 sm:py-10"
+      style={overlayStyle}
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10"
+        style={{
+          background:
+            'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 55%), radial-gradient(circle at 80% 15%, rgba(255, 200, 120, 0.15), transparent 60%), linear-gradient(160deg, rgba(0,0,0,0.6), rgba(0,0,0,0.62))',
+          mixBlendMode: 'lighten',
+        }}
+      />
+      <div
+        className="ui-interactive relative flex w-full max-w-[1120px] flex-col gap-6 overflow-hidden rounded-[32px] border px-6 py-8 text-[color:var(--bias-text-primary,#fbeedd)] shadow-[0_32px_68px_rgba(10,5,25,0.48)] backdrop-blur-2xl sm:gap-8 sm:px-10 sm:py-10"
+        style={surfaceStyle}
+      >
+        <header className="flex flex-col items-center gap-3 text-center">
+          <h1 className="font-display text-[clamp(42px,6vw,72px)] uppercase tracking-[0.06em] text-[color:var(--bias-accent-combo,#ffd45c)] drop-shadow-[0_6px_18px_rgba(0,0,0,0.45)]">
+            Luck Architect&apos;s Casino
+          </h1>
+          <p className="text-[clamp(16px,2.2vmin,22px)] tracking-[0.04em] text-[color:var(--bias-text-secondary,#ffc45a)]">
+            Stake your trajectory before the next volley
+          </p>
         </header>
 
-        <section className="bias-phase-scoreboard" aria-label="Run summary">
-          {scoreboardEntries.map((entry) => (
-            <div className="bias-phase-score" key={entry.label}>
-              <span className="bias-phase-score-label">{entry.label}</span>
-              <span className="bias-phase-score-value">{entry.resolve(session)}</span>
-            </div>
-          ))}
-        </section>
+        <Panel
+          tone="muted"
+          aria-label="Run summary"
+          className="ui-interactive grid gap-4 rounded-[24px] border"
+          style={scoreboardStyle}
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {scoreboardEntries.map((entry) => (
+              <div className="flex flex-col gap-1.5" key={entry.label}>
+                <span className="font-mono text-xs uppercase tracking-[0.14em] text-[rgba(255,224,180,0.68)]">
+                  {entry.label}
+                </span>
+                <span className="text-[clamp(16px,2.2vmin,26px)] font-semibold tracking-wide">
+                  {entry.resolve(session)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
 
-        <section className="bias-phase-options" aria-label="Entropy tables">
+        <section className="grid gap-6 md:grid-cols-2" aria-label="Entropy tables">
           {options.map((option) => {
             const selected = option.id === selectedOptionId;
             const disabled = pendingAction !== null;
@@ -167,7 +224,15 @@ export const BiasPhaseApp = (): JSX.Element | null => {
               <button
                 type="button"
                 key={option.id}
-                className={`bias-phase-card${selected ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
+                className={cn(
+                  'ui-interactive flex h-full flex-col gap-4 rounded-[24px] border p-6 text-left transition-all duration-200',
+                  'hover:-translate-y-1 hover:border-[color:var(--bias-accent-combo,#ffd45c)] hover:shadow-[0_18px_36px_rgba(255,212,92,0.18)] focus-visible:-translate-y-1',
+                  selected
+                    ? 'border-[color:var(--bias-accent-combo,#ffd45c)] shadow-[0_18px_36px_rgba(255,212,92,0.18)]'
+                    : 'border-white/10',
+                  locked ? 'opacity-70' : null,
+                )}
+                style={optionStyle}
                 onClick={() => {
                   if (disabled) {
                     return;
@@ -176,54 +241,76 @@ export const BiasPhaseApp = (): JSX.Element | null => {
                 }}
                 disabled={disabled}
               >
-                <span className="bias-phase-card-risk" style={{ backgroundColor: riskColor }}>
+                <span
+                  className="inline-flex w-fit items-center justify-center rounded-full px-4 py-1.5 font-mono text-xs font-extrabold uppercase tracking-[0.18em] text-stone-950"
+                  style={{ backgroundColor: riskColor }}
+                >
                   {riskLabel[option.risk]}
                 </span>
-                <span className="bias-phase-card-title">{option.label}</span>
-                <span className="bias-phase-card-description">{option.description}</span>
+                <span className="text-[clamp(20px,2.6vmin,32px)] font-extrabold tracking-[0.04em]">
+                  {option.label}
+                </span>
+                <p className="text-[clamp(14px,1.6vmin,18px)] leading-relaxed text-[color:var(--bias-text-secondary,#ffc45a)]">
+                  {option.description}
+                </p>
                 <span
-                  className="bias-phase-card-wager"
+                  className="font-mono text-xs uppercase tracking-[0.14em] text-[rgba(255,224,180,0.78)]"
                   aria-label={`Costs ${option.wager.cost} entropy`}
                 >
                   {option.wager.label}
                 </span>
-                <span className="bias-phase-card-effects">
+                <div className="flex flex-col gap-2 text-[clamp(13px,1.4vmin,16px)] text-[color:var(--bias-text-primary,#fbeedd)]">
                   {option.effectSummary.map((line, index) => (
-                    <span key={`${option.id}-effect-${index}`}>{line}</span>
+                    <span
+                      key={`${option.id}-effect-${index}`}
+                      className="before:text-[rgba(255,224,180,0.9)] before:content-['•\00a0']"
+                    >
+                      {line}
+                    </span>
                   ))}
-                </span>
-                <span className="bias-phase-card-callout">
-                  {locked ? 'Earn more entropy to unlock' : 'Tap to select this table'}
+                </div>
+                <span
+                  className={cn(
+                    'mt-auto text-xs uppercase tracking-[0.12em] text-[rgba(255,224,180,0.92)]',
+                    locked && 'text-[rgba(255,168,168,0.92)]',
+                  )}
+                >
+                  {locked
+                    ? 'Earn more entropy to unlock'
+                    : selected
+                      ? 'Selected — tap to change'
+                      : 'Tap to select this table'}
                 </span>
               </button>
             );
           })}
         </section>
 
-        <footer className="bias-phase-footer">
-          <div className="bias-phase-footer-left">
-            <div className="bias-phase-seed" aria-live="polite">
+        <footer className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="text-sm text-[rgba(255,224,180,0.82)]" aria-live="polite">
               {session.seed !== null ? `Seed #${session.seed}` : 'Seed pending — commit to lock'}
             </div>
             {onSkip && (
-              <button
-                type="button"
-                className="bias-phase-skip"
+              <Button
+                variant="ghost"
+                className="ui-interactive w-fit rounded-full border border-white/20 text-xs uppercase tracking-[0.12em] text-[color:var(--bias-text-secondary,#ffc45a)] hover:text-[color:var(--bias-accent-power,#ff7b33)]"
                 onClick={handleSkip}
                 disabled={pendingAction !== null}
+                size="sm"
               >
                 Hold for default path
-              </button>
+              </Button>
             )}
           </div>
-          <button
-            type="button"
-            className="bias-phase-commit"
+          <Button
+            className="ui-interactive min-w-[220px] rounded-full border-2 border-[color:var(--bias-accent-combo,#ffd45c)] bg-gradient-to-br from-[rgba(255,212,92,0.92)] to-[rgba(255,160,67,0.92)] text-base font-extrabold tracking-wide text-stone-950 shadow-[0_18px_42px_rgba(255,212,92,0.32)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60"
             onClick={handleCommit}
             disabled={commitDisabled}
+            size="lg"
           >
             {commitLabel}
-          </button>
+          </Button>
         </footer>
       </div>
     </div>

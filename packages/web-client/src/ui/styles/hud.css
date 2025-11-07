@@ -57,9 +57,7 @@
   pointer-events: auto;
 }
 
-.ui-interactive {
-  pointer-events: auto;
-}
+/* .ui-interactive is deprecated for new overlays; Tailwind classes handle pointer events. */
 
 .hud-top {
   grid-area: hud-top;

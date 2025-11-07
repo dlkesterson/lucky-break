@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@lucky-break/core-domain": "workspace:*",
+    "@lucky-break/design-system": "workspace:*",
     "@pixi/filter-glow": "^5.2.1",
     "pixi.js": "^8.14.0",
     "react": "^18.3.1",
@@ -40,10 +41,13 @@
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "jsdom": "^27.0.0",
+    "autoprefixer": "^10.4.20",
     "prettier": "^3.6.2",
+    "postcss": "^8.4.49",
     "tsx": "4.19.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.1",
+    "tailwindcss": "^3.4.15",
     "vite": "^7.1.10",
     "vitest": "^1.6.0"
   }

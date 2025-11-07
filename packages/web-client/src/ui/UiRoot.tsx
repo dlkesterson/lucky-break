@@ -1,3 +1,4 @@
+import { DesignSystemProvider } from '@lucky-break/design-system';
 import { HudApp } from './HudApp';
 import { IntroOverlayApp } from './components/IntroOverlayApp';
 import { MainMenuApp } from './scenes/MainMenuApp';
@@ -8,7 +9,7 @@ import { PauseApp } from './scenes/PauseApp';
 import { FateLedgerApp } from './scenes/FateLedgerApp';
 
 export const UiRoot = (): JSX.Element => (
-  <>
+  <DesignSystemProvider>
     <HudApp />
     <IntroOverlayApp />
     <MainMenuApp />
@@ -17,5 +18,5 @@ export const UiRoot = (): JSX.Element => (
     <PauseApp />
     <GameOverApp />
     <FateLedgerApp />
-  </>
+  </DesignSystemProvider>
 );

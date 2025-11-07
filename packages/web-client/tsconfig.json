@@ -16,6 +16,8 @@
     "tests/**/*.tsx",
     "../core-domain/src/**/*.ts",
     "../cli-sim/src/**/*.ts",
+  "../design-system/src/**/*.ts",
+  "../design-system/src/**/*.tsx",
     "assets/**/*.json",
     "vite.config.ts",
     "vitest.config.ts"

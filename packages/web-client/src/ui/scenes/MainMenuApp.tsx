@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Button, Panel } from '@lucky-break/design-system';
 import { getThemeLabel } from 'render/theme';
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
@@ -58,6 +59,32 @@ export const MainMenuApp = (): JSX.Element | null => {
     [theme],
   );
 
+  const surfaceStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(160deg, rgba(20, 12, 36, 0.95), rgba(42, 20, 60, 0.82))',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }) as CSSProperties,
+    [],
+  );
+
+  const panelStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(155deg, rgba(30, 18, 52, 0.85), rgba(16, 10, 28, 0.78))',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+      }) as CSSProperties,
+    [],
+  );
+
+  const prologueStyle = useMemo(
+    () =>
+      ({
+        background: 'linear-gradient(160deg, rgba(34, 20, 56, 0.92), rgba(18, 10, 30, 0.82))',
+      }) as CSSProperties,
+    [],
+  );
+
   const scores = useMemo<readonly ScoreViewModel[]>(() => {
     if (!snapshot) {
       return [];
@@ -70,6 +97,9 @@ export const MainMenuApp = (): JSX.Element | null => {
       roundLabel: formatRoundLabel(entry.round),
     }));
   }, [snapshot]);
+
+  const actionButtonClass =
+    'ui-interactive rounded-full border border-white/20 bg-white/10 font-mono text-xs uppercase tracking-[0.14em] text-[color:var(--menu-text-primary,#ffe9d6)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5';
 
   if (!isActive || !snapshot) {
     return null;
@@ -126,98 +156,153 @@ export const MainMenuApp = (): JSX.Element | null => {
   const themeLabel = getThemeLabel(themeName);
 
   return (
-    <div className="main-menu-overlay" style={overlayStyle} ref={overlayRef}>
-      <div className="main-menu-backdrop" />
+    <div
+      className="pointer-events-none absolute inset-0 z-[7] flex items-center justify-center px-4 py-10 sm:px-6"
+      style={overlayStyle}
+      ref={overlayRef}
+    >
       <div
-        className="main-menu-surface ui-interactive"
+        aria-hidden="true"
+        className="absolute inset-0 -z-10"
+        style={{
+          background:
+            'radial-gradient(circle at 18% 78%, rgba(255, 156, 80, 0.22), transparent 58%), radial-gradient(circle at 82% 24%, rgba(120, 190, 255, 0.18), transparent 52%), linear-gradient(150deg, rgba(12, 8, 26, 0.92), rgba(22, 12, 38, 0.88))',
+        }}
+      />
+      <div
+        className="ui-interactive relative flex w-full max-w-[980px] flex-col gap-8 rounded-[32px] border px-6 pb-10 pt-8 text-[color:var(--menu-text-primary,#ffe9d6)] shadow-[0_36px_72px_rgba(8,4,18,0.6)] backdrop-blur-2xl sm:gap-10 sm:px-10 sm:pb-12 sm:pt-10"
+        style={surfaceStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="main-menu-title"
       >
-        <header className="main-menu-header">
-          <h1 id="main-menu-title">{snapshot.title}</h1>
-          <button
-            type="button"
-            className="main-menu-start ui-interactive"
+        <header className="flex flex-col items-center gap-4 text-center sm:gap-5">
+          <h1
+            id="main-menu-title"
+            className="font-display text-[clamp(48px,6vw,92px)] uppercase tracking-[0.08em] text-[color:var(--menu-accent,#ffd04a)] drop-shadow-[0_12px_26px_rgba(0,0,0,0.5)]"
+          >
+            {snapshot.title}
+          </h1>
+          <Button
+            className="ui-interactive mt-2 w-full max-w-xs rounded-full border-2 border-[color:var(--menu-panel-line,#ff9242)] bg-gradient-to-br from-[rgba(255,210,110,0.9)] via-[rgba(255,240,190,0.95)] to-[rgba(255,164,70,0.92)] text-lg font-black uppercase tracking-[0.08em] text-stone-950 shadow-[0_20px_40px_rgba(255,214,110,0.32)] transition-transform duration-150 ease-out hover:-translate-y-1 focus-visible:-translate-y-1 disabled:translate-y-0"
             onClick={handleStart}
             disabled={pendingStart}
+            size="lg"
+            variant="default"
           >
             {pendingStart ? 'Starting…' : snapshot.prompt}
-          </button>
+          </Button>
         </header>
 
-        <div className="main-menu-content" aria-live="polite">
+        <div className="grid gap-6 sm:grid-cols-2" aria-live="polite">
           {snapshot.prologue ? (
-            <section className="main-menu-prologue" aria-label={snapshot.prologue.heading}>
-              <h2>{snapshot.prologue.heading}</h2>
+            <Panel
+              tone="muted"
+              aria-label={snapshot.prologue.heading}
+              className="ui-interactive col-span-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-secondary,#ffc45a)]"
+              style={{ ...panelStyle, ...prologueStyle }}
+            >
+              <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+                {snapshot.prologue.heading}
+              </h2>
               {snapshot.prologue.body.map((paragraph, index) => (
-                <p key={`main-menu-prologue-${index}`}>{paragraph}</p>
+                <p
+                  key={`main-menu-prologue-${index}`}
+                  className="font-sans text-[clamp(14px,1.8vmin,18px)] leading-relaxed tracking-[0.03em]"
+                >
+                  {paragraph}
+                </p>
               ))}
-            </section>
+            </Panel>
           ) : null}
 
-          <section className="main-menu-help" aria-label="How to play">
-            <h2>How to Play</h2>
-            <ul>
+          <Panel
+            tone="muted"
+            aria-label="How to play"
+            className="ui-interactive h-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-secondary,#ffc45a)]"
+            style={panelStyle}
+          >
+            <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+              How to Play
+            </h2>
+            <ul className="flex list-disc flex-col gap-3 pl-6 text-[clamp(14px,1.7vmin,18px)] leading-relaxed">
               {snapshot.helpLines.map((line, index) => (
                 <li key={`main-menu-help-${index}`}>{line}</li>
               ))}
             </ul>
-          </section>
+          </Panel>
 
-          <section className="main-menu-scores" aria-label="High scores">
-            <h2>High Scores</h2>
+          <Panel
+            tone="muted"
+            aria-label="High scores"
+            className="ui-interactive h-full space-y-4 rounded-[28px] border text-[color:var(--menu-text-primary,#ffe9d6)]"
+            style={panelStyle}
+          >
+            <h2 className="font-display text-[clamp(20px,2.2vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--menu-power,#ff6b35)]">
+              High Scores
+            </h2>
             {scores.length > 0 ? (
-              <ol>
+              <ol className="flex flex-col gap-3 text-[clamp(14px,1.7vmin,18px)] tracking-[0.04em]">
                 {scores.map((entry) => (
-                  <li key={entry.id}>
-                    <span className="main-menu-score-rank">{entry.rank}.</span>
-                    <span className="main-menu-score-value">{entry.scoreLabel}</span>
-                    <span className="main-menu-score-round">{entry.roundLabel}</span>
-                    <span className="main-menu-score-name">{entry.name}</span>
+                  <li
+                    key={entry.id}
+                    className="grid grid-cols-[36px_minmax(0,110px)_54px_minmax(0,1fr)] items-baseline gap-3 sm:grid-cols-[42px_minmax(0,120px)_60px_minmax(0,1fr)]"
+                  >
+                    <span className="font-mono text-sm text-[color:var(--menu-text-secondary,#ffc45a)]">
+                      {entry.rank}.
+                    </span>
+                    <span className="font-semibold">{entry.scoreLabel}</span>
+                    <span className="text-[color:var(--menu-text-secondary,#ffc45a)]">
+                      {entry.roundLabel}
+                    </span>
+                    <span className="truncate uppercase">{entry.name}</span>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="main-menu-scores-empty">
+              <p className="text-[clamp(14px,1.6vmin,18px)] text-[color:var(--menu-text-secondary,#ffc45a)]">
                 No runs recorded yet — your first streak awaits.
               </p>
             )}
-          </section>
+          </Panel>
         </div>
 
-        <footer className="main-menu-footer">
-          <div className="main-menu-actions">
-            <button
-              type="button"
-              className="main-menu-action ui-interactive"
+        <footer className="flex flex-col items-center gap-4 text-center">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button
+              className={actionButtonClass}
               onClick={handleShowStory}
+              variant="outline"
+              size="sm"
             >
               Story So Far
-            </button>
-            <button
-              type="button"
-              className="main-menu-action ui-interactive"
+            </Button>
+            <Button
+              className={actionButtonClass}
               onClick={handleToggleTheme}
+              variant="outline"
+              size="sm"
             >
               Color Mode: {themeLabel} · Shift+C
-            </button>
-            <button
-              type="button"
-              className="main-menu-action ui-interactive"
+            </Button>
+            <Button
+              className={actionButtonClass}
               onClick={handleTogglePerformance}
+              variant="outline"
+              size="sm"
             >
               Performance Mode: {performanceLabel}
-            </button>
-            <button
-              type="button"
-              className="main-menu-action ui-interactive"
+            </Button>
+            <Button
+              className={actionButtonClass}
               onClick={handleOpenLedger}
+              variant="outline"
+              size="sm"
             >
               View Fate Ledger
-            </button>
+            </Button>
           </div>
-          <p className="main-menu-footer-hint">
+          <p className="font-sans text-xs uppercase tracking-[0.12em] text-white/60">
             Tip: Toggle performance mode if your device needs a lighter glow.
           </p>
         </footer>

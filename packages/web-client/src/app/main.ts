@@ -2,17 +2,16 @@ import { loadSoundbank, prefetchSoundbankAssets, countSoundbankAssets } from 'au
 import { listAllStaticAssets, verifyAssetManifest } from 'config/assets';
 import { GameTheme } from 'render/theme';
 import { createRandomManager } from 'util/random';
+import '@lucky-break/design-system/styles.css';
+import '../styles/tailwind.css';
 
 import { createGameRuntime, type GameRuntimeHandle } from './game-runtime';
 import { createPreloader } from './preloader';
 import { createReplayBuffer, type ReplayRecording } from 'app/replay-buffer';
 import '../ui/styles/hud.css';
-import '../ui/styles/bias-phase.css';
 import '../ui/styles/loadout-selection.css';
-import '../ui/styles/main-menu.css';
 import '../ui/styles/pause.css';
 import '../ui/styles/game-over.css';
-import '../ui/styles/fate-ledger.css';
 import '../ui/styles/intro.css';
 import { initializeReactUi } from '../ui/boot/react-root';
 

@@ -9,6 +9,7 @@ const projectConfigs = [
   './packages/web-client/tsconfig.json',
   './packages/core-domain/tsconfig.json',
   './packages/cli-sim/tsconfig.json',
+  './packages/design-system/tsconfig.json',
   './scripts/tsconfig.json',
 ];
 const prettierRecommendedRules = prettierConfig?.configs?.recommended?.rules ?? {};

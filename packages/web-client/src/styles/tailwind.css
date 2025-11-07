@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --hud-panel-background: rgba(12, 20, 32, 0.72);
+  }
+}
