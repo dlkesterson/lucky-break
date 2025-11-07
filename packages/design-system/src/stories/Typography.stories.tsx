@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 
-import { Heading, Label, Mono, type TypographyProps } from '../components/typography';
+import { Heading, Label, Mono } from '../components/typography';
 
 const meta = {
   title: 'Components/Typography',

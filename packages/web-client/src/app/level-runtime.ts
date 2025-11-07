@@ -1,5 +1,5 @@
 import { Graphics, Container, Sprite, Texture } from 'pixi.js';
-import type { BLEND_MODES as PixiBlendMode, Ticker } from 'pixi.js';
+import type { Ticker } from 'pixi.js';
 import * as PixiJS from 'pixi.js';
 import { gameConfig } from 'config/game';
 import { Body as MatterBody, Bodies } from 'physics/matter';
@@ -608,11 +608,9 @@ export const createLevelRuntime = ({
                 waveSprite.zIndex = 4;
                 waveSprite.alpha = 1;
                 waveSprite.eventMode = 'none';
-                const blendModesUnknown: unknown = PixiJS.BLEND_MODES;
-                const addBlendMode = (blendModesUnknown as { readonly ADD?: PixiBlendMode } | null)?.ADD;
-                if (addBlendMode !== undefined) {
-                    waveSprite.blendMode = addBlendMode;
-                }
+                // Note: BLEND_MODES may not be available in all PixiJS versions
+                // Using 'add' blend mode string directly
+                waveSprite.blendMode = 'add';
 
                 const waveFilter = new GradientWaveFilter({
                     opacity: 0.9,

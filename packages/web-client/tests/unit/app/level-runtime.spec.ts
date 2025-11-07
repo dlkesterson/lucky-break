@@ -87,10 +87,36 @@ vi.mock('pixi.js', () => {
         }
     }
 
+    class MockFilter {
+        public enabled = true;
+        public uniforms: Record<string, any> = {};
+        public resources: Record<string, any> = {
+            gradientUniforms: {
+                uniforms: {},
+                update: vi.fn(),
+            },
+        };
+        public destroy = vi.fn();
+    }
+
+    const MockTexture = {
+        WHITE: { texture: 'white' },
+    };
+
+    const MockGlProgram = {
+        from: vi.fn(() => ({ program: 'mocked' })),
+    };
+
+    const mockDefaultFilterVert = 'default-filter-vert';
+
     return {
         Container: MockContainer,
         Graphics: MockGraphics,
         Sprite: MockSprite,
+        Filter: MockFilter,
+        Texture: MockTexture,
+        GlProgram: MockGlProgram,
+        defaultFilterVert: mockDefaultFilterVert,
     };
 });
 
@@ -228,8 +254,13 @@ const createStage = () => {
         effects: makeLayer(),
     };
 
+    const ticker = {
+        add: vi.fn(),
+        remove: vi.fn(),
+    };
+
     return {
-        app: { renderer: {} },
+        app: { renderer: {}, ticker },
         layers,
         addToLayer: (name: string, item: unknown) => {
             if (!layers[name]) {

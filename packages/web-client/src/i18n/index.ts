@@ -9,7 +9,7 @@ export const resources = {
     },
 } as const;
 
-i18n.use(initReactI18next).init({
+void i18n.use(initReactI18next).init({
     lng: 'en',
     fallbackLng: 'en',
     defaultNS,
