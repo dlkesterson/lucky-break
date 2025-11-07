@@ -355,7 +355,7 @@ describe('LoadoutSelectionApp', () => {
             root.render(wrapWithI18n(createElement(LoadoutSelectionApp)));
         });
 
-        const overlay = container.querySelector('.loadout-overlay') as HTMLElement;
+        const overlay = container.querySelector('.loadout-overlay')!;
         const computedStyle = window.getComputedStyle(overlay);
 
         expect(computedStyle.getPropertyValue('--loadout-panel-fill')).toBeTruthy();
@@ -377,7 +377,7 @@ describe('LoadoutSelectionApp', () => {
             root.render(wrapWithI18n(createElement(LoadoutSelectionApp)));
         });
 
-        const ball = container.querySelector('.loadout-ball') as HTMLElement;
+        const ball = container.querySelector('.loadout-ball')!;
         const computedStyle = window.getComputedStyle(ball);
 
         expect(computedStyle.getPropertyValue('--loadout-ball-base')).toBeTruthy();

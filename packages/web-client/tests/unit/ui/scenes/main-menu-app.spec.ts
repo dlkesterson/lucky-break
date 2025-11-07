@@ -322,7 +322,7 @@ describe('MainMenuApp', () => {
             root.render(wrapWithI18n(createElement(MainMenuApp)));
         });
 
-        const overlay = container.querySelector('.main-menu-overlay') as HTMLElement;
+        const overlay = container.querySelector('.main-menu-overlay')!;
         const computedStyle = window.getComputedStyle(overlay);
 
         expect(computedStyle.getPropertyValue('--main-menu-bg-from')).toBeTruthy();

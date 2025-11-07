@@ -183,10 +183,10 @@ describe('GameOverView', () => {
 
         await renderView({ theme: customTheme });
 
-        const overlay = container.querySelector('[style*="--game-over-bg-from"]') as HTMLElement;
+        const overlay = container.querySelector<HTMLElement>('[style*="--game-over-bg-from"]')!;
         expect(overlay).toBeTruthy();
-        expect(overlay?.style.getPropertyValue('--game-over-bg-from')).toBe('#abc123');
-        expect(overlay?.style.getPropertyValue('--game-over-bg-to')).toBe('#def456');
+        expect(overlay.style.getPropertyValue('--game-over-bg-from')).toBe('#abc123');
+        expect(overlay.style.getPropertyValue('--game-over-bg-to')).toBe('#def456');
     });
 
     it('sets proper ARIA attributes for accessibility', async () => {

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createElement } from 'react';
+import { createElement, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { within } from '@testing-library/dom';
-import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import type { GameThemeDefinition } from 'render/theme';
 import {

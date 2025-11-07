@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createElement } from 'react';
+import { createElement, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { within } from '@testing-library/dom';
-import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import type { GameThemeDefinition } from 'render/theme';
 import type { HudEntropyActionDescriptor } from 'render/hud';
@@ -11,7 +10,6 @@ import {
     type PauseViewProps,
     formatScore,
     formatCoins,
-    formatEntropyDetail,
     isEntropyActionAvailable,
 } from '../../../../src/ui/scenes/PauseView';
 import { wrapWithI18n } from '../../../utils/test-wrapper';
@@ -182,16 +180,16 @@ describe('PauseView', () => {
     it('renders volume slider with current value', () => {
         renderComponent(defaultProps);
         const ctx = within(document.body);
-        const slider = ctx.getByDisplayValue('75') as HTMLInputElement;
+        const slider = ctx.getByDisplayValue('75');
         expect(slider).toBeDefined();
-        expect(slider.type).toBe('range');
+        expect((slider as HTMLInputElement).type).toBe('range');
     });
 
     it('renders mute checkbox with current state', () => {
         renderComponent({ ...defaultProps, muted: true });
         const ctx = within(document.body);
-        const checkbox = ctx.getByRole('checkbox') as HTMLInputElement;
-        expect(checkbox.checked).toBe(true);
+        const checkbox = ctx.getByRole('checkbox');
+        expect((checkbox as HTMLInputElement).checked).toBe(true);
     });
 
     it('calls onThemeToggle when clicking theme button', () => {

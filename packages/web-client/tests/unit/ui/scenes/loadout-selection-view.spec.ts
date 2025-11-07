@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createElement } from 'react';
+import { createElement, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { within } from '@testing-library/dom';
-import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import type { GameThemeDefinition } from 'render/theme';
 import {
@@ -226,7 +225,7 @@ describe('LoadoutSelectionView', () => {
 
     it('applies theme CSS custom properties', () => {
         renderComponent(defaultProps);
-        const overlay = container.querySelector('.loadout-overlay') as HTMLElement;
+        const overlay = container.querySelector<HTMLElement>('.loadout-overlay')!;
         expect(overlay).toBeDefined();
         const style = overlay.style;
         expect(style.getPropertyValue('--loadout-panel-fill')).toBe('#222222');
