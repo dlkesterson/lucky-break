@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
@@ -9,10 +9,38 @@ import type { RuntimeModifierSnapshot, RuntimeModifiers, RuntimeRuleSnapshot } f
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from 'app/runtime/types';
 import { createBiasPhaseCoordinator } from 'app/runtime/bias-phase-coordinator';
-import type { BiasPhaseSceneOption } from 'scenes/bias-phase';
+import type { BiasPhasePayload, BiasPhaseSceneOption } from 'scenes/bias-phase';
 import type { EntropySpendOptions, EntropySpendResult, GameSessionSnapshot } from 'app/state';
 
+const { mockSlotsSpin, createSlotsMachineMock } = vi.hoisted(() => {
+    const mockSlotsSpin = vi.fn(() => ({
+        spinIndex: 1,
+        symbols: ['TILT', 'TILT', 'TILT'] as const,
+        rarity: 'bias' as const,
+        headline: 'Mock Slots',
+        detail: 'Mock detail',
+        biasRisk: 'tilt' as const,
+        wildcard: false,
+    }));
+
+    const createSlotsMachineMock = vi.fn(() => ({
+        spin: mockSlotsSpin,
+    }));
+
+    return { mockSlotsSpin, createSlotsMachineMock };
+});
+
+vi.mock('app/runtime/casino-games', () => ({
+    NEBULA_SLOTS_SPIN_COST: 2,
+    createNebulaSlotsMachine: createSlotsMachineMock,
+}));
+
 type RuntimeStateSlice = Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
+
+beforeEach(() => {
+    mockSlotsSpin.mockClear();
+    createSlotsMachineMock.mockClear();
+});
 
 const modifierConfig: GameConfig['modifiers'] = {
     gravity: { min: 0.5, max: 2, step: 0.05, default: 1 },
@@ -335,6 +363,80 @@ describe('createBiasPhaseCoordinator', () => {
         expect(modifiersHarness.setSpeedGovernorMultiplier).toHaveBeenCalledWith(1.3);
     });
 
+    it('exposes nebula slots payload and handles spins', async () => {
+        const logger = createLoggerStub();
+        const random = createRandomStub();
+        const modifiersHarness = createRuntimeModifiersStub();
+        const stageHarness = createStageStub();
+        const roundMachineHarness = createRoundMachineHarness();
+        const startLoop = vi.fn();
+        const startLevel = vi.fn();
+        const renderStageSoon = vi.fn();
+        const replayBuffer = { recordBiasChoice: vi.fn(), snapshot: vi.fn() } as unknown as ReplayBuffer;
+        const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 16 };
+        const bus = createBusStub();
+        const storedEntropy = 12;
+        const buildSessionSummary = vi.fn((upcoming: number) => ({
+            nextLevel: upcoming + 1,
+            score: 2048,
+            coins: 42,
+            lives: 3,
+            highestCombo: 7,
+            entropyDelta: 0,
+            gravity: modifierConfig.gravity.default,
+            gravityDelta: 0,
+            speedGovernor: modifierConfig.speedGovernor.default,
+            speedDelta: 0,
+            coinsRuleLocked: false,
+            seed: 99,
+            entropyStored: storedEntropy,
+        }));
+        const getSessionSnapshot = createSessionSnapshotStub(storedEntropy);
+        const spendStoredEntropy = vi.fn((options: EntropySpendOptions): EntropySpendResult => ({
+            success: true,
+            action: options.action,
+            cost: options.cost,
+            storedRemaining: Math.max(0, storedEntropy - options.cost),
+            chargeRemaining: 0,
+        }));
+
+        const coordinator = createBiasPhaseCoordinator({
+            logger,
+            random,
+            roundMachine: roundMachineHarness.roundMachine,
+            runtimeModifiers: modifiersHarness.runtimeModifiers,
+            modifierConfig,
+            stage: stageHarness.stage,
+            hudContainer: { visible: true },
+            startLoop,
+            startLevel,
+            renderStageSoon,
+            replayBuffer,
+            runtimeState,
+            buildSessionSummary,
+            bus,
+            getSessionSnapshot,
+            spendStoredEntropy,
+        });
+
+        coordinator.present();
+
+        const payload = stageHarness.getLatestPayload() as BiasPhasePayload;
+        expect(payload.slots).toBeDefined();
+        const result = await payload.slots?.onSpin();
+        if (!result) {
+            throw new Error('Expected nebula slots spin result');
+        }
+        expect(spendStoredEntropy).toHaveBeenCalledWith({ action: 'casino-slots-spin', cost: 2 });
+        expect(mockSlotsSpin).toHaveBeenCalledWith(1);
+        expect(result).toEqual(
+            expect.objectContaining({
+                entropyRemaining: storedEntropy - 2,
+                symbols: ['TILT', 'TILT', 'TILT'],
+            }),
+        );
+    });
+
     it('presents bias phase and handles automation commits', async () => {
         const logger = createLoggerStub();
         const random = createRandomStub();
@@ -392,8 +494,7 @@ describe('createBiasPhaseCoordinator', () => {
             getSessionSnapshot,
             spendStoredEntropy,
         });
-
-    coordinator.present();
+        coordinator.present();
 
         expect(stageHarness.push).toHaveBeenCalledWith(
             'bias-phase',

@@ -262,7 +262,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement "Reforge" option: reroll physics (gravity, etc.)
   - Use seeded RNG for deterministic outcomes
 
-- [ ] **Create casino hub React scene**
+- [x] **Create casino hub React scene**
   - Create `packages/web-client/src/ui/scenes/CasinoHub.tsx`
   - Design casino aesthetic (cosmic Las Vegas theme)
   - Display entropy balance
@@ -282,7 +282,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Apply "Lock" rules to game mechanics
   - Apply "Reforge" physics changes via `packages/core-domain/src/physics/world.ts`
 
-- [ ] **Add casino mini-games module**
+- [x] **Add casino mini-games module**
   - Create `packages/web-client/src/app/runtime/casino-games.ts`
   - Implement roulette game (entropy input → re-rolls)
   - Implement slots game (entropy input → random biases)

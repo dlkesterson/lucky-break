@@ -83,7 +83,7 @@ export interface LaserHitPayload {
 }
 
 export type RewardEntropyAction = 'reroll' | 'shield' | 'bailout';
-export type CasinoEntropyAction = 'casino-tilt' | 'casino-lock' | 'casino-reforge';
+export type CasinoEntropyAction = 'casino-tilt' | 'casino-lock' | 'casino-reforge' | 'casino-slots-spin';
 
 export type EntropyActionType = RewardEntropyAction | CasinoEntropyAction;
 

@@ -1,5 +1,6 @@
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
+import type { NebulaSlotsSpinOutcome } from 'app/runtime/casino-games';
 import type { BiasOptionRisk, BiasPhaseWager } from 'app/runtime/round-machine';
 import type { UiSceneTransitionAction } from 'app/events';
 import { biasPhaseUiBridge } from 'ui/state/bias-phase-bridge';
@@ -30,11 +31,22 @@ export interface BiasPhaseSessionSummary {
     readonly entropyStored: number;
 }
 
+export interface NebulaSlotsSpinResult extends NebulaSlotsSpinOutcome {
+    readonly entropyRemaining: number;
+}
+
+export interface NebulaSlotsPayload {
+    readonly cost: number;
+    readonly spinsAvailable: number;
+    readonly onSpin: () => Promise<NebulaSlotsSpinResult>;
+}
+
 export interface BiasPhasePayload {
     readonly session: BiasPhaseSessionSummary;
     readonly options: readonly BiasPhaseSceneOption[];
     readonly onSelect: (optionId: string) => void | Promise<void>;
     readonly onSkip?: () => void | Promise<void>;
+    readonly slots?: NebulaSlotsPayload;
 }
 
 export const createBiasPhaseScene = (

@@ -119,7 +119,7 @@ export const createRuntimeRoundCoordinator = ({
             speedGovernor: modifierState.speedGovernorMultiplier,
             speedDelta: modifierState.speedGovernorMultiplier - baseSpeedGovernor,
             coinsRuleLocked: roundRules.coinsAlwaysDrop,
-            seed: null,
+            seed: random.seed(),
         } satisfies BiasPhaseSessionSummary;
     };
 

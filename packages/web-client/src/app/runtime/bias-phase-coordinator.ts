@@ -2,7 +2,12 @@ import type { Container } from 'pixi.js';
 import type { Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
-import type { BiasPhaseSessionSummary, BiasPhaseSceneOption, BiasPhasePayload } from 'scenes/bias-phase';
+import type {
+    BiasPhaseSessionSummary,
+    BiasPhaseSceneOption,
+    BiasPhasePayload,
+    NebulaSlotsSpinResult,
+} from 'scenes/bias-phase';
 import type { GameConfig } from 'config/game';
 import type { BiasOptionRisk, BiasPhaseOption, BiasPhaseWager, RoundMachine } from './round-machine';
 import type { RuntimeModifiers, RuntimeModifierSnapshot } from './modifiers';
@@ -10,6 +15,7 @@ import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from './types';
 import type { LuckyBreakEventBus } from 'app/events';
 import type { GameSessionManager, GameSessionSnapshot } from 'app/state';
+import { createNebulaSlotsMachine, NEBULA_SLOTS_SPIN_COST } from './casino-games';
 
 export interface BiasPhaseAutomation {
     select(optionId: string): Promise<void>;
@@ -451,6 +457,12 @@ export const createBiasPhaseCoordinator = ({
             ...sessionSummary,
             entropyStored: storedEntropy,
         };
+        const slotSeed = sessionWithStored.seed ?? random.seed();
+        const slotsMachine = createNebulaSlotsMachine(slotSeed, {
+            level: upcomingLevelIndex,
+            entropy: storedEntropy,
+        });
+        let slotsSpinCount = 0;
 
         if (options.length === 0) {
             automation = null;
@@ -521,6 +533,31 @@ export const createBiasPhaseCoordinator = ({
             advance(null);
         };
 
+        const handleSlotsSpin = (): NebulaSlotsSpinResult => {
+            const availableEntropy = resolveStoredEntropy();
+            if (availableEntropy < NEBULA_SLOTS_SPIN_COST) {
+                const error = new Error('insufficient-entropy');
+                error.name = 'NebulaSlotsError';
+                throw error;
+            }
+
+            const spendResult = spendStoredEntropy({ action: 'casino-slots-spin', cost: NEBULA_SLOTS_SPIN_COST });
+            if (!spendResult.success) {
+                const reason = spendResult.reason ?? 'unknown';
+                const error = new Error(`entropy-spend-${reason}`);
+                error.name = 'NebulaSlotsError';
+                throw error;
+            }
+
+            slotsSpinCount += 1;
+            const outcome = slotsMachine.spin(slotsSpinCount);
+
+            return {
+                ...outcome,
+                entropyRemaining: spendResult.storedRemaining,
+            } satisfies NebulaSlotsSpinResult;
+        };
+
         const payload: BiasPhasePayload = {
             session: sessionWithStored,
             options: options.map((option) => mapBiasOptionToScene(option, storedEntropy >= option.wager.cost)),
@@ -528,6 +565,11 @@ export const createBiasPhaseCoordinator = ({
                 handleSelection(optionId);
             },
             onSkip: handleSkip,
+            slots: {
+                cost: NEBULA_SLOTS_SPIN_COST,
+                spinsAvailable: Math.max(0, Math.floor(storedEntropy / NEBULA_SLOTS_SPIN_COST)),
+                onSpin: () => Promise.resolve().then(() => handleSlotsSpin()),
+            },
         };
 
         automation = {

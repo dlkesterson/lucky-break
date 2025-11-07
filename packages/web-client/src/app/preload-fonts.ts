@@ -35,22 +35,37 @@ const performFontLoad = async (
 };
 
 const preloadFonts = async (
-    report?: (progress: FontProgress) => void,
     descriptors: readonly string[] = BRAND_FONT_DESCRIPTORS,
+    report?: (progress: FontProgress) => void,
 ): Promise<void> => {
-    if (fontsReady) {
-        report?.({ loaded: descriptors.length, total: descriptors.length });
+    const fontFaceSet = typeof document !== 'undefined' ? document.fonts : undefined;
+    const total = descriptors.length;
+
+    if (!fontFaceSet) {
+        report?.({ loaded: 0, total });
+        fontsReady = true;
+        preloadPromise ??= Promise.resolve();
+        report?.({ loaded: total, total });
+        await preloadPromise;
         return;
     }
 
-    if (!preloadPromise) {
-        preloadPromise = performFontLoad(descriptors, report).then(() => {
-            fontsReady = true;
-        });
+    if (fontsReady) {
+        report?.({ loaded: total, total });
+        return;
+    }
+
+    report?.({ loaded: 0, total });
+
+    preloadPromise ??= performFontLoad(descriptors, report).then(() => {
+        fontsReady = true;
+    });
+
+    if (preloadPromise === null) {
+        throw new Error('Font preload promise was not initialized.');
     }
 
     await preloadPromise;
-    report?.({ loaded: descriptors.length, total: descriptors.length });
 };
 
 export { BRAND_FONT_DESCRIPTORS, preloadFonts };

@@ -2,7 +2,7 @@ import { DesignSystemProvider } from '@lucky-break/design-system';
 import { HudApp } from './HudApp';
 import { IntroOverlayApp } from './components/IntroOverlayApp';
 import { MainMenuApp } from './scenes/MainMenuApp';
-import { BiasPhaseApp } from './scenes/BiasPhaseApp';
+import { CasinoHubApp } from './scenes/CasinoHub';
 import { LoadoutSelectionApp } from './scenes/LoadoutSelectionApp';
 import { GameOverApp } from './scenes/GameOverApp';
 import { PauseApp } from './scenes/PauseApp';
@@ -13,7 +13,7 @@ export const UiRoot = (): JSX.Element => (
     <HudApp />
     <IntroOverlayApp />
     <MainMenuApp />
-    <BiasPhaseApp />
+    <CasinoHubApp />
     <LoadoutSelectionApp />
     <PauseApp />
     <GameOverApp />

@@ -32,7 +32,7 @@ let biasPhaseState: BiasPhaseUiStateMock = {
     payload: null,
 };
 
-let BiasPhaseAppComponent: typeof import('ui/scenes/BiasPhaseApp')['BiasPhaseApp'];
+let CasinoHubAppComponent: typeof import('ui/scenes/CasinoHub')['CasinoHubApp'];
 
 const describeButton = (value: string | RegExp): string => (typeof value === 'string' ? value : value.source);
 
@@ -52,12 +52,12 @@ vi.mock('ui/state/bias-phase-bridge', () => ({
     useBiasPhaseUi: () => biasPhaseState,
 }));
 
-describe('BiasPhaseApp', () => {
+describe('CasinoHubApp', () => {
     let container: HTMLDivElement;
     let root: Root;
 
     beforeAll(async () => {
-        ({ BiasPhaseApp: BiasPhaseAppComponent } = await import('ui/scenes/BiasPhaseApp'));
+        ({ CasinoHubApp: CasinoHubAppComponent } = await import('ui/scenes/CasinoHub'));
     });
 
     const createSession = (overrides: Partial<BiasPhaseSessionSummary> = {}): BiasPhaseSessionSummary => ({
@@ -94,7 +94,7 @@ describe('BiasPhaseApp', () => {
 
     const renderApp = async () => {
         await act(async () => {
-            root.render(createElement(BiasPhaseAppComponent));
+            root.render(createElement(CasinoHubAppComponent));
         });
     };
 
@@ -148,7 +148,7 @@ describe('BiasPhaseApp', () => {
         await renderApp();
 
         const screen = within(container);
-        screen.getByRole('heading', { name: /Luck Architect/i });
+        screen.getByRole('heading', { name: /Cosmic Casino/i });
         const optionButton = getButton(screen, /Nebular Drift Table/i);
         const commitButton = getButton(screen, /Commit Selection/i);
         expect(commitButton.disabled).toBe(true);
@@ -252,7 +252,7 @@ describe('BiasPhaseApp', () => {
     });
 
     it('recovers when skip action fails', async () => {
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => { });
         const onSkip = vi.fn().mockRejectedValue(new Error('nope'));
         biasPhaseState = {
             visible: true,
@@ -278,5 +278,51 @@ describe('BiasPhaseApp', () => {
         expect(skipButton.disabled).toBe(false);
         expect(consoleError).toHaveBeenCalled();
         consoleError.mockRestore();
+    });
+
+    it('spins the nebula slots and updates entropy balance', async () => {
+        const onSpin = vi.fn().mockResolvedValue({
+            spinIndex: 1,
+            symbols: ['TILT', 'TILT', 'TILT'] as const,
+            rarity: 'bias' as const,
+            headline: 'Mock Bias Forecast',
+            detail: 'Mock detail',
+            biasRisk: 'tilt' as const,
+            wildcard: false,
+            entropyRemaining: 8,
+        });
+
+        biasPhaseState = {
+            visible: true,
+            suspended: false,
+            payload: {
+                session: createSession({ entropyStored: 10 }),
+                options: [createOption()],
+                onSelect: vi.fn(),
+                onSkip: vi.fn(),
+                slots: {
+                    cost: 2,
+                    spinsAvailable: 5,
+                    onSpin,
+                },
+            },
+        };
+
+        await renderApp();
+
+        const screen = within(container);
+        const spinButton = getButton(screen, /Spin Nebula Slots/i);
+        expect(spinButton.disabled).toBe(false);
+
+        await act(async () => {
+            fireEvent.click(spinButton);
+        });
+
+        expect(onSpin).toHaveBeenCalledTimes(1);
+        await screen.findByText(/Mock Bias Forecast/i);
+
+        const vaultLabel = screen.getByText(/Entropy Vault/i);
+        const vaultValue = vaultLabel.nextElementSibling;
+        expect(vaultValue?.textContent).toBe('8');
     });
 });
