@@ -1,77 +1,83 @@
 @import url('https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Overpass:ital,wght@0,400;0,600;0,800;1,400&family=Overpass+Mono:wght@400;600&display=swap');
 
-:root {
-  color-scheme: dark;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  /* Font stacks */
-  --font-display: 'Luckiest Guy', system-ui, sans-serif;
-  --font-body: 'Overpass', system-ui, sans-serif;
-  --font-mono: 'Overpass Mono', ui-monospace, monospace;
-  --font-ui: var(--font-body);
-
-  /* Core palette */
-  --accent-combo: #ff4dc4;
-  --accent-powerup: #00ff9d;
-  --accent-bloom: #fffa88;
-  --background: 240 51% 8%;
-  --foreground: 240 100% 97%;
-  --muted: 215 16% 47%;
-
-  /* Legacy tokens (shadcn baseline) */
-  --muted-foreground: 215 20% 81%;
-  --accent: 320 100% 65%;
-  --accent-foreground: 240 51% 8%;
-  --destructive: 0 84% 62%;
-  --destructive-foreground: 210 40% 98%;
-  --card: 229 39% 10%;
-  --card-foreground: 213 31% 91%;
-  --border: 218 23% 22%;
-  --input: 218 23% 22%;
-  --ring: 320 100% 65%;
-  --primary: 320 100% 65%;
-  --primary-foreground: 240 51% 8%;
-  --secondary: 217 33% 15%;
-  --secondary-foreground: 210 40% 98%;
-  --radius: 0.75rem;
-}
-
-html.lb-design-root {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: var(--font-body, 'Overpass'), system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-
-html.lb-design-root body {
-  background-color: transparent;
-  color: inherit;
-  margin: 0;
-}
-
-html.lb-design-root ::selection {
-  background-color: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color-scheme: light;
-    --background: 40 43% 97%;
-    --foreground: 224 71% 4%;
-    --muted: 214 32% 91%;
-    --muted-foreground: 222 47% 13%;
-    --accent: 25 95% 55%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 72% 51%;
+    color-scheme: dark;
+
+    /* Font stacks */
+    --font-display: 'Luckiest Guy', system-ui, sans-serif;
+    --font-body: 'Overpass', system-ui, sans-serif;
+    --font-mono: 'Overpass Mono', ui-monospace, monospace;
+    --font-ui: var(--font-body);
+
+    /* Core palette */
+    --accent-combo: #ff4dc4;
+    --accent-powerup: #00ff9d;
+    --accent-bloom: #fffa88;
+    --background: 240 51% 8%;
+    --foreground: 240 100% 97%;
+    --muted: 215 16% 47%;
+
+    /* Legacy tokens (shadcn baseline) */
+    --muted-foreground: 215 20% 81%;
+    --accent: 320 100% 65%;
+    --accent-foreground: 240 51% 8%;
+    --destructive: 0 84% 62%;
     --destructive-foreground: 210 40% 98%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 25 95% 55%;
-    --primary: 25 95% 55%;
-    --primary-foreground: 224 71% 4%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 13%;
+    --card: 229 39% 10%;
+    --card-foreground: 213 31% 91%;
+    --border: 218 23% 22%;
+    --input: 218 23% 22%;
+    --ring: 320 100% 65%;
+    --primary: 320 100% 65%;
+    --primary-foreground: 240 51% 8%;
+    --secondary: 217 33% 15%;
+    --secondary-foreground: 210 40% 98%;
+    --radius: 0.75rem;
+  }
+
+  html.lb-design-root {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-body, 'Overpass'), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html.lb-design-root body {
+    background-color: transparent;
+    color: inherit;
+    margin: 0;
+  }
+
+  html.lb-design-root ::selection {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --background: 40 43% 97%;
+      --foreground: 224 71% 4%;
+      --muted: 214 32% 91%;
+      --muted-foreground: 222 47% 13%;
+      --accent: 25 95% 55%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 72% 51%;
+      --destructive-foreground: 210 40% 98%;
+      --card: 0 0% 100%;
+      --card-foreground: 224 71% 4%;
+      --border: 214 32% 91%;
+      --input: 214 32% 91%;
+      --ring: 25 95% 55%;
+      --primary: 25 95% 55%;
+      --primary-foreground: 224 71% 4%;
+      --secondary: 220 14% 96%;
+      --secondary-foreground: 222 47% 13%;
+    }
   }
 }

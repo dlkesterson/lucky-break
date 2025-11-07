@@ -1,115 +1,22 @@
-export interface GameThemeDefinition {
-    readonly background: {
-        readonly from: string;
-        readonly to: string;
-        readonly starAlpha: number;
-    };
-    readonly brickColors: readonly string[];
-    readonly paddle: {
-        readonly gradient: readonly string[];
-        readonly glow: number;
-    };
-    readonly ball: {
-        readonly core: string;
-        readonly aura: string;
-        readonly highlight: string;
-    };
-    readonly font: string;
-    readonly monoFont: string;
-    readonly hud: {
-        readonly panelFill: string;
-        readonly panelLine: string;
-        readonly textPrimary: string;
-        readonly textSecondary: string;
-        readonly accent: string;
-        readonly danger: string;
-    };
-    readonly accents: {
-        readonly combo: string;
-        readonly powerUp: string;
-    };
-}
+import {
+    DEFAULT_THEME,
+    COLOR_BLIND_THEME,
+    THEME_REGISTRY as IMPORTED_THEME_REGISTRY,
+    THEME_OPTIONS as IMPORTED_THEME_OPTIONS,
+    type GameThemeDefinition,
+    type ThemeName,
+    type ThemeOption,
+} from '@lucky-break/design-system';
 
-export type ThemeName = 'default' | 'colorBlind';
-
-export interface ThemeOption {
-    readonly name: ThemeName;
-    readonly label: string;
-}
+export type { GameThemeDefinition, ThemeName, ThemeOption };
 
 type ThemeChangeListener = (theme: GameThemeDefinition, name: ThemeName) => void;
 
 const THEME_STORAGE_KEY = 'lucky-break.theme';
 
-const deepFreeze = <T>(value: T): T => {
-    if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
-        return value;
-    }
+const THEME_REGISTRY: Record<ThemeName, GameThemeDefinition> = IMPORTED_THEME_REGISTRY;
 
-    Object.getOwnPropertyNames(value).forEach((key) => {
-        const property = (value as Record<string, unknown>)[key];
-        deepFreeze(property);
-    });
-    return Object.freeze(value);
-};
-
-const createTheme = (definition: GameThemeDefinition): GameThemeDefinition => deepFreeze({
-    ...definition,
-    brickColors: [...definition.brickColors],
-    paddle: { ...definition.paddle, gradient: [...definition.paddle.gradient] },
-}) as GameThemeDefinition;
-
-const DEFAULT_THEME = createTheme({
-    background: { from: '#160B27', to: '#2B1140', starAlpha: 0.18 },
-    brickColors: ['#F3443C', '#FF8A34', '#FFD04A', '#95D146'],
-    paddle: { gradient: ['#4CB7FF', '#1E3F9A'], glow: 0.48 },
-    ball: { core: '#F8F4DD', aura: '#FFF2D7', highlight: '#FFFFFF' },
-    font: 'Luckiest Guy, Overpass, sans-serif',
-    monoFont: 'Overpass Mono, monospace',
-    hud: {
-        panelFill: '#1A1230',
-        panelLine: '#FF8A34',
-        textPrimary: '#FFEFD9',
-        textSecondary: '#FFCE63',
-        accent: '#FFD04A',
-        danger: '#F3443C',
-    },
-    accents: {
-        combo: '#FFD04A',
-        powerUp: '#FF6B35',
-    },
-});
-
-const COLOR_BLIND_THEME = createTheme({
-    background: { from: '#081229', to: '#12315A', starAlpha: 0.22 },
-    brickColors: ['#2E86AB', '#F18F01', '#F9C80E', '#1B998B'],
-    paddle: { gradient: ['#F6C28B', '#3A1772'], glow: 0.52 },
-    ball: { core: '#F5FBFF', aura: '#CDE7FF', highlight: '#FFFFFF' },
-    font: 'Luckiest Guy, Overpass, sans-serif',
-    monoFont: 'Overpass Mono, monospace',
-    hud: {
-        panelFill: '#0B1E35',
-        panelLine: '#F18F01',
-        textPrimary: '#F5FBFF',
-        textSecondary: '#FAE589',
-        accent: '#F18F01',
-        danger: '#EF476F',
-    },
-    accents: {
-        combo: '#FAE589',
-        powerUp: '#2E86AB',
-    },
-});
-
-const THEME_REGISTRY: Record<ThemeName, GameThemeDefinition> = {
-    default: DEFAULT_THEME,
-    colorBlind: COLOR_BLIND_THEME,
-};
-
-const THEME_OPTIONS: readonly ThemeOption[] = [
-    { name: 'default', label: 'Vibrant' },
-    { name: 'colorBlind', label: 'High Contrast' },
-] as const;
+const THEME_OPTIONS: readonly ThemeOption[] = IMPORTED_THEME_OPTIONS;
 
 const isThemeName = (value: string | null | undefined): value is ThemeName =>
     value === 'default' || value === 'colorBlind';

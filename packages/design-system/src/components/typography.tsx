@@ -2,7 +2,7 @@ import type { ReactNode, HTMLAttributes } from 'react';
 
 import { cn } from '../lib/cn';
 
-interface TypographyProps extends Omit<HTMLAttributes<HTMLElement>, 'className'> {
+export interface TypographyProps extends Omit<HTMLAttributes<HTMLElement>, 'className'> {
   readonly children: ReactNode;
   readonly className?: string;
 }

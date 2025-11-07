@@ -180,6 +180,10 @@ export const PauseApp = (): JSX.Element | null => {
       console.error('Failed to resume from pause overlay', error);
       setPendingAction(null);
       resetPendingIfVisible();
+    } finally {
+      // Reset pending state after resume completes (success or failure)
+      // Component should unmount on success, but this ensures cleanup
+      setPendingAction(null);
     }
   };
 
@@ -195,6 +199,10 @@ export const PauseApp = (): JSX.Element | null => {
       console.error('Failed to quit from pause overlay', error);
       setPendingAction(null);
       resetPendingIfVisible();
+    } finally {
+      // Reset pending state after quit completes (success or failure)
+      // Component should unmount on success, but this ensures cleanup
+      setPendingAction(null);
     }
   };
 

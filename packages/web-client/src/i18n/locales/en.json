@@ -1,0 +1,33 @@
+{
+  "mainMenu": {
+    "title": "Lucky Break",
+    "startButton": "Begin Your Run",
+    "startingButton": "Starting…",
+    "howToPlay": {
+      "heading": "How to Play",
+      "instructions": [
+        "Drag or tap to move the paddle left and right",
+        "Keep the ball in play and break bricks to earn points",
+        "Golden bricks grant coin drops; shimmering bricks unleash power-ups",
+        "Combo chains multiply your score — let nothing fall"
+      ]
+    },
+    "highScores": {
+      "heading": "High Scores",
+      "emptyState": "No runs recorded yet — your first streak awaits."
+    },
+    "actions": {
+      "showStory": "Story So Far",
+      "toggleTheme": "Color Mode: {{theme}} · Shift+C",
+      "togglePerformance": "Performance Mode: {{status}}",
+      "viewLedger": "View Fate Ledger"
+    },
+    "footer": {
+      "tip": "Tip: Toggle performance mode if your device needs a lighter glow."
+    },
+    "performanceMode": {
+      "on": "On",
+      "off": "Off"
+    }
+  }
+}
