@@ -58,13 +58,13 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: vi.fn(),
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -84,13 +84,13 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: vi.fn(),
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -105,11 +105,6 @@ describe('MainMenuApp', () => {
             visible: true,
             suspended: false,
             snapshot: null,
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -129,21 +124,19 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: ['Use mouse to aim', 'Click to launch'],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: vi.fn(),
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
             root.render(wrapWithI18n(createElement(MainMenuApp)));
         });
 
-        const overlay = container.querySelector('.main-menu-overlay');
-        expect(overlay).toBeTruthy();
         expect(within(container).getByText('Lucky Break')).toBeTruthy();
         expect(within(container).getByText('Press Start')).toBeTruthy();
     });
@@ -159,13 +152,13 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: mockStart,
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: mockStart,
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -199,13 +192,13 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: mockStart,
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: mockStart,
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -242,13 +235,13 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: mockStart,
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: mockStart,
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
@@ -261,7 +254,7 @@ describe('MainMenuApp', () => {
             await Promise.resolve();
         });
 
-        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to start from main menu', expect.any(Error));
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to begin session from main menu overlay', expect.any(Error));
         expect(startButton.hasAttribute('disabled')).toBe(false);
 
         consoleErrorSpy.mockRestore();
@@ -278,20 +271,20 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: vi.fn(),
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: mockToggleTheme,
+                onShowStory: vi.fn(),
             },
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: mockToggleTheme,
-            onShowStory: vi.fn(),
         });
 
         act(() => {
             root.render(wrapWithI18n(createElement(MainMenuApp)));
         });
 
-        const themeButton = within(container).getByRole('button', { name: /theme/i });
+        const themeButton = within(container).getByRole('button', { name: /color mode/i });
         act(() => {
             themeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
@@ -309,24 +302,28 @@ describe('MainMenuApp', () => {
                 prologue: null,
                 helpLines: [],
                 scores: [],
-                theme: 'default',
+                performanceEnabled: false,
+                onStart: vi.fn(),
+                onTogglePerformance: vi.fn(),
+                onOpenLedger: vi.fn(),
+                onToggleTheme: vi.fn(),
+                onShowStory: vi.fn(),
             },
-            onStart: vi.fn(),
-            onTogglePerformance: vi.fn(),
-            onOpenLedger: vi.fn(),
-            onToggleTheme: vi.fn(),
-            onShowStory: vi.fn(),
         });
 
         act(() => {
             root.render(wrapWithI18n(createElement(MainMenuApp)));
         });
 
-        const overlay = container.querySelector('.main-menu-overlay')!;
-        const computedStyle = window.getComputedStyle(overlay);
+        // Find the outer overlay div which has the theme CSS properties
+        const overlay = container.querySelector('[style*="--menu-bg-from"]');
+        expect(overlay).toBeTruthy();
 
-        expect(computedStyle.getPropertyValue('--main-menu-bg-from')).toBeTruthy();
-        expect(computedStyle.getPropertyValue('--main-menu-panel-fill')).toBeTruthy();
-        expect(computedStyle.getPropertyValue('--main-menu-text-primary')).toBeTruthy();
+        if (overlay) {
+            const computedStyle = window.getComputedStyle(overlay);
+            expect(computedStyle.getPropertyValue('--menu-bg-from')).toBeTruthy();
+            expect(computedStyle.getPropertyValue('--menu-panel-fill')).toBeTruthy();
+            expect(computedStyle.getPropertyValue('--menu-text-primary')).toBeTruthy();
+        }
     });
 });
