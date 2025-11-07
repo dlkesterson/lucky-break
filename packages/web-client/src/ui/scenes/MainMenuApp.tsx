@@ -170,7 +170,7 @@ export const MainMenuApp = (): JSX.Element | null => {
         }}
       />
       <div
-        className="ui-interactive relative flex w-full max-w-[980px] flex-col gap-8 rounded-[32px] border px-6 pb-10 pt-8 text-[color:var(--menu-text-primary,#ffe9d6)] shadow-[0_36px_72px_rgba(8,4,18,0.6)] backdrop-blur-2xl sm:gap-10 sm:px-10 sm:pb-12 sm:pt-10"
+        className="pointer-events-auto ui-interactive relative flex w-full max-w-[980px] flex-col gap-8 rounded-[32px] border px-6 pb-10 pt-8 text-[color:var(--menu-text-primary,#ffe9d6)] shadow-[0_36px_72px_rgba(8,4,18,0.6)] backdrop-blur-2xl sm:gap-10 sm:px-10 sm:pb-12 sm:pt-10"
         style={surfaceStyle}
         role="dialog"
         aria-modal="true"
