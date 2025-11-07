@@ -3,7 +3,7 @@ export type LoadoutCategoryId = 'form' | 'trait' | 'sigil' | 'voice';
 export type LoadoutFormId =
     | 'ivory-orb'
     | 'nebular-jelly'
-    | 'd6-diceform'
+    | 'd20-diceform'
     | 'crystal-probability'
     | 'entropy-core';
 
@@ -69,6 +69,8 @@ export interface LoadoutRuntimeEffects {
     readonly audio: LoadoutRuntimeAudioEffects;
 }
 
+export type LoadoutBallShape = 'sphere' | 'd20';
+
 export interface LoadoutVisualEffects {
     readonly ball?: LoadoutBallVisualOverrides;
 }
@@ -81,6 +83,7 @@ export interface LoadoutBallVisualOverrides {
     readonly innerColor?: number;
     readonly innerAlpha?: number;
     readonly innerScale?: number;
+    readonly shape?: LoadoutBallShape;
 }
 
 export interface LoadoutCombinedEffects {
@@ -155,9 +158,9 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
         },
     },
     {
-        id: 'd6-diceform',
-        name: 'D6 Diceform',
-        description: 'Luck incarnate — each face nudges fate.',
+        id: 'd20-diceform',
+        name: 'D20 Diceform',
+        description: 'Twenty faces of possibility bend the odds in bursts.',
         effectSummary: ['Sharper ricochets', 'Slight speed governor boost', 'Small coin surge'],
         contribution: {
             physics: {
@@ -179,6 +182,7 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
                     innerColor: 0xff9f6c,
                     innerAlpha: 0.4,
                     innerScale: 0.46,
+                    shape: 'd20',
                 },
             },
         },

@@ -16,6 +16,7 @@ const createBallDefaults = (): BallVisualDefaults => ({
     rimAlpha: 0.4,
     innerAlpha: 0.3,
     innerScale: 0.55,
+    shape: 'sphere',
 });
 
 const createPaddleDefaults = (): PaddleVisualDefaults => ({
@@ -57,6 +58,7 @@ describe('visual-factory', () => {
             rimAlpha: 0.45,
             innerAlpha: 0.28,
             innerScale: 0.6,
+            shape: 'sphere',
         };
 
         factory.ball.setDefaults(nextDefaults);

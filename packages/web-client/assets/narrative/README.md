@@ -15,9 +15,6 @@ These placeholder assets document how narrative content is organized for the May
 `prologue.md`
 : Establishes Mayhaps and the cosmic casino premise.
 
-`oath.md`
-: Encourages the player to embrace risk and introduces the Lucky Architect.
-
 ### in-game/
 
 `paddle-flavor.txt`

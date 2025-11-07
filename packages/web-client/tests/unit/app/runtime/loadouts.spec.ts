@@ -77,7 +77,7 @@ describe('runtime loadouts', () => {
         const expectedBaseColors: Record<LoadoutFormId, number> = {
             'ivory-orb': 0xf0d9b5,
             'nebular-jelly': 0x7a6cff,
-            'd6-diceform': 0xf4f1ff,
+            'd20-diceform': 0xf4f1ff,
             'crystal-probability': 0x5be4ff,
             'entropy-core': 0xff6b6b,
         };
@@ -88,6 +88,10 @@ describe('runtime loadouts', () => {
 
             expect(ballVisuals).toBeDefined();
             expect(ballVisuals?.baseColor).toBe(expectedBaseColors[form]);
+
+            if (form === 'd20-diceform') {
+                expect(ballVisuals?.shape).toBe('d20');
+            }
         });
     });
 });

@@ -12,6 +12,7 @@ import {
     type LoadoutTraitId,
     type LoadoutSigilId,
     type LoadoutVoiceId,
+    type LoadoutBallShape,
 } from 'config/loadouts';
 
 export interface LoadoutSceneOption {
@@ -46,6 +47,7 @@ export interface LoadoutFormPreset {
     readonly preview: {
         readonly baseColor: number;
         readonly accentColor: number;
+        readonly shape: LoadoutBallShape;
     };
 }
 
@@ -98,7 +100,7 @@ const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: Loadou
         sigil: 'serene-eye',
         voice: 'whisper',
     },
-    'd6-diceform': {
+    'd20-diceform': {
         trait: 'entropy-bound',
         sigil: 'chaos-knot',
         voice: 'pulse',
@@ -115,9 +117,10 @@ const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: Loadou
     },
 };
 
-const DEFAULT_PREVIEW_COLORS = {
+const DEFAULT_PREVIEW = {
     baseColor: 0xf4f4f4,
     accentColor: 0xffcc66,
+    shape: 'sphere' as LoadoutBallShape,
 } as const;
 
 const uniqueSummary = (entries: readonly string[]): readonly string[] => {
@@ -168,12 +171,13 @@ export const buildLoadoutFormPresets = (): readonly LoadoutFormPreset[] =>
         const previewVisuals = form.contribution.visuals?.ball;
         const preview = previewVisuals
             ? {
-                baseColor: previewVisuals.baseColor ?? DEFAULT_PREVIEW_COLORS.baseColor,
+                baseColor: previewVisuals.baseColor ?? DEFAULT_PREVIEW.baseColor,
                 accentColor: previewVisuals.innerColor
                     ?? previewVisuals.rimColor
-                    ?? DEFAULT_PREVIEW_COLORS.accentColor,
+                    ?? DEFAULT_PREVIEW.accentColor,
+                shape: previewVisuals.shape ?? DEFAULT_PREVIEW.shape,
             }
-            : DEFAULT_PREVIEW_COLORS;
+            : DEFAULT_PREVIEW;
         return {
             id: form.id,
             name: form.name,

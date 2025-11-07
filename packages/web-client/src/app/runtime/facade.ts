@@ -106,10 +106,11 @@ import {
     normalizeLoadoutSelection,
     type LoadoutEffectsBundle,
 } from './loadouts';
-import type { LoadoutSelection, LoadoutBallVisualOverrides } from 'config/loadouts';
+import type { LoadoutSelection, LoadoutBallVisualOverrides, LoadoutBallShape } from 'config/loadouts';
 import { noop } from 'util/index';
 import { hudSetters } from '../../ui/state/game-bridge';
 import { createNarrativeService, type NarrativeService } from '../narrative-service';
+import { normalizeBallShape, toPhysicsBallBodyShape } from './ball-shape';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -357,6 +358,7 @@ export const createRuntimeFacade = async ({
             ...(overrides.innerScale !== undefined ? { innerScale: overrides.innerScale } : {}),
             ...(overrides.rimColor !== undefined ? { rimColor: overrides.rimColor } : {}),
             ...(overrides.rimAlpha !== undefined ? { rimAlpha: overrides.rimAlpha } : {}),
+            ...(overrides.shape !== undefined ? { shape: overrides.shape } : {}),
         };
         return Object.keys(palette).length > 0 ? palette : null;
     };
@@ -564,6 +566,7 @@ export const createRuntimeFacade = async ({
         maxSpeed: number;
         launchSpeed: number;
     };
+    let activeBallShape: LoadoutBallShape = normalizeBallShape(activeLoadoutBundle.combined.visuals.ball?.shape);
     const getSession = () => session;
     const replaceSession = (nextSession: GameSessionManager) => {
         session = nextSession;
@@ -908,6 +911,75 @@ export const createRuntimeFacade = async ({
         multiBallController.setRestitution(normalized);
     };
 
+    const applyBallShape = (shape: LoadoutBallShape): void => {
+        const normalized = normalizeBallShape(shape);
+        multiBallController.setShape(normalized);
+        if (normalized === activeBallShape) {
+            return;
+        }
+
+        const previousBody = ball.physicsBody;
+        const previousVisual = visualBodies.get(previousBody) ?? null;
+        const wasAttached = physics.isBallAttached(previousBody);
+        const attachment = physics.getBallAttachment(previousBody);
+        const previousVelocity = {
+            x: previousBody.velocity.x,
+            y: previousBody.velocity.y,
+        } satisfies { x: number; y: number };
+        const previousPosition = {
+            x: previousBody.position.x,
+            y: previousBody.position.y,
+        } satisfies { x: number; y: number };
+        const previousAngle = previousBody.angle;
+        const previousAngularVelocity = previousBody.angularVelocity;
+        const previousRestitution = previousBody.restitution;
+        const previousLabel = previousBody.label;
+
+        foreshadowing.cancelForBall(previousBody.id);
+        physics.detachBallFromPaddle(previousBody);
+        physics.remove(previousBody);
+        visualBodies.delete(previousBody);
+
+        const newBody = physics.factory.ball({
+            radius: ball.radius,
+            position: previousPosition,
+            restitution: previousRestitution,
+            velocity: previousVelocity,
+            label: previousLabel,
+            shape: toPhysicsBallBodyShape(normalized),
+        });
+        MatterBody.setAngle(newBody, previousAngle);
+        MatterBody.setAngularVelocity(newBody, previousAngularVelocity);
+        physics.add(newBody);
+
+        if (previousVisual) {
+            visualBodies.set(newBody, previousVisual);
+        } else {
+            visualBodies.set(newBody, ballGraphics);
+        }
+        ball.physicsBody = newBody;
+
+        if (wasAttached && attachment) {
+            physics.attachBallToPaddle(newBody, paddle.physicsBody, attachment.attachmentOffset);
+            ball.isAttached = true;
+            ball.attachmentOffset = attachment.attachmentOffset;
+        } else {
+            ball.isAttached = false;
+            if (attachment?.attachmentOffset) {
+                ball.attachmentOffset = attachment.attachmentOffset;
+            }
+        }
+
+        ballGraphics.x = newBody.position.x;
+        ballGraphics.y = newBody.position.y;
+        ballGraphics.rotation = newBody.angle;
+
+        activeBallShape = normalized;
+
+        clearExtraBalls();
+        applyBallRestitution(previousRestitution);
+    };
+
     const {
         powerups,
         powerUpManager,
@@ -991,6 +1063,7 @@ export const createRuntimeFacade = async ({
         const ruleEffects = bundle.combined.runtime.rules;
         const ballVisualOverride = toBallPaletteOverride(bundle.combined.visuals.ball);
         setLoadoutBallPalette(ballVisualOverride);
+        applyBallShape(normalizeBallShape(bundle.combined.visuals.ball?.shape));
 
         powerups.setBaselineDoublePointsMultiplier(ruleEffects.doublePointsMultiplier);
         levelRuntime.setHazardIntensityMultiplier(ruleEffects.hazardIntensityMultiplier);

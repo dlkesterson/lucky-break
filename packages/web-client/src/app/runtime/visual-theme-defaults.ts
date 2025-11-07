@@ -16,6 +16,7 @@ const DEFAULT_BALL_VISUALS: BallVisualDefaults = {
     rimAlpha: 0.38,
     innerAlpha: 0.32,
     innerScale: 0.5,
+    shape: 'sphere',
 };
 
 const DEFAULT_PADDLE_VISUALS: PaddleVisualDefaults = {
@@ -64,6 +65,7 @@ const cloneBallDefaults = (defaults: BallVisualDefaults): BallVisualDefaults => 
     rimAlpha: defaults.rimAlpha,
     innerAlpha: defaults.innerAlpha,
     innerScale: defaults.innerScale,
+    shape: defaults.shape,
 });
 
 const clonePaddleDefaults = (defaults: PaddleVisualDefaults): PaddleVisualDefaults => ({
@@ -146,6 +148,8 @@ export const createVisualThemeDefaults = ({
             highlight: toColorValue(palette.ball?.highlight, theme.ball.highlight),
         } satisfies MultiBallColors;
 
+        const ballShapeOverride = (palette.ball as { shape?: BallVisualDefaults['shape'] } | undefined)?.shape;
+
         ballDefaults = {
             baseColor: ballColors.core,
             auraColor: ballColors.aura,
@@ -154,6 +158,7 @@ export const createVisualThemeDefaults = ({
             rimAlpha: palette.ball?.rimAlpha ?? DEFAULT_BALL_VISUALS.rimAlpha,
             innerAlpha: palette.ball?.innerAlpha ?? DEFAULT_BALL_VISUALS.innerAlpha,
             innerScale: palette.ball?.innerScale ?? DEFAULT_BALL_VISUALS.innerScale,
+            shape: ballShapeOverride ?? DEFAULT_BALL_VISUALS.shape,
         } satisfies BallVisualDefaults;
 
         paddleDefaults = {

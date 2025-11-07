@@ -147,6 +147,15 @@ export const MainMenuApp = (): JSX.Element | null => {
         </header>
 
         <div className="main-menu-content" aria-live="polite">
+          {snapshot.prologue ? (
+            <section className="main-menu-prologue" aria-label={snapshot.prologue.heading}>
+              <h2>{snapshot.prologue.heading}</h2>
+              {snapshot.prologue.body.map((paragraph, index) => (
+                <p key={`main-menu-prologue-${index}`}>{paragraph}</p>
+              ))}
+            </section>
+          ) : null}
+
           <section className="main-menu-help" aria-label="How to play">
             <h2>How to Play</h2>
             <ul>

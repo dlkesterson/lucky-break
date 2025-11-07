@@ -6,6 +6,87 @@ import type { LoadoutFormPreset } from 'app/runtime/loadouts';
 
 const toHexColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
+const toRgbComponents = (value: number): readonly [number, number, number] => [
+  (value >> 16) & 0xff,
+  (value >> 8) & 0xff,
+  value & 0xff,
+];
+
+const rgbaFromNumber = (value: number, alpha = 1): string => {
+  const [r, g, b] = toRgbComponents(value);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const mixWithWhite = (value: number, ratio: number, alpha = 1): string => {
+  const [r, g, b] = toRgbComponents(value);
+  const clamped = Math.min(Math.max(ratio, 0), 1);
+  const mix = (component: number) => Math.round(component + (255 - component) * clamped);
+  return `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, ${alpha})`;
+};
+
+const formatSvgValue = (value: number): string => value.toFixed(2);
+
+const createRegularPolygonPoints = (
+  sides: number,
+  radius: number,
+  center: { readonly x: number; readonly y: number },
+  rotation = -Math.PI / 2,
+): readonly { readonly x: number; readonly y: number }[] => {
+  if (sides < 3) {
+    return [];
+  }
+  return Array.from({ length: sides }, (_, index) => {
+    const angle = rotation + (index * Math.PI * 2) / sides;
+    return {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    };
+  });
+};
+
+const D20_POLYGON_POINTS_SOURCE = createRegularPolygonPoints(20, 48, { x: 50, y: 50 });
+const D20_POLYGON_POINTS = D20_POLYGON_POINTS_SOURCE.map(
+  (point) => `${formatSvgValue(point.x)},${formatSvgValue(point.y)}`,
+).join(' ');
+
+const D20_FACET_LINE_INDICES: readonly [number, number][] = [
+  [0, 10],
+  [2, 12],
+  [4, 14],
+  [6, 16],
+  [8, 18],
+  [1, 6],
+  [3, 8],
+  [5, 10],
+  [7, 12],
+  [9, 14],
+  [11, 16],
+  [13, 18],
+  [15, 0],
+  [17, 2],
+  [19, 4],
+  [0, 5],
+  [5, 15],
+  [10, 15],
+  [10, 0],
+  [2, 7],
+  [7, 17],
+  [12, 17],
+  [12, 2],
+];
+
+const D20_FACET_LINE_SEGMENTS = D20_FACET_LINE_INDICES.map(([startIndex, endIndex]) => {
+  const start = D20_POLYGON_POINTS_SOURCE[startIndex % D20_POLYGON_POINTS_SOURCE.length];
+  const end = D20_POLYGON_POINTS_SOURCE[endIndex % D20_POLYGON_POINTS_SOURCE.length];
+  return {
+    id: `${startIndex}-${endIndex}`,
+    x1: formatSvgValue(start.x),
+    y1: formatSvgValue(start.y),
+    x2: formatSvgValue(end.x),
+    y2: formatSvgValue(end.y),
+  } as const;
+});
+
 const summarize = (preset: LoadoutFormPreset | null): readonly string[] =>
   preset?.combinedSummary.slice(0, 8) ?? [];
 
@@ -16,6 +97,7 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   const lockedSet = useMemo(() => new Set(lockedForms), [lockedForms]);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(defaultFormId);
   const [pending, setPending] = useState(false);
+  const [pulseActive, setPulseActive] = useState(false);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(false);
   const resolveDocument = useCallback(() => surfaceRef.current?.ownerDocument ?? null, []);
@@ -42,9 +124,29 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   const ballStyle = useMemo(() => {
     const base = selectedPreset ? toHexColor(selectedPreset.preview.baseColor) : '#f4f4f4';
     const accent = selectedPreset ? toHexColor(selectedPreset.preview.accentColor) : '#ffcc66';
+    const baseGlow = selectedPreset
+      ? rgbaFromNumber(selectedPreset.preview.baseColor, 0.5)
+      : 'rgba(244, 244, 244, 0.5)';
+    const shimmer = selectedPreset
+      ? mixWithWhite(selectedPreset.preview.accentColor, 0.35, 0.8)
+      : 'rgba(255, 236, 200, 0.8)';
+    const orbitColor = selectedPreset
+      ? rgbaFromNumber(selectedPreset.preview.accentColor, 0.85)
+      : 'rgba(255, 204, 102, 0.85)';
+    const orbitTrail = selectedPreset
+      ? mixWithWhite(selectedPreset.preview.accentColor, 0.55, 0.4)
+      : 'rgba(255, 229, 180, 0.4)';
+    const accentSoft = selectedPreset
+      ? rgbaFromNumber(selectedPreset.preview.accentColor, 0.16)
+      : 'rgba(255, 204, 102, 0.16)';
     return {
       '--loadout-ball-base': base,
       '--loadout-ball-accent': accent,
+      '--loadout-ball-glow': baseGlow,
+      '--loadout-ball-shimmer': shimmer,
+      '--loadout-trait-color': orbitColor,
+      '--loadout-trait-trail': orbitTrail,
+      '--loadout-trait-soft': accentSoft,
     } as CSSProperties;
   }, [selectedPreset]);
 
@@ -52,6 +154,19 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
     setSelectedFormId(defaultFormId ?? null);
     setPending(false);
   }, [defaultFormId, presets]);
+
+  useEffect(() => {
+    if (!selectedPreset || typeof window === 'undefined') {
+      return;
+    }
+    setPulseActive(true);
+    const timeout = window.setTimeout(() => {
+      setPulseActive(false);
+    }, 720);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [selectedPreset?.id]);
 
   useEffect(() => {
     const node = surfaceRef.current;
@@ -106,14 +221,48 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
       <div className="loadout-backdrop" />
       <div className="loadout-surface ui-interactive" ref={surfaceRef}>
         <header className="loadout-header">
-          <h1>Awaken Mayhaps</h1>
+          <h1>Choose Your Ball</h1>
           <p>Shape Mayhaps before the first coin toss</p>
         </header>
 
         <section className="loadout-preview" aria-label="Selected form">
-          <div className="loadout-ball" style={ballStyle}>
+          <div
+            className={`loadout-ball${pulseActive ? ' is-pulsing' : ''}${pending ? ' is-pending' : ''}`}
+            style={ballStyle}
+            data-shape={selectedPreset?.preview.shape ?? 'sphere'}
+          >
+            <div className="loadout-ball-glow" />
             <div className="loadout-ball-core" />
             <div className="loadout-ball-swirl" />
+            {selectedPreset?.preview.shape === 'd20' && (
+              <svg
+                className="loadout-ball-facet-svg"
+                viewBox="0 0 100 100"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <polygon points={D20_POLYGON_POINTS} />
+                {D20_FACET_LINE_SEGMENTS.map((segment) => (
+                  <line
+                    key={`d20-line-${segment.id}`}
+                    x1={segment.x1}
+                    y1={segment.y1}
+                    x2={segment.x2}
+                    y2={segment.y2}
+                  />
+                ))}
+              </svg>
+            )}
+            <div className="loadout-ball-orbit" aria-hidden="true">
+              {[0, 1, 2].map((index) => (
+                <span
+                  key={`orbit-glyph-${index}`}
+                  data-orbit-layer={index}
+                  style={{ '--orbit-index': index } as CSSProperties}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="loadout-preview-details">

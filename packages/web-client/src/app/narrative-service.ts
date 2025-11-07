@@ -10,7 +10,6 @@ import type { RandomManager } from 'util/random';
 import type { IdleSimulationResultSummary } from './runtime/idle';
 import { generateFateLedgerIdleNarrative } from './fate-ledger';
 import introPrologueRaw from '../../assets/narrative/intro/prologue.md?raw';
-import introOathRaw from '../../assets/narrative/intro/oath.md?raw';
 import paddleFlavorRaw from '../../assets/narrative/in-game/paddle-flavor.txt?raw';
 import comboFlavorRaw from '../../assets/narrative/in-game/combo-flavor.txt?raw';
 
@@ -34,6 +33,7 @@ export interface NarrativeServiceOptions {
 
 export interface NarrativeService {
     readonly showIntroIfNeeded: () => Promise<boolean>;
+    readonly consumeIntroPrologue: () => IntroSlideView | null;
     readonly openIntro: (reason?: IntroSequenceReason) => Promise<void>;
     readonly markIntroSeen: () => void;
     readonly handleIdleResume: (summary: IdleSimulationResultSummary | null) => void;
@@ -111,6 +111,12 @@ const selectRandomLine = (random: RandomManager, lines: readonly string[], fallb
     return lines[Math.max(0, Math.min(lines.length - 1, index))] ?? fallback;
 };
 
+const cloneSlide = (slide: IntroSlideView): IntroSlideView => ({
+    id: slide.id,
+    heading: slide.heading,
+    body: [...slide.body],
+});
+
 const formatTemplate = (template: string, fields: Record<string, number | string>): string =>
     template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
         const value = fields[key];
@@ -122,10 +128,9 @@ const formatTemplate = (template: string, fields: Record<string, number | string
 
 const reasonAllowsSkip = (reason: IntroSequenceReason): boolean => reason !== 'first-launch';
 
-const introSlides: readonly IntroSlideView[] = [
-    parseMarkdownSlide(introPrologueRaw, 'awakening'),
-    parseMarkdownSlide(introOathRaw, 'oath'),
-];
+const introPrologueSlide = parseMarkdownSlide(introPrologueRaw, 'awakening');
+
+const introSlides: readonly IntroSlideView[] = [introPrologueSlide];
 
 const paddleFlavorLines = parseLines(paddleFlavorRaw);
 const comboFlavorTemplates = parseLines(comboFlavorRaw);
@@ -209,44 +214,45 @@ export const createNarrativeService = ({
         }
     };
 
-    const openIntroInternal = (reason: IntroSequenceReason): void => {
-        if (introOverlayBridge.isActive()) {
-            return;
-        }
-
-        const slides = introSlides;
-        introOverlayBridge.open({
-            slides,
-            reason,
-            allowSkip: reasonAllowsSkip(reason),
-            completionLabel: 'Begin the Wager',
-            advanceLabel: 'Continue',
-            onComplete: () => {
-                introSeen = true;
-                persistIntroSeen();
-            },
-        });
-    };
-
-    const showIntroIfNeeded = (): Promise<boolean> => {
-        if (introSeen) {
-            return Promise.resolve(false);
-        }
-        openIntroInternal('first-launch');
-        return Promise.resolve(true);
-    };
-
-    const openIntro = (reason: IntroSequenceReason = 'story'): Promise<void> => {
-        openIntroInternal(reason);
-        return Promise.resolve();
-    };
-
     const markIntroSeen = () => {
         if (introSeen) {
             return;
         }
         introSeen = true;
         persistIntroSeen();
+    };
+
+    const openIntroInternal = (reason: IntroSequenceReason): void => {
+        if (introOverlayBridge.isActive()) {
+            return;
+        }
+
+        const slides = introSlides.map(cloneSlide);
+        introOverlayBridge.open({
+            slides,
+            reason,
+            allowSkip: reasonAllowsSkip(reason),
+            completionLabel: 'Begin the Wager',
+            advanceLabel: 'Continue',
+            onComplete: markIntroSeen,
+        });
+    };
+
+    const consumeIntroPrologue = (): IntroSlideView | null => {
+        if (introSeen) {
+            return null;
+        }
+        markIntroSeen();
+        return cloneSlide(introPrologueSlide);
+    };
+
+    const showIntroIfNeeded = (): Promise<boolean> => {
+        return Promise.resolve(consumeIntroPrologue() !== null);
+    };
+
+    const openIntro = (reason: IntroSequenceReason = 'story'): Promise<void> => {
+        openIntroInternal(reason);
+        return Promise.resolve();
     };
 
     let lastPaddleFlavorTimestamp = 0;
@@ -314,6 +320,7 @@ export const createNarrativeService = ({
 
     return {
         showIntroIfNeeded,
+        consumeIntroPrologue,
         openIntro,
         markIntroSeen,
         handleIdleResume,

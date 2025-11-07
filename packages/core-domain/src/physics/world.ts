@@ -30,12 +30,17 @@ export interface PhysicsWorldConfig {
     readonly dimensions?: PhysicsWorldDimensions;
 }
 
+export type BallBodyShape =
+    | { readonly type: 'circle' }
+    | { readonly type: 'regular-polygon'; readonly sides: number };
+
 export interface BallFactoryOptions {
     readonly radius: number;
     readonly position?: PhysicsVector;
     readonly restitution?: number;
     readonly label?: string;
     readonly velocity?: PhysicsVector;
+    readonly shape?: BallBodyShape;
 }
 
 export interface PaddleFactoryOptions {
@@ -104,12 +109,19 @@ const createFactories = (_world: PhysicsWorld, dimensions: PhysicsWorldDimension
 
     const ball: PhysicsFactories['ball'] = (options) => {
         const position = withDefaultVector(options.position, { x: halfWidth, y: halfHeight });
-        const body = Bodies.circle(position.x, position.y, options.radius, {
+        const shape = options.shape?.type === 'regular-polygon'
+            ? { type: 'regular-polygon', sides: Math.max(3, Math.floor(options.shape.sides)) }
+            : { type: 'circle' } as const;
+        const baseOptions = {
             restitution: options.restitution ?? 1, // Perfect energy-preserving bounces
             friction: 0,
             frictionAir: 0,  // Remove air resistance for consistent ball speed
             label: options.label ?? 'ball',
-        });
+        } as const;
+
+        const body = shape.type === 'regular-polygon'
+            ? Bodies.polygon(position.x, position.y, shape.sides, options.radius, baseOptions)
+            : Bodies.circle(position.x, position.y, options.radius, baseOptions);
 
         if (options.velocity) {
             Body.setVelocity(body, options.velocity);

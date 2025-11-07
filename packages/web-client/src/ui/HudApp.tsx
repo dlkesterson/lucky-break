@@ -69,6 +69,13 @@ export const HudApp = (): JSX.Element | null => {
     return { '--combo-pulse': safePulse } as CSSProperties;
   }, [comboPulse]);
 
+  const flavorClass = useMemo(() => {
+    if (!flavor) {
+      return 'hud-flavor';
+    }
+    return `hud-flavor hud-flavor-${flavor.tone}`;
+  }, [flavor]);
+
   if (!visible || !scoreboard) {
     return null;
   }
@@ -91,13 +98,6 @@ export const HudApp = (): JSX.Element | null => {
 
   const brickProgress = brickTotal > 0 ? clampUnit(1 - brickRemaining / brickTotal) : 0;
   const remainingLabel = `${brickRemaining} / ${brickTotal > 0 ? brickTotal : 0}`;
-
-  const flavorClass = useMemo(() => {
-    if (!flavor) {
-      return 'hud-flavor';
-    }
-    return `hud-flavor hud-flavor-${flavor.tone}`;
-  }, [flavor]);
 
   return (
     <div className="hud-layout">

@@ -6,6 +6,8 @@ import type { Paddle } from 'render/contracts';
 import type { PhysicsWorldHandle } from 'physics/world';
 import { mixColors, type BallVisualPalette } from 'render/playfield-visuals';
 import { createSpeedRing } from 'render/effects/speed-ring';
+import type { LoadoutBallShape } from 'config/loadouts';
+import { normalizeBallShape, toPhysicsBallBodyShape } from './runtime/ball-shape';
 
 export interface MultiBallColors {
     readonly core: number;
@@ -25,6 +27,7 @@ export interface MultiBallControllerOptions {
     readonly multiplier: number;
     readonly maxExtraBalls: number;
     readonly sampleRestitution: () => number;
+    readonly initialShape?: LoadoutBallShape;
 }
 
 interface ExtraBallEntry {
@@ -48,6 +51,7 @@ export interface MultiBallController {
     }): void;
     visitActiveBalls(visitor: (entry: { readonly body: Body; readonly isPrimary: boolean }) => void): void;
     setRestitution(value: number): void;
+    setShape(shape: LoadoutBallShape): void;
 }
 
 const createAngularOffsets = (count: number): number[] => {
@@ -89,12 +93,14 @@ export const createMultiBallController = ({
     multiplier,
     maxExtraBalls,
     sampleRestitution,
+    initialShape,
 }: MultiBallControllerOptions): MultiBallController => {
     const extraBalls = new Map<number, ExtraBallEntry>();
     let palette: MultiBallColors = { ...colors };
     const baseBallZ = typeof ballGraphics.zIndex === 'number' ? ballGraphics.zIndex : 0;
     const initialRestitution = sampleRestitution();
     let currentRestitution = Number.isFinite(initialRestitution) ? initialRestitution : 0.98;
+    let currentShape: LoadoutBallShape = normalizeBallShape(initialShape);
 
     const buildSpeedRing = () => {
         const ring = createSpeedRing({
@@ -190,6 +196,7 @@ export const createMultiBallController = ({
                     radius: ball.radius,
                     position: spawnPosition,
                     restitution: currentRestitution,
+                    shape: toPhysicsBallBodyShape(currentShape),
                 });
 
                 MatterBody.setVelocity(extraBody, velocity);
@@ -263,6 +270,15 @@ export const createMultiBallController = ({
         extraBalls.clear();
     };
 
+    const setShape: MultiBallController['setShape'] = (shape) => {
+        const normalized = normalizeBallShape(shape);
+        if (normalized === currentShape) {
+            return;
+        }
+        currentShape = normalized;
+        clear();
+    };
+
     const isExtraBallBody: MultiBallController['isExtraBallBody'] = (body) => extraBalls.has(body.id);
     const count: MultiBallController['count'] = () => extraBalls.size;
 
@@ -315,5 +331,6 @@ export const createMultiBallController = ({
         updateSpeedIndicators,
         visitActiveBalls,
         setRestitution,
+        setShape,
     };
 };

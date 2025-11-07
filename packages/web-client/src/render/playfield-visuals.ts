@@ -6,6 +6,8 @@ export const toColorNumber = (value: string): number => Number.parseInt(value.re
 
 export { clampUnit };
 
+export type BallShape = 'sphere' | 'd20';
+
 export interface BallVisualPalette {
     readonly baseColor: number;
     readonly baseAlpha?: number;
@@ -14,6 +16,7 @@ export interface BallVisualPalette {
     readonly innerColor?: number;
     readonly innerAlpha?: number;
     readonly innerScale?: number;
+    readonly shape?: BallShape;
 }
 
 export interface PaddleVisualPalette {
@@ -31,6 +34,7 @@ export interface BallVisualDefaults {
     readonly rimAlpha?: number;
     readonly innerAlpha?: number;
     readonly innerScale?: number;
+    readonly shape?: BallShape;
 }
 
 export interface PaddleVisualDefaults {
@@ -79,7 +83,8 @@ export const drawBallVisual = (
     defaults: BallVisualDefaults,
     palette?: Partial<BallVisualPalette>,
 ): void => {
-    const settings: Required<BallVisualPalette> = {
+    const shape = palette?.shape ?? defaults.shape ?? 'sphere';
+    const settings: Required<Omit<BallVisualPalette, 'shape'>> = {
         baseColor: palette?.baseColor ?? defaults.baseColor,
         baseAlpha: palette?.baseAlpha ?? defaults.baseAlpha ?? 0.78,
         rimColor: palette?.rimColor ?? defaults.highlightColor,
@@ -90,13 +95,64 @@ export const drawBallVisual = (
     };
 
     graphics.clear();
-    graphics.circle(0, 0, radius);
-    graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
-    graphics.stroke({ color: settings.rimColor, width: 3, alpha: settings.rimAlpha });
+    if (shape === 'd20') {
+        const sides = 20;
+        const points: number[] = [];
+        const step = (Math.PI * 2) / sides;
+        const rotation = -Math.PI / 2;
+        for (let index = 0; index < sides; index += 1) {
+            const angle = rotation + step * index;
+            points.push(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
 
-    const innerRadius = Math.max(1, radius * settings.innerScale);
-    graphics.circle(0, -radius * 0.25, innerRadius);
-    graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
+        const drawPolygonPath = (polygonPoints: readonly number[]) => {
+            if (polygonPoints.length < 4) {
+                return;
+            }
+            graphics.moveTo(polygonPoints[0] ?? 0, polygonPoints[1] ?? 0);
+            for (let index = 2; index < polygonPoints.length; index += 2) {
+                graphics.lineTo(polygonPoints[index] ?? 0, polygonPoints[index + 1] ?? 0);
+            }
+            graphics.closePath();
+        };
+
+        drawPolygonPath(points);
+        graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
+        graphics.stroke({ color: settings.rimColor, width: 3, alpha: settings.rimAlpha });
+
+        drawPolygonPath(points);
+        const edgeHighlight = mixColors(settings.baseColor, 0xffffff, 0.45);
+        graphics.stroke({ color: edgeHighlight, width: 1.4, alpha: 0.38 });
+
+        const innerRadius = Math.max(1, radius * (settings.innerScale * 0.8));
+        const innerPoints: number[] = [];
+        for (let index = 0; index < sides; index += 1) {
+            const angle = rotation + step * index + step / 2;
+            innerPoints.push(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
+        }
+        drawPolygonPath(innerPoints);
+        graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
+
+        const facetAlpha = Math.min(1, settings.innerAlpha + 0.12);
+        for (let index = 0; index < sides; index += 4) {
+            const currentAngle = rotation + step * index;
+            const nextAngle = rotation + step * ((index + 2) % sides);
+            const midAngle = (currentAngle + nextAngle) / 2;
+            graphics.moveTo(0, 0);
+            graphics.lineTo(Math.cos(currentAngle) * radius, Math.sin(currentAngle) * radius);
+            graphics.lineTo(Math.cos(midAngle) * radius * 0.72, Math.sin(midAngle) * radius * 0.72);
+            graphics.closePath();
+            graphics.fill({ color: settings.innerColor, alpha: facetAlpha * 0.6 });
+        }
+    } else {
+        graphics.circle(0, 0, radius);
+        graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
+        graphics.stroke({ color: settings.rimColor, width: 3, alpha: settings.rimAlpha });
+
+        const innerRadius = Math.max(1, radius * settings.innerScale);
+        graphics.circle(0, -radius * 0.25, innerRadius);
+        graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
+    }
 
     graphics.blendMode = 'normal';
 };

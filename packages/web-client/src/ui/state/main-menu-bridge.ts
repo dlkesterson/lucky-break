@@ -9,12 +9,18 @@ export interface MainMenuUiScore {
     readonly achievedAt: number;
 }
 
+export interface MainMenuUiPrologue {
+    readonly heading: string;
+    readonly body: readonly string[];
+}
+
 type MaybePromise<T> = T | Promise<T>;
 
 export interface MainMenuUiSnapshot {
     readonly title: string;
     readonly prompt: string;
     readonly helpLines: readonly string[];
+    readonly prologue: MainMenuUiPrologue | null;
     readonly scores: readonly MainMenuUiScore[];
     readonly performanceEnabled: boolean;
     readonly onStart: () => Promise<void>;

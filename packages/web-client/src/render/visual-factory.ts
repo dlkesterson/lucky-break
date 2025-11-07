@@ -51,6 +51,7 @@ const cloneBallDefaults = (defaults: BallVisualDefaults): BallVisualDefaults => 
     rimAlpha: defaults.rimAlpha,
     innerAlpha: defaults.innerAlpha,
     innerScale: defaults.innerScale,
+    shape: defaults.shape,
 });
 
 const clonePaddleDefaults = (defaults: PaddleVisualDefaults): PaddleVisualDefaults => ({

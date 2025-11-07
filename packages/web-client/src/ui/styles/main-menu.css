@@ -101,6 +101,7 @@
   gap: clamp(18px, 3vmin, 28px);
 }
 
+.main-menu-prologue,
 .main-menu-help,
 .main-menu-scores {
   padding: clamp(18px, 2.4vmin, 26px) clamp(20px, 2.8vmin, 30px);
@@ -109,6 +110,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.main-menu-prologue h2,
 .main-menu-help h2,
 .main-menu-scores h2 {
   margin: 0 0 clamp(12px, 1.8vmin, 16px);
@@ -116,6 +118,24 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--menu-power, #ff6b35);
+}
+
+.main-menu-prologue {
+  grid-column: 1 / -1;
+  background: linear-gradient(160deg, rgba(34, 20, 56, 0.92), rgba(18, 10, 30, 0.82));
+}
+
+.main-menu-prologue p {
+  margin: 0 0 clamp(10px, 1.6vmin, 14px);
+  font-family: 'Overpass', system-ui, sans-serif;
+  font-size: clamp(14px, 1.8vmin, 18px);
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--menu-text-secondary, #ffc45a);
+}
+
+.main-menu-prologue p:last-child {
+  margin-bottom: 0;
 }
 
 .main-menu-help ul {

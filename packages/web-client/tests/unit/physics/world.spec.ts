@@ -40,6 +40,28 @@ describe('createPhysicsWorld', () => {
         handle.dispose();
     });
 
+    it('supports polygonal ball bodies when requested', () => {
+        const handle = createPhysicsWorld({ gravity: 0 });
+        const sides = 20;
+        const radius = 18;
+
+        const ball = handle.factory.ball({
+            radius,
+            position: { x: 200, y: 200 },
+            shape: { type: 'regular-polygon', sides },
+        });
+
+        expect(ball.vertices).toHaveLength(sides);
+        const width = ball.bounds.max.x - ball.bounds.min.x;
+        const height = ball.bounds.max.y - ball.bounds.min.y;
+        expect(width).toBeGreaterThan(0);
+        expect(height).toBeGreaterThan(0);
+        expect(Math.abs(width - radius * 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(height - radius * 2)).toBeLessThanOrEqual(2);
+
+        handle.dispose();
+    });
+
     it('creates paddle and brick bodies with sensible defaults', () => {
         const handle = createPhysicsWorld();
 

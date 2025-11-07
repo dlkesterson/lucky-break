@@ -168,7 +168,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Generate stories like: "Mayhaps drifted through a nebula of forgotten bets, gathering 42 Luck Dust."
   - Store in narrative service for idle return
 
-- [ ] **Test narrative flow**
+- [x] **Test narrative flow**
   - Test intro sequence appears on first launch
   - Test flavor text triggers during gameplay
   - Test Fate Ledger generation with mock data
@@ -262,7 +262,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Implement "Reforge" option: reroll physics (gravity, etc.)
   - Use seeded RNG for deterministic outcomes
 
-- [x] **Create casino hub React scene**
+- [ ] **Create casino hub React scene**
   - Create `packages/web-client/src/ui/scenes/CasinoHub.tsx`
   - Design casino aesthetic (cosmic Las Vegas theme)
   - Display entropy balance

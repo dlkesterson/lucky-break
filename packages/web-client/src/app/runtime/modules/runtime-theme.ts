@@ -99,6 +99,7 @@ export const createRuntimeThemeCoordinator = ({
             innerScale: override.innerScale ?? input.ballDefaults.innerScale,
             highlightColor: override.rimColor ?? input.ballDefaults.highlightColor,
             rimAlpha: override.rimAlpha ?? input.ballDefaults.rimAlpha,
+            shape: override.shape ?? input.ballDefaults.shape,
         } satisfies VisualThemeSnapshot['ballDefaults'];
 
         return {

@@ -146,6 +146,7 @@ export const createPhysicsAssembly = (
         multiplier: options.multiBall.multiplier,
         maxExtraBalls: options.multiBall.maxExtraBalls,
         sampleRestitution: () => runtimeState.ballRestitution,
+        initialShape: 'sphere',
     });
     multiBallController.setRestitution(runtimeState.ballRestitution);
 
