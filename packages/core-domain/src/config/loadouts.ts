@@ -4,6 +4,7 @@ export type LoadoutFormId =
     | 'ivory-orb'
     | 'nebular-jelly'
     | 'd20-diceform'
+    | 'stop-sign'
     | 'crystal-probability'
     | 'entropy-core';
 
@@ -69,7 +70,7 @@ export interface LoadoutRuntimeEffects {
     readonly audio: LoadoutRuntimeAudioEffects;
 }
 
-export type LoadoutBallShape = 'sphere' | 'd20';
+export type LoadoutBallShape = 'sphere' | 'd20' | 'octagon';
 
 export interface LoadoutVisualEffects {
     readonly ball?: LoadoutBallVisualOverrides;
@@ -183,6 +184,36 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
                     innerAlpha: 0.4,
                     innerScale: 0.46,
                     shape: 'd20',
+                },
+            },
+        },
+    },
+    {
+        id: 'stop-sign',
+        name: 'Scarlet Stop Sign',
+        description: 'An octagonal ward that trades speed for precision.',
+        effectSummary: ['Reduced top speed', 'Wider paddle guard', 'Stop sign profile'],
+        contribution: {
+            physics: {
+                baseSpeedMultiplier: 0.9,
+                maxSpeedMultiplier: 0.93,
+                launchSpeedMultiplier: 0.92,
+                speedGovernorMultiplier: 0.88,
+                paddleWidthMultiplier: 1.08,
+            },
+            session: {
+                comboWindowBonusSeconds: 0.35,
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0xff2f2f,
+                    baseAlpha: 0.92,
+                    rimColor: 0xffffff,
+                    rimAlpha: 0.62,
+                    innerColor: 0xd10f0f,
+                    innerAlpha: 0.48,
+                    innerScale: 0.5,
+                    shape: 'octagon',
                 },
             },
         },

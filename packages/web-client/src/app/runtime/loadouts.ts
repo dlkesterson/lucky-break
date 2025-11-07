@@ -105,6 +105,11 @@ const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: Loadou
         sigil: 'chaos-knot',
         voice: 'pulse',
     },
+    'stop-sign': {
+        trait: 'fortune-favored',
+        sigil: 'luck-rune',
+        voice: 'chime',
+    },
     'crystal-probability': {
         trait: 'stable-bias',
         sigil: 'void-bloom',

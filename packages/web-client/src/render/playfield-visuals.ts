@@ -6,7 +6,7 @@ export const toColorNumber = (value: string): number => Number.parseInt(value.re
 
 export { clampUnit };
 
-export type BallShape = 'sphere' | 'd20';
+export type BallShape = 'sphere' | 'd20' | 'octagon';
 
 export interface BallVisualPalette {
     readonly baseColor: number;
@@ -77,6 +77,17 @@ export const computeBrickFillColor = (baseColor: number, remainingHp: number, ma
     return mixColors(warmed, cooled, damageInfluence * 0.4);
 };
 
+const drawPolygonPath = (graphics: Graphics, polygonPoints: readonly number[]): void => {
+    if (polygonPoints.length < 4) {
+        return;
+    }
+    graphics.moveTo(polygonPoints[0] ?? 0, polygonPoints[1] ?? 0);
+    for (let index = 2; index < polygonPoints.length; index += 2) {
+        graphics.lineTo(polygonPoints[index] ?? 0, polygonPoints[index + 1] ?? 0);
+    }
+    graphics.closePath();
+};
+
 export const drawBallVisual = (
     graphics: Graphics,
     radius: number,
@@ -105,22 +116,11 @@ export const drawBallVisual = (
             points.push(Math.cos(angle) * radius, Math.sin(angle) * radius);
         }
 
-        const drawPolygonPath = (polygonPoints: readonly number[]) => {
-            if (polygonPoints.length < 4) {
-                return;
-            }
-            graphics.moveTo(polygonPoints[0] ?? 0, polygonPoints[1] ?? 0);
-            for (let index = 2; index < polygonPoints.length; index += 2) {
-                graphics.lineTo(polygonPoints[index] ?? 0, polygonPoints[index + 1] ?? 0);
-            }
-            graphics.closePath();
-        };
-
-        drawPolygonPath(points);
+        drawPolygonPath(graphics, points);
         graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
         graphics.stroke({ color: settings.rimColor, width: 3, alpha: settings.rimAlpha });
 
-        drawPolygonPath(points);
+        drawPolygonPath(graphics, points);
         const edgeHighlight = mixColors(settings.baseColor, 0xffffff, 0.45);
         graphics.stroke({ color: edgeHighlight, width: 1.4, alpha: 0.38 });
 
@@ -130,7 +130,7 @@ export const drawBallVisual = (
             const angle = rotation + step * index + step / 2;
             innerPoints.push(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
         }
-        drawPolygonPath(innerPoints);
+        drawPolygonPath(graphics, innerPoints);
         graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
 
         const facetAlpha = Math.min(1, settings.innerAlpha + 0.12);
@@ -144,6 +144,54 @@ export const drawBallVisual = (
             graphics.closePath();
             graphics.fill({ color: settings.innerColor, alpha: facetAlpha * 0.6 });
         }
+    } else if (shape === 'octagon') {
+        const sides = 8;
+        const step = (Math.PI * 2) / sides;
+        const rotation = Math.PI / 8; // keeps top and bottom edges horizontal like a stop sign
+        const outerPoints: number[] = [];
+        for (let index = 0; index < sides; index += 1) {
+            const angle = rotation + step * index;
+            outerPoints.push(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
+
+        drawPolygonPath(graphics, outerPoints);
+        graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });
+        graphics.stroke({ color: settings.rimColor, width: 5, alpha: settings.rimAlpha });
+
+        const rimHighlight = mixColors(settings.rimColor, 0xffffff, 0.25);
+        drawPolygonPath(graphics, outerPoints);
+        graphics.stroke({ color: rimHighlight, width: 1.6, alpha: Math.min(1, settings.rimAlpha + 0.1) });
+
+        const innerRadius = Math.max(1, radius * (settings.innerScale * 0.85));
+        const innerPoints: number[] = [];
+        for (let index = 0; index < sides; index += 1) {
+            const angle = rotation + step * index;
+            innerPoints.push(Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius);
+        }
+        drawPolygonPath(graphics, innerPoints);
+        graphics.fill({ color: settings.innerColor, alpha: settings.innerAlpha });
+
+        const topHighlightAlpha = Math.min(1, settings.innerAlpha + 0.18);
+        graphics.moveTo(-radius * 0.55, -radius * 0.6);
+        graphics.lineTo(radius * 0.55, -radius * 0.6);
+        graphics.lineTo(radius * 0.35, -radius * 0.25);
+        graphics.lineTo(-radius * 0.35, -radius * 0.25);
+        graphics.closePath();
+        graphics.fill({
+            color: mixColors(settings.baseColor, 0xffffff, 0.3),
+            alpha: topHighlightAlpha * 0.55,
+        });
+
+        const bottomShadeAlpha = Math.min(1, settings.baseAlpha + 0.1);
+        graphics.moveTo(-radius * 0.45, radius * 0.35);
+        graphics.lineTo(radius * 0.45, radius * 0.35);
+        graphics.lineTo(radius * 0.6, radius * 0.65);
+        graphics.lineTo(-radius * 0.6, radius * 0.65);
+        graphics.closePath();
+        graphics.fill({
+            color: mixColors(settings.baseColor, 0x550000, 0.35),
+            alpha: bottomShadeAlpha * 0.45,
+        });
     } else {
         graphics.circle(0, 0, radius);
         graphics.fill({ color: settings.baseColor, alpha: settings.baseAlpha });

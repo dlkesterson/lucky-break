@@ -234,6 +234,11 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
             <div className="loadout-ball-glow" />
             <div className="loadout-ball-core" />
             <div className="loadout-ball-swirl" />
+            {selectedPreset?.preview.shape === 'octagon' && (
+              <span className="loadout-ball-stop-label" aria-hidden="true">
+                STOP
+              </span>
+            )}
             {selectedPreset?.preview.shape === 'd20' && (
               <svg
                 className="loadout-ball-facet-svg"
