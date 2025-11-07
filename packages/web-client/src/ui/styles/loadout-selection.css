@@ -124,24 +124,30 @@
   border-radius: 14px;
   clip-path: var(--loadout-d20-clip);
   aspect-ratio: 1 / 1;
+  background:
+    radial-gradient(
+      65% 58% at 34% 28%,
+      var(--loadout-d20-highlight, rgba(255, 255, 255, 0.78)),
+      transparent 72%
+    ),
+    radial-gradient(
+      92% 86% at 70% 74%,
+      var(--loadout-d20-shadow, rgba(20, 12, 36, 0.55)),
+      transparent 88%
+    ),
+    linear-gradient(142deg, var(--loadout-d20-specular, rgba(255, 210, 168, 0.3)), transparent 62%),
+    var(--loadout-ball-base, #f6ead7);
   box-shadow:
-    inset 0 0 0 1.6px rgba(255, 238, 208, 0.55),
-    inset 0 0 28px rgba(255, 204, 136, 0.2),
-    0 0 26px rgba(255, 245, 215, 0.18),
-    0 18px 38px rgba(0, 0, 0, 0.35);
+    inset 0 0 0 1.4px rgba(255, 238, 208, 0.5),
+    inset 0 0 32px rgba(255, 204, 136, 0.24),
+    inset 0 -18px 32px rgba(12, 10, 28, 0.26),
+    0 20px 44px rgba(0, 0, 0, 0.34);
 }
 .loadout-ball[data-shape='d20']::before,
 .loadout-ball[data-shape='d20']::after,
 .loadout-ball[data-shape='d20'] .loadout-ball-glow {
   clip-path: var(--loadout-d20-clip);
   border-radius: 14px;
-}
-
-.loadout-ball[data-shape='d20'] {
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.28), transparent 45%),
-    linear-gradient(200deg, rgba(255, 164, 107, 0.16), transparent 65%),
-    var(--loadout-ball-base, #f6ead7);
 }
 
 .loadout-ball[data-shape='octagon'] {
@@ -258,6 +264,34 @@
   animation: loadout-shimmer 4.6s linear infinite;
 }
 
+.loadout-ball[data-shape='d20']::before {
+  inset: -18%;
+  background:
+    radial-gradient(
+      70% 68% at 46% 22%,
+      var(--loadout-d20-highlight, rgba(255, 255, 255, 0.7)),
+      transparent 72%
+    ),
+    radial-gradient(
+      80% 70% at 60% 72%,
+      var(--loadout-d20-shadow, rgba(24, 14, 40, 0.4)),
+      transparent 82%
+    );
+  opacity: 0.72;
+  filter: blur(20px);
+}
+
+.loadout-ball[data-shape='d20']::after {
+  background: linear-gradient(
+    128deg,
+    transparent 42%,
+    var(--loadout-d20-specular, rgba(255, 210, 168, 0.75)) 54%,
+    transparent 70%
+  );
+  opacity: 0.7;
+  animation-duration: 5.2s;
+}
+
 .loadout-ball.is-pulsing {
   animation: loadout-pulse 720ms cubic-bezier(0.19, 1, 0.22, 1);
 }
@@ -280,10 +314,19 @@
 }
 .loadout-ball[data-shape='d20'] .loadout-ball-core {
   inset: 18%;
-  border-radius: 16%;
+  border-radius: 18%;
   background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.85), transparent 70%),
-    linear-gradient(130deg, rgba(255, 255, 255, 0.32), transparent 55%);
+    radial-gradient(
+      circle,
+      var(--loadout-d20-highlight, rgba(255, 255, 255, 0.8)),
+      transparent 68%
+    ),
+    linear-gradient(138deg, rgba(255, 255, 255, 0.22), transparent 58%),
+    linear-gradient(318deg, var(--loadout-d20-inner, rgba(255, 196, 140, 0.28)), transparent 68%);
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.16),
+    inset 0 -12px 18px rgba(28, 18, 42, 0.18);
+  opacity: 0.78;
 }
 
 .loadout-ball-swirl {
@@ -302,23 +345,33 @@
   animation: loadout-swirl 7s ease-in-out infinite;
 }
 .loadout-ball[data-shape='d20'] .loadout-ball-swirl {
-  inset: 12%;
-  border-radius: 12px;
+  inset: 14% 14% 30% 14%;
+  border-radius: 16px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.35), transparent 55%),
-    linear-gradient(315deg, rgba(255, 153, 85, 0.18), transparent 62%);
-  filter: saturate(1.25);
-  opacity: 0.48;
+    linear-gradient(
+      150deg,
+      var(--loadout-d20-highlight, rgba(255, 255, 255, 0.4)),
+      transparent 58%
+    ),
+    linear-gradient(320deg, var(--loadout-d20-inner, rgba(255, 196, 140, 0.28)), transparent 68%);
+  filter: saturate(1.28);
+  opacity: 0.55;
+  mix-blend-mode: screen;
   animation: loadout-d20-glint 5.4s ease-in-out infinite;
 }
 
 .loadout-ball[data-shape='d20'] .loadout-ball-swirl::after {
   content: '';
   position: absolute;
-  inset: 18% 26% 18% 26%;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 222, 192, 0.3);
-  opacity: 0.8;
+  inset: 20% 24% 22% 24%;
+  border-radius: 10px;
+  border: 1px solid var(--loadout-d20-grid, rgba(255, 222, 192, 0.3));
+  background: linear-gradient(
+    160deg,
+    transparent 35%,
+    var(--loadout-d20-inner, rgba(255, 196, 140, 0.32)) 92%
+  );
+  opacity: 0.82;
   mix-blend-mode: screen;
 }
 
@@ -336,6 +389,12 @@
   pointer-events: none;
 }
 
+.loadout-ball[data-shape='d20'] .loadout-ball-glow {
+  inset: -18%;
+  opacity: 0.5;
+  filter: blur(22px);
+}
+
 .loadout-ball-orbit {
   position: absolute;
   inset: -22%;
@@ -351,22 +410,68 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  mix-blend-mode: screen;
+  mix-blend-mode: soft-light;
   clip-path: var(--loadout-d20-clip);
-  opacity: 0.72;
+  opacity: 0.88;
+  z-index: 1;
 }
 
-.loadout-ball[data-shape='d20'] .loadout-ball-facet-svg polygon {
-  fill: none;
-  stroke: rgba(255, 238, 208, 0.3);
-  stroke-width: 0.9;
+.loadout-ball[data-shape='d20'] .loadout-ball-facet-faces {
+  filter: saturate(1.08);
+}
+
+.loadout-ball[data-shape='d20'] .loadout-ball-facet-face {
+  stroke: var(--loadout-d20-facet-edge, rgba(255, 224, 192, 0.38));
+  stroke-width: 0.35;
   stroke-linejoin: round;
 }
 
-.loadout-ball[data-shape='d20'] .loadout-ball-facet-svg line {
-  stroke: rgba(255, 248, 236, 0.42);
+.loadout-ball[data-shape='d20'] .loadout-ball-facet-hull {
+  fill: none;
+  stroke: var(--loadout-d20-grid, rgba(255, 238, 208, 0.38));
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.loadout-ball[data-shape='d20'] .loadout-ball-facet-line {
+  stroke: var(--loadout-d20-edge, rgba(255, 248, 236, 0.46));
   stroke-width: 0.7;
   stroke-linecap: round;
+}
+
+.loadout-ball-d20-number {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  clip-path: var(--loadout-d20-clip);
+  border-radius: 14px;
+  font-family: 'Rajdhani', 'Overpass', system-ui;
+  font-weight: 700;
+  font-size: clamp(40px, 5.6vmin, 60px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  color: var(--loadout-d20-number, rgba(255, 248, 240, 0.9));
+  text-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    0 0 18px var(--loadout-d20-number-glow, rgba(255, 230, 200, 0.4));
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.loadout-ball-d20-number::after {
+  content: '';
+  position: absolute;
+  inset: 34% 30% 46% 30%;
+  background: radial-gradient(
+    circle,
+    var(--loadout-d20-number-glow, rgba(255, 230, 200, 0.45)),
+    transparent 70%
+  );
+  filter: blur(8px);
+  opacity: 0.85;
+  z-index: -1;
 }
 
 .loadout-ball-orbit span {

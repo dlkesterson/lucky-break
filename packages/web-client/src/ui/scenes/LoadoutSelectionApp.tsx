@@ -24,6 +24,33 @@ const mixWithWhite = (value: number, ratio: number, alpha = 1): string => {
   return `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, ${alpha})`;
 };
 
+const clampUnit = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(Math.max(value, 0), 1);
+};
+
+const mixColorNumber = (source: number, target: number, amount: number): number => {
+  const t = clampUnit(amount);
+  const sr = (source >> 16) & 0xff;
+  const sg = (source >> 8) & 0xff;
+  const sb = source & 0xff;
+  const tr = (target >> 16) & 0xff;
+  const tg = (target >> 8) & 0xff;
+  const tb = target & 0xff;
+
+  const r = Math.round(sr + (tr - sr) * t);
+  const g = Math.round(sg + (tg - sg) * t);
+  const b = Math.round(sb + (tb - sb) * t);
+
+  return (r << 16) | (g << 8) | b;
+};
+
+const mixColorToRgba = (source: number, target: number, amount: number, alpha = 1): string => {
+  return rgbaFromNumber(mixColorNumber(source, target, amount), alpha);
+};
+
 const formatSvgValue = (value: number): string => value.toFixed(2);
 
 const createRegularPolygonPoints = (
@@ -44,10 +71,47 @@ const createRegularPolygonPoints = (
   });
 };
 
-const D20_POLYGON_POINTS_SOURCE = createRegularPolygonPoints(20, 48, { x: 50, y: 50 });
+const D20_CENTER = { x: 50, y: 50 } as const;
+const D20_POLYGON_POINTS_SOURCE = createRegularPolygonPoints(20, 48, D20_CENTER);
 const D20_POLYGON_POINTS = D20_POLYGON_POINTS_SOURCE.map(
   (point) => `${formatSvgValue(point.x)},${formatSvgValue(point.y)}`,
 ).join(' ');
+
+const D20_BOUNDS = D20_POLYGON_POINTS_SOURCE.reduce(
+  (bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    maxX: Math.max(bounds.maxX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxY: Math.max(bounds.maxY, point.y),
+  }),
+  {
+    minX: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY,
+  },
+);
+
+const D20_Y_SPAN = Math.max(1, D20_BOUNDS.maxY - D20_BOUNDS.minY);
+const D20_X_SPAN = Math.max(1, D20_BOUNDS.maxX - D20_BOUNDS.minX);
+
+const D20_FACE_LAYOUT = D20_POLYGON_POINTS_SOURCE.map((point, index) => {
+  const next = D20_POLYGON_POINTS_SOURCE[(index + 1) % D20_POLYGON_POINTS_SOURCE.length];
+  const midX = (point.x + next.x + D20_CENTER.x) / 3;
+  const midY = (point.y + next.y + D20_CENTER.y) / 3;
+  const vertical = clampUnit((midY - D20_BOUNDS.minY) / D20_Y_SPAN);
+  const horizontal = clampUnit((midX - D20_BOUNDS.minX) / D20_X_SPAN);
+  return {
+    id: index,
+    points: [
+      `${formatSvgValue(point.x)},${formatSvgValue(point.y)}`,
+      `${formatSvgValue(next.x)},${formatSvgValue(next.y)}`,
+      `${formatSvgValue(D20_CENTER.x)},${formatSvgValue(D20_CENTER.y)}`,
+    ].join(' '),
+    vertical,
+    horizontal,
+  } as const;
+});
 
 const D20_FACET_LINE_INDICES: readonly [number, number][] = [
   [0, 10],
@@ -107,6 +171,9 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
     [presets, selectedFormId],
   );
 
+  const baseColor = selectedPreset?.preview.baseColor ?? 0xf4f4f4;
+  const accentColor = selectedPreset?.preview.accentColor ?? 0xffcc66;
+
   const overlayStyle = useMemo(
     () =>
       ({
@@ -122,23 +189,22 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   );
 
   const ballStyle = useMemo(() => {
-    const base = selectedPreset ? toHexColor(selectedPreset.preview.baseColor) : '#f4f4f4';
-    const accent = selectedPreset ? toHexColor(selectedPreset.preview.accentColor) : '#ffcc66';
-    const baseGlow = selectedPreset
-      ? rgbaFromNumber(selectedPreset.preview.baseColor, 0.5)
-      : 'rgba(244, 244, 244, 0.5)';
-    const shimmer = selectedPreset
-      ? mixWithWhite(selectedPreset.preview.accentColor, 0.35, 0.8)
-      : 'rgba(255, 236, 200, 0.8)';
-    const orbitColor = selectedPreset
-      ? rgbaFromNumber(selectedPreset.preview.accentColor, 0.85)
-      : 'rgba(255, 204, 102, 0.85)';
-    const orbitTrail = selectedPreset
-      ? mixWithWhite(selectedPreset.preview.accentColor, 0.55, 0.4)
-      : 'rgba(255, 229, 180, 0.4)';
-    const accentSoft = selectedPreset
-      ? rgbaFromNumber(selectedPreset.preview.accentColor, 0.16)
-      : 'rgba(255, 204, 102, 0.16)';
+    const base = toHexColor(baseColor);
+    const accent = toHexColor(accentColor);
+    const baseGlow = rgbaFromNumber(baseColor, 0.5);
+    const shimmer = mixWithWhite(accentColor, 0.35, 0.8);
+    const orbitColor = rgbaFromNumber(accentColor, 0.85);
+    const orbitTrail = mixWithWhite(accentColor, 0.55, 0.4);
+    const accentSoft = rgbaFromNumber(accentColor, 0.16);
+    const d20Highlight = mixWithWhite(baseColor, 0.62, 0.85);
+    const d20Shadow = mixColorToRgba(baseColor, 0x0c0b1f, 0.55, 0.82);
+    const d20Specular = mixWithWhite(accentColor, 0.52, 0.75);
+    const d20Edge = mixWithWhite(accentColor, 0.25, 0.82);
+    const d20Grid = mixColorToRgba(baseColor, accentColor, 0.28, 0.6);
+    const d20Number = mixWithWhite(accentColor, 0.2, 0.9);
+    const d20NumberGlow = mixColorToRgba(accentColor, 0xffffff, 0.45, 0.45);
+    const d20FacetEdge = mixColorToRgba(baseColor, accentColor, 0.32, 0.5);
+    const d20Inner = mixColorToRgba(baseColor, accentColor, 0.22, 0.32);
     return {
       '--loadout-ball-base': base,
       '--loadout-ball-accent': accent,
@@ -147,8 +213,39 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
       '--loadout-trait-color': orbitColor,
       '--loadout-trait-trail': orbitTrail,
       '--loadout-trait-soft': accentSoft,
+      '--loadout-d20-highlight': d20Highlight,
+      '--loadout-d20-shadow': d20Shadow,
+      '--loadout-d20-specular': d20Specular,
+      '--loadout-d20-edge': d20Edge,
+      '--loadout-d20-grid': d20Grid,
+      '--loadout-d20-number': d20Number,
+      '--loadout-d20-number-glow': d20NumberGlow,
+      '--loadout-d20-facet-edge': d20FacetEdge,
+      '--loadout-d20-inner': d20Inner,
     } as CSSProperties;
-  }, [selectedPreset]);
+  }, [baseColor, accentColor]);
+
+  const d20Faces = useMemo(() => {
+    const accentDepth = mixColorNumber(baseColor, accentColor, 0.28);
+    return D20_FACE_LAYOUT.map((face) => {
+      const lateralOffset = Math.abs(face.horizontal - 0.5);
+      const lightMix = mixColorNumber(baseColor, 0xffffff, 0.55 - face.vertical * 0.25);
+      const warmMix = mixColorNumber(baseColor, accentColor, 0.18 + face.vertical * 0.35);
+      const depthTarget = mixColorNumber(
+        warmMix,
+        mixColorNumber(accentDepth, 0x0d0b1c, 0.35 + face.vertical * 0.35 + lateralOffset * 0.2),
+        0.6,
+      );
+      const fill = mixColorNumber(lightMix, depthTarget, 0.58);
+      const opacity = 0.72 + (1 - face.vertical) * 0.18;
+      return {
+        id: face.id,
+        points: face.points,
+        fill: rgbaFromNumber(fill, 1),
+        opacity,
+      } as const;
+    });
+  }, [baseColor, accentColor]);
 
   useEffect(() => {
     setSelectedFormId(defaultFormId ?? null);
@@ -247,10 +344,22 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
                 aria-hidden="true"
                 focusable="false"
               >
-                <polygon points={D20_POLYGON_POINTS} />
+                <g className="loadout-ball-facet-faces">
+                  {d20Faces.map((face) => (
+                    <polygon
+                      key={`d20-face-${face.id}`}
+                      className="loadout-ball-facet-face"
+                      points={face.points}
+                      fill={face.fill}
+                      opacity={face.opacity}
+                    />
+                  ))}
+                </g>
+                <polygon className="loadout-ball-facet-hull" points={D20_POLYGON_POINTS} />
                 {D20_FACET_LINE_SEGMENTS.map((segment) => (
                   <line
                     key={`d20-line-${segment.id}`}
+                    className="loadout-ball-facet-line"
                     x1={segment.x1}
                     y1={segment.y1}
                     x2={segment.x2}
@@ -258,6 +367,11 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
                   />
                 ))}
               </svg>
+            )}
+            {selectedPreset?.preview.shape === 'd20' && (
+              <span className="loadout-ball-d20-number" aria-hidden="true">
+                20
+              </span>
             )}
             <div className="loadout-ball-orbit" aria-hidden="true">
               {[0, 1, 2].map((index) => (
