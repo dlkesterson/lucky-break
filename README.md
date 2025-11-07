@@ -30,8 +30,10 @@ The latest build is published via GitHub Pages: https://dlkesterson.github.io/lu
 
 - pnpm 8 workspace with TypeScript 5 (strict) across packages.
 - PixiJS 8 for rendering, post-effects, and HUD orchestration.
-- Matter.js 0.19 for deterministic physics simulation and collision contracts (shared via `@lucky-break/core-domain`).
-- Tone.js 14 for music direction, MIDI scheduling, and audio foreshadowing.
+- Matter.js 0.20 for deterministic physics simulation and collision contracts (shared via `@lucky-break/core-domain`).
+- Tone.js 15 for music direction, MIDI scheduling, and audio foreshadowing.
+- React 18 + Radix UI primitives via `@lucky-break/design-system` for UI components.
+- Storybook 10 for component workbench and visual documentation.
 - Vitest + Playwright for unit, integration, and automation coverage enforced in CI.
 
 ## Getting Started
@@ -63,11 +65,13 @@ pnpm dev
 ### Development Commands
 
 - `pnpm build` – Production bundle for `@lucky-break/web-client` with cache-busting assets.
-- `pnpm lint` – ESLint across `@lucky-break/core-domain`, `@lucky-break/cli-sim`, and `@lucky-break/web-client` with `--max-warnings=0`.
+- `pnpm lint` – ESLint across all packages with `--max-warnings=0`.
 - `pnpm typecheck` – TypeScript project references across every package.
 - `pnpm test` – Vitest unit + integration suites (web client).
 - `pnpm test:e2e` – Playwright end-to-end coverage (headless by default).
 - `pnpm simulate:verify` – TSX-powered deterministic simulations (CLI) used in CI.
+- `pnpm --filter @lucky-break/design-system storybook` – Run Storybook component workbench locally.
+- `pnpm --filter @lucky-break/design-system build-storybook` – Build static Storybook bundle.
 - `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --seed 42` – Run the headless CLI without building.
 
 ## Workspace Layout
@@ -75,6 +79,7 @@ pnpm dev
 ```
 packages/
   core-domain/   # Shared deterministic loop, physics, config, rewards, utilities
+  design-system/ # Shared React UI components, Tailwind tokens, Storybook documentation
   cli-sim/       # Headless engine + deterministic regression tooling (TS + Tsx scripts)
   web-client/    # Pixi front-end, Vite build, assets, Playwright + Vitest suites
 scripts/         # Shared CI tooling (e.g., deterministic replay generator)

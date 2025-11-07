@@ -4,6 +4,7 @@
 - Monorepo managed by `pnpm`; application code lives in `packages/*`.
 - `packages/web-client` hosts the Pixi-based browser game, with scenes, audio, and rendering code under `src/` plus Playwright/Vitest suites in `tests/`.
 - `packages/core-domain` contains shared physics, state, and utility modules consumed by both the web client and CLI simulator.
+- `packages/design-system` provides shared React UI components, Tailwind tokens, and Storybook documentation for HUD overlays.
 - `packages/cli-sim` wraps the domain for headless simulations; scripts supporting CI live in `scripts/`.
 - Generated assets (`dist/`, `coverage/`, `test-results/`) are disposable—do not commit them.
 
@@ -13,6 +14,7 @@
 - `pnpm build` produces a production bundle for the web client.
 - `pnpm test`, `pnpm test:coverage`, and `pnpm test:e2e` run Vitest unit coverage and Playwright end-to-end suites respectively.
 - `pnpm lint`, `pnpm lint:fix`, and `pnpm typecheck` keep the TypeScript surface clean; `pnpm simulate:verify` validates CLI runs, and `pnpm ci` executes the full gate.
+- `pnpm --filter @lucky-break/design-system storybook` launches the Storybook component workbench locally.
 
 ## Coding Style & Naming Conventions
 - Use TypeScript with four-space indentation and file-scoped `import` order enforced by ESLint.

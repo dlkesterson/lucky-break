@@ -1,12 +1,12 @@
 ﻿# lucky-break Development Guidelines
 
-Manually curated snapshot of the workspace. Last updated: 2025-11-06.
+Manually curated snapshot of the workspace. Last updated: 2025-11-07.
 
 ## Workspace Overview
 - pnpm 8 workspace with TypeScript 5.9 in strict mode across every package.
 - Shared lint config (`eslint.config.js`) enforces type-aware ESLint and Prettier integration.
 - Project references live in `tsconfig.base.json`; individual packages extend it for builds and tooling.
-- Generated artifacts land in `packages/**/dist` and `coverage/`; keep them out of versioned changes.
+- Generated artifacts land in `packages/**/dist`, `coverage/`, and `test-results/`; keep them out of versioned changes.
 
 ## Active Technologies
 - React 18 + PixiJS 8.14 for the browser UI, scene stack, and HUD overlays (`@lucky-break/web-client`).
@@ -14,6 +14,7 @@ Manually curated snapshot of the workspace. Last updated: 2025-11-06.
 - Matter.js 0.20 wrapped in deterministic helpers inside `@lucky-break/core-domain`.
 - Zustand 5 state stores layered on top of the core-domain runtime for front-end orchestration.
 - Vitest 1.6, Playwright 1.49, and TSX-powered Node scripts for tests, automation, and CLI tooling.
+- Storybook 10 + Radix UI primitives in `@lucky-break/design-system` for shared React components and Tailwind tokens.
 
 ## Path Aliases
 ```
@@ -51,6 +52,13 @@ packages/
       headless-engine.ts  # Deterministic simulation loop reused in CI
       simulate.ts          # CLI entrypoints and replay IO
       tuning-bot.ts        # Batch tuning + balancing harness
+  design-system/
+    src/
+      components/  # Shared React UI primitives (Button, Dialog, Accordion, etc.)
+      providers/   # DesignSystemProvider for theme orchestration
+      lib/         # Tailwind utility helpers (cn, cva variants)
+      stories/     # Storybook component documentation and examples
+    tailwind.preset.cjs  # Shared Tailwind tokens consumed by web-client
   web-client/
     src/
       app/        # Runtime orchestration, main entry, session services
@@ -77,6 +85,8 @@ packages/
 - `pnpm lint`, `pnpm lint:fix`, `pnpm typecheck` – Linting and TS project references across every package.
 - `pnpm simulate:verify` – Runs the TSX-based deterministic CLI regression harness.
 - `pnpm ci` – Aggregated lint + typecheck + coverage + simulation workflow (mirrors GitHub Actions).
+- `pnpm --filter @lucky-break/design-system storybook` – Run Storybook component workbench locally.
+- `pnpm --filter @lucky-break/design-system build-storybook` – Build static Storybook bundle.
 
 ## Testing & QA
 - Vitest lives under `packages/web-client/tests/{unit,integration}` with shared setup in `tests/setup`.
