@@ -1,4 +1,5 @@
-import { Filter } from 'pixi.js';
+import { Filter, GlProgram, defaultFilterVert } from 'pixi.js';
+import type { UniformGroup } from 'pixi.js';
 
 export interface GradientWaveFilterOptions {
     readonly speed?: number;
@@ -9,6 +10,13 @@ export interface GradientWaveFilterOptions {
     readonly opacity?: number;
 }
 
+type GradientWaveUniformDefinitions = {
+    [K in keyof GradientWaveUniforms]: {
+        value: number;
+        type: 'f32';
+    };
+};
+
 interface GradientWaveUniforms {
     uTime: number;
     uGridDensity: number;
@@ -18,30 +26,21 @@ interface GradientWaveUniforms {
     uOpacity: number;
 }
 
-const vertexSource = /* glsl */`
-    in vec2 aPosition;
-    in vec2 aUV;
-
-    uniform mat3 uProjectionMatrix;
-
-    out vec2 vTextureCoord;
-
-    void main(void) {
-        vTextureCoord = aUV;
-        gl_Position = vec4((uProjectionMatrix * vec3(aPosition, 1.0)).xy, 0.0, 1.0);
-    }
-`;
+type GradientWaveUniformGroup = UniformGroup<GradientWaveUniformDefinitions>;
 
 const fragmentSource = /* glsl */`
     precision mediump float;
 
     in vec2 vTextureCoord;
+
     uniform float uTime;
     uniform float uGridDensity;
     uniform float uLineWidth;
     uniform float uWaveFrequency;
     uniform float uWaveAmplitude;
     uniform float uOpacity;
+
+    out vec4 finalColor;
 
     const vec3 COLOR_LEFT = vec3(0.145, 0.557, 0.996);
     const vec3 COLOR_CENTER = vec3(0.988, 0.776, 0.369);
@@ -82,41 +81,53 @@ const fragmentSource = /* glsl */`
 
         float alpha = circleMask * max(lineMask * 0.85, glow * 0.65) * uOpacity;
 
-        if (alpha <= 0.0) {
-            discard;
-        }
-
-        gl_FragColor = vec4(color, alpha);
+        finalColor = vec4(color, alpha);
     }
 `;
 
 export class GradientWaveFilter extends Filter {
     private elapsed = 0;
     private speed: number;
+    private readonly uniformGroup: GradientWaveUniformGroup;
     private readonly uniformsRef: GradientWaveUniforms;
 
     constructor(options: GradientWaveFilterOptions = {}) {
-        const uniforms: GradientWaveUniforms = {
-            uTime: 0,
-            uGridDensity: options.gridDensity ?? 11,
-            uLineWidth: options.lineWidth ?? 0.02,
-            uWaveFrequency: options.waveFrequency ?? 7,
-            uWaveAmplitude: options.waveAmplitude ?? 0.045,
-            uOpacity: options.opacity ?? 0.9,
+        const uniformDefinitions: GradientWaveUniformDefinitions = {
+            uTime: { value: 0, type: 'f32' },
+            uGridDensity: { value: options.gridDensity ?? 11, type: 'f32' },
+            uLineWidth: { value: options.lineWidth ?? 0.02, type: 'f32' },
+            uWaveFrequency: { value: options.waveFrequency ?? 7, type: 'f32' },
+            uWaveAmplitude: { value: options.waveAmplitude ?? 0.045, type: 'f32' },
+            uOpacity: { value: options.opacity ?? 0.9, type: 'f32' },
         };
 
         super({
-            vertex: vertexSource,
-            fragment: fragmentSource,
-            uniforms,
+            glProgram: GlProgram.from({
+                vertex: defaultFilterVert,
+                fragment: fragmentSource,
+                name: 'gradient-wave-filter',
+            }),
+            resources: {
+                gradientUniforms: uniformDefinitions,
+            },
+            resolution: 'inherit',
+            antialias: 'inherit',
         });
 
         this.speed = options.speed ?? 1;
-        this.uniformsRef = this.uniforms as GradientWaveUniforms;
+        const resourceBag = this.resources as { gradientUniforms?: GradientWaveUniformGroup };
+        const uniformGroup = resourceBag.gradientUniforms;
+        if (!uniformGroup) {
+            throw new Error('GradientWaveFilter is missing its uniform group.');
+        }
+        this.uniformGroup = uniformGroup;
+        this.uniformsRef = uniformGroup.uniforms;
+        this.uniformGroup.update();
     }
 
     public setOpacity(opacity: number): void {
         this.uniformsRef.uOpacity = opacity;
+        this.uniformGroup.update();
     }
 
     public update(deltaSeconds: number): void {
@@ -125,5 +136,6 @@ export class GradientWaveFilter extends Filter {
         }
         this.elapsed += deltaSeconds * this.speed;
         this.uniformsRef.uTime = this.elapsed;
+        this.uniformGroup.update();
     }
 }
