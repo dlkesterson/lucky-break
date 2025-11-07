@@ -41,3 +41,17 @@ const Root = () => (
   </DesignSystemProvider>
 );
 ```
+
+## Storybook
+
+Run the component workbench locally from the repo root:
+
+```bash
+pnpm --filter @lucky-break/design-system storybook
+```
+
+Generate a static bundle for visual regression pipelines with:
+
+```bash
+pnpm --filter @lucky-break/design-system build-storybook
+```
