@@ -14,7 +14,7 @@ import type { AchievementManager } from '../../achievements';
 import type { MetaUpgradeManager } from '../../meta-upgrades';
 import { createBiasPhaseCoordinator, type BiasPhaseCoordinator } from '../bias-phase-coordinator';
 import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
-import type { GameSessionSnapshot } from 'app/state';
+import type { GameSessionManager, GameSessionSnapshot } from 'app/state';
 import type { PrestigeAwardInput } from 'util/prestige';
 import type { GameConfig } from 'config/game';
 import type { RecordHighScoreOptions } from 'util/high-scores';
@@ -34,6 +34,7 @@ export interface RuntimeRoundCoordinatorOptions {
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
     readonly hudContainer: Pick<Container, 'visible'>;
     readonly getSessionSnapshot: () => GameSessionSnapshot;
+    readonly spendStoredEntropy: GameSessionManager['spendStoredEntropy'];
     readonly achievements: Pick<AchievementManager, 'recordRoundComplete' | 'recordSessionSummary'>;
     readonly refreshAchievementUpgrades: () => void;
     readonly scoringState: ScoreState;
@@ -76,6 +77,7 @@ export const createRuntimeRoundCoordinator = ({
     runtimeState,
     hudContainer,
     getSessionSnapshot,
+    spendStoredEntropy,
     achievements,
     refreshAchievementUpgrades,
     scoringState,
@@ -101,6 +103,7 @@ export const createRuntimeRoundCoordinator = ({
         const baseSpeedGovernor = modifierConfig.speedGovernor.default;
         const entropySnapshot = snapshot.entropy;
         const entropyTotal = Math.max(0, (entropySnapshot?.charge ?? 0) + (entropySnapshot?.stored ?? 0));
+        const entropyStored = Math.max(0, entropySnapshot?.stored ?? 0);
         const entropyDelta = entropyTotal - roundMachine.getRoundEntropyBaseline();
         const roundRules = roundMachine.getRoundRules();
         return {
@@ -110,6 +113,7 @@ export const createRuntimeRoundCoordinator = ({
             lives: snapshot.livesRemaining,
             highestCombo: roundMachine.getRunHighestCombo(),
             entropyDelta,
+            entropyStored,
             gravity: modifierState.gravity,
             gravityDelta: modifierState.gravity - baseGravity,
             speedGovernor: modifierState.speedGovernorMultiplier,
@@ -134,6 +138,8 @@ export const createRuntimeRoundCoordinator = ({
         buildSessionSummary: buildBiasSessionSummary,
         bus,
         hudContainer,
+        getSessionSnapshot,
+        spendStoredEntropy,
     });
 
     const presentBiasPhase = (): void => {

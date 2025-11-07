@@ -4,11 +4,13 @@ import type { Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
 import type { GameConfig } from 'config/game';
-import type { BiasPhaseOption, RoundMachine } from 'app/runtime/round-machine';
+import type { BiasPhaseOption, BiasPhaseWager, RoundMachine } from 'app/runtime/round-machine';
 import type { RuntimeModifierSnapshot, RuntimeModifiers, RuntimeRuleSnapshot } from 'app/runtime/modifiers';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from 'app/runtime/types';
 import { createBiasPhaseCoordinator } from 'app/runtime/bias-phase-coordinator';
+import type { BiasPhaseSceneOption } from 'scenes/bias-phase';
+import type { EntropySpendOptions, EntropySpendResult, GameSessionSnapshot } from 'app/state';
 
 type RuntimeStateSlice = Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
 
@@ -116,6 +118,20 @@ const createBusStub = () => ({
     publish: vi.fn(),
 });
 
+const createSessionSnapshotStub = (stored = 0) =>
+    vi.fn(() => ({
+        entropy: {
+            stored,
+            charge: 0,
+        },
+    }) as unknown as GameSessionSnapshot);
+
+const cloneWager = (wager: BiasPhaseWager): BiasPhaseWager => ({
+    label: wager.label,
+    cost: wager.cost,
+    action: wager.action,
+});
+
 interface RoundMachineHarness {
     readonly roundMachine: RoundMachine;
     readonly difficulty: { value: number };
@@ -137,7 +153,10 @@ const createRoundMachineHarness = (): RoundMachineHarness => {
     let entropyBaseline = 0;
 
     const setBiasPhaseOptions: Mock<[readonly BiasPhaseOption[]], void> = vi.fn((next: readonly BiasPhaseOption[]) => {
-        options = next.map((option) => ({ ...option }));
+        options = next.map((option) => ({
+            ...option,
+            wager: cloneWager(option.wager),
+        }));
     });
 
     const commitBiasSelection: Mock<[string], BiasPhaseOption | null> = vi.fn((optionId: string) => {
@@ -254,6 +273,15 @@ describe('createBiasPhaseCoordinator', () => {
             speedDelta: 0,
             coinsRuleLocked: false,
             seed: null,
+            entropyStored: 0,
+        }));
+        const getSessionSnapshot = createSessionSnapshotStub(32);
+        const spendStoredEntropy = vi.fn((options: EntropySpendOptions): EntropySpendResult => ({
+            success: true,
+            action: options.action,
+            cost: options.cost,
+            storedRemaining: Math.max(0, 32 - options.cost),
+            chargeRemaining: 0,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -271,6 +299,8 @@ describe('createBiasPhaseCoordinator', () => {
             runtimeState,
             buildSessionSummary,
             bus,
+            getSessionSnapshot,
+            spendStoredEntropy,
         });
 
         const selection: BiasPhaseOption = {
@@ -278,6 +308,11 @@ describe('createBiasPhaseCoordinator', () => {
             label: 'Test',
             description: 'Example',
             risk: 'reforge',
+            wager: {
+                label: 'Wager 10 entropy',
+                cost: 10,
+                action: 'casino-reforge' as const,
+            },
             effects: {
                 difficultyMultiplier: 1.25,
                 powerUpChanceMultiplier: 1.5,
@@ -314,6 +349,7 @@ describe('createBiasPhaseCoordinator', () => {
         const replayBuffer = { recordBiasChoice, snapshot: replaySnapshot } as unknown as ReplayBuffer;
         const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 48 };
         const bus = createBusStub();
+        const storedEntropy = 55;
         const buildSessionSummary = vi.fn((upcoming: number) => ({
             nextLevel: upcoming + 1,
             score: 1234,
@@ -327,6 +363,15 @@ describe('createBiasPhaseCoordinator', () => {
             speedDelta: 0.02,
             coinsRuleLocked: true,
             seed: null,
+            entropyStored: storedEntropy,
+        }));
+        const getSessionSnapshot = createSessionSnapshotStub(storedEntropy);
+        const spendStoredEntropy = vi.fn((options: EntropySpendOptions): EntropySpendResult => ({
+            success: true,
+            action: options.action,
+            cost: options.cost,
+            storedRemaining: Math.max(0, storedEntropy - options.cost),
+            chargeRemaining: 0,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -344,27 +389,30 @@ describe('createBiasPhaseCoordinator', () => {
             runtimeState,
             buildSessionSummary,
             bus,
+            getSessionSnapshot,
+            spendStoredEntropy,
         });
 
-        coordinator.present();
-        await Promise.resolve();
+        await coordinator.present();
 
         expect(stageHarness.push).toHaveBeenCalledWith(
             'bias-phase',
             expect.objectContaining({
-                session: expect.objectContaining({ nextLevel: 2 }),
-                options: expect.arrayContaining([expect.objectContaining({ risk: 'tilt' })]),
+                session: expect.objectContaining({ nextLevel: 2, entropyStored: storedEntropy }),
+                options: expect.arrayContaining([expect.objectContaining({ risk: 'tilt', affordable: true })]),
             }),
         );
         expect(roundMachineHarness.setBiasPhaseOptions).toHaveBeenCalled();
 
         const automation = coordinator.getAutomation();
         expect(automation).not.toBeNull();
-        const capturedOptions = (stageHarness.getLatestPayload() as { options: BiasPhaseOption[] }).options;
-        automation!.select(capturedOptions[1]?.id ?? '');
-        await Promise.resolve();
+        const capturedOptions = (stageHarness.getLatestPayload() as { options: BiasPhaseSceneOption[] }).options;
+        await automation!.select(capturedOptions[1]?.id ?? '');
 
         expect(roundMachineHarness.commitBiasSelection).toHaveBeenCalled();
+        expect(spendStoredEntropy).toHaveBeenCalledWith(
+            expect.objectContaining({ action: capturedOptions[1]?.wager.action, cost: capturedOptions[1]?.wager.cost }),
+        );
         expect(recordBiasChoice).toHaveBeenCalledWith(expect.any(String), runtimeState.sessionElapsedSeconds);
         expect(stageHarness.pop).toHaveBeenCalled();
         expect(roundMachineHarness.incrementLevelIndex).toHaveBeenCalled();
@@ -388,6 +436,7 @@ describe('createBiasPhaseCoordinator', () => {
         const replayBuffer = { recordBiasChoice: skipRecordBiasChoice, snapshot: skipReplaySnapshot } as unknown as ReplayBuffer;
         const runtimeState: RuntimeStateSlice = { sessionElapsedSeconds: 7 };
         const bus = createBusStub();
+        const availableEntropy = 12;
         const buildSessionSummary = vi.fn(() => ({
             nextLevel: 2,
             score: 0,
@@ -401,6 +450,15 @@ describe('createBiasPhaseCoordinator', () => {
             speedDelta: 0,
             coinsRuleLocked: false,
             seed: null,
+            entropyStored: availableEntropy,
+        }));
+        const getSessionSnapshot = createSessionSnapshotStub(availableEntropy);
+        const spendStoredEntropy = vi.fn((options: EntropySpendOptions): EntropySpendResult => ({
+            success: true,
+            action: options.action,
+            cost: options.cost,
+            storedRemaining: Math.max(0, availableEntropy - options.cost),
+            chargeRemaining: 0,
         }));
 
         const coordinator = createBiasPhaseCoordinator({
@@ -418,15 +476,15 @@ describe('createBiasPhaseCoordinator', () => {
             runtimeState,
             buildSessionSummary,
             bus,
+            getSessionSnapshot,
+            spendStoredEntropy,
         });
 
-        coordinator.present();
-        await Promise.resolve();
+        await coordinator.present();
 
         const automation = coordinator.getAutomation();
         expect(automation).not.toBeNull();
-        automation!.skip();
-        await Promise.resolve();
+        await automation!.skip();
 
         expect(stageHarness.pop).toHaveBeenCalled();
         expect(roundMachineHarness.incrementLevelIndex).toHaveBeenCalled();

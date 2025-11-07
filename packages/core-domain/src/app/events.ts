@@ -82,7 +82,10 @@ export interface LaserHitPayload {
     readonly scheduledTime?: number;
 }
 
-export type EntropyActionType = 'reroll' | 'shield' | 'bailout';
+export type RewardEntropyAction = 'reroll' | 'shield' | 'bailout';
+export type CasinoEntropyAction = 'casino-tilt' | 'casino-lock' | 'casino-reforge';
+
+export type EntropyActionType = RewardEntropyAction | CasinoEntropyAction;
 
 export interface EntropyActionPayload {
     readonly sessionId: string;

@@ -1,6 +1,6 @@
 import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
-import type { BiasOptionRisk } from 'app/runtime/round-machine';
+import type { BiasOptionRisk, BiasPhaseWager } from 'app/runtime/round-machine';
 import type { UiSceneTransitionAction } from 'app/events';
 import { biasPhaseUiBridge } from 'ui/state/bias-phase-bridge';
 
@@ -9,7 +9,9 @@ export interface BiasPhaseSceneOption {
     readonly label: string;
     readonly description: string;
     readonly risk: BiasOptionRisk;
+    readonly wager: BiasPhaseWager;
     readonly effectSummary: readonly string[];
+    readonly affordable: boolean;
 }
 
 export interface BiasPhaseSessionSummary {
@@ -25,6 +27,7 @@ export interface BiasPhaseSessionSummary {
     readonly speedDelta: number;
     readonly coinsRuleLocked: boolean;
     readonly seed: number | null;
+    readonly entropyStored: number;
 }
 
 export interface BiasPhasePayload {

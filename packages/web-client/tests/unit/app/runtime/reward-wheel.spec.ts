@@ -4,7 +4,7 @@ import {
     type EntropyActionAttemptResult,
 } from 'app/runtime/reward-wheel';
 import type { Reward, RewardType } from 'game/rewards';
-import type { EntropyActionType } from 'app/events';
+import type { RewardEntropyAction } from 'app/events';
 import type { GameSessionSnapshot } from 'app/state';
 
 const createRewardFactory = () => {
@@ -140,7 +140,7 @@ const bootstrapOrchestrator = () => {
     });
     const entropyCosts = { reroll: 15, lockCoins: 20 };
     let entropyResult: EntropyActionAttemptResult = { success: true };
-    const attemptEntropyAction = vi.fn((action: EntropyActionType) => {
+    const attemptEntropyAction = vi.fn((action: RewardEntropyAction) => {
         const result = entropyResult;
         if (result.success && action === 'reroll') {
             session.entropyStored = Math.max(0, session.entropyStored - entropyCosts.reroll);

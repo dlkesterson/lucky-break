@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HudScoreboardView, HudScoreboardPrompt, HudEntropyActionDescriptor } from 'render/hud';
 import type { HudPowerUpView, HudRewardView } from 'render/hud-display';
-import type { EntropyActionType } from 'app/events';
+import type { RewardEntropyAction } from 'app/events';
 import { hudSetters, useHud } from '../../../../src/ui/state/game-bridge';
 
 const createScoreboard = (prompts: readonly HudScoreboardPrompt[] = []): HudScoreboardView => ({
@@ -14,7 +14,7 @@ const createScoreboard = (prompts: readonly HudScoreboardPrompt[] = []): HudScor
     prompts,
 });
 
-const createEntropyAction = (action: EntropyActionType): HudEntropyActionDescriptor => ({
+const createEntropyAction = (action: RewardEntropyAction): HudEntropyActionDescriptor => ({
     action,
     label: action.toUpperCase(),
     hotkey: action.charAt(0),

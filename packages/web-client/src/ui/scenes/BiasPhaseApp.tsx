@@ -51,6 +51,7 @@ const scoreboardEntries: readonly ScoreboardEntry[] = [
   { label: 'Lives', resolve: (session) => `${session.lives}` },
   { label: 'Highest Combo', resolve: (session) => `×${session.highestCombo}` },
   { label: 'Entropy Delta', resolve: (session) => formatSignedDelta(session.entropyDelta, 0) },
+  { label: 'Entropy Reserve', resolve: (session) => formatNumber(session.entropyStored) },
   { label: 'Gravity Bias', resolve: formatGravityBias },
   { label: 'Speed Bias', resolve: formatSpeedBias },
   { label: 'Coins Rule', resolve: (session) => (session.coinsRuleLocked ? 'Locked' : 'Off') },
@@ -88,13 +89,23 @@ export const BiasPhaseApp = (): JSX.Element | null => {
   }
 
   const { session, options, onSelect, onSkip } = payload;
-  const commitDisabled = !selectedOptionId || pendingAction !== null;
-  const commitLabel =
-    pendingAction === 'commit'
-      ? 'Committing…'
-      : selectedOptionId
-        ? `Commit ${options.find((option) => option.id === selectedOptionId)?.label ?? 'Selection'}`
-        : 'Commit Selection';
+  const selectedOption = options.find((option) => option.id === selectedOptionId) ?? null;
+  const entropyShortfall = selectedOption
+    ? Math.max(0, selectedOption.wager.cost - session.entropyStored)
+    : 0;
+  const commitDisabled = !selectedOptionId || pendingAction !== null || entropyShortfall > 0;
+  const commitLabel = (() => {
+    if (pendingAction === 'commit') {
+      return 'Committing…';
+    }
+    if (!selectedOptionId || !selectedOption) {
+      return 'Commit Selection';
+    }
+    if (entropyShortfall > 0) {
+      return `Need ${entropyShortfall} more entropy`;
+    }
+    return `Commit ${selectedOption.label}`;
+  })();
 
   const handleCommit = async () => {
     if (!selectedOptionId || pendingAction) {
@@ -144,6 +155,7 @@ export const BiasPhaseApp = (): JSX.Element | null => {
           {options.map((option) => {
             const selected = option.id === selectedOptionId;
             const disabled = pendingAction !== null;
+            const locked = option.affordable === false;
             const riskColor =
               option.risk === 'tilt'
                 ? 'var(--bias-accent-combo)'
@@ -155,7 +167,7 @@ export const BiasPhaseApp = (): JSX.Element | null => {
               <button
                 type="button"
                 key={option.id}
-                className={`bias-phase-card${selected ? ' is-selected' : ''}`}
+                className={`bias-phase-card${selected ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
                 onClick={() => {
                   if (disabled) {
                     return;
@@ -169,12 +181,20 @@ export const BiasPhaseApp = (): JSX.Element | null => {
                 </span>
                 <span className="bias-phase-card-title">{option.label}</span>
                 <span className="bias-phase-card-description">{option.description}</span>
+                <span
+                  className="bias-phase-card-wager"
+                  aria-label={`Costs ${option.wager.cost} entropy`}
+                >
+                  {option.wager.label}
+                </span>
                 <span className="bias-phase-card-effects">
                   {option.effectSummary.map((line, index) => (
                     <span key={`${option.id}-effect-${index}`}>{line}</span>
                   ))}
                 </span>
-                <span className="bias-phase-card-callout">Tap to select this table</span>
+                <span className="bias-phase-card-callout">
+                  {locked ? 'Earn more entropy to unlock' : 'Tap to select this table'}
+                </span>
               </button>
             );
           })}

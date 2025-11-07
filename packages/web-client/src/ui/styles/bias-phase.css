@@ -123,12 +123,19 @@
   opacity: 0.72;
 }
 
-.bias-phase-card:hover:not(:disabled),
+.bias-phase-card:hover:not(:disabled):not(.is-locked),
 .bias-phase-card.is-selected {
   transform: translateY(-4px);
   border-color: var(--bias-accent-combo, #ffd45c);
   box-shadow: 0 18px 36px rgba(255, 212, 92, 0.18);
   background: linear-gradient(155deg, rgba(48, 34, 76, 0.92), rgba(24, 16, 44, 0.82));
+}
+
+.bias-phase-card.is-locked {
+  cursor: not-allowed;
+  opacity: 0.72;
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
 }
 
 .bias-phase-card-risk {
@@ -158,6 +165,21 @@
   line-height: 1.45;
 }
 
+.bias-phase-card-wager {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: clamp(12px, 1.4vmin, 15px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0a0314;
+  background: rgba(255, 212, 92, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(18, 10, 30, 0.2);
+}
+
 .bias-phase-card-effects {
   display: flex;
   flex-direction: column;
@@ -177,6 +199,10 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 224, 180, 0.92);
+}
+
+.bias-phase-card.is-locked .bias-phase-card-callout {
+  color: rgba(255, 200, 200, 0.78);
 }
 
 .bias-phase-footer {

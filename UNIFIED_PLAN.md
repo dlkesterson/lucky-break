@@ -214,7 +214,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Add sigil bonus calculations (e.g., +10% coin drop)
   - Apply sigil modifiers to reward generation
 
-- [ ] **Implement voice audio effects**
+- [x] **Implement voice audio effects**
   - Edit `packages/web-client/src/audio/soundbank.ts`
   - Create voice modulation system
   - Implement "Pulse" voice: modulate Tone.js synths on bounces
@@ -233,12 +233,12 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Verify all effects work correctly
   - Test with different customization combinations
 
-- [ ] **Add customization tests** _(targeted physics/scoring coverage still outstanding)_
-  - Create `packages/web-client/tests/unit/mayhaps-customization.spec.ts`
-  - Test form physics effects
-  - Test trait scoring modifiers
-  - Test sigil reward bonuses
-  - Verify state persistence
+- [x] **Add customization tests** _(targeted physics/scoring coverage verified via new spec)_
+  - [x] Create `packages/web-client/tests/unit/mayhaps-customization.spec.ts`
+  - [x] Test form physics effects
+  - [x] Test trait scoring modifiers
+  - [x] Test sigil reward bonuses
+  - [x] Verify state persistence
 
 ---
 
@@ -254,7 +254,7 @@ This document combines the React UI migration plan with the Mayhaps cosmic casin
   - Hook `BrickBreak` event to accumulate entropy
   - Add entropy spending logic
 
-- [ ] **Extend bias phase coordinator** _(entropy wager flow still pending)_
+- [x] **Extend bias phase coordinator** _(entropy wager flow wired with stored entropy spending and affordability UI)_
   - Edit `packages/web-client/src/app/runtime/bias-phase-coordinator.ts`
   - Add wagering logic for entropy
   - Implement "Tilt" option: nudge odds (+20% crit bricks)

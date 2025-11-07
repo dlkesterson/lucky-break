@@ -9,7 +9,7 @@ import {
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
-import type { EntropyActionType } from 'app/events';
+import type { EntropyActionType, RewardEntropyAction } from 'app/events';
 import type { AchievementUnlock } from '../achievements';
 import { gameConfig, type GameConfig } from 'config/game';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
@@ -220,7 +220,7 @@ const REWARD_LOCK_COIN_COST = Math.max(0, config.rewards.lockCoinCost);
 const ENTROPY_COST_SHIELD = Math.max(1, config.entropy.spend.shieldCost);
 const ENTROPY_COST_BAILOUT = Math.max(1, config.entropy.spend.bailoutCost);
 
-const ENTROPY_ACTION_COSTS: Record<EntropyActionType, number> = {
+const ENTROPY_ACTION_COSTS: Record<RewardEntropyAction, number> = {
     reroll: ENTROPY_COST_REROLL,
     shield: ENTROPY_COST_SHIELD,
     bailout: ENTROPY_COST_BAILOUT,
@@ -228,13 +228,13 @@ const ENTROPY_ACTION_COSTS: Record<EntropyActionType, number> = {
 
 const PRESTIGE_CONFIG = config.prestige;
 
-const ENTROPY_ACTION_BINDINGS: Record<EntropyActionType, { key: string; hotkey: string; label: string }> = {
+const ENTROPY_ACTION_BINDINGS: Record<RewardEntropyAction, { key: string; hotkey: string; label: string }> = {
     reroll: { key: 'KeyR', hotkey: 'R', label: 'Reroll' },
     shield: { key: 'KeyS', hotkey: 'S', label: 'Shield' },
     bailout: { key: 'KeyB', hotkey: 'B', label: 'Bailout' },
 } as const;
 
-const ENTROPY_ACTION_SEQUENCE: readonly EntropyActionType[] = ['reroll', 'shield', 'bailout'];
+const ENTROPY_ACTION_SEQUENCE: readonly RewardEntropyAction[] = ['reroll', 'shield', 'bailout'];
 
 const metaProgression = createMetaProgressionService({
     baseComboDecayWindow: BASE_COMBO_DECAY_WINDOW,
@@ -1348,6 +1348,7 @@ export const createRuntimeFacade = async ({
         replayBuffer,
         runtimeState,
         getSessionSnapshot: () => session.snapshot(),
+        spendStoredEntropy: (options) => session.spendStoredEntropy(options),
         achievements,
         refreshAchievementUpgrades,
         scoringState,

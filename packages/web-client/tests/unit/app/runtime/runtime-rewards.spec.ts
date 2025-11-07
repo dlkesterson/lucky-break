@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EntropyActionType } from 'app/events';
+import type { RewardEntropyAction } from 'app/events';
 import type { EntropySpendResult, GameSessionSnapshot } from 'app/state';
 import type { Reward } from 'game/rewards';
 import type { RoundMachine } from 'app/runtime/round-machine';
@@ -86,13 +86,13 @@ const createHarness = () => {
     const setRewardOverride = vi.fn();
     const createRewardFactory = vi.fn(() => createReward('created'));
 
-    const entropyCosts: Record<EntropyActionType, number> = {
+    const entropyCosts: Record<RewardEntropyAction, number> = {
         reroll: 20,
         shield: 30,
         bailout: 60,
     };
 
-    const bindings: Record<EntropyActionType, { key: string; hotkey: string; label: string }> = {
+    const bindings: Record<RewardEntropyAction, { key: string; hotkey: string; label: string }> = {
         reroll: { key: 'R', hotkey: 'R', label: 'Reroll' },
         shield: { key: 'S', hotkey: 'S', label: 'Shield' },
         bailout: { key: 'B', hotkey: 'B', label: 'Bailout' },
@@ -183,7 +183,7 @@ describe('createRuntimeRewards', () => {
                 eventBus: { publish: vi.fn() },
                 wheelSegments: [] as never,
                 entropyCosts: { reroll: 1, shield: 1, bailout: 1 },
-                entropyBindings: { reroll: { key: 'R', hotkey: 'R', label: 'Reroll' } } as Record<EntropyActionType, {
+                entropyBindings: { reroll: { key: 'R', hotkey: 'R', label: 'Reroll' } } as Record<RewardEntropyAction, {
                     key: string;
                     hotkey: string;
                     label: string;

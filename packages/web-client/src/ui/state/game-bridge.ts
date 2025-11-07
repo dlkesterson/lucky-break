@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { EntropyActionType } from "app/events";
+import type { RewardEntropyAction } from "app/events";
 import type { HudScoreboardView, HudEntropyActionDescriptor, HudScoreboardPrompt } from "render/hud";
 import type { HudPowerUpView, HudRewardView } from "render/hud-display";
 import type { HudSnapshot } from "app/state";
@@ -58,7 +58,7 @@ export interface HudState {
     readonly momentum: HudMomentum | null;
     readonly prompts: readonly HudScoreboardPrompt[];
     readonly visible: boolean;
-    readonly attemptEntropyAction?: (action: EntropyActionType) => void;
+    readonly attemptEntropyAction?: (action: RewardEntropyAction) => void;
     readonly settings: HudSettings;
     readonly updateSettings?: (changes: HudSettingsUpdate) => void;
     readonly flavor: HudFlavorMessage | null;
@@ -96,7 +96,7 @@ export const useHud = create<HudState>(createInitialState);
 
 let comboPulseResetHandle: ReturnType<typeof setTimeout> | undefined;
 let comboPulseRevision = 0;
-let entropyActionHandler: ((action: EntropyActionType) => void) | undefined;
+let entropyActionHandler: ((action: RewardEntropyAction) => void) | undefined;
 let settingsUpdateHandler: ((changes: HudSettingsUpdate) => void) | undefined;
 let flavorResetHandle: ReturnType<typeof setTimeout> | undefined;
 
@@ -158,7 +158,7 @@ export const hudSetters = {
     setFps: (fps: number | undefined): void => {
         useHud.setState((previous) => (previous.fps === fps ? previous : { ...previous, fps }));
     },
-    setEntropyActionHandler: (handler: ((action: EntropyActionType) => void) | undefined): void => {
+    setEntropyActionHandler: (handler: ((action: RewardEntropyAction) => void) | undefined): void => {
         entropyActionHandler = handler;
         useHud.setState((previous) => (previous.attemptEntropyAction === handler ? previous : { ...previous, attemptEntropyAction: handler }));
     },

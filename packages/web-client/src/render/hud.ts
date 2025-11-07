@@ -1,4 +1,4 @@
-import type { EntropyActionType } from 'app/events';
+import type { RewardEntropyAction } from 'app/events';
 import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
 
 export interface HudScoreboardEntry {
@@ -21,7 +21,7 @@ export interface HudScoreboardView {
 }
 
 export interface HudEntropyActionDescriptor {
-    readonly action: EntropyActionType;
+    readonly action: RewardEntropyAction;
     readonly label: string;
     readonly hotkey: string;
     readonly cost: number;

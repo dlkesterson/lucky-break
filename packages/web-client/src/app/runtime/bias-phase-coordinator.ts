@@ -4,14 +4,15 @@ import type { RandomManager } from 'util/random';
 import type { StageHandle } from 'render/stage';
 import type { BiasPhaseSessionSummary, BiasPhaseSceneOption, BiasPhasePayload } from 'scenes/bias-phase';
 import type { GameConfig } from 'config/game';
-import type { BiasOptionRisk, BiasPhaseOption, RoundMachine } from './round-machine';
+import type { BiasOptionRisk, BiasPhaseOption, BiasPhaseWager, RoundMachine } from './round-machine';
 import type { RuntimeModifiers, RuntimeModifierSnapshot } from './modifiers';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import type { GameplayRuntimeState } from './types';
 import type { LuckyBreakEventBus } from 'app/events';
+import type { GameSessionManager, GameSessionSnapshot } from 'app/state';
 
 export interface BiasPhaseAutomation {
-    select(optionId: string): void;
+    select(optionId: string): Promise<void>;
     skip(): void;
 }
 
@@ -30,6 +31,8 @@ export interface BiasPhaseCoordinatorDeps {
     readonly buildSessionSummary: (upcomingLevelIndex: number) => BiasPhaseSessionSummary;
     readonly bus: Pick<LuckyBreakEventBus, 'publish'>;
     readonly hudContainer: Pick<Container, 'visible'>;
+    readonly getSessionSnapshot: () => GameSessionSnapshot;
+    readonly spendStoredEntropy: GameSessionManager['spendStoredEntropy'];
 }
 
 export interface BiasPhaseCoordinator {
@@ -53,6 +56,8 @@ export const createBiasPhaseCoordinator = ({
     buildSessionSummary,
     bus,
     hudContainer,
+    getSessionSnapshot,
+    spendStoredEntropy,
 }: BiasPhaseCoordinatorDeps): BiasPhaseCoordinator => {
     const { gravity, restitution, paddleWidth, speedGovernor } = modifierConfig;
 
@@ -76,6 +81,33 @@ export const createBiasPhaseCoordinator = ({
             'All-in fabrication—heavy swings, louder rewards.',
         ],
     } as const;
+
+    const biasWagerBlueprints: Record<BiasOptionRisk, BiasPhaseWager> = {
+        tilt: {
+            label: 'Wager 3 entropy',
+            cost: 3,
+            action: 'casino-tilt',
+        },
+        lock: {
+            label: 'Wager 6 entropy',
+            cost: 6,
+            action: 'casino-lock',
+        },
+        reforge: {
+            label: 'Wager 10 entropy',
+            cost: 10,
+            action: 'casino-reforge',
+        },
+    } as const;
+
+    const buildBiasWager = (risk: BiasOptionRisk): BiasPhaseWager => {
+        const blueprint = biasWagerBlueprints[risk];
+        return {
+            label: blueprint.label,
+            cost: blueprint.cost,
+            action: blueprint.action,
+        } satisfies BiasPhaseWager;
+    };
 
     interface ReforgeBundle {
         readonly slug: string;
@@ -174,12 +206,27 @@ export const createBiasPhaseCoordinator = ({
         return summary;
     };
 
-    const mapBiasOptionToScene = (option: BiasPhaseOption): BiasPhaseSceneOption => ({
+    const resolveStoredEntropy = (): number => {
+        const snapshot = getSessionSnapshot();
+        const stored = snapshot.entropy?.stored;
+        if (!Number.isFinite(stored)) {
+            return 0;
+        }
+        return Math.max(0, stored as number);
+    };
+
+    const mapBiasOptionToScene = (option: BiasPhaseOption, affordable: boolean): BiasPhaseSceneOption => ({
         id: option.id,
         label: option.label,
         description: option.description,
         risk: option.risk,
+        wager: {
+            label: option.wager.label,
+            cost: option.wager.cost,
+            action: option.wager.action,
+        },
         effectSummary: describeBiasOption(option),
+        affordable,
     });
 
     const generateBiasPhaseOptions = (upcomingLevelIndex: number): BiasPhaseOption[] => {
@@ -213,6 +260,7 @@ export const createBiasPhaseCoordinator = ({
                 label: pickFrom(biasLabels.tilt),
                 description: pickFrom(biasDescriptions.tilt),
                 risk: 'tilt',
+                wager: buildBiasWager('tilt'),
                 effects: {
                     modifiers,
                     difficultyMultiplier: difficulty,
@@ -240,6 +288,7 @@ export const createBiasPhaseCoordinator = ({
                 label: pickFrom(biasLabels.lock),
                 description: pickFrom(biasDescriptions.lock),
                 risk: 'lock',
+                wager: buildBiasWager('lock'),
                 effects: {
                     modifiers,
                     difficultyMultiplier: difficulty,
@@ -332,6 +381,7 @@ export const createBiasPhaseCoordinator = ({
                 label: bundle.label,
                 description: bundle.description,
                 risk: 'reforge',
+                wager: buildBiasWager('reforge'),
                 effects: {
                     modifiers: blueprint.modifiers,
                     difficultyMultiplier: blueprint.difficultyMultiplier,
@@ -395,6 +445,12 @@ export const createBiasPhaseCoordinator = ({
     const present: BiasPhaseCoordinator['present'] = () => {
         const upcomingLevelIndex = roundMachine.getCurrentLevelIndex() + 1;
         const options = generateBiasPhaseOptions(upcomingLevelIndex);
+        const storedEntropy = resolveStoredEntropy();
+        const sessionSummary = buildSessionSummary(upcomingLevelIndex);
+        const sessionWithStored: BiasPhaseSessionSummary = {
+            ...sessionSummary,
+            entropyStored: storedEntropy,
+        };
 
         if (options.length === 0) {
             automation = null;
@@ -409,6 +465,7 @@ export const createBiasPhaseCoordinator = ({
 
         const advance = (selection: BiasPhaseOption | null) => {
             automation = null;
+            applySelection(selection);
             if (!selection) {
                 roundMachine.setBiasPhaseOptions([]);
             }
@@ -422,9 +479,32 @@ export const createBiasPhaseCoordinator = ({
         };
 
         const handleSelection = (optionId: string) => {
+            const option = options.find((candidate) => candidate.id === optionId);
+            if (!option) {
+                logger.warn('Bias option not found during selection', { optionId });
+                throw new Error('bias-option-missing');
+            }
+
+            const availableEntropy = resolveStoredEntropy();
+            if (availableEntropy < option.wager.cost) {
+                logger.info('Insufficient entropy for bias wager', {
+                    optionId,
+                    required: option.wager.cost,
+                    available: availableEntropy,
+                });
+                throw new Error('insufficient-entropy');
+            }
+
+            const spendResult = spendStoredEntropy({ action: option.wager.action, cost: option.wager.cost });
+            if (!spendResult.success) {
+                const reason = spendResult.reason ?? 'unknown';
+                logger.warn('Failed to spend entropy for bias wager', { optionId, reason });
+                throw new Error(`entropy-spend-${reason}`);
+            }
+
             const selection = roundMachine.commitBiasSelection(optionId);
             if (!selection) {
-                logger.warn('Failed to resolve bias selection', { optionId });
+                logger.warn('Failed to resolve bias selection after spending entropy', { optionId });
                 advance(null);
                 return;
             }
@@ -442,16 +522,16 @@ export const createBiasPhaseCoordinator = ({
         };
 
         const payload: BiasPhasePayload = {
-            session: buildSessionSummary(upcomingLevelIndex),
-            options: options.map(mapBiasOptionToScene),
-            onSelect: (optionId: string) => {
+            session: sessionWithStored,
+            options: options.map((option) => mapBiasOptionToScene(option, storedEntropy >= option.wager.cost)),
+            onSelect: async (optionId: string) => {
                 handleSelection(optionId);
             },
             onSkip: handleSkip,
         };
 
         automation = {
-            select: (optionId: string) => {
+            select: async (optionId: string) => {
                 handleSelection(optionId);
             },
             skip: () => {

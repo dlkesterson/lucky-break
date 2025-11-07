@@ -20,6 +20,7 @@ const createPayload = (): BiasPhasePayload => ({
         speedDelta: -0.05,
         coinsRuleLocked: false,
         seed: 42,
+        entropyStored: 15,
     },
     options: [
         {
@@ -27,7 +28,13 @@ const createPayload = (): BiasPhasePayload => ({
             label: 'Recover',
             description: 'Stabilise the run.',
             risk: 'tilt',
+            wager: {
+                label: 'Wager 3 entropy',
+                cost: 3,
+                action: 'casino-tilt' as const,
+            },
             effectSummary: ['Restore stability'],
+            affordable: true,
         },
     ],
     onSelect: vi.fn(),

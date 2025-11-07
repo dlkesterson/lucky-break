@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRoundMachine } from 'app/runtime/round-machine';
+import type { BiasPhaseOption } from 'app/runtime/round-machine';
 import { createReward } from 'game/rewards';
 
 describe('round-machine entropy actions', () => {
@@ -66,29 +67,39 @@ describe('round-machine bias phase state', () => {
             autoCompleteTrigger: 1,
         });
 
-    const sampleOptions = () => [
+    const sampleOptions = (): BiasPhaseOption[] => [
         {
             id: 'option-a',
             label: 'Option A',
             description: 'Test option A',
             risk: 'tilt' as const,
+            wager: {
+                label: 'Wager 3 entropy',
+                cost: 3,
+                action: 'casino-tilt' as const,
+            },
             effects: {
                 modifiers: { gravity: 0.1 },
                 difficultyMultiplier: 1.05,
                 powerUpChanceMultiplier: 1.02,
             },
-        },
+        } satisfies BiasPhaseOption,
         {
             id: 'option-b',
             label: 'Option B',
             description: 'Test option B',
             risk: 'reforge' as const,
+            wager: {
+                label: 'Wager 10 entropy',
+                cost: 10,
+                action: 'casino-reforge' as const,
+            },
             effects: {
                 modifiers: { paddleWidthMultiplier: 0.95 },
                 difficultyMultiplier: 1.12,
                 powerUpChanceMultiplier: 1.08,
             },
-        },
+        } satisfies BiasPhaseOption,
     ];
 
     it('clones bias phase options and consumes selections', () => {

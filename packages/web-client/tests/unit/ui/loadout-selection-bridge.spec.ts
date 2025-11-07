@@ -35,7 +35,7 @@ const createPreset = (): LoadoutFormPreset => ({
         description: 'Resonant tone.',
         effectSummary: ['Resonant tone'],
     },
-    preview: { baseColor: 0xffffff, accentColor: 0x000000 },
+    preview: { baseColor: 0xffffff, accentColor: 0x000000, shape: 'sphere' },
 });
 
 const resetLoadoutState = () => {

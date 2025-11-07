@@ -1,9 +1,15 @@
 import type { AchievementUnlock } from '../achievements';
-import type { EntropyActionType } from 'app/events';
+import type { CasinoEntropyAction, EntropyActionType } from 'app/events';
 import type { Reward } from 'game/rewards';
 import type { RuntimeModifierSnapshot } from './modifiers';
 
 export type BiasOptionRisk = 'tilt' | 'lock' | 'reforge';
+
+export interface BiasPhaseWager {
+    readonly label: string;
+    readonly cost: number;
+    readonly action: CasinoEntropyAction;
+}
 
 export interface BiasPhaseRuleFlags {
     readonly coinsAlwaysDrop?: boolean;
@@ -22,6 +28,7 @@ export interface BiasPhaseOption {
     readonly label: string;
     readonly description: string;
     readonly risk: BiasOptionRisk;
+    readonly wager: BiasPhaseWager;
     readonly effects: BiasPhaseEffects;
 }
 
@@ -307,6 +314,11 @@ export const createRoundMachine = ({
         label: option.label,
         description: option.description,
         risk: option.risk,
+        wager: {
+            label: option.wager.label,
+            cost: option.wager.cost,
+            action: option.wager.action,
+        },
         effects: {
             modifiers: option.effects.modifiers ? { ...option.effects.modifiers } : undefined,
             difficultyMultiplier: option.effects.difficultyMultiplier,

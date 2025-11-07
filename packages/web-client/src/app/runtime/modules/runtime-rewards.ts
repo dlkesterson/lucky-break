@@ -1,4 +1,4 @@
-import type { EntropyActionType, LuckyBreakEventBus } from 'app/events';
+import type { EntropyActionType, LuckyBreakEventBus, RewardEntropyAction } from 'app/events';
 import type { GameConfig } from 'config/game';
 import type { Reward, RewardOverride, RewardType } from 'game/rewards';
 import type { HudEntropyActionDescriptor } from 'render/hud';
@@ -17,7 +17,7 @@ import {
 } from '../reward-wheel';
 
 export interface RuntimeEntropyBinding {
-    readonly action: EntropyActionType;
+    readonly action: RewardEntropyAction;
     readonly key: string;
     readonly hotkey: string;
     readonly label: string;
@@ -32,9 +32,9 @@ export interface RuntimeRewardsOptions {
     readonly spendCoins: (amount: number) => boolean;
     readonly eventBus: Pick<LuckyBreakEventBus, 'publish'>;
     readonly wheelSegments: GameConfig['rewards']['wheelSegments'];
-    readonly entropyCosts: Record<EntropyActionType, number>;
-    readonly entropyBindings: Record<EntropyActionType, { key: string; hotkey: string; label: string }>;
-    readonly entropyOrder: readonly EntropyActionType[];
+    readonly entropyCosts: Record<RewardEntropyAction, number>;
+    readonly entropyBindings: Record<RewardEntropyAction, { key: string; hotkey: string; label: string }>;
+    readonly entropyOrder: readonly RewardEntropyAction[];
     readonly lockCoinCost: number;
     readonly spinReward: (random: () => number) => Reward;
     readonly setRewardOverride: (override: RewardOverride | null) => void;
@@ -44,14 +44,14 @@ export interface RuntimeRewardsOptions {
 
 export interface RuntimeRewardsHandle {
     readonly rewardWheel: RewardWheelOrchestrator;
-    readonly attemptEntropyAction: (action: EntropyActionType) => EntropyActionAttemptResult;
+    readonly attemptEntropyAction: (action: RewardEntropyAction) => EntropyActionAttemptResult;
     readonly getHudEntropyActions: (storedEntropy: number) => HudEntropyActionDescriptor[];
     readonly getActionBindings: () => readonly RuntimeEntropyBinding[];
 }
 
 const resolveBinding = (
     bindings: RuntimeRewardsOptions['entropyBindings'],
-    action: EntropyActionType,
+    action: RewardEntropyAction,
 ): RuntimeEntropyBinding => {
     const binding = bindings[action];
     if (!binding) {
@@ -103,7 +103,7 @@ export const createRuntimeRewards = ({
         return true;
     };
 
-    const attemptEntropyAction = (action: EntropyActionType): EntropyActionAttemptResult => {
+    const attemptEntropyAction = (action: RewardEntropyAction): EntropyActionAttemptResult => {
         const snapshot = getSessionSnapshot();
         const status = snapshot.status;
 

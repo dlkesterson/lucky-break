@@ -7,8 +7,8 @@ import type {
     RewardWheelUpdateResult,
 } from 'scenes/level-complete';
 import type {
-    EntropyActionType,
     LuckyBreakEventBus,
+    RewardEntropyAction,
     RewardWheelInteractionType,
     RewardWheelWeightSnapshot,
 } from 'app/events';
@@ -32,7 +32,7 @@ export interface RewardWheelOrchestratorDeps {
         readonly reroll: number;
         readonly lockCoins: number;
     };
-    readonly attemptEntropyAction: (action: EntropyActionType) => EntropyActionAttemptResult;
+    readonly attemptEntropyAction: (action: RewardEntropyAction) => EntropyActionAttemptResult;
     readonly setRewardOverride: (override: RewardOverride | null) => void;
     readonly refreshHud: () => void;
     readonly renderStageSoon: () => void;
