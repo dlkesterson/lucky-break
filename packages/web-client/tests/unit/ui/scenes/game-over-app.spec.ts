@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { fireEvent, within } from '@testing-library/dom';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import type { AchievementUnlock } from 'app/achievements';
 import type { GameOverUiSnapshot } from 'ui/state/game-over-bridge';
 
 interface GameOverUiStateLike {
@@ -42,7 +43,7 @@ const createSnapshot = (overrides: Partial<GameOverUiSnapshot> = {}): GameOverUi
     title: 'Game Over',
     prompt: 'Play Again',
     scoreLabel: 'Score 1,234',
-    achievements: [],
+    achievements: [] as AchievementUnlock[],
     dustAwarded: 0,
     onRestart: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -92,9 +93,21 @@ describe('GameOverApp', () => {
     });
 
     it('renders the game-over summary and achievements when active', async () => {
-        const achievements = [
-            { id: 'ace', title: 'Ace Pilot', description: 'Defeat the house.' },
-            { id: 'lucky', title: 'Lucky Break', description: 'Survive with 1 life.' },
+        const achievements: AchievementUnlock[] = [
+            {
+                id: 'combo-king',
+                title: 'Combo King',
+                description: 'Reach a combo of 8.',
+                upgrades: { bonusLives: 1, comboDecayMultiplier: 0.9 },
+                unlockedAt: 1_694_200_000,
+            },
+            {
+                id: 'brick-marathon',
+                title: 'Brick Marathon',
+                description: 'Break 1,000 bricks.',
+                upgrades: { bonusLives: 0, comboDecayMultiplier: 0.95 },
+                unlockedAt: 1_694_200_500,
+            },
         ];
 
         gameOverState = {

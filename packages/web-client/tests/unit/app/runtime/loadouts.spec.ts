@@ -78,6 +78,7 @@ describe('runtime loadouts', () => {
             'ivory-orb': 0xf0d9b5,
             'nebular-jelly': 0x7a6cff,
             'd20-diceform': 0xf4f1ff,
+            'stop-sign': 0xff2f2f,
             'crystal-probability': 0x5be4ff,
             'entropy-core': 0xff6b6b,
         };
