@@ -1,5 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { forwardRef, type ElementRef, type HTMLAttributes } from 'react';
+import { forwardRef, type ElementRef, type HTMLAttributes, type ReactNode } from 'react';
 
 import { cn } from '../lib/cn';
 
@@ -24,35 +24,38 @@ const DialogOverlay = forwardRef<
 ));
 DialogOverlay.displayName = 'DialogOverlay';
 
-interface DialogContentProps extends DialogPrimitive.DialogContentProps {
+interface DialogContentProps extends Omit<DialogPrimitive.DialogContentProps, 'className'> {
   readonly overlayClassName?: string;
+  readonly children?: ReactNode;
+  readonly className?: string;
 }
 
 const DialogContent = forwardRef<ElementRef<typeof DialogPrimitive.Content>, DialogContentProps>(
   ({ className, children, overlayClassName, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay className={overlayClassName} />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-full max-w-xl -translate-x-1/2 -translate-y-1/2 gap-6 rounded-3xl border border-white/10',
-        'bg-bg/95 p-6 shadow-[0_40px_120px_rgba(2,4,24,0.65)] backdrop-blur-xl',
-        'focus-visible:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
-        className="absolute right-4 top-4 rounded-full p-1 text-fg/60 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-combo"
-        aria-label="Close dialog"
+    <DialogPortal>
+      <DialogOverlay className={overlayClassName} />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          'fixed left-1/2 top-1/2 z-50 grid w-full max-w-xl -translate-x-1/2 -translate-y-1/2 gap-6 rounded-3xl border border-white/10',
+          'bg-bg/95 p-6 shadow-[0_40px_120px_rgba(2,4,24,0.65)] backdrop-blur-xl',
+          'focus-visible:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out',
+          'data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+          className,
+        )}
+        {...props}
       >
-        <span aria-hidden="true">&times;</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+        {children}
+        <DialogPrimitive.Close
+          className="absolute right-4 top-4 rounded-full p-1 text-fg/60 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-combo"
+          aria-label="Close dialog"
+        >
+          <span aria-hidden="true">&times;</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ),
+);
 DialogContent.displayName = 'DialogContent';
 
 const DialogHeader = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
@@ -93,8 +96,7 @@ const DialogDescription = forwardRef<
     {...props}
   />
 ));
-DialogDescription.displayName =
-  DialogPrimitive.Description.displayName ?? 'DialogDescription';
+DialogDescription.displayName = DialogPrimitive.Description.displayName ?? 'DialogDescription';
 
 export {
   Dialog,
