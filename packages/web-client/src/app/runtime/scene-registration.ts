@@ -13,6 +13,7 @@ import type { GameLoop } from '../loop';
 import type { GameSceneServices } from '../scene-services';
 import type { RuntimeInput } from './input';
 import type { LoadoutSelection } from 'config/loadouts';
+import type { LegendItem } from 'ui/scenes/PauseView';
 
 export interface SceneRegistrationDeps {
     readonly stage: StageHandle;
@@ -39,12 +40,13 @@ export interface SceneRegistrationResult {
     readonly quitToMenu: () => Promise<void>;
 }
 
-const pauseLegendLines = [
-    'Cyan Paddle Width - Widens your paddle for extra coverage.',
-    'Orange Ball Speed - Speeds up the ball and boosts scoring.',
-    'Pink Multi Ball - Splits the active ball into additional balls.',
-    'Green Sticky Paddle - Catches the ball until you launch again.',
-    'Shift + C toggles high-contrast color mode.',
+const pauseLegendItems: readonly LegendItem[] = [
+    { type: 'paddle-width', text: 'Cyan Paddle Width - Widens your paddle for extra coverage.' },
+    { type: 'ball-speed', text: 'Blue Ball Speed - Speeds up the ball and boosts scoring.' },
+    { type: 'multi-ball', text: 'Pink Multi Ball - Splits the active ball into additional balls.' },
+    { type: 'sticky-paddle', text: 'Teal Sticky Paddle - Catches the ball until you launch again.' },
+    { type: 'laser', text: 'Red Laser - Fire devastating beams to destroy bricks.' },
+    { text: 'Shift + C toggles high-contrast color mode.' },
 ] as const;
 
 const quitLabel = 'Tap here or press Q to quit to menu';
@@ -151,7 +153,7 @@ export const registerRuntimeScenes = async ({
         const payload = {
             score: getScore(),
             legendTitle: 'Power-Up Legend',
-            legendLines: pauseLegendLines,
+            legendItems: pauseLegendItems,
             onResume: () => {
                 resumeFromPause();
             },

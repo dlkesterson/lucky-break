@@ -2,7 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { CSSProperties } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { i18n } from '@lucky-break/web-client/src/i18n';
-import { PauseView, type PauseViewProps } from '@lucky-break/web-client/src/ui/scenes/PauseView';
+import {
+  PauseView,
+  type PauseViewProps,
+  type LegendItem,
+} from '@lucky-break/web-client/src/ui/scenes/PauseView';
 import type { HudEntropyActionDescriptor } from '@lucky-break/web-client/src/render/hud';
 import { DEFAULT_THEME, COLOR_BLIND_THEME } from '../../lib/themes';
 
@@ -82,11 +86,12 @@ const mockEntropyActions: HudEntropyActionDescriptor[] = [
   },
 ];
 
-const mockLegendLines = [
-  'Red Power-Up: Double points for 10 seconds',
-  'Blue Power-Up: Slow down time for 8 seconds',
-  'Green Power-Up: Expand paddle width for 12 seconds',
-  'Yellow Power-Up: Magnetic paddle attracts ball',
+const mockLegendItems: LegendItem[] = [
+  { type: 'paddle-width', text: 'Cyan Paddle Width - Widens your paddle for extra coverage.' },
+  { type: 'ball-speed', text: 'Blue Ball Speed - Speeds up the ball and boosts scoring.' },
+  { type: 'multi-ball', text: 'Pink Multi Ball - Splits the active ball into additional balls.' },
+  { type: 'sticky-paddle', text: 'Teal Sticky Paddle - Catches the ball until you launch again.' },
+  { type: 'laser', text: 'Red Laser - Fire devastating beams to destroy bricks.' },
 ];
 
 const overlayStyle: CSSProperties = {
@@ -145,7 +150,7 @@ const defaultProps: PauseViewProps = {
   coins: 1250,
   entropyActions: mockEntropyActions,
   legendTitle: 'Power-Up Guide',
-  legendLines: mockLegendLines,
+  legendItems: mockLegendItems,
   resumeLabel: 'Resume Game',
   quitLabel: 'Quit to Menu',
   pending: null,
@@ -351,7 +356,7 @@ export const MaxVolume: Story = {
 export const NoLegend: Story = {
   args: {
     ...defaultProps,
-    legendLines: [],
+    legendItems: [],
   },
 };
 
@@ -375,15 +380,21 @@ export const NoLegendTitle: Story = {
 export const LongLegend: Story = {
   args: {
     ...defaultProps,
-    legendLines: [
-      'Red Power-Up: Double points for 10 seconds',
-      'Blue Power-Up: Slow down time for 8 seconds',
-      'Green Power-Up: Expand paddle width for 12 seconds',
-      'Yellow Power-Up: Magnetic paddle attracts ball',
-      'Purple Power-Up: Triple score multiplier for 6 seconds',
-      'Orange Power-Up: Extra life granted immediately',
-      'Cyan Power-Up: Ball speed reduction for 15 seconds',
-      'Pink Power-Up: Temporary invincibility shield',
+    legendItems: [
+      { type: 'paddle-width', text: 'Cyan Paddle Width - Widens your paddle for extra coverage.' },
+      { type: 'ball-speed', text: 'Blue Ball Speed - Speeds up the ball and boosts scoring.' },
+      {
+        type: 'multi-ball',
+        text: 'Pink Multi Ball - Splits the active ball into additional balls.',
+      },
+      {
+        type: 'sticky-paddle',
+        text: 'Teal Sticky Paddle - Catches the ball until you launch again.',
+      },
+      { type: 'laser', text: 'Red Laser - Fire devastating beams to destroy bricks.' },
+      { text: 'Shift + C toggles high-contrast color mode.' },
+      { text: 'Collect coins to unlock entropy store actions.' },
+      { text: 'Build combos to increase score multipliers.' },
     ],
   },
 };
@@ -446,7 +457,7 @@ export const MinimalState: Story = {
     score: 0,
     coins: 0,
     entropyActions: [],
-    legendLines: [],
+    legendItems: [],
     legendTitle: null,
   },
 };

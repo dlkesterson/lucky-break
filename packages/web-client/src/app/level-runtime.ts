@@ -22,6 +22,7 @@ import {
     type LevelGenerationOptions,
 } from 'util/levels';
 import { mixColors } from 'render/playfield-visuals';
+import { drawPowerUpVisual } from 'render/powerup-visuals';
 import { createBrickTextureCache, type BrickTextureOverrides } from 'render/brick-texture-cache';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
@@ -867,17 +868,8 @@ export const createLevelRuntime = ({
         MatterBody.setVelocity(body, { x: 0, y: powerUp.fallSpeed });
         physics.add(body);
 
-        const colorMap: Record<PowerUpType, number> = {
-            'paddle-width': 0x00ffff,
-            'ball-speed': 0xffaa33,
-            'multi-ball': 0xff66cc,
-            'sticky-paddle': 0x66ff99,
-            laser: 0xff3366,
-        };
-
         const visual = new Graphics();
-        visual.circle(0, 0, powerUp.radius);
-        visual.fill({ color: colorMap[type], alpha: 0.9 });
+        drawPowerUpVisual(visual, type, powerUp.radius);
         visual.position.set(position.x, position.y);
         stage.addToLayer('effects', visual);
 
@@ -921,8 +913,30 @@ export const createLevelRuntime = ({
         physics.add(body);
 
         const visual = new Graphics();
-        visual.circle(0, 0, coin.radius);
-        visual.fill({ color: 0xf5c542, alpha: 0.92 });
+
+        // Draw shiny gold coin with depth
+        const radius = coin.radius;
+
+        // Outer rim shadow
+        visual.circle(0, 0, radius);
+        visual.fill({ color: 0xb8860b, alpha: 0.95 });
+
+        // Main coin face
+        const faceRadius = radius * 0.88;
+        visual.circle(0, 0, faceRadius);
+        visual.fill({ color: 0xffd700, alpha: 0.98 });
+
+        // Top highlight
+        visual.circle(0, -radius * 0.25, faceRadius * 0.7);
+        visual.fill({ color: 0xffeb3b, alpha: 0.45 });
+
+        // Edge highlight for 3D effect
+        visual.circle(0, 0, radius);
+        visual.stroke({ color: 0xffeb3b, width: 2, alpha: 0.6 });
+
+        visual.circle(0, 0, faceRadius);
+        visual.stroke({ color: 0xb8860b, width: 1.5, alpha: 0.5 });
+
         visual.position.set(options.position.x, options.position.y);
         visual.scale.set(1);
         stage.addToLayer('effects', visual);

@@ -66,6 +66,38 @@ vi.mock('pixi.js', () => {
             return this;
         }
 
+        clear(): this {
+            return this;
+        }
+
+        arc(): this {
+            return this;
+        }
+
+        rect(): this {
+            return this;
+        }
+
+        roundRect(): this {
+            return this;
+        }
+
+        moveTo(): this {
+            return this;
+        }
+
+        lineTo(): this {
+            return this;
+        }
+
+        closePath(): this {
+            return this;
+        }
+
+        ellipse(): this {
+            return this;
+        }
+
         destroy(): void {
             super.destroy();
         }

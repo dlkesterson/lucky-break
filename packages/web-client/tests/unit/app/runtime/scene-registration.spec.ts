@@ -238,14 +238,16 @@ describe('registerRuntimeScenes', () => {
         expect(context.renderStageSoon).toHaveBeenCalledTimes(1);
 
         const payload = context.stage.getLastPushPayload<{
-            legendLines: readonly string[];
+            legendItems: readonly { readonly type?: string; readonly text: string }[];
             onResume: () => void;
             onQuit: () => void;
         }>();
 
         expect(payload).toBeDefined();
-        expect(payload?.legendLines).toContain(
-            'Cyan Paddle Width - Widens your paddle for extra coverage.',
+        expect(payload?.legendItems).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'paddle-width' }),
+            ]),
         );
 
         payload?.onResume();

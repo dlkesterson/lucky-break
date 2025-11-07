@@ -364,7 +364,7 @@ describe('scene interaction lifecycles', () => {
         void scene.init({
             score: 42,
             legendTitle: 'Legend',
-            legendLines: ['A', 'B'],
+            legendItems: [{ text: 'A' }, { text: 'B' }],
             onResume: vi.fn(),
             onQuit: vi.fn(),
         });

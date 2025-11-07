@@ -1,10 +1,11 @@
 import { create } from 'zustand';
+import type { LegendItem } from 'ui/scenes/PauseView';
 
 export interface PauseUiSnapshot {
     readonly title: string;
     readonly score: number;
     readonly legendTitle: string | null;
-    readonly legendLines: readonly string[];
+    readonly legendItems: readonly LegendItem[];
     readonly resumeLabel: string;
     readonly quitLabel: string | null;
     readonly onResume: () => Promise<void>;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pauseUiBridge, usePauseUi } from 'ui/state/pause-bridge';
+import type { LegendItem } from 'ui/scenes/PauseView';
 
 const resetPauseState = () => {
     usePauseUi.setState({ visible: false, suspended: false, snapshot: null }, true);
@@ -18,7 +19,10 @@ describe('pauseUiBridge', () => {
             title: 'Paused',
             score: 12_345,
             legendTitle: 'Legend',
-            legendLines: ['Line one', 'Line two'],
+            legendItems: [
+                { text: 'Line one' },
+                { text: 'Line two' },
+            ],
             resumeLabel: 'Resume',
             quitLabel: 'Quit',
             onResume,
@@ -28,7 +32,7 @@ describe('pauseUiBridge', () => {
         const state = usePauseUi.getState();
         expect(state.visible).toBe(true);
         expect(state.suspended).toBe(false);
-        expect(state.snapshot?.legendLines).toHaveLength(2);
+        expect(state.snapshot?.legendItems).toHaveLength(2);
 
         await state.snapshot?.onResume();
         expect(onResume).toHaveBeenCalled();
@@ -41,17 +45,19 @@ describe('pauseUiBridge', () => {
     });
 
     it('suspends and resumes only when visible', () => {
+        const onResume = vi.fn().mockResolvedValue(undefined);
+
         pauseUiBridge.suspend();
         expect(usePauseUi.getState().suspended).toBe(false);
 
         pauseUiBridge.enter({
-            title: 'Paused',
+            title: 'Placeholder',
             score: 0,
             legendTitle: null,
-            legendLines: [],
-            resumeLabel: 'Resume',
+            legendItems: [],
+            resumeLabel: 'OK',
             quitLabel: null,
-            onResume: async () => { },
+            onResume,
             onQuit: null,
         });
 

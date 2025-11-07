@@ -26,7 +26,7 @@ export const PauseApp = (): JSX.Element | null => {
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const isActive = visible && !suspended && snapshot !== null;
-  const legendLines = snapshot?.legendLines ?? [];
+  const legendItems = snapshot?.legendItems ?? [];
 
   const resolveDialogContainer = useCallback(() => overlayRef.current?.ownerDocument ?? null, []);
   useStagePointerBlocker(isActive, resolveDialogContainer);
@@ -197,7 +197,7 @@ export const PauseApp = (): JSX.Element | null => {
       coins={coins}
       entropyActions={entropyActions}
       legendTitle={snapshot?.legendTitle ?? null}
-      legendLines={legendLines}
+      legendItems={legendItems}
       resumeLabel={resumeLabel}
       quitLabel={quitLabel}
       pending={pendingAction}

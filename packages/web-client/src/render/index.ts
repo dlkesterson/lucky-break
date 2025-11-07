@@ -26,3 +26,4 @@ export * from './hud';
 export * from './debug-overlay';
 export * from './visual-factory';
 export { GradientWaveFilter } from './filters/gradient-wave-filter';
+export { drawPowerUpVisual, getPowerUpColor } from './powerup-visuals';

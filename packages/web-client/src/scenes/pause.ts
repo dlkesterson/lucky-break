@@ -2,11 +2,12 @@ import type { Scene, SceneContext } from 'render/scene-manager';
 import type { GameSceneServices } from 'app/scene-services';
 import type { UiSceneTransitionAction } from 'app/events';
 import { pauseUiBridge } from 'ui/state/pause-bridge';
+import type { LegendItem } from 'ui/scenes/PauseView';
 
 export interface PauseScenePayload {
     readonly score: number;
     readonly legendTitle?: string;
-    readonly legendLines?: readonly string[];
+    readonly legendItems?: readonly LegendItem[];
     readonly onResume: () => void | Promise<void>;
     readonly onQuit?: () => void | Promise<void>;
 }
@@ -70,7 +71,7 @@ export const createPauseScene = (
                 title: options.title ?? DEFAULT_TITLE,
                 score: payload.score,
                 legendTitle: payload.legendTitle ?? null,
-                legendLines: payload.legendLines ?? [],
+                legendItems: payload.legendItems ?? [],
                 resumeLabel: options.resumeLabel ?? DEFAULT_RESUME_LABEL,
                 quitLabel: payload.onQuit ? options.quitLabel ?? DEFAULT_QUIT_LABEL : null,
                 onResume: resume,

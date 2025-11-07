@@ -360,7 +360,7 @@ export const gameConfig = {
             maxPerLevel: 3,
             timerSeconds: 3.5,
             rewardMultiplier: 4,
-            primeResetHp: 1,
+            primeResetHp: 2,
             failPenaltyHp: 3,
             tintArmed: '#4DD8A6',
             tintPrimed: '#FFD166',

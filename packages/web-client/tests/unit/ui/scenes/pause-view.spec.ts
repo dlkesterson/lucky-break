@@ -45,7 +45,10 @@ describe('PauseView', () => {
         coins: 100,
         entropyActions: [mockEntropyAction],
         legendTitle: 'Power-ups',
-        legendLines: ['Line 1', 'Line 2'],
+        legendItems: [
+            { type: 'paddle-width' as const, text: 'Line 1' },
+            { text: 'Line 2' },
+        ],
         resumeLabel: 'Resume',
         quitLabel: 'Quit',
         pending: null,
@@ -173,7 +176,7 @@ describe('PauseView', () => {
     });
 
     it('displays empty state when no legend lines', () => {
-        renderComponent({ ...defaultProps, legendLines: [], legendTitle: null });
+        renderComponent({ ...defaultProps, legendItems: [], legendTitle: null });
         expect(document.body.textContent).toContain('No legend entries yet');
     });
 

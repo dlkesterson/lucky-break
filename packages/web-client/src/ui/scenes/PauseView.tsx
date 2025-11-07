@@ -15,6 +15,12 @@ import {
 } from '@lucky-break/design-system';
 import type { GameThemeDefinition } from 'render/theme';
 import type { HudEntropyActionDescriptor } from 'render/hud';
+import type { PowerUpType } from 'util/power-ups';
+
+export interface LegendItem {
+  readonly type?: PowerUpType;
+  readonly text: string;
+}
 
 export interface PauseViewProps {
   readonly visible: boolean;
@@ -24,7 +30,7 @@ export interface PauseViewProps {
   readonly coins: number;
   readonly entropyActions: readonly HudEntropyActionDescriptor[];
   readonly legendTitle: string | null;
-  readonly legendLines: readonly string[];
+  readonly legendItems: readonly LegendItem[];
   readonly resumeLabel: string;
   readonly quitLabel: string | null;
   readonly pending: 'resume' | 'quit' | null;
@@ -76,6 +82,58 @@ export const formatEntropyDetail = (
 export const isEntropyActionAvailable = (descriptor: HudEntropyActionDescriptor): boolean =>
   descriptor.charges > 0 || descriptor.affordable;
 
+const PowerUpIcon = ({ type, size = 24 }: { type: PowerUpType; size?: number }): JSX.Element => {
+  const colors = {
+    'paddle-width': { bg: '#ffd700', icon: '#b8860b' },
+    'ball-speed': { bg: '#00d4ff', icon: '#ffff00' },
+    'multi-ball': { bg: '#9c27b0', icon: '#e91e63' },
+    'sticky-paddle': { bg: '#14b8a6', icon: '#ffffff' },
+    laser: { bg: '#ff1744', icon: '#ff8a80' },
+  };
+
+  const color = colors[type] || { bg: '#ffffff', icon: '#000000' };
+
+  return (
+    <div
+      className="inline-flex shrink-0 items-center justify-center rounded-full border-2"
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        backgroundColor: color.bg,
+        borderColor: color.icon,
+        boxShadow: `0 0 8px ${color.bg}40`,
+      }}
+      aria-hidden="true"
+    >
+      {type === 'paddle-width' && (
+        <span className="font-bold" style={{ color: color.icon, fontSize: `${size * 0.5}px` }}>
+          $
+        </span>
+      )}
+      {type === 'ball-speed' && (
+        <span className="font-bold" style={{ color: color.icon, fontSize: `${size * 0.6}px` }}>
+          ⚡
+        </span>
+      )}
+      {type === 'multi-ball' && (
+        <span className="font-bold" style={{ color: color.icon, fontSize: `${size * 0.5}px` }}>
+          ∞
+        </span>
+      )}
+      {type === 'sticky-paddle' && (
+        <span className="font-bold" style={{ color: color.icon, fontSize: `${size * 0.5}px` }}>
+          ●
+        </span>
+      )}
+      {type === 'laser' && (
+        <span className="font-bold" style={{ color: color.icon, fontSize: `${size * 0.6}px` }}>
+          ◆
+        </span>
+      )}
+    </div>
+  );
+};
+
 export const PauseView = ({
   visible,
   title,
@@ -84,7 +142,7 @@ export const PauseView = ({
   coins,
   entropyActions,
   legendTitle,
-  legendLines,
+  legendItems,
   resumeLabel,
   quitLabel,
   pending,
@@ -114,7 +172,7 @@ export const PauseView = ({
 
   return (
     <div ref={overlayRef} style={overlayStyle}>
-      <Dialog open={visible} onOpenChange={(open: boolean) => !open && onResume()}>
+      <Dialog open={visible}>
         <DialogContent
           className="max-h-[90vh] w-full max-w-[640px] overflow-y-auto rounded-[32px] border border-white/10 bg-gradient-to-br from-[rgba(24,18,44,0.92)] to-[rgba(16,10,32,0.82)] px-6 py-8 text-[color:var(--pause-text-primary,#fdf8ff)] shadow-[0_36px_90px_rgba(4,3,16,0.6)] backdrop-blur-2xl sm:px-10 sm:py-10"
           overlayClassName="bg-[radial-gradient(circle_at_18%_22%,rgba(107,173,255,0.18),transparent_54%),radial-gradient(circle_at_82%_78%,rgba(255,186,120,0.18),transparent_52%),linear-gradient(160deg,rgba(14,10,36,0.88),rgba(10,6,24,0.76))]"
@@ -257,10 +315,16 @@ export const PauseView = ({
                   {legendTitle}
                 </Heading>
               ) : null}
-              {legendLines.length > 0 ? (
-                <ul className="list-disc space-y-2 pl-5 text-sm text-[color:var(--pause-text-primary,#fdf8ff)]">
-                  {legendLines.map((line, index) => (
-                    <li key={`legend-line-${index}`}>{line}</li>
+              {legendItems.length > 0 ? (
+                <ul className="flex flex-col gap-3">
+                  {legendItems.map((item, index) => (
+                    <li
+                      key={`legend-item-${index}`}
+                      className="flex items-start gap-3 text-sm text-[color:var(--pause-text-primary,#fdf8ff)]"
+                    >
+                      {item.type && <PowerUpIcon type={item.type} size={28} />}
+                      <span className="flex-1 pt-0.5">{item.text}</span>
+                    </li>
                   ))}
                 </ul>
               ) : (
