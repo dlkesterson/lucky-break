@@ -1,0 +1,30 @@
+import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
+
+const trimTrailingZeros = (value: string): string =>
+    value.replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
+
+export const formatNumber = (value: number): string => value.toLocaleString();
+
+export const formatSignedDelta = (value: number, decimals = 2): string => {
+    if (!Number.isFinite(value)) {
+        return '+/-0';
+    }
+    const threshold = 10 ** -decimals;
+    if (Math.abs(value) < threshold) {
+        return '+/-0';
+    }
+    const formatted = trimTrailingZeros(Math.abs(value).toFixed(decimals));
+    return value > 0 ? `+${formatted}` : `-${formatted}`;
+};
+
+export const formatGravityBias = (session: BiasPhaseSessionSummary): string => {
+    const value = trimTrailingZeros(session.gravity.toFixed(2));
+    const delta = formatSignedDelta(session.gravityDelta, 2);
+    return `${value}g (${delta})`;
+};
+
+export const formatSpeedBias = (session: BiasPhaseSessionSummary): string => {
+    const value = trimTrailingZeros(session.speedGovernor.toFixed(2));
+    const delta = formatSignedDelta(session.speedDelta, 2);
+    return `${value}x (${delta})`;
+};
