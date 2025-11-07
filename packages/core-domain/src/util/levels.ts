@@ -43,6 +43,7 @@ export interface LevelGenerationOptions {
     readonly centerFortifiedBias?: number;
     readonly gambleChance?: number;
     readonly maxGambleBricks?: number;
+    readonly wallDensity?: number;
     readonly decorateBrick?: (context: BrickDecorationContext) => BrickDecorationResult | void;
 }
 
@@ -237,6 +238,7 @@ export function generateLevelLayout(
         centerFortifiedBias = 0,
         gambleChance = 0,
         maxGambleBricks = Number.POSITIVE_INFINITY,
+        wallDensity = 1,
         decorateBrick,
     } = options;
 
@@ -257,6 +259,48 @@ export function generateLevelLayout(
         if (index >= 0) {
             list.splice(index, 1);
         }
+    };
+
+    const applyWallDensity = (planned: Set<number>, density: number, rng: RandomSource | undefined): Set<number> => {
+        if (planned.size === 0) {
+            return planned;
+        }
+        const normalized = clampUnit(Number.isFinite(density) ? density : 1);
+        if (normalized >= 0.999) {
+            return planned;
+        }
+        if (normalized <= 0) {
+            return new Set<number>();
+        }
+        const plannedList = [...planned];
+        const targetCount = Math.max(0, Math.min(plannedList.length, Math.round(plannedList.length * normalized)));
+        if (targetCount >= plannedList.length) {
+            return planned;
+        }
+        if (targetCount <= 0) {
+            return new Set<number>();
+        }
+        const picked = new Set<number>();
+        if (rng) {
+            const pool = [...plannedList];
+            while (picked.size < targetCount && pool.length > 0) {
+                const slot = pickFromList(pool, rng);
+                if (slot === null) {
+                    break;
+                }
+                picked.add(slot);
+            }
+            return picked;
+        }
+        const step = plannedList.length / targetCount;
+        for (let index = 0; index < targetCount; index++) {
+            const slotPosition = Math.min(plannedList.length - 1, Math.round(index * step));
+            const slot = plannedList[slotPosition];
+            if (slot !== undefined) {
+                picked.add(slot);
+            }
+        }
+        return picked;
     };
 
     // Distribute non-breakable wall columns away from the edges to keep layouts open.
@@ -317,7 +361,7 @@ export function generateLevelLayout(
             remaining -= 1;
         }
 
-        return planned;
+        return applyWallDensity(planned, wallDensity, rng);
     };
 
     if (fieldWidth <= 0 || brickWidth <= 0) {
@@ -588,6 +632,61 @@ export function getLevelDifficultyMultiplier(levelIndex: number): number {
     const loopCount = Math.floor(levelIndex / LEVEL_PRESETS.length);
     const scaling = getLoopScalingInfo(loopCount);
     return scaling.speedMultiplier;
+}
+
+export function remapHpResolverForRowCount(
+    hpResolver: LevelSpec['hpPerRow'],
+    originalRowCount: number,
+    targetRowCount: number,
+): LevelSpec['hpPerRow'] {
+    if (!hpResolver) {
+        return undefined;
+    }
+    if (originalRowCount <= 0) {
+        return () => 1;
+    }
+    const maxOriginalIndex = Math.max(0, originalRowCount - 1);
+    if (targetRowCount <= 1) {
+        return (row: number) => hpResolver(Math.max(0, Math.min(maxOriginalIndex, row)));
+    }
+    const maxTargetIndex = Math.max(0, targetRowCount - 1);
+    return (row: number) => {
+        if (maxTargetIndex <= 0) {
+            return hpResolver(0);
+        }
+        const clampedRow = Math.max(0, Math.min(maxTargetIndex, row));
+        const ratio = clampedRow / maxTargetIndex;
+        const mapped = Math.round(ratio * maxOriginalIndex);
+        return hpResolver(Math.max(0, Math.min(maxOriginalIndex, mapped)));
+    };
+}
+
+export function shapeFirstLoopSpec(spec: LevelSpec, progress: number): LevelSpec {
+    const normalized = clampValue(progress, 0, 1);
+    if (normalized >= 0.999) {
+        return spec;
+    }
+    const baseResolver = spec.hpPerRow ?? (() => 1);
+    const easedResolver =
+        normalized <= 0
+            ? () => 1
+            : (row: number) => {
+                  const base = Math.max(1, Math.round(baseResolver(row)));
+                  const eased = 1 + (base - 1) * normalized;
+                  return Math.max(1, Math.round(eased));
+              };
+    const rowFactor = 0.55 + 0.45 * normalized;
+    const colFactor = 0.6 + 0.4 * normalized;
+    const targetRows = Math.max(1, Math.round(spec.rows * rowFactor));
+    const targetCols = Math.max(1, Math.round(spec.cols * colFactor));
+    const hpPerRow =
+        targetRows !== spec.rows ? remapHpResolverForRowCount(easedResolver, spec.rows, targetRows) : easedResolver;
+    return {
+        ...spec,
+        rows: targetRows,
+        cols: targetCols,
+        hpPerRow,
+    };
 }
 
 const clampHp = (value: number): number => Math.max(1, Math.round(value));

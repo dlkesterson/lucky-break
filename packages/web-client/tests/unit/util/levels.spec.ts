@@ -14,6 +14,7 @@ import {
     MAX_LEVEL_BRICK_HP,
     generateTransformingLayouts,
     getLevelTransformPlan,
+    shapeFirstLoopSpec,
 } from 'util/levels';
 import { mulberry32 } from 'util/random';
 
@@ -392,6 +393,51 @@ describe('generateLevelLayout', () => {
 
         expect(layout.breakableCount).toBe(3);
         expect(layout.bricks.some((brick) => brick.traits?.includes('gamble'))).toBe(false);
+    });
+
+    it('reduces wall bricks when density is lowered', () => {
+        const config = gameConfig;
+        const spec = { rows: 4, cols: 10 };
+        const denseLayout = generateLevelLayout(
+            spec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            { wallDensity: 1 },
+        );
+        const sparseLayout = generateLevelLayout(
+            spec,
+            config.bricks.size.width,
+            config.bricks.size.height,
+            config.playfield.width,
+            { wallDensity: 0.1 },
+        );
+        const denseWalls = denseLayout.bricks.filter((brick) => brick.breakable === false).length;
+        const sparseWalls = sparseLayout.bricks.filter((brick) => brick.breakable === false).length;
+        expect(sparseWalls).toBeLessThanOrEqual(denseWalls);
+    });
+});
+
+describe('shapeFirstLoopSpec', () => {
+    it('trims rows and hit points for very low progress', () => {
+        const spec = {
+            rows: 6,
+            cols: 8,
+            hpPerRow: (row: number) => (row >= 4 ? 3 : 2),
+        };
+        const shaped = shapeFirstLoopSpec(spec, 0.2);
+        expect(shaped.rows).toBeLessThan(spec.rows);
+        expect(shaped.cols).toBeLessThan(spec.cols);
+        expect(shaped.hpPerRow?.(5)).toBe(1);
+    });
+
+    it('returns the original spec when progress is complete', () => {
+        const spec = {
+            rows: 5,
+            cols: 9,
+            hpPerRow: (row: number) => row + 1,
+        };
+        expect(shapeFirstLoopSpec(spec, 1)).toBe(spec);
     });
 });
 

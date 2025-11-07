@@ -12,6 +12,8 @@ import {
     getLevelDifficultyMultiplier,
     remixLevel,
     getLoopScalingInfo,
+    shapeFirstLoopSpec,
+    remapHpResolverForRowCount,
     MAX_LEVEL_BRICK_HP,
     type BrickSpec,
     type BrickForm,
@@ -403,28 +405,16 @@ export const createLevelRuntime = ({
 
     const orientation = layoutOrientation ?? 'landscape';
 
-    const remapHpForSwappedRows = (
-        hpResolver: LevelSpec['hpPerRow'],
-        originalRowCount: number,
-        targetRowCount: number,
-    ): LevelSpec['hpPerRow'] => {
-        if (!hpResolver) {
-            return undefined;
+    const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+
+    const resolveLoopProgress = (levelIndex: number): number => {
+        if (presetLevelCount <= 1) {
+            return 1;
         }
-        if (originalRowCount <= 0) {
-            return () => 1;
-        }
-        const resolver = hpResolver;
-        const maxOriginalIndex = Math.max(0, originalRowCount - 1);
-        if (targetRowCount <= 1) {
-            return (row: number) => resolver(Math.min(maxOriginalIndex, row));
-        }
-        return (row: number) => {
-            const clampedRow = Math.max(0, Math.min(targetRowCount - 1, row));
-            const ratio = clampedRow / (targetRowCount - 1);
-            const mapped = Math.round(ratio * maxOriginalIndex);
-            return resolver(Math.max(0, Math.min(maxOriginalIndex, mapped)));
-        };
+        const loopSize = Math.max(1, presetLevelCount);
+        const loopPosition = ((levelIndex % loopSize) + loopSize) % loopSize;
+        const denominator = Math.max(1, loopSize - 1);
+        return clampUnit(loopPosition / denominator);
     };
 
     const toOrientationSpec = (spec: LevelSpec): LevelSpec => {
@@ -436,7 +426,7 @@ export const createLevelRuntime = ({
         }
         const swappedRows = spec.cols;
         const swappedCols = spec.rows;
-        const hpPerRow = remapHpForSwappedRows(spec.hpPerRow, spec.rows, swappedRows);
+        const hpPerRow = remapHpResolverForRowCount(spec.hpPerRow, spec.rows, swappedRows);
         return {
             ...spec,
             rows: swappedRows,
@@ -454,11 +444,10 @@ export const createLevelRuntime = ({
 
         let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
         const loopCount = Math.floor(levelIndex / presetLevelCount);
+        const loopProgress = resolveLoopProgress(levelIndex);
+        const firstLoopProgress = loopCount === 0 ? loopProgress : 1;
         if (loopCount === 0) {
-            baseSpec = {
-                ...baseSpec,
-                hpPerRow: () => 1,
-            };
+            baseSpec = shapeFirstLoopSpec(baseSpec, firstLoopProgress);
         }
         const effectiveSpec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
         const scaling = getLoopScalingInfo(loopCount);
@@ -468,12 +457,24 @@ export const createLevelRuntime = ({
             Math.max(0, levelConfig.gamble.baseChance + loopCount * levelConfig.gamble.loopBonus),
         );
         const maxGambleBricks = Math.max(0, Math.round(levelConfig.gamble.maxPerLevel));
+        const easedFortifiedChance =
+            loopCount === 0 ? scaling.fortifiedChance * firstLoopProgress : scaling.fortifiedChance;
+        const easedVoidColumnChance =
+            loopCount === 0 ? scaling.voidColumnChance * firstLoopProgress : scaling.voidColumnChance;
+        const easedCenterBias =
+            loopCount === 0 ? scaling.centerFortifiedBias * firstLoopProgress : scaling.centerFortifiedBias;
+        const easedMaxVoidColumns =
+            loopCount === 0 ? Math.max(0, Math.round(scaling.maxVoidColumns * firstLoopProgress)) : scaling.maxVoidColumns;
+        const wallDensity =
+            loopCount === 0 ? 0.2 + 0.8 * Math.pow(firstLoopProgress, 1.35) : 1;
+
         const layout = generateLevelLayout(effectiveSpec, brickSize.width, brickSize.height, playfieldWidth, {
             random: layoutRandom,
-            fortifiedChance: loopCount === 0 ? 0 : scaling.fortifiedChance,
-            voidColumnChance: scaling.voidColumnChance,
-            centerFortifiedBias: scaling.centerFortifiedBias,
-            maxVoidColumns: scaling.maxVoidColumns,
+            fortifiedChance: clampUnit(easedFortifiedChance),
+            voidColumnChance: clampUnit(easedVoidColumnChance),
+            centerFortifiedBias: Math.max(0, easedCenterBias),
+            maxVoidColumns: Math.max(0, easedMaxVoidColumns),
+            wallDensity: clampUnit(wallDensity),
             gambleChance,
             maxGambleBricks,
             decorateBrick,
@@ -569,7 +570,8 @@ export const createLevelRuntime = ({
         if (layout.breakableCount > 0 && Number.isFinite(minX) && Number.isFinite(maxX) && Number.isFinite(minY) && Number.isFinite(maxY)) {
             const layoutWidth = Math.max(0, maxX - minX);
             const layoutHeight = Math.max(0, maxY - minY);
-            const shouldSpawnGravityWell = loopCount >= 1 && (layoutWidth > 0 || layoutHeight > 0);
+            const hazardDifficultyScore = loopCount + loopProgress;
+            const shouldSpawnGravityWell = hazardDifficultyScore >= 0.6 && (layoutWidth > 0 || layoutHeight > 0);
 
             if (shouldSpawnGravityWell) {
                 const centerX = (minX + maxX) / 2;
@@ -622,7 +624,7 @@ export const createLevelRuntime = ({
                 hazardSummaries.push(descriptor);
             }
 
-            const shouldSpawnMovingBumper = loopCount >= 2 && layoutWidth > 120;
+            const shouldSpawnMovingBumper = hazardDifficultyScore >= 2.1 && layoutWidth > 120;
             if (shouldSpawnMovingBumper) {
                 const bumperRadius = Math.max(brickSize.width, brickSize.height) * 0.6;
                 const bumperPadding = Math.max(bumperRadius + 24, brickSize.width * 0.75);
@@ -685,7 +687,7 @@ export const createLevelRuntime = ({
                 }
             }
 
-            const shouldSpawnPortal = loopCount >= 3 && layoutWidth > 100 && layoutHeight > 80;
+            const shouldSpawnPortal = hazardDifficultyScore >= 3.35 && layoutWidth > 100 && layoutHeight > 80;
             if (shouldSpawnPortal) {
                 const portalRadius = Math.max(brickSize.width, brickSize.height) * 0.8;
                 const centerX = (minX + maxX) / 2;

@@ -10,7 +10,14 @@ import {
     type HazardType,
 } from 'physics/hazards';
 import { gameConfig } from 'config/game';
-import { getLevelSpec, getLoopScalingInfo, getPresetLevelCount, remixLevel, generateLevelLayout } from 'util/levels';
+import {
+    getLevelSpec,
+    getLoopScalingInfo,
+    getPresetLevelCount,
+    remixLevel,
+    generateLevelLayout,
+    shapeFirstLoopSpec,
+} from 'util/levels';
 import { createRandomManager, type RandomManager } from 'util/random';
 import { awardBrickPoints, createScoring, decayCombo, getMomentumMetrics, resetCombo } from 'util/scoring';
 import { reflectOffPaddle } from 'util/paddle-reflection';
@@ -32,6 +39,15 @@ const STEP_MS = 1000 / 120;
 const STEP_SECONDS = STEP_MS / 1000;
 const AUTO_LAUNCH_DELAY = 0.45;
 const MIN_VERTICAL_SPEED = 2.5;
+const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+const resolveLoopProgress = (levelIndex: number, presetCount: number): number => {
+    if (presetCount <= 1) {
+        return 1;
+    }
+    const normalized = ((levelIndex % presetCount) + presetCount) % presetCount;
+    const denominator = Math.max(1, presetCount - 1);
+    return clampUnit(normalized / denominator);
+};
 
 interface BrickState {
     readonly body: PhysicsBody;
@@ -217,9 +233,23 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
     const levelIndex = Math.max(0, round - 1);
     const presetCount = getPresetLevelCount();
     const loopCount = Math.floor(levelIndex / presetCount);
-    const baseSpec = getLevelSpec(levelIndex);
+    const loopProgress = resolveLoopProgress(levelIndex, presetCount);
+    const firstLoopProgress = loopCount === 0 ? loopProgress : 1;
+    let baseSpec = getLevelSpec(levelIndex);
+    if (loopCount === 0) {
+        baseSpec = shapeFirstLoopSpec(baseSpec, firstLoopProgress);
+    }
     const spec = loopCount > 0 ? remixLevel(baseSpec, loopCount) : baseSpec;
     const scaling = getLoopScalingInfo(loopCount);
+    const easedFortifiedChance =
+        loopCount === 0 ? scaling.fortifiedChance * firstLoopProgress : scaling.fortifiedChance;
+    const easedVoidColumnChance =
+        loopCount === 0 ? scaling.voidColumnChance * firstLoopProgress : scaling.voidColumnChance;
+    const easedCenterBias =
+        loopCount === 0 ? scaling.centerFortifiedBias * firstLoopProgress : scaling.centerFortifiedBias;
+    const easedMaxVoidColumns =
+        loopCount === 0 ? Math.max(0, Math.round(scaling.maxVoidColumns * firstLoopProgress)) : scaling.maxVoidColumns;
+    const wallDensity = loopCount === 0 ? 0.2 + 0.8 * Math.pow(firstLoopProgress, 1.35) : 1;
     const layout = generateLevelLayout(
         spec,
         config.bricks.size.width,
@@ -227,10 +257,11 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
         PLAYFIELD_WIDTH,
         {
             random: random.random,
-            fortifiedChance: scaling.fortifiedChance,
-            voidColumnChance: scaling.voidColumnChance,
-            centerFortifiedBias: scaling.centerFortifiedBias,
-            maxVoidColumns: scaling.maxVoidColumns,
+            fortifiedChance: clampUnit(easedFortifiedChance),
+            voidColumnChance: clampUnit(easedVoidColumnChance),
+            centerFortifiedBias: Math.max(0, easedCenterBias),
+            maxVoidColumns: Math.max(0, easedMaxVoidColumns),
+            wallDensity: clampUnit(wallDensity),
         },
     );
 
@@ -290,7 +321,9 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
         const layoutWidth = Math.max(0, maxX - minX);
         const layoutHeight = Math.max(0, maxY - minY);
 
-        if (loopCount >= 1 && (layoutWidth > 0 || layoutHeight > 0)) {
+        const hazardDifficultyScore = loopCount + loopProgress;
+
+        if (hazardDifficultyScore >= 0.6 && (layoutWidth > 0 || layoutHeight > 0)) {
             const centerX = (minX + maxX) / 2;
             const centerY = (minY + maxY) / 2;
             const baseRadius = Math.max(layoutWidth, layoutHeight) * 0.35;
@@ -320,7 +353,7 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
             );
         }
 
-        if (loopCount >= 2 && layoutWidth > 120) {
+        if (hazardDifficultyScore >= 2.1 && layoutWidth > 120) {
             const bumperRadius = Math.max(brickWidth, brickHeight) * 0.6;
             const bumperPadding = Math.max(bumperRadius + 24, brickWidth * 0.75);
             const travelStartX = minX + bumperPadding;
@@ -361,7 +394,7 @@ const setupBricks = (physics: PhysicsWorldHandle, random: RandomManager, round: 
             }
         }
 
-        if (loopCount >= 3 && layoutWidth > 100 && layoutHeight > 80) {
+        if (hazardDifficultyScore >= 3.35 && layoutWidth > 100 && layoutHeight > 80) {
             const portalRadius = Math.max(brickWidth, brickHeight) * 0.8;
             const centerX = (minX + maxX) / 2;
             const entryY = Math.min(maxY - portalRadius, minY + layoutHeight * 0.4);

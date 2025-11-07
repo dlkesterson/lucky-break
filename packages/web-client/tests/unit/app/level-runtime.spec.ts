@@ -169,15 +169,19 @@ const levelMocks = vi.hoisted(() => ({
     }),
 }));
 
-vi.mock('util/levels', () => ({
-    generateLevelLayout: levelMocks.generateLevelLayoutMock,
-    getLevelSpec: levelMocks.getLevelSpecMock,
-    getPresetLevelCount: levelMocks.getPresetLevelCountMock,
-    getLevelDifficultyMultiplier: levelMocks.getLevelDifficultyMultiplierMock,
-    getLoopScalingInfo: levelMocks.getLoopScalingInfoMock,
-    remixLevel: levelMocks.remixLevelMock,
-    MAX_LEVEL_BRICK_HP: 3,
-}));
+vi.mock('util/levels', async () => {
+    const actual = await vi.importActual<typeof import('util/levels')>('util/levels');
+    return {
+        ...actual,
+        generateLevelLayout: levelMocks.generateLevelLayoutMock,
+        getLevelSpec: levelMocks.getLevelSpecMock,
+        getPresetLevelCount: levelMocks.getPresetLevelCountMock,
+        getLevelDifficultyMultiplier: levelMocks.getLevelDifficultyMultiplierMock,
+        getLoopScalingInfo: levelMocks.getLoopScalingInfoMock,
+        remixLevel: levelMocks.remixLevelMock,
+        MAX_LEVEL_BRICK_HP: 3,
+    };
+});
 
 const {
     generateLevelLayoutMock,
@@ -551,7 +555,7 @@ describe('createLevelRuntime', () => {
         } satisfies TestLayout;
 
         const baseline = createRuntime({ layout, presetCount: 5 });
-        baseline.runtime.loadLevel(15);
+        baseline.runtime.loadLevel(17);
         expect(baseline.physics.addHazard).toHaveBeenCalledTimes(3);
         const [baseGravityCall, baseBumperCall, basePortalCall] = baseline.physics.addHazard.mock.calls;
         const baseGravity = baseGravityCall[0];
@@ -560,7 +564,7 @@ describe('createLevelRuntime', () => {
 
         const boosted = createRuntime({ layout, presetCount: 5 });
         boosted.runtime.setHazardIntensityMultiplier(1.6);
-        boosted.runtime.loadLevel(15);
+        boosted.runtime.loadLevel(17);
         expect(boosted.physics.addHazard).toHaveBeenCalledTimes(3);
         const [boostGravityCall, boostBumperCall, boostPortalCall] = boosted.physics.addHazard.mock.calls;
         const boostGravity = boostGravityCall[0];
