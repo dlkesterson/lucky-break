@@ -9,7 +9,7 @@ import {
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
-import type { EntropyActionType, RewardEntropyAction } from 'app/events';
+import type { RewardEntropyAction } from 'app/events';
 import type { AchievementUnlock } from '../achievements';
 import { gameConfig, type GameConfig } from 'config/game';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';

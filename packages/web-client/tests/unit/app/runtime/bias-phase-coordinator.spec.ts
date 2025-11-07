@@ -393,7 +393,7 @@ describe('createBiasPhaseCoordinator', () => {
             spendStoredEntropy,
         });
 
-        await coordinator.present();
+    coordinator.present();
 
         expect(stageHarness.push).toHaveBeenCalledWith(
             'bias-phase',
@@ -480,11 +480,11 @@ describe('createBiasPhaseCoordinator', () => {
             spendStoredEntropy,
         });
 
-        await coordinator.present();
+        coordinator.present();
 
         const automation = coordinator.getAutomation();
         expect(automation).not.toBeNull();
-        await automation!.skip();
+        automation!.skip();
 
         expect(stageHarness.pop).toHaveBeenCalled();
         expect(roundMachineHarness.incrementLevelIndex).toHaveBeenCalled();

@@ -209,10 +209,10 @@ export const createBiasPhaseCoordinator = ({
     const resolveStoredEntropy = (): number => {
         const snapshot = getSessionSnapshot();
         const stored = snapshot.entropy?.stored;
-        if (!Number.isFinite(stored)) {
+        if (typeof stored !== 'number' || !Number.isFinite(stored)) {
             return 0;
         }
-        return Math.max(0, stored as number);
+        return Math.max(0, stored);
     };
 
     const mapBiasOptionToScene = (option: BiasPhaseOption, affordable: boolean): BiasPhaseSceneOption => ({
@@ -524,16 +524,16 @@ export const createBiasPhaseCoordinator = ({
         const payload: BiasPhasePayload = {
             session: sessionWithStored,
             options: options.map((option) => mapBiasOptionToScene(option, storedEntropy >= option.wager.cost)),
-            onSelect: async (optionId: string) => {
+            onSelect: (optionId: string) => {
                 handleSelection(optionId);
             },
             onSkip: handleSkip,
         };
 
         automation = {
-            select: async (optionId: string) => {
+            select: (optionId: string) => Promise.resolve().then(() => {
                 handleSelection(optionId);
-            },
+            }),
             skip: () => {
                 handleSkip();
             },

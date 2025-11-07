@@ -1,4 +1,4 @@
-import type { EntropyActionType, LuckyBreakEventBus, RewardEntropyAction } from 'app/events';
+import type { LuckyBreakEventBus, RewardEntropyAction } from 'app/events';
 import type { GameConfig } from 'config/game';
 import type { Reward, RewardOverride, RewardType } from 'game/rewards';
 import type { HudEntropyActionDescriptor } from 'render/hud';

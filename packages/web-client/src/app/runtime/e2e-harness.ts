@@ -227,7 +227,7 @@ export const registerE2EHarnessControls = ({
         if (!automation) {
             return false;
         }
-        automation.select(optionId);
+        void automation.select(optionId);
         return true;
     };
     controls.skipBiasPhase = () => {
