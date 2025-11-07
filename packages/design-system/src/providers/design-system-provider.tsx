@@ -32,5 +32,5 @@ export const DesignSystemProvider = ({
 
   const Comp = asChild ? Slot : 'div';
 
-  return <Comp className={cn('contents font-sans text-foreground', className)}>{children}</Comp>;
+  return <Comp className={cn('contents font-body text-foreground', className)}>{children}</Comp>;
 };

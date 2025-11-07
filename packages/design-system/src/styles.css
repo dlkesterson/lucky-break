@@ -1,32 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Overpass:ital,wght@0,400;0,600;0,800;1,400&family=Overpass+Mono:wght@400;600&display=swap');
+
 :root {
   color-scheme: dark;
-  --background: 229 48% 6%;
-  --foreground: 217 33% 90%;
-  --muted: 215 21% 18%;
+
+  /* Font stacks */
+  --font-display: 'Luckiest Guy', system-ui, sans-serif;
+  --font-body: 'Overpass', system-ui, sans-serif;
+  --font-mono: 'Overpass Mono', ui-monospace, monospace;
+  --font-ui: var(--font-body);
+
+  /* Core palette */
+  --accent-combo: #ff4dc4;
+  --accent-powerup: #00ff9d;
+  --accent-bloom: #fffa88;
+  --background: 240 51% 8%;
+  --foreground: 240 100% 97%;
+  --muted: 215 16% 47%;
+
+  /* Legacy tokens (shadcn baseline) */
   --muted-foreground: 215 20% 81%;
-  --accent: 26 96% 60%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 320 100% 65%;
+  --accent-foreground: 240 51% 8%;
   --destructive: 0 84% 62%;
   --destructive-foreground: 210 40% 98%;
-  --card: 228 39% 10%;
+  --card: 229 39% 10%;
   --card-foreground: 213 31% 91%;
   --border: 218 23% 22%;
   --input: 218 23% 22%;
-  --ring: 25 96% 62%;
-  --primary: 25 96% 62%;
-  --primary-foreground: 210 40% 98%;
+  --ring: 320 100% 65%;
+  --primary: 320 100% 65%;
+  --primary-foreground: 240 51% 8%;
   --secondary: 217 33% 15%;
   --secondary-foreground: 210 40% 98%;
   --radius: 0.75rem;
-  --font-ui: 'Overpass';
-  --font-display: 'Luckiest Guy';
-  --font-mono: 'Overpass Mono';
 }
 
 html.lb-design-root {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: var(--font-ui, 'Overpass'), system-ui, sans-serif;
+  font-family: var(--font-body, 'Overpass'), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

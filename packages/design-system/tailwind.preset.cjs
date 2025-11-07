@@ -1,5 +1,4 @@
-/** @type {import('tailwindcss').Config} */
-const preset = {
+const baseConfig = {
   darkMode: ['class'],
   content: [],
   theme: {
@@ -41,6 +40,12 @@ const preset = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        combo: 'var(--accent-combo)',
+        powerup: 'var(--accent-powerup)',
+        bloom: 'var(--accent-bloom)',
+        bg: 'var(--background)',
+        fg: 'var(--foreground)',
+        mutedTone: 'var(--muted)',
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -56,24 +61,30 @@ const preset = {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        glow: {
+          '0%, 100%': { filter: 'brightness(1)' },
+          '50%': { filter: 'brightness(1.4)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
+        glow: 'glow 1.5s ease-in-out infinite alternate',
       },
       fontFamily: {
-        sans: [
-          "var(--font-ui, 'Overpass')",
+        display: [
+          "var(--font-display, 'Luckiest Guy')",
+          "var(--font-body, 'Overpass')",
+          'system-ui',
+          'sans-serif',
+        ],
+        body: [
+          "var(--font-body, 'Overpass')",
           'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
           "'Segoe UI'",
-          'sans-serif',
-        ],
-        display: [
-          "var(--font-display, 'Luckiest Guy')",
-          "var(--font-ui, 'Overpass')",
-          'system-ui',
           'sans-serif',
         ],
         mono: [
@@ -82,6 +93,14 @@ const preset = {
           'SFMono-Regular',
           'Menlo',
           'monospace',
+        ],
+        sans: [
+          "var(--font-body, 'Overpass')",
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          "'Segoe UI'",
+          'sans-serif',
         ],
       },
       boxShadow: {
@@ -93,4 +112,20 @@ const preset = {
   plugins: [require('tailwindcss-animate')],
 };
 
-module.exports = preset;
+const mergeTheme = (overrideTheme = {}) => ({
+  ...baseConfig.theme,
+  ...overrideTheme,
+  extend: {
+    ...(baseConfig.theme?.extend ?? {}),
+    ...(overrideTheme.extend ?? {}),
+  },
+});
+
+module.exports = (overrides = {}) => {
+  const { theme: overrideTheme = {}, ...rest } = overrides ?? {};
+  return {
+    ...baseConfig,
+    ...rest,
+    theme: mergeTheme(overrideTheme),
+  };
+};
