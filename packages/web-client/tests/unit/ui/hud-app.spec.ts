@@ -43,6 +43,7 @@ describe('HudApp', () => {
         },
         updateSettings: undefined,
         flavor: null,
+        physics: null,
         ...overrides,
     });
 
@@ -118,6 +119,12 @@ describe('HudApp', () => {
                 volleyLength: 6.7,
             },
             flavor: { id: 'flavor-1', text: 'Streak rising', tone: 'hype' },
+            physics: {
+                currentSpeed: 312.5,
+                baseSpeed: 280,
+                maxSpeed: 400,
+                gravity: -0.15,
+            },
         });
 
         await renderHud();
@@ -158,6 +165,8 @@ describe('HudApp', () => {
 
         screen.getByText('Difficulty ×1.35');
         screen.getByText('60 fps');
+        expect(screen.getByLabelText('Ball speed').textContent).toContain('Speed 313');
+        expect(screen.getByLabelText('Gravity vector').textContent).toBe('Gravity ↑0.15g');
         screen.getByLabelText('Lives');
         screen.getByLabelText('Coins');
     });

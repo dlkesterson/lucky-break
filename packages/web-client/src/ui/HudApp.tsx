@@ -39,6 +39,38 @@ const momentumDescriptor = [
   { key: 'brickDensity', label: 'Field' },
 ] as const;
 
+const formatSpeedUnits = (speed: number): string => {
+  if (!Number.isFinite(speed) || speed <= 0) {
+    return '0 u/s';
+  }
+  if (speed >= 100) {
+    return `${Math.round(speed)} u/s`;
+  }
+  if (speed >= 10) {
+    return `${speed.toFixed(1)} u/s`;
+  }
+  return `${speed.toFixed(2)} u/s`;
+};
+
+const describeGravity = (
+  gravity: number | undefined,
+): { readonly label: string; readonly tone: 'up' | 'down' } | null => {
+  if (typeof gravity !== 'number' || !Number.isFinite(gravity)) {
+    return null;
+  }
+  const magnitude = Math.abs(gravity);
+  if (magnitude < 0.01) {
+    return null;
+  }
+  const tone = gravity < 0 ? ('up' as const) : ('down' as const);
+  const arrow = tone === 'up' ? '↑' : '↓';
+  const formatted = magnitude >= 0.1 ? magnitude.toFixed(2) : magnitude.toFixed(3);
+  return {
+    label: `Gravity ${arrow}${formatted.replace(/0+$/, '').replace(/\.$/, '')}g`,
+    tone,
+  };
+};
+
 export const HudApp = (): JSX.Element | null => {
   const {
     score,
@@ -57,6 +89,7 @@ export const HudApp = (): JSX.Element | null => {
     momentum,
     visible,
     flavor,
+    physics,
   } = useHud();
 
   const fpsLabel = useMemo(() => {
@@ -77,6 +110,15 @@ export const HudApp = (): JSX.Element | null => {
     }
     return `hud-flavor hud-flavor-${flavor.tone}`;
   }, [flavor]);
+
+  const speedLabel = useMemo(() => {
+    if (!physics) {
+      return null;
+    }
+    return `Speed ${formatSpeedUnits(physics.currentSpeed)}`;
+  }, [physics]);
+
+  const gravityDescriptor = useMemo(() => describeGravity(physics?.gravity), [physics]);
 
   if (!visible || !scoreboard) {
     return null;
@@ -205,9 +247,22 @@ export const HudApp = (): JSX.Element | null => {
         </div>
         <div className="hud-bottom-right">
           <Mono className="hud-difficulty">Difficulty ×{difficultyMultiplier.toFixed(2)}</Mono>
+          {speedLabel && (
+            <Mono className="hud-speed" aria-label="Ball speed">
+              {speedLabel}
+            </Mono>
+          )}
           {fpsLabel && (
             <Mono className="hud-fps" aria-label="Frame rate">
               {fpsLabel}
+            </Mono>
+          )}
+          {gravityDescriptor && (
+            <Mono
+              className={`hud-gravity hud-gravity-${gravityDescriptor.tone}`}
+              aria-label="Gravity vector"
+            >
+              {gravityDescriptor.label}
             </Mono>
           )}
           <div className="hud-primary-row">

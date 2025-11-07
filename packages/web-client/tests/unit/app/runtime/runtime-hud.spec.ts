@@ -79,6 +79,12 @@ describe('React HUD bridge', () => {
                 masterVolume: 0.8,
                 reducedMotion: false,
             },
+            physics: {
+                currentSpeed: 315,
+                baseSpeed: 280,
+                maxSpeed: 400,
+                gravity: 0.12,
+            },
         } as const;
 
         hudSetters.updateFromRuntime(payload);
@@ -100,6 +106,7 @@ describe('React HUD bridge', () => {
         expect(state.momentum).toEqual(payload.momentum);
         expect(state.prompts).toEqual(payload.prompts);
         expect(state.settings).toEqual(payload.settings);
+        expect(state.physics).toEqual(payload.physics);
     });
 
     it('pulses the combo meter with clamped intensity and timed decay', () => {
@@ -140,6 +147,12 @@ describe('React HUD bridge', () => {
                 masterVolume: 0,
                 reducedMotion: true,
             },
+            physics: {
+                currentSpeed: 300,
+                baseSpeed: 280,
+                maxSpeed: 360,
+                gravity: -0.05,
+            },
         });
 
         hudSetters.pulseCombo(1);
@@ -161,6 +174,7 @@ describe('React HUD bridge', () => {
                 masterVolume: 1,
                 reducedMotion: false,
             },
+            physics: null,
         });
 
         vi.advanceTimersByTime(1000);

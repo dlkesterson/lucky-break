@@ -116,7 +116,7 @@ import {
     type LoadoutVoicePaletteOverrides,
 } from 'config/loadouts';
 import { noop } from 'util/index';
-import { hudSetters } from '../../ui/state/game-bridge';
+import { hudSetters, type HudPhysicsSnapshot } from '../../ui/state/game-bridge';
 import { createNarrativeService, type NarrativeService } from '../narrative-service';
 import { normalizeBallShape, toPhysicsBallBodyShape } from './ball-shape';
 
@@ -1069,6 +1069,27 @@ export const createRuntimeFacade = async ({
     let runtimeHudCoordinator: RuntimeHudCoordinator | null = null;
     let roundCoordinator: RuntimeRoundCoordinatorHandle | null = null;
 
+    const toSafeNumber = (value: number | undefined): number =>
+        typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+    const resolveHudPhysicsState = (): HudPhysicsSnapshot => {
+        const overlay = runtimeState.lastPhysicsDebugState;
+        const baseSpeed = toSafeNumber(runtimeState.currentBaseSpeed);
+        const maxSpeed = toSafeNumber(runtimeState.currentMaxSpeed);
+        const gravity = toSafeNumber(runtimeState.gravity);
+        const overlaySpeed = overlay && typeof overlay.currentSpeed === 'number' && Number.isFinite(overlay.currentSpeed)
+            ? overlay.currentSpeed
+            : undefined;
+        const currentSpeed = toSafeNumber(overlaySpeed ?? runtimeState.currentBaseSpeed);
+
+        return {
+            currentSpeed,
+            baseSpeed,
+            maxSpeed,
+            gravity,
+        };
+    };
+
     const refreshHud = () => {
         runtimeHudCoordinator?.refresh();
     };
@@ -1294,6 +1315,7 @@ export const createRuntimeFacade = async ({
         powerups,
         getSessionSnapshot: () => session.snapshot(),
         getGambleStatus: () => gambleManager.snapshot(),
+        getPhysicsState: resolveHudPhysicsState,
     });
 
     const runtimeSession = createRuntimeSessionCoordinator({

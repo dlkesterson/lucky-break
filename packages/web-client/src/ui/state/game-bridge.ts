@@ -6,6 +6,13 @@ import type { HudSnapshot } from "app/state";
 
 type HudMomentum = HudSnapshot["momentum"];
 
+export interface HudPhysicsSnapshot {
+    readonly currentSpeed: number;
+    readonly baseSpeed: number;
+    readonly maxSpeed: number;
+    readonly gravity: number;
+}
+
 export interface HudSettings {
     readonly muted: boolean;
     readonly masterVolume: number;
@@ -38,6 +45,7 @@ export interface RuntimeHudPayload {
     readonly momentum: HudMomentum;
     readonly prompts: readonly HudScoreboardPrompt[];
     readonly settings: HudSettings;
+    readonly physics: HudPhysicsSnapshot | null;
 }
 
 export interface HudState {
@@ -62,6 +70,7 @@ export interface HudState {
     readonly settings: HudSettings;
     readonly updateSettings?: (changes: HudSettingsUpdate) => void;
     readonly flavor: HudFlavorMessage | null;
+    readonly physics: HudPhysicsSnapshot | null;
 }
 
 const createInitialState = (): HudState => ({
@@ -90,6 +99,7 @@ const createInitialState = (): HudState => ({
     },
     updateSettings: undefined,
     flavor: null,
+    physics: null,
 });
 
 export const useHud = create<HudState>(createInitialState);
@@ -123,6 +133,7 @@ export const hudSetters = {
             momentum: payload.momentum,
             prompts: payload.prompts,
             settings: payload.settings,
+            physics: payload.physics ?? null,
         }));
     },
     pulseCombo: (intensity: number): void => {

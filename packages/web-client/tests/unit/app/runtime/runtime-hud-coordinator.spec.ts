@@ -75,6 +75,12 @@ describe('createRuntimeHudCoordinator', () => {
             collectHudPowerUps: vi.fn(() => ['shield']),
             resolveRewardView: vi.fn(() => ({ id: 'reward' })),
         };
+        const physicsState = {
+            currentSpeed: 320,
+            baseSpeed: 280,
+            maxSpeed: 400,
+            gravity: -0.08,
+        };
 
         const sessionSnapshot = {
             status: 'active',
@@ -113,6 +119,7 @@ describe('createRuntimeHudCoordinator', () => {
             powerups: powerups as never,
             getSessionSnapshot: () => sessionSnapshot,
             getGambleStatus: () => gambleStatus,
+            getPhysicsState: () => physicsState,
         });
 
         return {
@@ -135,6 +142,7 @@ describe('createRuntimeHudCoordinator', () => {
             runtimeRewards,
             powerups,
             roundMachine,
+            physicsState,
         };
     };
 
@@ -156,6 +164,7 @@ describe('createRuntimeHudCoordinator', () => {
         expect(firstUpdate.scoreboard.prompts[1]).toMatchObject({ id: 'other-prompt' });
         expect(firstUpdate.activePowerUps).toEqual(['shield']);
         expect(firstUpdate.difficultyMultiplier).toBe(1.5);
+        expect(firstUpdate.physics).toEqual(harness.physicsState);
         expect(harness.runtimeRewards.getHudEntropyActions).toHaveBeenCalledWith(42);
         expect(harness.pulseSpy).not.toHaveBeenCalled();
 

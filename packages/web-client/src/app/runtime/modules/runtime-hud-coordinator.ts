@@ -5,7 +5,7 @@ import type { RuntimePowerups } from '../powerups';
 import type { RoundMachine } from '../round-machine';
 import type { RuntimeRewardsHandle } from './runtime-rewards';
 import type { ScoringViewProvider } from '../contracts';
-import { hudSetters } from '../../../ui/state/game-bridge';
+import { hudSetters, type HudPhysicsSnapshot } from '../../../ui/state/game-bridge';
 
 export interface RuntimeHudCoordinatorOptions {
     readonly scoring: ScoringViewProvider;
@@ -14,6 +14,7 @@ export interface RuntimeHudCoordinatorOptions {
     readonly powerups: Pick<RuntimePowerups, 'collectHudPowerUps' | 'resolveRewardView'>;
     readonly getSessionSnapshot: () => GameSessionSnapshot;
     readonly getGambleStatus: () => GambleBrickSummary;
+    readonly getPhysicsState: () => HudPhysicsSnapshot | null;
 }
 
 export interface RuntimeHudCoordinator {
@@ -67,6 +68,7 @@ export const createRuntimeHudCoordinator = ({
     powerups,
     getSessionSnapshot,
     getGambleStatus,
+    getPhysicsState,
 }: RuntimeHudCoordinatorOptions): RuntimeHudCoordinator => {
     let lastComboCount = scoring.getScoringView().combo;
 
@@ -82,6 +84,7 @@ export const createRuntimeHudCoordinator = ({
         const difficultyMultiplier = roundMachine.getLevelDifficultyMultiplier();
         const activePowerUps = powerups.collectHudPowerUps();
         const rewardView = powerups.resolveRewardView();
+        const physicsState = getPhysicsState();
 
         hudSetters.updateFromRuntime({
             score: sessionSnapshot.hud.score,
@@ -99,6 +102,7 @@ export const createRuntimeHudCoordinator = ({
             momentum: sessionSnapshot.hud.momentum,
             prompts: viewWithCountdown.prompts,
             settings: sessionSnapshot.hud.settings,
+            physics: physicsState,
         });
 
         if (scoringView.combo > lastComboCount) {

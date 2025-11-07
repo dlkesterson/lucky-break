@@ -25,3 +25,4 @@ export { createStage, type StageConfig, type StageHandle } from './stage';
 export * from './hud';
 export * from './debug-overlay';
 export * from './visual-factory';
+export { GradientWaveFilter } from './filters/gradient-wave-filter';

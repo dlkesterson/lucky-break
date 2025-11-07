@@ -1,4 +1,5 @@
-import { Graphics, Container, Sprite } from 'pixi.js';
+import { Graphics, Container, Sprite, Texture } from 'pixi.js';
+import type { BLEND_MODES as PixiBlendMode, Ticker } from 'pixi.js';
 import * as PixiJS from 'pixi.js';
 import { gameConfig } from 'config/game';
 import { Body as MatterBody, Bodies } from 'physics/matter';
@@ -31,6 +32,7 @@ import {
     type PhysicsHazard,
 } from 'physics/hazards';
 import type { RandomSource } from 'util/random';
+import { GradientWaveFilter } from 'render/filters/gradient-wave-filter';
 
 type BrickHpLabel = Container & { text?: string };
 
@@ -188,11 +190,16 @@ export const createLevelRuntime = ({
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
     const activeCoins: FallingCoin[] = [];
+    interface HazardVisualEntry {
+        readonly target: Container;
+        readonly dispose?: () => void;
+    }
+
     interface ActiveHazardEntry {
         readonly descriptor: LevelHazardDescriptor;
         readonly hazard: PhysicsHazard;
         readonly body: Body | null;
-        readonly visuals: readonly Graphics[];
+        readonly visuals: readonly HazardVisualEntry[];
     }
     const activeHazards: ActiveHazardEntry[] = [];
     const hazardByBody = new Map<Body, LevelHazardDescriptor>();
@@ -593,14 +600,55 @@ export const createLevelRuntime = ({
 
                 physics.addHazard(hazard);
 
-                const visual = new Graphics();
-                visual.circle(0, 0, radius);
-                visual.stroke({ color: 0x6ec1ff, width: 4, alpha: 0.55 });
-                visual.fill({ color: 0x6ec1ff, alpha: 0.08 });
-                visual.position.set(centerX, centerY);
-                visual.zIndex = 4;
-                visual.eventMode = 'none';
-                stage.addToLayer('effects', visual);
+                const waveSprite = new Sprite(Texture.WHITE);
+                waveSprite.anchor.set(0.5);
+                waveSprite.position.set(centerX, centerY);
+                waveSprite.width = radius * 2;
+                waveSprite.height = radius * 2;
+                waveSprite.zIndex = 4;
+                waveSprite.alpha = 1;
+                waveSprite.eventMode = 'none';
+                const blendModesUnknown: unknown = PixiJS.BLEND_MODES;
+                const addBlendMode = (blendModesUnknown as { readonly ADD?: PixiBlendMode } | null)?.ADD;
+                if (addBlendMode !== undefined) {
+                    waveSprite.blendMode = addBlendMode;
+                }
+
+                const waveFilter = new GradientWaveFilter({
+                    opacity: 0.9,
+                    gridDensity: 13,
+                    lineWidth: 0.018,
+                    waveFrequency: 8,
+                    waveAmplitude: 0.06,
+                    speed: 1.2,
+                });
+                waveSprite.filters = [waveFilter];
+                stage.addToLayer('effects', waveSprite);
+
+                const ticker = stage.app.ticker;
+                const onTick = (tickerInstance: Ticker) => {
+                    waveFilter.update(tickerInstance.deltaMS / 1000);
+                };
+                ticker.add(onTick);
+
+                const waveVisual: HazardVisualEntry = {
+                    target: waveSprite,
+                    dispose: () => {
+                        ticker.remove(onTick);
+                        waveSprite.filters = null;
+                        waveFilter.destroy();
+                    },
+                };
+
+                const rim = new Graphics();
+                rim.circle(0, 0, radius);
+                rim.stroke({ color: 0x9fdcff, width: 4, alpha: 0.65 });
+                rim.position.set(centerX, centerY);
+                rim.zIndex = 5;
+                rim.eventMode = 'none';
+                stage.addToLayer('effects', rim);
+
+                const rimVisual: HazardVisualEntry = { target: rim };
 
                 const descriptor: LevelHazardDescriptor = {
                     id: hazard.id,
@@ -616,7 +664,7 @@ export const createLevelRuntime = ({
                     descriptor,
                     hazard,
                     body: hazardBody,
-                    visuals: [visual],
+                    visuals: [waveVisual, rimVisual],
                 });
                 if (hazardBody) {
                     hazardByBody.set(hazardBody, descriptor);
@@ -677,7 +725,7 @@ export const createLevelRuntime = ({
                         descriptor,
                         hazard: movingBumper,
                         body: movingBumper.body ?? null,
-                        visuals: [bumperVisual],
+                        visuals: [{ target: bumperVisual }],
                     });
 
                     if (movingBumper.body) {
@@ -735,7 +783,10 @@ export const createLevelRuntime = ({
                     cooldownSeconds: portalHazard.cooldownSeconds,
                 };
 
-                const visuals: Graphics[] = [entryVisual, exitVisual];
+                const visuals: HazardVisualEntry[] = [
+                    { target: entryVisual },
+                    { target: exitVisual },
+                ];
 
                 activeHazards.push({
                     descriptor,
@@ -906,12 +957,14 @@ export const createLevelRuntime = ({
         }
     };
 
-    const detachHazardVisual = (visual: Graphics) => {
-        const parent = visual.parent;
+    const detachHazardVisual = (entry: HazardVisualEntry) => {
+        entry.dispose?.();
+        const target = entry.target;
+        const parent = target.parent;
         if (parent && typeof parent.removeChild === 'function') {
-            parent.removeChild(visual);
+            parent.removeChild(target);
         }
-        visual.destroy();
+        target.destroy();
     };
 
     const clearActiveHazards: LevelRuntimeHandle['clearActiveHazards'] = () => {
