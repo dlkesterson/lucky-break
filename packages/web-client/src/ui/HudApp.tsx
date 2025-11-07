@@ -1,4 +1,5 @@
 import { useMemo, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Heading, Label, Mono, Progress } from '@lucky-break/design-system';
 
@@ -34,9 +35,9 @@ const clampUnit = (value: number): number => {
 };
 
 const momentumDescriptor = [
-  { key: 'comboHeat', label: 'Heat' },
-  { key: 'speedPressure', label: 'Speed' },
-  { key: 'brickDensity', label: 'Field' },
+  { key: 'comboHeat' as const },
+  { key: 'speedPressure' as const },
+  { key: 'brickDensity' as const },
 ] as const;
 
 const formatSpeedUnits = (speed: number): string => {
@@ -54,6 +55,7 @@ const formatSpeedUnits = (speed: number): string => {
 
 const describeGravity = (
   gravity: number | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): { readonly label: string; readonly tone: 'up' | 'down' } | null => {
   if (typeof gravity !== 'number' || !Number.isFinite(gravity)) {
     return null;
@@ -63,15 +65,17 @@ const describeGravity = (
     return null;
   }
   const tone = gravity < 0 ? ('up' as const) : ('down' as const);
-  const arrow = tone === 'up' ? '↑' : '↓';
   const formatted = magnitude >= 0.1 ? magnitude.toFixed(2) : magnitude.toFixed(3);
+  const value = formatted.replace(/0+$/, '').replace(/\.$/, '');
+  const label = t(`hud.gravity.${tone}`, { value });
   return {
-    label: `Gravity ${arrow}${formatted.replace(/0+$/, '').replace(/\.$/, '')}g`,
+    label,
     tone,
   };
 };
 
 export const HudApp = (): JSX.Element | null => {
+  const { t } = useTranslation();
   const {
     score,
     lives,
@@ -115,10 +119,10 @@ export const HudApp = (): JSX.Element | null => {
     if (!physics) {
       return null;
     }
-    return `Speed ${formatSpeedUnits(physics.currentSpeed)}`;
-  }, [physics]);
+    return t('hud.speed', { value: formatSpeedUnits(physics.currentSpeed) });
+  }, [physics, t]);
 
-  const gravityDescriptor = useMemo(() => describeGravity(physics?.gravity), [physics]);
+  const gravityDescriptor = useMemo(() => describeGravity(physics?.gravity, t), [physics, t]);
 
   if (!visible || !scoreboard) {
     return null;
@@ -137,8 +141,8 @@ export const HudApp = (): JSX.Element | null => {
   const summaryLives = formatLives(lives);
   const comboTimerLabel =
     Number.isFinite(comboTimer) && comboTimer > 0
-      ? `${comboTimer.toFixed(1)}s window`
-      : 'Window closed';
+      ? t('hud.comboTimer', { time: comboTimer.toFixed(1) })
+      : t('hud.comboTimerClosed');
 
   const brickProgress = brickTotal > 0 ? clampUnit(1 - brickRemaining / brickTotal) : 0;
   const remainingLabel = `${brickRemaining} / ${brickTotal > 0 ? brickTotal : 0}`;
@@ -155,17 +159,19 @@ export const HudApp = (): JSX.Element | null => {
         </header>
 
         <div className="hud-primary-metrics">
-          <Heading className="hud-score">Score {formatScore(score)}</Heading>
+          <Heading className="hud-score">{t('hud.score', { value: formatScore(score) })}</Heading>
           {combo > 0 && (
             <div className="hud-combo" style={comboPulseStyle}>
-              <Mono className="hud-combo-value">Combo ×{combo}</Mono>
+              <Mono className="hud-combo-value">{t('hud.combo', { value: combo })}</Mono>
               <Mono className="hud-combo-timer">{comboTimerLabel}</Mono>
             </div>
           )}
         </div>
 
         <section className="hud-bricks" aria-label="Brick progress">
-          <Mono className="hud-bricks-label">Bricks {remainingLabel}</Mono>
+          <Mono className="hud-bricks-label">
+            {t('hud.bricks', { remaining: brickRemaining, total: brickTotal > 0 ? brickTotal : 0 })}
+          </Mono>
           <Progress
             value={brickProgress * 100}
             className="hud-bricks-bar"
@@ -178,18 +184,25 @@ export const HudApp = (): JSX.Element | null => {
       <aside className="hud-right">
         {momentum && (
           <section className="hud-momentum" aria-label="Momentum metrics">
-            <Heading className="hud-momentum-title">Momentum</Heading>
+            <Heading className="hud-momentum-title">{t('hud.momentum.title')}</Heading>
             <ul>
               {momentumDescriptor.map((descriptor) => {
                 const value = clampUnit(momentum[descriptor.key]);
                 const percent = Math.round(value * 100);
+                const labelKey =
+                  descriptor.key === 'comboHeat'
+                    ? 'heat'
+                    : descriptor.key === 'speedPressure'
+                      ? 'speed'
+                      : 'field';
+                const label = t(`hud.momentum.${labelKey}`);
                 return (
                   <li key={descriptor.key}>
-                    <Label className="hud-momentum-label">{descriptor.label}</Label>
+                    <Label className="hud-momentum-label">{label}</Label>
                     <Progress
                       value={percent}
                       className="hud-momentum-bar"
-                      aria-label={`${descriptor.label} momentum`}
+                      aria-label={`${label} momentum`}
                     />
                     <Mono className="hud-momentum-value">{percent}%</Mono>
                   </li>
@@ -197,14 +210,14 @@ export const HudApp = (): JSX.Element | null => {
               })}
             </ul>
             <Mono className="hud-momentum-volley">
-              Volley {Math.max(0, Math.round(momentum.volleyLength))}
+              {t('hud.momentum.volley', { length: Math.max(0, Math.round(momentum.volleyLength)) })}
             </Mono>
           </section>
         )}
 
         {activePowerUps.length > 0 && (
           <section className="hud-powerups" aria-label="Active power ups">
-            <Heading className="hud-powerups-title">Power-Ups</Heading>
+            <Heading className="hud-powerups-title">{t('hud.powerups.title')}</Heading>
             <ul>
               {activePowerUps.map((powerUp, index) => (
                 <li key={`${powerUp.label}-${index}`}>
@@ -246,7 +259,9 @@ export const HudApp = (): JSX.Element | null => {
           ) : null}
         </div>
         <div className="hud-bottom-right">
-          <Mono className="hud-difficulty">Difficulty ×{difficultyMultiplier.toFixed(2)}</Mono>
+          <Mono className="hud-difficulty">
+            {t('hud.difficulty', { value: difficultyMultiplier.toFixed(2) })}
+          </Mono>
           {speedLabel && (
             <Mono className="hud-speed" aria-label="Ball speed">
               {speedLabel}

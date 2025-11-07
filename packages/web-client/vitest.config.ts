@@ -50,6 +50,7 @@ export default defineConfig({
                 'src/render/stage.ts',
                 'src/scenes/**/*',
                 'src/types/**/*',
+                '**/*.stories.{ts,tsx}',
             ],
             thresholds: {
                 statements: 80,

@@ -109,3 +109,6 @@ vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
 
     throw new TypeError('Fetch is not available in this test environment.');
 });
+
+// Initialize i18n for tests
+import '../../src/i18n';

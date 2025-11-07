@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button, Panel, Heading, Label, Mono, cn } from '@lucky-break/design-system';
 import type { BiasPhaseSessionSummary, NebulaSlotsSpinResult } from 'scenes/bias-phase';
 import { useBiasPhaseUi } from '../state/bias-phase-bridge';
@@ -33,6 +34,7 @@ const scoreboardEntries: readonly {
 ];
 
 export const CasinoHubApp = (): JSX.Element | null => {
+  const { t } = useTranslation();
   const { theme } = useGameTheme();
   const { visible, suspended, payload } = useBiasPhaseUi();
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
@@ -89,7 +91,10 @@ export const CasinoHubApp = (): JSX.Element | null => {
     : 0;
   const commitDisabled = !selectedOptionId || pendingAction !== null || entropyShortfall > 0;
   const skipDisabled = pendingAction !== null;
-  const continueLabel = pendingAction === 'skip' ? 'Continuing…' : 'Continue to Next Round';
+  const continueLabel =
+    pendingAction === 'skip'
+      ? t('casino.levelComplete.continuePending')
+      : t('casino.levelComplete.continueButton');
 
   const hasAffordableOption = options.some(
     (option) => option.wager.cost <= entropyBalance + ENTROPY_SPEND_TOLERANCE,
@@ -101,15 +106,15 @@ export const CasinoHubApp = (): JSX.Element | null => {
 
   const commitLabel = (() => {
     if (pendingAction === 'commit') {
-      return 'Committing…';
+      return t('casino.commitPending');
     }
     if (!selectedOptionId || !selectedOption) {
-      return 'Commit Selection';
+      return t('casino.commitDisabled');
     }
     if (entropyShortfall > 0) {
-      return `Need ${entropyShortfall} more entropy`;
+      return t('casino.commitNeedEntropy', { shortfall: entropyShortfall });
     }
-    return `Commit ${selectedOption.label}`;
+    return t('casino.commitButton', { label: selectedOption.label });
   })();
 
   const handleSelect = (optionId: string) => {
@@ -176,7 +181,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col gap-2 text-center">
                   <Heading className="text-[clamp(32px,4.5vmin,56px)] uppercase tracking-[0.1em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]">
-                    Level {session.nextLevel - 1} Complete!
+                    {t('casino.levelComplete.title', { level: session.nextLevel - 1 })}
                   </Heading>
                   {session.reward ? (
                     <Label className="text-[clamp(18px,2.4vmin,24px)] font-semibold tracking-wide text-[color:var(--casino-accent-power,#ff7b33)]">
@@ -284,14 +289,13 @@ export const CasinoHubApp = (): JSX.Element | null => {
         <section className="flex flex-col gap-6" aria-label="Cosmic casino">
           <header className="flex flex-col gap-3 text-center">
             <Label className="text-sm uppercase tracking-[0.34em] text-white/60">
-              Sanctum Bias Phase
+              {t('casino.subtitle')}
             </Label>
             <Heading className="text-[clamp(46px,6.2vw,78px)] uppercase tracking-[0.08em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]">
-              Mayhaps&apos; Cosmic Casino
+              {t('casino.title')}
             </Heading>
             <Label className="mx-auto max-w-3xl text-[clamp(15px,2.1vmin,20px)] tracking-[0.04em] text-[color:var(--casino-text-secondary,#ffc45a)]">
-              Trade entropy for impossible odds. Spin the architect&apos;s roulette, sample the
-              slots, or lock in a bias that shapes the next volley.
+              {t('casino.description')}
             </Label>
           </header>
 
@@ -306,13 +310,13 @@ export const CasinoHubApp = (): JSX.Element | null => {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-col gap-1">
                 <Mono className="text-xs uppercase tracking-[0.22em] text-[rgba(255,224,180,0.72)]">
-                  Entropy Vault
+                  {t('casino.entropyVault.title')}
                 </Mono>
                 <span className="text-[clamp(32px,4vmin,46px)] font-black tracking-[0.04em] text-[color:var(--casino-accent-combo,#ffd45c)]">
                   {formatNumber(entropyBalance)}
                 </span>
                 <Label className="text-[clamp(12px,1.6vmin,15px)] text-[rgba(255,224,180,0.65)]">
-                  Each wager draws from this reserve. Earn more by smashing entropy bricks.
+                  {t('casino.entropyVault.description')}
                 </Label>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -468,7 +472,9 @@ export const CasinoHubApp = (): JSX.Element | null => {
         <footer className="flex flex-wrap items-center justify-between gap-4 pt-2">
           <div className="flex flex-col gap-2 text-[clamp(12px,1.6vmin,14px)] text-[rgba(255,224,180,0.72)]">
             <span aria-live="polite">
-              {session.seed !== null ? `Seed #${session.seed}` : 'Seed pending — commit to lock'}
+              {session.seed !== null
+                ? t('casino.seedLabel', { seed: session.seed })
+                : t('casino.seedPending')}
             </span>
             {onSkip && !session.levelCompleteRecap ? (
               <Button

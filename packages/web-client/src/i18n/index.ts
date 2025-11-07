@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import en from './locales/en.json';
+import * as en from './locales/en.json';
 
 export const defaultNS = 'common';
 export const resources = {

@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { AchievementUnlock } from 'app/achievements';
 import type { GameOverUiSnapshot } from 'ui/state/game-over-bridge';
+import { wrapWithI18n } from '../../../utils/test-wrapper';
 
 interface GameOverUiStateLike {
     readonly visible: boolean;
@@ -56,7 +57,7 @@ describe('GameOverApp', () => {
 
     const renderGameOver = async () => {
         await act(async () => {
-            root.render(createElement(GameOverAppComponent));
+            root.render(wrapWithI18n(createElement(GameOverAppComponent)));
         });
     };
 

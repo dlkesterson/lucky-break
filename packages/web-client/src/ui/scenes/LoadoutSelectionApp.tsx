@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
-import { Heading, Label, Mono } from '@lucky-break/design-system';
-
 import { useGameTheme } from '../hooks/useGameTheme';
 import { useLoadoutSelectionUi } from '../state/loadout-selection-bridge';
 import { useStagePointerBlocker } from '../hooks/useStagePointerBlocker';
-import type { LoadoutFormPreset } from 'app/runtime/loadouts';
+import { LoadoutSelectionView } from './LoadoutSelectionView';
 
 const toHexColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
@@ -154,9 +152,19 @@ const D20_FACET_LINE_SEGMENTS = D20_FACET_LINE_INDICES.map(([startIndex, endInde
   } as const;
 });
 
-const summarize = (preset: LoadoutFormPreset | null): readonly string[] =>
-  preset?.combinedSummary.slice(0, 8) ?? [];
-
+/**
+ * LoadoutSelectionApp - Container Component
+ *
+ * Handles:
+ * - Game state integration (Zustand store)
+ * - Theme provider integration
+ * - Stage pointer blocking
+ * - Ball color calculations and D20 face rendering
+ * - Form selection state management
+ * - Scroll hint visibility detection
+ *
+ * Delegates presentation to LoadoutSelectionView.
+ */
 export const LoadoutSelectionApp = (): JSX.Element | null => {
   const { theme } = useGameTheme();
   const { visible, suspended, presets, lockedForms, defaultFormId, commitSelection } =
@@ -176,20 +184,6 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
 
   const baseColor = selectedPreset?.preview.baseColor ?? 0xf4f4f4;
   const accentColor = selectedPreset?.preview.accentColor ?? 0xffcc66;
-
-  const overlayStyle = useMemo(
-    () =>
-      ({
-        '--loadout-panel-fill': theme.hud.panelFill,
-        '--loadout-panel-line': theme.hud.panelLine,
-        '--loadout-text-primary': theme.hud.textPrimary,
-        '--loadout-text-secondary': theme.hud.textSecondary,
-        '--loadout-accent': theme.accents.combo,
-        '--loadout-power': theme.accents.powerUp,
-        '--loadout-danger': theme.hud.danger,
-      }) as CSSProperties,
-    [theme],
-  );
 
   const ballStyle = useMemo(() => {
     const base = toHexColor(baseColor);
@@ -300,8 +294,12 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
     return null;
   }
 
-  const combinedSummary = summarize(selectedPreset);
-  const startLabel = pending ? 'Starting…' : 'Start';
+  const handleSelectForm = (formId: string) => {
+    if (pending) {
+      return;
+    }
+    setSelectedFormId(formId);
+  };
 
   const handleStart = async () => {
     if (!selectedPreset || lockedSet.has(selectedPreset.id) || pending) {
@@ -317,157 +315,22 @@ export const LoadoutSelectionApp = (): JSX.Element | null => {
   };
 
   return (
-    <div className="loadout-overlay" style={overlayStyle}>
-      <div className="loadout-backdrop" />
-      <div className="loadout-surface ui-interactive" ref={surfaceRef}>
-        <header className="loadout-header">
-          <Heading>Choose Your Ball</Heading>
-          <Label>Shape Mayhaps before the first coin toss</Label>
-        </header>
-
-        <section className="loadout-preview" aria-label="Selected form">
-          <div
-            className={`loadout-ball${pulseActive ? ' is-pulsing' : ''}${pending ? ' is-pending' : ''}`}
-            style={ballStyle}
-            data-shape={selectedPreset?.preview.shape ?? 'sphere'}
-          >
-            <div className="loadout-ball-glow" />
-            <div className="loadout-ball-core" />
-            <div className="loadout-ball-swirl" />
-            {selectedPreset?.preview.shape === 'octagon' && (
-              <span className="loadout-ball-stop-label" aria-hidden="true">
-                STOP
-              </span>
-            )}
-            {selectedPreset?.preview.shape === 'd20' && (
-              <svg
-                className="loadout-ball-facet-svg"
-                viewBox="0 0 100 100"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <g className="loadout-ball-facet-faces">
-                  {d20Faces.map((face) => (
-                    <polygon
-                      key={`d20-face-${face.id}`}
-                      className="loadout-ball-facet-face"
-                      points={face.points}
-                      fill={face.fill}
-                      opacity={face.opacity}
-                    />
-                  ))}
-                </g>
-                <polygon className="loadout-ball-facet-hull" points={D20_POLYGON_POINTS} />
-                {D20_FACET_LINE_SEGMENTS.map((segment) => (
-                  <line
-                    key={`d20-line-${segment.id}`}
-                    className="loadout-ball-facet-line"
-                    x1={segment.x1}
-                    y1={segment.y1}
-                    x2={segment.x2}
-                    y2={segment.y2}
-                  />
-                ))}
-              </svg>
-            )}
-            {selectedPreset?.preview.shape === 'd20' && (
-              <span className="loadout-ball-d20-number" aria-hidden="true">
-                20
-              </span>
-            )}
-            <div className="loadout-ball-orbit" aria-hidden="true">
-              {[0, 1, 2].map((index) => (
-                <span
-                  key={`orbit-glyph-${index}`}
-                  data-orbit-layer={index}
-                  style={{ '--orbit-index': index } as CSSProperties}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="loadout-preview-details">
-            <Heading className="loadout-preview-title">
-              {selectedPreset?.name ?? 'Select a form to begin'}
-            </Heading>
-            <Label className="loadout-preview-description">
-              {selectedPreset?.description ??
-                'Choose a Mayhaps form to preview its combined effects and bonuses.'}
-            </Label>
-            <dl className="loadout-links">
-              <div>
-                <Mono className="loadout-link-label">Trait</Mono>
-                <Label className="loadout-link-value">{selectedPreset?.trait.name ?? '—'}</Label>
-              </div>
-              <div>
-                <Mono className="loadout-link-label">Sigil</Mono>
-                <Label className="loadout-link-value">{selectedPreset?.sigil.name ?? '—'}</Label>
-              </div>
-              <div>
-                <Mono className="loadout-link-label">Voice</Mono>
-                <Label className="loadout-link-value">{selectedPreset?.voice.name ?? '—'}</Label>
-              </div>
-            </dl>
-            <div className="loadout-summary" aria-live="polite">
-              {combinedSummary.length > 0 ? (
-                combinedSummary.map((line, index) => (
-                  <Label key={`summary-${index}`} className="loadout-summary-line">
-                    {line}
-                  </Label>
-                ))
-              ) : (
-                <Label>Select a form to view combined effects.</Label>
-              )}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="loadout-start"
-            onClick={handleStart}
-            disabled={!selectedPreset || lockedSet.has(selectedPreset.id) || pending}
-          >
-            {startLabel}
-          </button>
-        </section>
-
-        {showScrollHint && <Label className="loadout-scroll-hint">Scroll to browse forms</Label>}
-        <section className="loadout-grid" aria-label="Available forms">
-          {presets.map((preset) => {
-            const locked = lockedSet.has(preset.id);
-            const selected = preset.id === selectedFormId;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                className={`loadout-card${selected ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
-                onClick={() => {
-                  if (pending || locked) {
-                    return;
-                  }
-                  setSelectedFormId(preset.id);
-                }}
-                disabled={pending || locked}
-              >
-                <Heading className="loadout-card-title">{preset.name}</Heading>
-                <Label className="loadout-card-description">{preset.description}</Label>
-                <div className="loadout-card-summary">
-                  {preset.cardSummary.slice(0, 3).map((line, index) => (
-                    <Mono
-                      key={`card-summary-${preset.id}-${index}`}
-                      className="loadout-card-summary-line"
-                    >
-                      {line}
-                    </Mono>
-                  ))}
-                </div>
-                {locked && <Mono className="loadout-card-lock">Locked</Mono>}
-              </button>
-            );
-          })}
-        </section>
-      </div>
-    </div>
+    <LoadoutSelectionView
+      visible={visible}
+      presets={presets}
+      selectedFormId={selectedFormId}
+      lockedForms={lockedSet}
+      pending={pending}
+      pulseActive={pulseActive}
+      showScrollHint={showScrollHint}
+      theme={theme}
+      ballStyle={ballStyle}
+      d20Faces={d20Faces}
+      d20PolygonPoints={D20_POLYGON_POINTS}
+      d20FacetLineSegments={D20_FACET_LINE_SEGMENTS}
+      onSelectForm={handleSelectForm}
+      onStart={handleStart}
+      surfaceRef={surfaceRef}
+    />
   );
 };

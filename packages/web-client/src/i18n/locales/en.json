@@ -29,5 +29,145 @@
       "on": "On",
       "off": "Off"
     }
+  },
+  "gameOver": {
+    "scoreLabel": "Final Score",
+    "certaintyDust": "Certainty Dust",
+    "prompt": "Return to Casino",
+    "promptPending": "Returning…",
+    "achievements": {
+      "title": "Achievements Unlocked",
+      "emptyState": "No new achievements this run — fortune favours persistence."
+    }
+  },
+  "pause": {
+    "title": "Paused",
+    "description": "Run paused — the odds wait for no one.",
+    "scoreLabel": "Score",
+    "resumeLabel": "Resume",
+    "resumePending": "Resuming…",
+    "quitLabel": "Quit to Casino",
+    "quitPending": "Quitting…",
+    "themeToggle": "Color Mode: {{theme}} · Shift+C",
+    "entropyStore": {
+      "title": "Entropy Actions",
+      "coinsLabel": "Coins",
+      "costLabel": "Cost {{cost}}%",
+      "statusReady": "Ready",
+      "statusLocked": "Locked",
+      "statusCharges": "Charges ×{{count}}",
+      "emptyState": "No entropy plays available — build combo and coins to unlock new options."
+    },
+    "audio": {
+      "title": "Audio",
+      "volumeLabel": "Master Volume {{percent}}%",
+      "muteLabel": "Mute audio"
+    },
+    "legend": {
+      "emptyState": "No legend entries yet — experiment to reveal mysteries."
+    }
+  },
+  "fateLedger": {
+    "title": "Fate Ledger",
+    "description": "Chronicle of idle rolls and entropy dividends",
+    "summary": {
+      "loggedRolls": "Logged Rolls: {{count}}",
+      "idleTime": "Accumulated Idle Time: {{duration}}",
+      "entropyEarned": "Entropy Earned: {{value}}",
+      "certaintyDust": "Certainty Dust: {{value}}",
+      "lastEntry": "Last Entry: {{timestamp}}"
+    },
+    "closeHint": "Tap anywhere outside this panel to close",
+    "closeButton": "Close",
+    "emptyState": "No idle rolls recorded yet. Complete idle simulations to chronicle your fate."
+  },
+  "loadoutSelection": {
+    "title": "Choose Your Ball",
+    "description": "Shape Mayhaps before the first coin toss",
+    "startButton": "Start",
+    "startPending": "Starting…",
+    "preview": {
+      "emptyTitle": "Select a form to begin",
+      "emptyDescription": "Choose a Mayhaps form to preview its combined effects and bonuses.",
+      "traitLabel": "Trait",
+      "sigilLabel": "Sigil",
+      "voiceLabel": "Voice",
+      "emptyValue": "—",
+      "summaryEmpty": "Select a form to view combined effects."
+    },
+    "scrollHint": "Scroll to browse forms",
+    "locked": "Locked"
+  },
+  "casino": {
+    "subtitle": "Sanctum Bias Phase",
+    "title": "Mayhaps' Cosmic Casino",
+    "description": "Trade entropy for impossible odds. Spin the architect's roulette, sample the slots, or lock in a bias that shapes the next volley.",
+    "levelComplete": {
+      "title": "Level {{level}} Complete!",
+      "continueButton": "Continue to Next Round",
+      "continuePending": "Continuing…"
+    },
+    "entropyVault": {
+      "title": "Entropy Vault",
+      "description": "Each wager draws from this reserve. Earn more by smashing entropy bricks."
+    },
+    "scoreboard": {
+      "nextLevel": "Next Level",
+      "level": "Level {{level}}",
+      "score": "Score",
+      "coins": "Coins",
+      "lives": "Lives",
+      "highestCombo": "Highest Combo",
+      "entropyDelta": "Entropy Delta",
+      "gravityBias": "Gravity Bias",
+      "speedBias": "Speed Bias",
+      "coinsRule": "Coins Rule",
+      "coinsRuleLocked": "Locked",
+      "coinsRuleOpen": "Open"
+    },
+    "roulette": {
+      "title": "Architect's Roulette",
+      "description": "Commit a selection below to spin the cosmic wheel — outcomes shape fate itself."
+    },
+    "slots": {
+      "title": "Nebula Slots",
+      "description": "Spin for entropy, dust, or cosmic surprises.",
+      "spinButton": "Spin {{cost}} Entropy",
+      "spinPending": "Spinning…",
+      "spinDisabled": "Need {{shortfall}} more entropy",
+      "emptyState": "No slots available this phase."
+    },
+    "commitButton": "Commit {{label}}",
+    "commitPending": "Committing…",
+    "commitDisabled": "Commit Selection",
+    "commitNeedEntropy": "Need {{shortfall}} more entropy",
+    "continueButton": "Continue to Next Round",
+    "forceAdvanceHint": "Skip bias phase",
+    "seedLabel": "Seed #{{seed}}",
+    "seedPending": "Seed pending — commit to lock"
+  },
+  "hud": {
+    "score": "Score {{value}}",
+    "combo": "Combo ×{{value}}",
+    "comboTimer": "{{time}}s window",
+    "comboTimerClosed": "Window closed",
+    "bricks": "Bricks {{remaining}} / {{total}}",
+    "momentum": {
+      "title": "Momentum",
+      "heat": "Heat",
+      "speed": "Speed",
+      "field": "Field",
+      "volley": "Volley {{length}}"
+    },
+    "powerups": {
+      "title": "Power-Ups"
+    },
+    "difficulty": "Difficulty ×{{value}}",
+    "speed": "Speed {{value}} u/s",
+    "fps": "{{value}} fps",
+    "gravity": {
+      "up": "Gravity ↑{{value}}g",
+      "down": "Gravity ↓{{value}}g"
+    }
   }
 }

@@ -3,6 +3,7 @@ import { fireEvent, within } from '@testing-library/dom';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { BiasPhaseSceneOption, BiasPhasePayload, BiasPhaseSessionSummary } from 'scenes/bias-phase';
+import { wrapWithI18n } from '../../../utils/test-wrapper';
 
 const themeMock = {
     background: { from: '#101020', to: '#1a1a2f' },
@@ -94,7 +95,7 @@ describe('CasinoHubApp', () => {
 
     const renderApp = async () => {
         await act(async () => {
-            root.render(createElement(CasinoHubAppComponent));
+            root.render(wrapWithI18n(createElement(CasinoHubAppComponent)));
         });
     };
 
