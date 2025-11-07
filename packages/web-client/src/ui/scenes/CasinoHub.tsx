@@ -98,14 +98,8 @@ const getReelSymbolAt = (position: number, offset = 0): NebulaSlotSymbol => {
   return EXTENDED_REEL_SYMBOLS[index];
 };
 
-const normalizePosition = (position: number): number => {
-  const normalized = modulo(position - BASE_LOOP_OFFSET, EXTENDED_REEL_LENGTH);
-  return BASE_LOOP_OFFSET + normalized;
-};
-
 const BASE_LOOP_OFFSET = slotSymbols.length * Math.floor(REEL_REPEAT_COUNT / 2);
 const SPIN_INTERVALS_MS: readonly number[] = [52, 60, 72];
-const SPIN_STOP_DELAYS_MS: readonly number[] = IS_TEST_ENV ? [180, 260, 360] : [1050, 1350, 1700];
 const CELEBRATION_FLASH_DURATION_MS = 2600;
 const DEFAULT_ERROR_MESSAGE = 'Nebula slots jammed. Try again shortly.';
 const ENTROPY_SPEND_TOLERANCE = 1e-3;
@@ -218,17 +212,25 @@ interface SlotReelProps {
   readonly reelIndex: number;
 }
 
-const SlotReel = ({ position, accentColor, spinning, highlight, reelIndex }: SlotReelProps) => {
-  const normalizedIndex = modulo(position, EXTENDED_REEL_LENGTH);
-  const centerHighlightIndex = modulo(
-    normalizedIndex + REEL_VISIBLE_CENTER_OFFSET,
-    EXTENDED_REEL_LENGTH,
+const SlotReel = ({
+  position,
+  accentColor,
+  spinning,
+  highlight,
+  reelIndex: _reelIndex,
+}: SlotReelProps) => {
+  // Render two full cycles so extended forward motion never exposes a gap.
+  const doubledTrack = useMemo(
+    () => [...EXTENDED_REEL_SYMBOLS, ...EXTENDED_REEL_SYMBOLS] as readonly NebulaSlotSymbol[],
+    [],
   );
-  const translateY = -normalizedIndex * REEL_ITEM_HEIGHT;
-  const transitionDuration = spinning
-    ? `${Math.max(SPIN_INTERVALS_MS[reelIndex] ?? 48, 48)}ms`
-    : '420ms';
-  const transitionTiming = spinning ? 'linear' : 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const centerHighlightIndex = modulo(position + REEL_VISIBLE_CENTER_OFFSET, EXTENDED_REEL_LENGTH);
+  const translateY = -(position * REEL_ITEM_HEIGHT);
+
+  // While spinning we use linear (feels like a motor).
+  // When stopping, we switch to a gentle ease-out.
+  const transitionDuration = spinning ? '90ms' : '720ms';
+  const transitionTiming = spinning ? 'linear' : 'cubic-bezier(0.18, 0.9, 0.16, 1)';
 
   return (
     <div
@@ -249,28 +251,32 @@ const SlotReel = ({ position, accentColor, spinning, highlight, reelIndex }: Slo
         }}
       />
       <div
-        className="flex w-full flex-col items-center"
+        className="flex w-full flex-col items-center will-change-transform"
         style={{
           transform: `translateY(${translateY}px)`,
+          transitionProperty: 'transform',
           transitionDuration,
           transitionTimingFunction: transitionTiming,
         }}
       >
-        {EXTENDED_REEL_SYMBOLS.map((symbol, index) => (
-          <div
-            key={`nebula-reel-symbol-${index}`}
-            className={cn(
-              'flex h-[68px] w-full flex-col items-center justify-center text-4xl font-semibold leading-none text-white/85',
-              highlight && index === centerHighlightIndex ? 'scale-110 text-white' : undefined,
-            )}
-            aria-hidden="true"
-          >
-            <span>{getSymbolEmoji(symbol)}</span>
-            <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
-              {symbol}
-            </span>
-          </div>
-        ))}
+        {doubledTrack.map((symbol, index) => {
+          const showHighlight = highlight && index % EXTENDED_REEL_LENGTH === centerHighlightIndex;
+          return (
+            <div
+              key={`nebula-reel-symbol-${index}`}
+              className={cn(
+                'flex h-[68px] w-full flex-col items-center justify-center text-4xl font-semibold leading-none text-white/85',
+                showHighlight ? 'scale-110 text-white' : undefined,
+              )}
+              aria-hidden="true"
+            >
+              <span>{getSymbolEmoji(symbol)}</span>
+              <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                {symbol}
+              </span>
+            </div>
+          );
+        })}
       </div>
       <div
         className="pointer-events-none absolute inset-x-3 top-3 h-[2px] rounded-full"
@@ -362,6 +368,7 @@ const NebulaSlotsGame = ({
     symbolsToPositions(generatePreviewSymbols(seed, entropy, 0)),
   );
   const [isSpinning, setIsSpinning] = useState(false);
+  const [reelSpinning, setReelSpinning] = useState<boolean[]>([false, false, false]);
   const [outcome, setOutcome] = useState<NebulaSlotsSpinResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reelStopped, setReelStopped] = useState<boolean[]>([false, false, false]);
@@ -370,7 +377,6 @@ const NebulaSlotsGame = ({
   const reelIntervalsRef = useRef<Array<number | null>>([null, null, null]);
   const reelStopTimeoutsRef = useRef<number[]>([]);
   const aliveRef = useRef(true);
-  const resolvedRef = useRef(false);
 
   const displaySymbols = useMemo(
     () => positions.map((position) => getReelSymbolAt(position, REEL_VISIBLE_CENTER_OFFSET)),
@@ -398,18 +404,15 @@ const NebulaSlotsGame = ({
   }, [clearTimers]);
 
   useEffect(() => {
-    if (isSpinning) {
-      return;
-    }
+    // Keep reels parked on resolved symbols until the next spin clears outcome/error.
+    if (isSpinning || outcome || error) return;
     const preview = generatePreviewSymbols(seed, entropy, 0);
     setPositions(symbolsToPositions(preview));
-  }, [entropy, seed, isSpinning]);
+  }, [entropy, seed, isSpinning, outcome, error]);
 
   const scheduleCelebrationReset = useCallback(() => {
     const timeoutId = window.setTimeout(() => {
-      if (aliveRef.current) {
-        setCelebrating(false);
-      }
+      if (aliveRef.current) setCelebrating(false);
     }, CELEBRATION_FLASH_DURATION_MS);
     reelStopTimeoutsRef.current.push(timeoutId);
   }, []);
@@ -438,12 +441,8 @@ const NebulaSlotsGame = ({
   );
 
   const messageEmoji = (() => {
-    if (error) {
-      return '⚠️';
-    }
-    if (!outcome) {
-      return isSpinning ? '🎰' : '✨';
-    }
+    if (error) return '⚠️';
+    if (!outcome) return isSpinning ? '🎰' : '✨';
     switch (outcome.rarity) {
       case 'jackpot':
         return '🎉';
@@ -473,13 +472,93 @@ const NebulaSlotsGame = ({
     ? 'text-[color:var(--casino-accent-danger,#ff3355)] text-sm'
     : 'text-[clamp(12px,1.6vmin,15px)] text-white/70';
 
+  // --- helpers for the new stop sequence ---
+  const startReelSpin = (reelIndex: number, intervalMs: number) => {
+    setReelSpinning((previous) => {
+      const next = [...previous];
+      next[reelIndex] = true;
+      return next;
+    });
+    const intervalId = window.setInterval(() => {
+      setPositions((previous) => {
+        const next = [...previous];
+        let value = previous[reelIndex] + 1;
+        const windowStart = EXTENDED_REEL_LENGTH;
+        const doubleLength = EXTENDED_REEL_LENGTH * 2;
+        if (value >= doubleLength) {
+          value -= EXTENDED_REEL_LENGTH;
+        }
+        if (value < windowStart) {
+          value += EXTENDED_REEL_LENGTH;
+        }
+        next[reelIndex] = value;
+        return next;
+      });
+    }, intervalMs);
+    reelIntervalsRef.current[reelIndex] = intervalId;
+  };
+
+  const stopReelOn = (reelIndex: number, finalSymbol: NebulaSlotSymbol) => {
+    setReelSpinning((previous) => {
+      const next = [...previous];
+      next[reelIndex] = false;
+      return next;
+    });
+
+    const intervalId = reelIntervalsRef.current[reelIndex];
+    if (intervalId !== null && intervalId !== undefined) {
+      window.clearInterval(intervalId);
+      reelIntervalsRef.current[reelIndex] = null;
+    }
+
+    setPositions((previous) => {
+      const next = [...previous];
+      const current = previous[reelIndex];
+      let baseTarget = computeTargetIndex(current, finalSymbol);
+      const minAdvance = Math.ceil(EXTENDED_REEL_LENGTH * 0.25);
+      if (baseTarget - current < minAdvance) {
+        baseTarget += EXTENDED_REEL_LENGTH;
+      }
+      const doubleLength = EXTENDED_REEL_LENGTH * 2;
+      while (baseTarget >= doubleLength) {
+        baseTarget -= EXTENDED_REEL_LENGTH;
+      }
+      while (baseTarget < EXTENDED_REEL_LENGTH) {
+        baseTarget += EXTENDED_REEL_LENGTH;
+      }
+      next[reelIndex] = baseTarget;
+      return next;
+    });
+
+    const doneId = window.setTimeout(() => {
+      if (!aliveRef.current) {
+        return;
+      }
+      setReelStopped((previous) => {
+        const next = [...previous];
+        next[reelIndex] = true;
+        return next;
+      });
+      // Re-center every reel into the second cycle so the next spin has runway.
+      setPositions((current) =>
+        current.map((value) => {
+          let normalized = value % EXTENDED_REEL_LENGTH;
+          if (normalized < 0) {
+            normalized += EXTENDED_REEL_LENGTH;
+          }
+          return EXTENDED_REEL_LENGTH + normalized;
+        }),
+      );
+    }, 780);
+    reelStopTimeoutsRef.current.push(doneId);
+  };
+
   const handleSpin = async () => {
     if (disabled || isSpinning || spinsAvailable <= 0) {
       return;
     }
 
     clearTimers();
-    resolvedRef.current = false;
     setIsSpinning(true);
     setError(null);
     setOutcome(null);
@@ -491,87 +570,58 @@ const NebulaSlotsGame = ({
     setPositions(symbolsToPositions(teaserSymbols));
 
     [0, 1, 2].forEach((reelIndex) => {
-      const intervalMs =
-        SPIN_INTERVALS_MS[reelIndex] ?? SPIN_INTERVALS_MS[SPIN_INTERVALS_MS.length - 1];
-      const intervalId = window.setInterval(() => {
-        setPositions((previous) => {
-          const next = [...previous];
-          next[reelIndex] = previous[reelIndex] + 1;
-          return next;
-        });
-      }, intervalMs);
-      reelIntervalsRef.current[reelIndex] = intervalId;
+      const intervalMs = SPIN_INTERVALS_MS[reelIndex] ?? 60;
+      startReelSpin(reelIndex, intervalMs);
     });
 
-    let spinPromise: Promise<NebulaSlotsSpinResult>;
+    let result: NebulaSlotsSpinResult;
     try {
-      spinPromise = onSpin();
+      result = await onSpin();
     } catch (caught) {
       setError(resolveSlotsErrorMessage(caught));
       clearTimers();
       setIsSpinning(false);
+      setReelSpinning([false, false, false]);
+      setReelStopped([false, false, false]);
       return;
     }
 
-    spinPromise
-      .then((result) => {
+    if (!aliveRef.current) {
+      return;
+    }
+
+    const delays = IS_TEST_ENV ? [180, 260, 360] : [900, 1250, 1600];
+    delays.forEach((delay, reelIndex) => {
+      const timeoutId = window.setTimeout(() => {
         if (!aliveRef.current) {
           return;
         }
+        const finalSymbol = result.symbols[reelIndex] ?? slotSymbols[0];
+        stopReelOn(reelIndex, finalSymbol);
 
-        SPIN_STOP_DELAYS_MS.forEach((delay, reelIndex) => {
-          const timeoutId = window.setTimeout(() => {
+        const isFinal = reelIndex === delays.length - 1;
+        if (isFinal) {
+          const revealId = window.setTimeout(() => {
             if (!aliveRef.current) {
               return;
             }
-
-            const intervalId = reelIntervalsRef.current[reelIndex];
-            if (intervalId !== null && intervalId !== undefined) {
-              window.clearInterval(intervalId);
-              reelIntervalsRef.current[reelIndex] = null;
-            }
-
-            const finalSymbol = result.symbols[reelIndex] ?? slotSymbols[0];
-            setPositions((previous) => {
-              const next = [...previous];
-              next[reelIndex] = computeTargetIndex(previous[reelIndex], finalSymbol);
-              return next;
-            });
-
-            setReelStopped((previous) => {
-              const next = [...previous];
-              next[reelIndex] = true;
-              return next;
-            });
-
-            const isFinalReel = reelIndex === SPIN_STOP_DELAYS_MS.length - 1;
-            if (isFinalReel && !resolvedRef.current) {
-              resolvedRef.current = true;
-              clearTimers();
-              setOutcome(result);
+            setOutcome(result);
+            try {
               onResult(result);
-              if (result.rarity === 'jackpot' || result.rarity === 'bias') {
-                setCelebrating(true);
-                scheduleCelebrationReset();
-              }
-              setIsSpinning(false);
-              setPositions((currentPositions) =>
-                currentPositions.map((value) => normalizePosition(value)),
-              );
+            } catch (callbackError) {
+              console.error('Nebula slots onResult handler failed', callbackError);
             }
-          }, delay);
-          reelStopTimeoutsRef.current.push(timeoutId);
-        });
-      })
-      .catch((caught) => {
-        if (!aliveRef.current) {
-          return;
+            if (result.rarity === 'jackpot' || result.rarity === 'bias') {
+              setCelebrating(true);
+              scheduleCelebrationReset();
+            }
+            setIsSpinning(false);
+          }, 820);
+          reelStopTimeoutsRef.current.push(revealId);
         }
-        setError(resolveSlotsErrorMessage(caught));
-        clearTimers();
-        setIsSpinning(false);
-        setReelStopped([false, false, false]);
-      });
+      }, delay);
+      reelStopTimeoutsRef.current.push(timeoutId);
+    });
   };
 
   return (
@@ -584,7 +634,7 @@ const NebulaSlotsGame = ({
               key={`nebula-slot-${index}`}
               position={position}
               accentColor={accentColor}
-              spinning={isSpinning && !reelStopped[index]}
+              spinning={isSpinning && !reelStopped[index] && reelSpinning[index]}
               highlight={
                 !error && reelStopped[index] && outcome?.symbols[index] === displaySymbols[index]
               }
