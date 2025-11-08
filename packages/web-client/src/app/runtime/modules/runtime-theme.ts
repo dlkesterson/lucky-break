@@ -9,6 +9,7 @@ import type { MultiBallController } from '../../multi-ball-controller';
 import type { StageHandle } from 'render/stage';
 import type { RuntimeVisuals } from '../physics-assembly';
 import type { VisualThemeDefaults, VisualThemeSnapshot } from '../visual-theme-defaults';
+import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
 
 export interface RuntimeThemeCoordinatorOptions {
     readonly defaults: VisualThemeDefaults;
@@ -145,6 +146,9 @@ export const createRuntimeThemeCoordinator = ({
             auraColor: currentSnapshot.ballColors.aura,
             accentColor: currentSnapshot.accents.combo,
         });
+        visuals?.chromaticTrailEffect?.applyPalette(
+            deriveChromaticTrailPalette(currentSnapshot.ballColors, currentSnapshot.accents.combo),
+        );
         visuals?.comboBloomEffect?.applyTheme(currentSnapshot.accents.combo);
         visuals?.replacePaddleLight(currentSnapshot.accents.powerUp);
         visuals?.ballSpeedRing?.setPalette({

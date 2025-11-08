@@ -20,7 +20,11 @@ import {
     createSpeedRing,
     createLaserEffect,
     type LaserEffect,
+    createChromaticTrailEffect,
+    type ChromaticTrailEffectOptions,
 } from 'render/effects';
+import type { ChromaticTrailEffect } from 'render/effects';
+import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
 import { createComboRing } from 'render/combo-ring';
 import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
 import type { StageHandle } from 'render/stage';
@@ -52,6 +56,7 @@ export interface RuntimeVisuals {
     readonly playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | null;
     readonly audioWaveBackdrop: AudioWaveBackdrop | null;
     readonly comboBloomEffect: ReturnType<typeof createComboBloomEffect> | null;
+    readonly chromaticTrailEffect: ChromaticTrailEffect | null;
     readonly ballTrailsEffect: ReturnType<typeof createBallTrailsEffect> | null;
     readonly heatDistortionEffect: ReturnType<typeof createHeatDistortionEffect> | null;
     readonly heatRippleEffect: ReturnType<typeof createHeatRippleEffect> | null;
@@ -65,6 +70,7 @@ export interface RuntimeVisuals {
     readonly inputDebugOverlay: InputDebugOverlay | null;
     readonly physicsDebugOverlay: PhysicsDebugOverlay | null;
     readonly ballTrailSources: BallTrailSource[];
+    readonly chromaticTrailSources: BallTrailSource[];
     readonly heatDistortionSources: HeatDistortionSource[];
     readonly laserEffect: LaserEffect | null;
     setEffectProfile(profile: 'quality' | 'performance'): void;
@@ -86,6 +92,7 @@ export const createRuntimeVisuals = ({
     ballMaxSpeed,
 }: RuntimeVisualsDeps): RuntimeVisuals => {
     const ballTrailSources: BallTrailSource[] = [];
+    const chromaticTrailSources: BallTrailSource[] = [];
     const heatDistortionSources: HeatDistortionSource[] = [];
     const effects = createEffectRegistry();
 
@@ -141,6 +148,24 @@ export const createRuntimeVisuals = ({
         },
     );
     attachPlayfieldFilter(comboBloomEffect.filter);
+
+    const chromaticTrailPalette = deriveChromaticTrailPalette(themeBallColors, themeAccents.combo);
+
+    const chromaticTrailEffect = effects.track(
+        createChromaticTrailEffect(chromaticTrailPalette, {
+            maxPoints: 36,
+            fadeDuration: 0.6,
+            emissionThreshold: 0,
+            trackAllSources: true,
+            offsetScale: 14,
+        }),
+        (effect) => {
+            removeFromParent(effect.container);
+            effect.destroy();
+        },
+    );
+    chromaticTrailEffect.container.zIndex = 0.5;
+    stage.addToLayer('effects', chromaticTrailEffect.container);
 
     const ballTrailsEffect = effects.track(
         createBallTrailsEffect({
@@ -327,6 +352,23 @@ export const createRuntimeVisuals = ({
         },
     } satisfies Record<EffectProfile, BallTrailEffectOptions>;
 
+    const chromaticTrailPresets: Record<EffectProfile, ChromaticTrailEffectOptions> = {
+        quality: {
+            enabled: true,
+            maxPoints: 32,
+            fadeDuration: 0.54,
+            emissionThreshold: 0,
+            trackAllSources: true,
+        },
+        performance: {
+            enabled: true,
+            maxPoints: 18,
+            fadeDuration: 0.36,
+            emissionThreshold: 0,
+            trackAllSources: true,
+        },
+    } satisfies Record<EffectProfile, ChromaticTrailEffectOptions>;
+
     const particlePresets: Record<EffectProfile, { maxParticles: number; baseBurstCount: number }> = {
         quality: {
             maxParticles: 24,
@@ -357,6 +399,11 @@ export const createRuntimeVisuals = ({
             }
         }
 
+        chromaticTrailEffect.configure(chromaticTrailPresets[profile]);
+        if (profile === 'performance') {
+            chromaticTrailEffect.reset();
+        }
+
         if (brickParticles) {
             brickParticles.setBudget(particlePresets[profile]);
             if (profile === 'performance') {
@@ -383,6 +430,7 @@ export const createRuntimeVisuals = ({
             }
         }
         ballTrailSources.length = 0;
+        chromaticTrailSources.length = 0;
         heatDistortionSources.length = 0;
     };
 
@@ -398,6 +446,9 @@ export const createRuntimeVisuals = ({
         },
         get ballTrailsEffect() {
             return ballTrailsEffect;
+        },
+        get chromaticTrailEffect() {
+            return chromaticTrailEffect;
         },
         get heatDistortionEffect() {
             return heatDistortionEffect ?? null;
@@ -437,6 +488,9 @@ export const createRuntimeVisuals = ({
         },
         get ballTrailSources() {
             return ballTrailSources;
+        },
+        get chromaticTrailSources() {
+            return chromaticTrailSources;
         },
         get heatDistortionSources() {
             return heatDistortionSources;

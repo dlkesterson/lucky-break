@@ -105,6 +105,13 @@ export { createAudioWaveBackdrop } from './audio-waves';
 export type { AudioWaveBackdrop, AudioWaveBackdropOptions, AudioWaveBumpOptions, AudioWaveKind } from './audio-waves';
 export { createBallTrailsEffect } from './ball-trails';
 export type { BallTrailEffect, BallTrailSource, BallTrailTheme, BallTrailEffectOptions } from './ball-trails';
+export { createChromaticTrailEffect } from './chromatic-trail';
+export type {
+    ChromaticTrailEffect,
+    ChromaticTrailEffectOptions,
+    ChromaticTrailPalette,
+    ChromaticTrailUpdatePayload,
+} from './chromatic-trail';
 export { createBrickParticleSystem } from './brick-particles';
 export type { BrickParticleSystem, BrickParticleSystemOptions } from './brick-particles';
 export { createComboBloomEffect } from './combo-bloom';

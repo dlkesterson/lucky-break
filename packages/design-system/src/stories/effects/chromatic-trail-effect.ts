@@ -1,7 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
-import { clampUnit, lerp } from 'util/math';
 
-export interface BallTrailSource {
+export interface TrailSource {
     readonly id: number;
     readonly position: { readonly x: number; readonly y: number };
     readonly radius: number;
@@ -9,29 +8,28 @@ export interface BallTrailSource {
     readonly isPrimary: boolean;
 }
 
-export interface BallTrailTheme {
-    readonly coreColor: number;
-    readonly auraColor: number;
-    readonly accentColor: number;
+export interface ChromaticTrailPalette {
+    readonly red: number;
+    readonly green: number;
+    readonly blue: number;
 }
 
-export interface BallTrailEffect {
-    readonly container: Container;
-    update(payload: {
-        readonly deltaSeconds: number;
-        readonly comboEnergy: number;
-        readonly sources: readonly BallTrailSource[];
-    }): void;
-    applyTheme(theme: BallTrailTheme): void;
-    configure(options: BallTrailEffectOptions): void;
-    reset(): void;
-    destroy(): void;
-}
-
-export interface BallTrailEffectOptions {
+export interface ChromaticTrailEffectOptions {
+    readonly enabled?: boolean;
     readonly maxPoints?: number;
     readonly fadeDuration?: number;
-    readonly enabled?: boolean;
+    readonly emissionThreshold?: number;
+    readonly offsetScale?: number;
+    readonly trackAllSources?: boolean;
+}
+
+export interface ChromaticTrailEffect {
+    readonly container: Container;
+    update(payload: { readonly deltaSeconds: number; readonly comboEnergy: number; readonly sources: readonly TrailSource[] }): void;
+    configure(options: ChromaticTrailEffectOptions): void;
+    applyPalette(palette: ChromaticTrailPalette): void;
+    reset(): void;
+    destroy(): void;
 }
 
 interface TrailPoint {
@@ -57,7 +55,6 @@ interface TrailEntry {
     points: TrailPoint[];
     radius: number;
     active: boolean;
-    isPrimary: boolean;
     lastDirX: number;
     lastDirY: number;
 }
@@ -74,8 +71,24 @@ const CHANNEL_BLUEPRINTS: readonly ChannelBlueprint[] = [
 
 const DEFAULT_MAX_POINTS = 12;
 const DEFAULT_FADE_DURATION = 0.44;
+const DEFAULT_EMISSION_THRESHOLD = 0.1;
 const DEFAULT_OFFSET_SCALE = 15;
 const INACTIVE_FADE_ACCELERATION = 1.8;
+
+const clampUnit = (value: number): number => {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+    if (value <= 0) {
+        return 0;
+    }
+    if (value >= 1) {
+        return 1;
+    }
+    return value;
+};
+
+const lerp = (start: number, end: number, alpha: number): number => start + (end - start) * alpha;
 
 const createChannelGraphic = (): Graphics => {
     const graphic = new Graphics();
@@ -84,85 +97,44 @@ const createChannelGraphic = (): Graphics => {
     return graphic;
 };
 
-const rgbToHex = (rgb: { r: number; g: number; b: number }): number => {
-    const r = Math.max(0, Math.min(255, Math.round(rgb.r)));
-    const g = Math.max(0, Math.min(255, Math.round(rgb.g)));
-    const b = Math.max(0, Math.min(255, Math.round(rgb.b)));
-    return (r << 16) | (g << 8) | b;
-};
-
-const hexToRgb = (hex: number): { r: number; g: number; b: number } => {
-    return {
-        r: (hex >> 16) & 0xff,
-        g: (hex >> 8) & 0xff,
-        b: hex & 0xff,
-    };
-};
-
-const mixHexColors = (color1: number, color2: number, t: number): number => {
-    const rgb1 = hexToRgb(color1);
-    const rgb2 = hexToRgb(color2);
-    return rgbToHex({
-        r: lerp(rgb1.r, rgb2.r, t),
-        g: lerp(rgb1.g, rgb2.g, t),
-        b: lerp(rgb1.b, rgb2.b, t),
-    });
-};
-
-export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect => {
+export const createStoryChromaticTrailEffect = (
+    palette: ChromaticTrailPalette,
+    options: ChromaticTrailEffectOptions = {},
+): ChromaticTrailEffect => {
     const container = new Container();
     container.eventMode = 'none';
     container.sortableChildren = false;
     container.visible = false;
 
-    let maxPoints = DEFAULT_MAX_POINTS;
-    let fadeDuration = DEFAULT_FADE_DURATION;
-    let offsetScale = DEFAULT_OFFSET_SCALE;
-    let enabled = true;
+    let enabled = options.enabled ?? true;
+    let maxPoints = Math.max(4, Math.floor(options.maxPoints ?? DEFAULT_MAX_POINTS));
+    let fadeDuration = Math.max(0.1, options.fadeDuration ?? DEFAULT_FADE_DURATION);
+    let emissionThreshold = clampUnit(options.emissionThreshold ?? DEFAULT_EMISSION_THRESHOLD);
+    let offsetScale = Math.max(2, options.offsetScale ?? DEFAULT_OFFSET_SCALE);
+    let trackAllSources = Boolean(options.trackAllSources);
 
-    let activeTheme: BallTrailTheme = { ...theme };
+    let activePalette: ChromaticTrailPalette = { ...palette };
 
     const trails = new Map<number, TrailEntry>();
 
-    const applyThemeInternal = (next: BallTrailTheme) => {
-        activeTheme = { ...next };
-        // Convert theme colors to RGB channels
-        const headColor = mixHexColors(activeTheme.accentColor, activeTheme.coreColor, 0.3);
-        const rgb = hexToRgb(headColor);
+    const applyPaletteInternal = (next: ChromaticTrailPalette) => {
+        activePalette = { ...next };
         trails.forEach((entry) => {
             entry.channels.forEach((channel) => {
-                if (channel.key === 'red') {
-                    channel.color = rgbToHex({ r: rgb.r, g: 0, b: 0 });
-                } else if (channel.key === 'green') {
-                    channel.color = rgbToHex({ r: 0, g: rgb.g, b: 0 });
-                } else {
-                    channel.color = rgbToHex({ r: 0, g: 0, b: rgb.b });
-                }
+                channel.color = activePalette[channel.key];
             });
         });
     };
 
-    const createChannels = (): ChannelState[] => {
-        const headColor = mixHexColors(activeTheme.accentColor, activeTheme.coreColor, 0.3);
-        const rgb = hexToRgb(headColor);
-        return CHANNEL_BLUEPRINTS.map((blueprint) => {
-            const graphic = createChannelGraphic();
-            container.addChild(graphic);
-            let channelColor = 0;
-            if (blueprint.key === 'red') {
-                channelColor = rgbToHex({ r: rgb.r, g: 0, b: 0 });
-            } else if (blueprint.key === 'green') {
-                channelColor = rgbToHex({ r: 0, g: rgb.g, b: 0 });
-            } else {
-                channelColor = rgbToHex({ r: 0, g: 0, b: rgb.b });
-            }
-            return {
-                ...blueprint,
-                graphic,
-                color: channelColor,
-            } satisfies ChannelState;
-        });
-    };
+    const createChannels = (): ChannelState[] => CHANNEL_BLUEPRINTS.map((blueprint) => {
+        const graphic = createChannelGraphic();
+        container.addChild(graphic);
+        return {
+            ...blueprint,
+            graphic,
+            color: activePalette[blueprint.key],
+        } satisfies ChannelState;
+    });
 
     const removeEntry = (id: number) => {
         const entry = trails.get(id);
@@ -179,12 +151,11 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         trails.delete(id);
     };
 
-    const ensureEntry = (source: BallTrailSource): TrailEntry => {
+    const ensureEntry = (source: TrailSource): TrailEntry => {
         const existing = trails.get(source.id);
         if (existing) {
             existing.active = true;
             existing.radius = source.radius;
-            existing.isPrimary = source.isPrimary;
             return existing;
         }
 
@@ -193,7 +164,6 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
             points: [],
             radius: source.radius,
             active: true,
-            isPrimary: source.isPrimary,
             lastDirX: 1,
             lastDirY: 0,
         };
@@ -201,7 +171,7 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         return entry;
     };
 
-    const pushPoint = (entry: TrailEntry, source: BallTrailSource) => {
+    const pushPoint = (entry: TrailEntry, source: TrailSource) => {
         const head = entry.points[0];
         let dirX = entry.lastDirX;
         let dirY = entry.lastDirY;
@@ -330,14 +300,20 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         }
     };
 
-    const update: BallTrailEffect['update'] = ({ deltaSeconds, comboEnergy, sources }) => {
+    const update: ChromaticTrailEffect['update'] = ({ deltaSeconds, comboEnergy, sources }) => {
         const safeDelta = Math.max(0, deltaSeconds);
         trails.forEach((entry) => {
             entry.active = false;
         });
 
-        if (enabled) {
+        const intensity = clampUnit(comboEnergy);
+        const shouldEmit = enabled && intensity >= emissionThreshold;
+
+        if (shouldEmit) {
             sources.forEach((source) => {
+                if (!trackAllSources && !source.isPrimary) {
+                    return;
+                }
                 const entry = ensureEntry(source);
                 entry.radius = source.radius;
                 pushPoint(entry, source);
@@ -362,19 +338,15 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         container.visible = enabled && anyVisible;
     };
 
-    const applyTheme: BallTrailEffect['applyTheme'] = (nextTheme) => {
-        applyThemeInternal(nextTheme);
-    };
-
-    const configure: BallTrailEffect['configure'] = (options) => {
-        if (options.enabled !== undefined) {
-            enabled = Boolean(options.enabled);
+    const configure: ChromaticTrailEffect['configure'] = (config) => {
+        if (config.enabled !== undefined) {
+            enabled = Boolean(config.enabled);
             if (!enabled) {
                 container.visible = false;
             }
         }
-        if (options.maxPoints !== undefined) {
-            const candidate = Math.max(4, Math.floor(options.maxPoints));
+        if (config.maxPoints !== undefined) {
+            const candidate = Math.max(4, Math.floor(config.maxPoints));
             maxPoints = Number.isFinite(candidate) ? candidate : maxPoints;
             trails.forEach((entry) => {
                 if (entry.points.length > maxPoints) {
@@ -382,13 +354,23 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
                 }
             });
         }
-        if (options.fadeDuration !== undefined) {
-            const candidate = Math.max(0.1, options.fadeDuration);
+        if (config.fadeDuration !== undefined) {
+            const candidate = Math.max(0.1, config.fadeDuration);
             fadeDuration = Number.isFinite(candidate) ? candidate : fadeDuration;
+        }
+        if (config.emissionThreshold !== undefined) {
+            emissionThreshold = clampUnit(config.emissionThreshold);
+        }
+        if (config.offsetScale !== undefined) {
+            const candidate = Math.max(2, config.offsetScale);
+            offsetScale = Number.isFinite(candidate) ? candidate : offsetScale;
+        }
+        if (config.trackAllSources !== undefined) {
+            trackAllSources = Boolean(config.trackAllSources);
         }
     };
 
-    const reset: BallTrailEffect['reset'] = () => {
+    const reset: ChromaticTrailEffect['reset'] = () => {
         trails.forEach((entry) => {
             entry.points.length = 0;
             entry.channels.forEach((channel) => channel.graphic.clear());
@@ -396,7 +378,7 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         container.visible = false;
     };
 
-    const destroy: BallTrailEffect['destroy'] = () => {
+    const destroy: ChromaticTrailEffect['destroy'] = () => {
         for (const id of Array.from(trails.keys())) {
             removeEntry(id);
         }
@@ -405,14 +387,14 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
         container.destroy({ children: true });
     };
 
-    applyThemeInternal(activeTheme);
+    applyPaletteInternal(activePalette);
 
     return {
         container,
         update,
-        applyTheme,
         configure,
+        applyPalette: applyPaletteInternal,
         reset,
         destroy,
-    } satisfies BallTrailEffect;
+    } satisfies ChromaticTrailEffect;
 };

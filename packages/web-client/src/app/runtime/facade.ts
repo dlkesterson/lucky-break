@@ -216,6 +216,13 @@ const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
     return hashed === 0 ? 1 : hashed;
 };
 
+const CHROMATIC_TRAIL_HISTORY_SECONDS = 2.2;
+const CHROMATIC_TRAIL_MAX_SAMPLES = 120;
+const CHROMATIC_TRAIL_MIN_SAMPLE_INTERVAL = 0.008;
+const CHROMATIC_TRAIL_FOLLOWER_DECAY = 0.18;
+const CHROMATIC_TRAIL_MIN_RADIUS_SCALE = 0.42;
+const CHROMATIC_TRAIL_SPEED_ATTENUATION = 0.16;
+
 const ENTROPY_COST_REROLL = Math.max(1, config.entropy.spend.rerollCost);
 const REWARD_LOCK_COIN_COST = Math.max(0, config.rewards.lockCoinCost);
 const ENTROPY_COST_SHIELD = Math.max(1, config.entropy.spend.shieldCost);
@@ -520,6 +527,130 @@ export const createRuntimeFacade = async ({
         multiBallController,
         visualBodies,
     } = runtimePhysics;
+
+    type ChromaticTrailSample = { time: number; x: number; y: number };
+    const chromaticTrailHistory = new Map<number, ChromaticTrailSample[]>();
+
+    const getOrCreateHistory = (id: number): ChromaticTrailSample[] => {
+        let history = chromaticTrailHistory.get(id);
+        if (!history) {
+            history = [];
+            chromaticTrailHistory.set(id, history);
+        }
+        return history;
+    };
+
+    const recordChromaticSample = (id: number, time: number, position: { readonly x: number; readonly y: number }) => {
+        const history = getOrCreateHistory(id);
+        const last = history[history.length - 1];
+        if (last) {
+            const dt = time - last.time;
+            const dx = position.x - last.x;
+            const dy = position.y - last.y;
+            if (dt < CHROMATIC_TRAIL_MIN_SAMPLE_INTERVAL && dx * dx + dy * dy < 0.25) {
+                return;
+            }
+        }
+        history.push({ time, x: position.x, y: position.y });
+        while (history.length > CHROMATIC_TRAIL_MAX_SAMPLES) {
+            history.shift();
+        }
+        const cutoff = time - CHROMATIC_TRAIL_HISTORY_SECONDS;
+        while (history.length > 0 && history[0].time < cutoff) {
+            history.shift();
+        }
+    };
+
+    const sampleChromaticPosition = (
+        history: ChromaticTrailSample[] | undefined,
+        targetTime: number,
+    ): { x: number; y: number } | null => {
+        if (!history || history.length === 0) {
+            return null;
+        }
+        const first = history[0];
+        const last = history[history.length - 1];
+        if (!first || !last) {
+            return null;
+        }
+        if (targetTime <= first.time) {
+            return { x: first.x, y: first.y };
+        }
+        if (targetTime >= last.time) {
+            return { x: last.x, y: last.y };
+        }
+        for (let index = history.length - 2; index >= 0; index -= 1) {
+            const current = history[index];
+            const next = history[index + 1];
+            if (!current || !next) {
+                continue;
+            }
+            if (current.time <= targetTime && next.time >= targetTime) {
+                const span = Math.max(1e-5, next.time - current.time);
+                const alpha = clampUnit((targetTime - current.time) / span);
+                return {
+                    x: current.x + (next.x - current.x) * alpha,
+                    y: current.y + (next.y - current.y) * alpha,
+                };
+            }
+        }
+        return { x: first.x, y: first.y };
+    };
+
+    const sampleChromaticSpeed = (
+        history: ChromaticTrailSample[] | undefined,
+        targetTime: number,
+        fallback: number,
+    ): number => {
+        if (!history || history.length === 0) {
+            return fallback;
+        }
+        const lookback = 0.02;
+        const previous = sampleChromaticPosition(history, targetTime - lookback);
+        const current = sampleChromaticPosition(history, targetTime);
+        if (!previous || !current) {
+            return fallback;
+        }
+        const distance = Math.hypot(current.x - previous.x, current.y - previous.y);
+        const speed = distance / Math.max(lookback, 0.005);
+        if (!Number.isFinite(speed)) {
+            return fallback;
+        }
+        return clampUnit(speed / Math.max(1, runtimeState.currentMaxSpeed));
+    };
+
+    const pruneChromaticHistory = (activeIds: Set<number>, referenceTime: number) => {
+        const cutoff = referenceTime - CHROMATIC_TRAIL_HISTORY_SECONDS - 0.1;
+        for (const [id, history] of chromaticTrailHistory) {
+            if (!activeIds.has(id)) {
+                chromaticTrailHistory.delete(id);
+                continue;
+            }
+            while (history.length > 0 && history[0].time < cutoff) {
+                history.shift();
+            }
+            if (history.length === 0) {
+                chromaticTrailHistory.delete(id);
+            }
+        }
+    };
+
+    const resolveChromaticFollowerCount = (comboCount: number, comboEnergy: number): number => {
+        if (comboCount < 3 || comboEnergy <= 0.05) {
+            return 0;
+        }
+        const normalizedCombo = clampUnit((comboCount - 3) / 9);
+        const energyBoost = clampUnit((comboEnergy - 0.25) / 0.8);
+        const blend = clampUnit(normalizedCombo * 0.7 + energyBoost * 0.3);
+        if (blend <= 0) {
+            return 0;
+        }
+        return Math.min(4, Math.ceil(blend * 4));
+    };
+
+    const resolveChromaticFollowerLag = (comboEnergy: number): number => {
+        return 0.24 + Math.min(0.26, comboEnergy * 0.24);
+    };
 
     const runtimeAudio = createRuntimeAudio({
         audioBootstrap,
@@ -1957,9 +2088,8 @@ export const createRuntimeFacade = async ({
             backgroundLayer.update(deltaSeconds);
         }
 
-        const ballTrailsEffect = visuals?.ballTrailsEffect;
         const ballTrailSources = visuals?.ballTrailSources;
-        if (ballTrailsEffect && ballTrailSources) {
+        if (ballTrailSources) {
             ballTrailSources.length = 0;
             multiBallController.visitActiveBalls(({ body, isPrimary }) => {
                 const normalizedSpeed = clampUnit(
@@ -1973,12 +2103,85 @@ export const createRuntimeFacade = async ({
                     isPrimary,
                 });
             });
+        }
 
+        const ballTrailsEffect = visuals?.ballTrailsEffect;
+        if (ballTrailsEffect && ballTrailSources) {
             ballTrailsEffect.update({
                 deltaSeconds,
                 comboEnergy,
                 sources: ballTrailSources,
             });
+        }
+
+        const chromaticTrailEffect = visuals?.chromaticTrailEffect;
+        const chromaticTrailSources = visuals?.chromaticTrailSources;
+        if (chromaticTrailEffect) {
+            if (chromaticTrailSources) {
+                chromaticTrailSources.length = 0;
+                const activeBallIds = new Set<number>();
+                const sampleTime = runtimeState.sessionElapsedSeconds + deltaSeconds;
+                const followerCount = resolveChromaticFollowerCount(scoringState.combo, comboEnergy);
+                const baseLag = resolveChromaticFollowerLag(comboEnergy);
+                multiBallController.visitActiveBalls(({ body, isPrimary }) => {
+                    activeBallIds.add(body.id);
+                    const normalizedSpeed = clampUnit(
+                        MatterVector.magnitude(body.velocity) / Math.max(1, runtimeState.currentMaxSpeed),
+                    );
+                    const history = getOrCreateHistory(body.id);
+                    recordChromaticSample(body.id, sampleTime, { x: body.position.x, y: body.position.y });
+                    chromaticTrailSources.push({
+                        id: (body.id << 3) | 0,
+                        position: { x: body.position.x, y: body.position.y },
+                        radius: ball.radius,
+                        normalizedSpeed,
+                        isPrimary,
+                    });
+
+                    if (followerCount <= 0) {
+                        return;
+                    }
+
+                    for (let followerIndex = 1; followerIndex <= followerCount; followerIndex += 1) {
+                        const lagSeconds = baseLag * followerIndex;
+                        const followerTime = sampleTime - lagSeconds;
+                        const followerPosition = sampleChromaticPosition(history, followerTime);
+                        if (!followerPosition) {
+                            continue;
+                        }
+                        const historySpeed = sampleChromaticSpeed(history, followerTime, normalizedSpeed);
+                        const radiusScale = Math.max(
+                            CHROMATIC_TRAIL_MIN_RADIUS_SCALE,
+                            1 - CHROMATIC_TRAIL_FOLLOWER_DECAY * followerIndex,
+                        );
+                        const attenuatedSpeed = Math.max(
+                            0.2,
+                            Math.min(1, historySpeed * (1 - CHROMATIC_TRAIL_SPEED_ATTENUATION * followerIndex)),
+                        );
+                        chromaticTrailSources.push({
+                            id: (body.id << 3) | followerIndex,
+                            position: followerPosition,
+                            radius: ball.radius * radiusScale,
+                            normalizedSpeed: attenuatedSpeed,
+                            isPrimary: false,
+                        });
+                    }
+                });
+
+                pruneChromaticHistory(activeBallIds, sampleTime);
+
+                chromaticTrailEffect.update({
+                    deltaSeconds,
+                    comboEnergy,
+                    sources: chromaticTrailSources,
+                });
+            } else {
+                chromaticTrailEffect.update({
+                    deltaSeconds,
+                    comboEnergy,
+                    sources: [],
+                });
+            }
         }
 
         const heatDistortionEffect = visuals?.heatDistortionEffect;
@@ -2148,6 +2351,7 @@ export const createRuntimeFacade = async ({
         runtimeState.syncDriftPeakMs = 0;
         runtimeState.syncDriftPeakRecordedAt = runtimeState.sessionElapsedSeconds;
         syncDriftTelemetry.reset();
+        chromaticTrailHistory.clear();
     };
 
     const { lifecycle, idleResumeSummary } = initializeRuntimeLifecycle({
