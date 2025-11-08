@@ -771,7 +771,12 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
             applySpeedClamps(ball);
         }
 
-        if (ball.position.y >= PLAYFIELD_HEIGHT + BALL_RADIUS * 2) {
+        // Check for ball drop - bottom boundary for normal gravity, top boundary for negative gravity
+        const currentGravity = physics.getGravity();
+        const ballDroppedBottom = ball.position.y >= PLAYFIELD_HEIGHT + BALL_RADIUS * 2;
+        const ballDroppedTop = currentGravity < 0 && ball.position.y <= -BALL_RADIUS * 2;
+
+        if (ballDroppedBottom || ballDroppedTop) {
             metrics.livesLost += 1;
             session.recordLifeLost('ball-drop');
             const comboBeforeReset = scoring.combo;

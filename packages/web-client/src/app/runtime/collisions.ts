@@ -66,6 +66,7 @@ export interface CollisionContext {
         minValue: number;
         maxValue: number;
     };
+    readonly getGravity: () => number;
     readonly functions: CollisionEffectHooks;
     readonly roundMachine: RoundMachine;
 }
@@ -522,6 +523,17 @@ const handleBallWallCollision = (
         return;
     }
 
+    // Check if we hit the "death wall" based on gravity direction
+    // When gravity is negative (upward), the top wall becomes the death wall
+    const gravity = ctx.getGravity();
+    const isDeathWall = (gravity < 0 && side === 'top') || (gravity >= 0 && side === 'bottom');
+
+    if (isDeathWall) {
+        // Treat as ball drop
+        handleBallBottomCollision(deps, ctx, ballBody);
+        return;
+    }
+
     const wallSpeed = MatterVector.magnitude(ballBody.velocity);
     const scheduledTime = ctx.functions.computeScheduledAudioTime();
     deps.bus.publish('WallHit', {
@@ -775,11 +787,7 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
 
             const ballWall = toBallWallPair(bodyA, bodyB);
             if (ballWall) {
-                if (ballWall.wallBody.label === 'wall-bottom') {
-                    handleBallBottomCollision(deps, ctx, ballWall.ballBody);
-                } else {
-                    handleBallWallCollision(deps, ctx, frameTimestampMs, sessionId, ballWall.ballBody, ballWall.wallBody);
-                }
+                handleBallWallCollision(deps, ctx, frameTimestampMs, sessionId, ballWall.ballBody, ballWall.wallBody);
                 return;
             }
 

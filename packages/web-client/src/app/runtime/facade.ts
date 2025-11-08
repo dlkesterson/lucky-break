@@ -1482,6 +1482,7 @@ export const createRuntimeFacade = async ({
             minValue: COIN_MIN_VALUE,
             maxValue: COIN_MAX_VALUE,
         },
+        getGravity: () => runtimeState.gravity,
         functions: {
             getSessionElapsedSeconds: () => runtimeState.sessionElapsedSeconds,
             getFrameTimestampMs: () => runtimeState.frameTimestampMs,
