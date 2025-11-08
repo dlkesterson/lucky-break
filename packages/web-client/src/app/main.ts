@@ -191,6 +191,7 @@ export function bootstrapLuckyBreak(options: LuckyBreakOptions = {}): LuckyBreak
                 layoutOrientation: initialLayout.orientation,
                 random,
                 replayBuffer,
+                isMobile: initialLayout.isMobile,
                 onAudioBlocked: (error) => {
                     if (!IS_TEST_ENV) {
                         console.warn('Audio context suspended; will retry after the first user interaction.', error);

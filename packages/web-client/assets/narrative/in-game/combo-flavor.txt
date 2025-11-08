@@ -1,5 +1,0 @@
-Combo ×{{combo}} ignites the cosmic carousel!
-The odds bow to streak ×{{combo}}—hold the line.
-Entropy ripples: your chain hits ×{{combo}}.
-Lucky Architect nods; ×{{combo}} resonates across the hall.
-Streak ×{{combo}} builds a {{multiplier}}× echo.

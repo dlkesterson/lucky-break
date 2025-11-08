@@ -274,6 +274,7 @@ export interface GameRuntimeOptions {
     readonly random: RandomManager;
     readonly replayBuffer: ReplayBuffer;
     readonly onAudioBlocked?: (error: unknown) => void;
+    readonly isMobile?: boolean;
 }
 
 export interface GameRuntimeHandle {
@@ -306,6 +307,7 @@ export const createRuntimeFacade = async ({
     random,
     replayBuffer,
     onAudioBlocked,
+    isMobile = false,
 }: GameRuntimeOptions): Promise<RuntimeFacade> => {
     await audioBootstrap.ensureToneAudio().catch((error: unknown) => {
         if (isAutoplayBlockedError(error)) {
@@ -456,6 +458,7 @@ export const createRuntimeFacade = async ({
         random,
         logger: runtimeLogger,
         now: Date.now,
+        isMobile,
     });
 
     const hasPerformanceNow = typeof performance !== 'undefined' && typeof performance.now === 'function';

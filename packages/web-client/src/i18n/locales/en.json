@@ -154,7 +154,7 @@
     "combo": "Combo ×{{value}}",
     "comboTimer": "{{time}}s window",
     "comboTimerClosed": "Window closed",
-    "bricks": "Bricks {{remaining}} / {{total}}",
+    "bricksLeft": "{{count}} bricks left",
     "momentum": {
       "title": "Momentum",
       "heat": "Heat",
@@ -174,5 +174,21 @@
       "up": "Gravity ↑{{value}}g",
       "down": "Gravity ↓{{value}}g"
     }
+  },
+  "flavor": {
+    "paddle": [
+      "Nice angle!",
+      "Clean hit.",
+      "Keep it moving.",
+      "Good timing.",
+      "Solid return."
+    ],
+    "combo": [
+      "×{{combo}} chain!",
+      "Streak ×{{combo}}—{{multiplier}}× bonus.",
+      "×{{combo}} combo active.",
+      "{{combo}} in a row!",
+      "Chain ×{{combo}}: +{{points}}"
+    ]
   }
 }

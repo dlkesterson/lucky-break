@@ -153,9 +153,7 @@ export const HudApp = (): JSX.Element | null => {
         </div>
 
         <section className="hud-bricks" aria-label="Brick count">
-          <Mono className="hud-bricks-label">
-            {brickRemaining} / {brickTotal > 0 ? brickTotal : 0}
-          </Mono>
+          <Mono className="hud-bricks-label">{t('hud.bricksLeft', { count: brickRemaining })}</Mono>
         </section>
       </section>
 

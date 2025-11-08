@@ -9,17 +9,16 @@ import type { LuckyBreakEventBus, EventEnvelope } from 'app/events';
 import type { RandomManager } from 'util/random';
 import type { IdleSimulationResultSummary } from './runtime/idle';
 import { generateFateLedgerIdleNarrative } from './fate-ledger';
+import { i18n } from '../i18n';
 import introPrologueRaw from '../../assets/narrative/intro/prologue.md?raw';
-import paddleFlavorRaw from '../../assets/narrative/in-game/paddle-flavor.txt?raw';
-import comboFlavorRaw from '../../assets/narrative/in-game/combo-flavor.txt?raw';
 
 const INTRO_STORAGE_KEY = 'lucky-break::narrative::intro::v1';
 const PADDLE_FLAVOR_COOLDOWN_MS = 2400;
 const COMBO_FLAVOR_COOLDOWN_MS = 4400;
 const FLAVOR_DURATION_MS = 5200;
 
-const DEFAULT_PADDLE_FLAVOR = 'Luck rebounds!';
-const DEFAULT_COMBO_FLAVOR = 'The cosmos favors this streak!';
+const DEFAULT_PADDLE_FLAVOR = 'Nice hit!';
+const DEFAULT_COMBO_FLAVOR = 'Combo active!';
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -29,6 +28,7 @@ export interface NarrativeServiceOptions {
     readonly logger?: Logger;
     readonly storage?: StorageLike | null;
     readonly now?: () => number;
+    readonly isMobile?: boolean;
 }
 
 export interface NarrativeService {
@@ -97,18 +97,12 @@ const parseMarkdownSlide = (raw: string, fallbackId: string): IntroSlideView => 
     } satisfies IntroSlideView;
 };
 
-const parseLines = (raw: string): readonly string[] =>
-    raw
-        .split(/\r?\n/) // split lines
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-
-const selectRandomLine = (random: RandomManager, lines: readonly string[], fallback: string): string => {
-    if (lines.length === 0) {
+const selectRandomEntry = <T>(random: RandomManager, items: readonly T[], fallback: T): T => {
+    if (items.length === 0) {
         return fallback;
     }
-    const index = Math.floor(random.next() * lines.length);
-    return lines[Math.max(0, Math.min(lines.length - 1, index))] ?? fallback;
+    const index = Math.floor(random.next() * items.length);
+    return items[Math.max(0, Math.min(items.length - 1, index))] ?? fallback;
 };
 
 const cloneSlide = (slide: IntroSlideView): IntroSlideView => ({
@@ -131,9 +125,6 @@ const reasonAllowsSkip = (reason: IntroSequenceReason): boolean => reason !== 'f
 const introPrologueSlide = parseMarkdownSlide(introPrologueRaw, 'awakening');
 
 const introSlides: readonly IntroSlideView[] = [introPrologueSlide];
-
-const paddleFlavorLines = parseLines(paddleFlavorRaw);
-const comboFlavorTemplates = parseLines(comboFlavorRaw);
 
 const buildFlavorId = (prefix: string, clock: () => number, random: RandomManager): string => {
     const tick = Math.round(clock());
@@ -184,6 +175,7 @@ export const createNarrativeService = ({
     logger: explicitLogger,
     storage: explicitStorage,
     now,
+    isMobile = false,
 }: NarrativeServiceOptions): NarrativeService => {
     const logger = explicitLogger ?? rootLogger.child('narrative');
     const clock = now ?? Date.now;
@@ -259,22 +251,30 @@ export const createNarrativeService = ({
     let lastComboFlavorTimestamp = 0;
 
     const handlePaddleHit = (): void => {
+        if (isMobile) {
+            return;
+        }
         const nowMs = clock();
         if (nowMs - lastPaddleFlavorTimestamp < PADDLE_FLAVOR_COOLDOWN_MS) {
             return;
         }
         lastPaddleFlavorTimestamp = nowMs;
-        const line = selectRandomLine(random, paddleFlavorLines, DEFAULT_PADDLE_FLAVOR);
+        const paddleLines = i18n.t('flavor.paddle', { returnObjects: true }) as string[];
+        const line = selectRandomEntry(random, paddleLines, DEFAULT_PADDLE_FLAVOR);
         showFlavorMessage('hype', line, { clock, random });
     };
 
     const handleComboMilestone = (event: EventEnvelope<'ComboMilestoneReached'>) => {
+        if (isMobile) {
+            return;
+        }
         const nowMs = clock();
         if (nowMs - lastComboFlavorTimestamp < COMBO_FLAVOR_COOLDOWN_MS) {
             return;
         }
         lastComboFlavorTimestamp = nowMs;
-        const template = selectRandomLine(random, comboFlavorTemplates, DEFAULT_COMBO_FLAVOR);
+        const comboTemplates = i18n.t('flavor.combo', { returnObjects: true }) as string[];
+        const template = selectRandomEntry(random, comboTemplates, DEFAULT_COMBO_FLAVOR);
         const text = formatTemplate(template, {
             combo: event.payload.combo,
             multiplier: event.payload.multiplier.toFixed(2),
