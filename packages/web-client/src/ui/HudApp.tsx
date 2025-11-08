@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Heading, Label, Mono, Progress } from '@lucky-break/design-system';
 
+import { LivesDialHeart } from './components/LivesDialHeart';
 import { useHud } from './state/game-bridge';
 
 const formatScore = (score: number): string => {
@@ -19,44 +20,32 @@ const formatCoins = (coins: number): string => {
   return `${coins.toLocaleString(undefined, { maximumFractionDigits: 0 })}c`;
 };
 
-const formatLives = (lives: number): string => {
-  if (!Number.isFinite(lives) || lives <= 0) {
-    return '—';
-  }
-  const clamped = Math.min(Math.floor(lives), 10);
-  return '❤'.repeat(clamped);
-};
-
-const clampUnit = (value: number): number => {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, value));
-};
-
-const momentumDescriptor = [
-  { key: 'comboHeat' as const },
-  { key: 'speedPressure' as const },
-  { key: 'brickDensity' as const },
-] as const;
-
-const formatSpeedUnits = (speed: number): string => {
+const formatSpeedValue = (speed: number): string => {
   if (!Number.isFinite(speed) || speed <= 0) {
-    return '0 u/s';
+    return '0';
   }
   if (speed >= 100) {
-    return `${Math.round(speed)} u/s`;
+    return `${Math.round(speed)}`;
   }
   if (speed >= 10) {
-    return `${speed.toFixed(1)} u/s`;
+    return `${speed.toFixed(1)}`;
   }
-  return `${speed.toFixed(2)} u/s`;
+  return `${speed.toFixed(2)}`;
 };
 
-const describeGravity = (
-  gravity: number | undefined,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): { readonly label: string; readonly tone: 'up' | 'down' } | null => {
+const formatGravityValue = (gravity: number): string => {
+  if (!Number.isFinite(gravity)) {
+    return '0';
+  }
+  const magnitude = Math.abs(gravity);
+  if (magnitude < 0.01) {
+    return '0';
+  }
+  const formatted = magnitude >= 0.1 ? magnitude.toFixed(2) : magnitude.toFixed(3);
+  return formatted.replace(/0+$/, '').replace(/\.$/, '');
+};
+
+const getGravityDirection = (gravity: number | undefined): 'up' | 'down' | null => {
   if (typeof gravity !== 'number' || !Number.isFinite(gravity)) {
     return null;
   }
@@ -64,14 +53,7 @@ const describeGravity = (
   if (magnitude < 0.01) {
     return null;
   }
-  const tone = gravity < 0 ? ('up' as const) : ('down' as const);
-  const formatted = magnitude >= 0.1 ? magnitude.toFixed(2) : magnitude.toFixed(3);
-  const value = formatted.replace(/0+$/, '').replace(/\.$/, '');
-  const label = t(`hud.gravity.${tone}`, { value });
-  return {
-    label,
-    tone,
-  };
+  return gravity < 0 ? 'up' : 'down';
 };
 
 export const HudApp = (): JSX.Element | null => {
@@ -115,40 +97,45 @@ export const HudApp = (): JSX.Element | null => {
     return `hud-flavor hud-flavor-${flavor.tone}`;
   }, [flavor]);
 
-  const speedLabel = useMemo(() => {
+  const speedValue = useMemo(() => {
     if (!physics) {
       return null;
     }
-    return t('hud.speed', { value: formatSpeedUnits(physics.currentSpeed) });
-  }, [physics, t]);
+    return formatSpeedValue(physics.currentSpeed);
+  }, [physics]);
 
-  const gravityDescriptor = useMemo(() => describeGravity(physics?.gravity, t), [physics, t]);
+  const gravityValue = useMemo(() => {
+    if (!physics?.gravity) {
+      return null;
+    }
+    return formatGravityValue(physics.gravity);
+  }, [physics]);
+
+  const gravityDirection = useMemo(() => getGravityDirection(physics?.gravity), [physics]);
 
   if (!visible || !scoreboard) {
     return null;
   }
 
-  const secondaryEntries = scoreboard.entries.filter(
-    (entry) =>
-      entry.id !== 'score' &&
-      entry.id !== 'coins' &&
-      entry.id !== 'lives' &&
-      entry.id !== 'momentum' &&
-      entry.id !== 'bricks',
-  );
-
   const summaryCoins = formatCoins(coins);
-  const summaryLives = formatLives(lives);
   const comboTimerLabel =
     Number.isFinite(comboTimer) && comboTimer > 0
       ? t('hud.comboTimer', { time: comboTimer.toFixed(1) })
       : t('hud.comboTimerClosed');
 
-  const brickProgress = brickTotal > 0 ? clampUnit(1 - brickRemaining / brickTotal) : 0;
-  const remainingLabel = `${brickRemaining} / ${brickTotal > 0 ? brickTotal : 0}`;
+  const brickProgress = brickTotal > 0 ? 1 - brickRemaining / brickTotal : 0;
 
   return (
     <div className="hud-layout">
+      {/* BRICK PROGRESS BAR - Top of screen */}
+      <section className="hud-brick-bar-top" aria-label="Brick progress">
+        <Progress
+          value={brickProgress * 100}
+          className="hud-bricks-bar-fullwidth"
+          aria-label="Brick progress"
+        />
+      </section>
+
       {/* TOP BAR */}
       <section className="hud-top" aria-live="polite">
         <header className="hud-header">
@@ -168,82 +155,36 @@ export const HudApp = (): JSX.Element | null => {
           )}
         </div>
 
-        <section className="hud-bricks" aria-label="Brick progress">
+        <section className="hud-bricks" aria-label="Brick count">
           <Mono className="hud-bricks-label">
             {t('hud.bricks', { remaining: brickRemaining, total: brickTotal > 0 ? brickTotal : 0 })}
           </Mono>
-          <Progress
-            value={brickProgress * 100}
-            className="hud-bricks-bar"
-            aria-label="Brick progress"
-          />
         </section>
       </section>
 
-      {/* RIGHT RAIL */}
-      <aside className="hud-right">
-        {momentum && (
-          <section className="hud-momentum" aria-label="Momentum metrics">
-            <Heading className="hud-momentum-title">{t('hud.momentum.title')}</Heading>
-            <ul>
-              {momentumDescriptor.map((descriptor) => {
-                const value = clampUnit(momentum[descriptor.key]);
-                const percent = Math.round(value * 100);
-                const labelKey =
-                  descriptor.key === 'comboHeat'
-                    ? 'heat'
-                    : descriptor.key === 'speedPressure'
-                      ? 'speed'
-                      : 'field';
-                const label = t(`hud.momentum.${labelKey}`);
-                return (
-                  <li key={descriptor.key}>
-                    <Label className="hud-momentum-label">{label}</Label>
-                    <Progress
-                      value={percent}
-                      className="hud-momentum-bar"
-                      aria-label={`${label} momentum`}
-                    />
-                    <Mono className="hud-momentum-value">{percent}%</Mono>
-                  </li>
-                );
-              })}
-            </ul>
-            <Mono className="hud-momentum-volley">
-              {t('hud.momentum.volley', { length: Math.max(0, Math.round(momentum.volleyLength)) })}
-            </Mono>
-          </section>
+      {/* RIGHT RAIL - Speed and Gravity stats */}
+      <aside className="hud-right-stats">
+        {speedValue !== null && (
+          <div className="hud-stat">
+            <Label className="hud-stat-label">{t('hud.speedLabel')}</Label>
+            <Heading className="hud-stat-value">{speedValue}</Heading>
+            <Label className="hud-stat-unit">u/s</Label>
+          </div>
         )}
-
-        {activePowerUps.length > 0 && (
-          <section className="hud-powerups" aria-label="Active power ups">
-            <Heading className="hud-powerups-title">{t('hud.powerups.title')}</Heading>
-            <ul>
-              {activePowerUps.map((powerUp, index) => (
-                <li key={`${powerUp.label}-${index}`}>
-                  <Label className="hud-powerup-label">{powerUp.label}</Label>
-                  <Mono className="hud-powerup-remaining">{powerUp.remaining}</Mono>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {secondaryEntries.length > 0 && (
-          <dl className="hud-entry-list">
-            {secondaryEntries.map((entry) => (
-              <div className="hud-entry" key={entry.id}>
-                <Label className="hud-entry-label">{entry.label}</Label>
-                <Mono className="hud-entry-value">{entry.value}</Mono>
-              </div>
-            ))}
-          </dl>
+        {gravityValue !== null && gravityDirection && (
+          <div className="hud-stat">
+            <Label className="hud-stat-label">{t('hud.gravityLabel')}</Label>
+            <Heading className={`hud-stat-value hud-gravity-${gravityDirection}`}>
+              {gravityDirection === 'up' ? '↑' : '↓'} {gravityValue}
+            </Heading>
+          </div>
         )}
       </aside>
 
       {/* BOTTOM BAR */}
       <section className="hud-bottom" aria-live="polite">
         <div className="hud-bottom-left">
+          <LivesDialHeart value={lives} max={3} size={72} />
           {reward ? (
             <div className="hud-reward" aria-label="Reward status">
               <Label className="hud-reward-label">{reward.label}</Label>
@@ -262,32 +203,14 @@ export const HudApp = (): JSX.Element | null => {
           <Mono className="hud-difficulty">
             {t('hud.difficulty', { value: difficultyMultiplier.toFixed(2) })}
           </Mono>
-          {speedLabel && (
-            <Mono className="hud-speed" aria-label="Ball speed">
-              {speedLabel}
-            </Mono>
-          )}
           {fpsLabel && (
             <Mono className="hud-fps" aria-label="Frame rate">
               {fpsLabel}
             </Mono>
           )}
-          {gravityDescriptor && (
-            <Mono
-              className={`hud-gravity hud-gravity-${gravityDescriptor.tone}`}
-              aria-label="Gravity vector"
-            >
-              {gravityDescriptor.label}
-            </Mono>
-          )}
-          <div className="hud-primary-row">
-            <Mono className="hud-primary-metric" aria-label="Lives">
-              {summaryLives}
-            </Mono>
-            <Mono className="hud-primary-metric" aria-label="Coins">
-              {summaryCoins}
-            </Mono>
-          </div>
+          <Mono className="hud-primary-metric" aria-label="Coins">
+            {summaryCoins}
+          </Mono>
         </div>
       </section>
     </div>

@@ -18,7 +18,7 @@ export interface GameOverSceneOptions {
 }
 
 const DEFAULT_TITLE = 'Game Over';
-const DEFAULT_PROMPT = 'Tap to try again';
+const DEFAULT_PROMPT = 'Main Menu';
 
 export const createGameOverScene = (
     context: SceneContext<GameSceneServices>,

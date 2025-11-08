@@ -15,7 +15,7 @@ export interface MainMenuSceneOptions {
 }
 
 const DEFAULT_TITLE = 'Lucky Break';
-const DEFAULT_PROMPT = 'Tap anywhere to begin';
+const DEFAULT_PROMPT = 'Start Game';
 
 const DEFAULT_HELP_LINES = [
     'Aim with the paddle to send the ball through the bricks.',

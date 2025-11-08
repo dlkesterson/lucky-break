@@ -167,6 +167,8 @@
     },
     "difficulty": "Difficulty ×{{value}}",
     "speed": "Speed {{value}} u/s",
+    "speedLabel": "Speed",
+    "gravityLabel": "Gravity",
     "fps": "{{value}} fps",
     "gravity": {
       "up": "Gravity ↑{{value}}g",
