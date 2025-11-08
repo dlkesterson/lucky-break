@@ -134,7 +134,7 @@ describe('HudApp', () => {
         screen.getByText('Score 123,456');
         screen.getByText('Combo ×4');
         screen.getByText('3.2s window');
-        screen.getByText('12 / 40');
+        screen.getByText('12 bricks left');
         const progressBars = screen.getAllByRole('progressbar');
         // First progress bar should be the brick progress with 70% value
         expect(progressBars[0]?.getAttribute('aria-valuenow')).toBe('70');

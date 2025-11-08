@@ -9,6 +9,7 @@ import {
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
+import { getAudioPreferences, persistAudioPreferences } from 'util/audio-preferences';
 import type { RewardEntropyAction } from 'app/events';
 import type { AchievementUnlock } from '../achievements';
 import { gameConfig, type GameConfig } from 'config/game';
@@ -572,14 +573,20 @@ export const createRuntimeFacade = async ({
 
     const sessionNow = (): number => Math.max(0, Math.floor(runtimeState.sessionElapsedSeconds * 1000));
 
-    const createSession = () =>
-        createGameSessionManager({
+    const createSession = () => {
+        const savedAudioPreferences = getAudioPreferences();
+        return createGameSessionManager({
             sessionId: 'game-session',
             initialLives: resolveInitialLives(),
             eventBus: bus,
             random: random.random,
             now: sessionNow,
+            preferences: {
+                masterVolume: savedAudioPreferences.masterVolume,
+                muted: savedAudioPreferences.muted,
+            },
         });
+    };
 
     const toMusicLives = (lives: number): 1 | 2 | 3 => {
         if (lives >= 3) {
@@ -1302,6 +1309,13 @@ export const createRuntimeFacade = async ({
         }
 
         const nextPreferences = session.updatePreferences(updates);
+
+        // Persist audio preferences to localStorage
+        persistAudioPreferences({
+            masterVolume: nextPreferences.masterVolume,
+            muted: nextPreferences.muted,
+        });
+
         hudSetters.applySettings({
             muted: nextPreferences.muted,
             masterVolume: nextPreferences.masterVolume,
@@ -1465,6 +1479,7 @@ export const createRuntimeFacade = async ({
         physics: {
             attachBallToPaddle: physics.attachBallToPaddle,
             remove: physics.remove,
+            isBallAttached: physics.isBallAttached,
         },
         inputManager,
         roundMachine,

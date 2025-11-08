@@ -54,28 +54,28 @@ export const PauseApp = (): JSX.Element | null => {
   const scorePanelStyle = useMemo(
     () =>
       ({
-        background: 'linear-gradient(150deg, rgba(30, 22, 52, 0.78), rgba(18, 12, 36, 0.66))',
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        background: `linear-gradient(150deg, ${theme.hud.panelFill}cc, ${theme.background.from}aa)`,
+        borderColor: `${theme.hud.panelLine}14`,
       }) as CSSProperties,
-    [],
+    [theme],
   );
 
   const storePanelStyle = useMemo(
     () =>
       ({
-        background: 'linear-gradient(150deg, rgba(40, 28, 70, 0.72), rgba(18, 10, 32, 0.62))',
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        background: `linear-gradient(150deg, ${theme.hud.panelFill}b8, ${theme.background.from}9e)`,
+        borderColor: `${theme.hud.panelLine}14`,
       }) as CSSProperties,
-    [],
+    [theme],
   );
 
   const legendPanelStyle = useMemo(
     () =>
       ({
-        background: 'linear-gradient(150deg, rgba(32, 24, 58, 0.68), rgba(20, 12, 36, 0.56))',
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        background: `linear-gradient(150deg, ${theme.hud.panelFill}ae, ${theme.background.from}8f)`,
+        borderColor: `${theme.hud.panelLine}14`,
       }) as CSSProperties,
-    [],
+    [theme],
   );
 
   const themeLabel = useMemo(

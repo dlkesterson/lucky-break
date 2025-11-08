@@ -106,6 +106,8 @@ vi.mock('physics/world', () => ({
             attachBallToPaddle: vi.fn(),
             detachBallFromPaddle: vi.fn(),
             updateBallAttachment: vi.fn(),
+            isBallAttached: vi.fn(() => false),
+            getBallAttachment: vi.fn(() => null),
             step: vi.fn(),
             engine: {},
             setGravity: vi.fn(),

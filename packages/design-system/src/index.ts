@@ -19,6 +19,7 @@ export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './comp
 export { Heading, Label, Mono, type TypographyProps } from './components/typography';
 export { DesignSystemProvider, type DesignSystemProviderProps } from './providers/design-system-provider';
 export { cn } from './lib/cn';
+export { themeToCssVars } from './lib/theme-css-vars';
 export {
     DEFAULT_THEME,
     COLOR_BLIND_THEME,

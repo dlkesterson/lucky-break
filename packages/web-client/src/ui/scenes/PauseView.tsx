@@ -174,7 +174,11 @@ export const PauseView = ({
     <div ref={overlayRef} style={overlayStyle}>
       <Dialog open={visible}>
         <DialogContent
-          className="max-h-[90vh] w-full max-w-[640px] overflow-y-auto rounded-[24px] border border-white/10 bg-gradient-to-br from-[rgba(24,18,44,0.92)] to-[rgba(16,10,32,0.82)] px-4 py-6 text-[color:var(--pause-text-primary,#fdf8ff)] shadow-[0_36px_90px_rgba(4,3,16,0.6)] backdrop-blur-2xl sm:rounded-[32px] sm:px-6 sm:py-8 md:px-10 md:py-10"
+          className="max-h-[90vh] w-full max-w-[640px] overflow-y-auto rounded-[24px] border border-white/10 bg-gradient-to-br px-4 py-6 shadow-[0_36px_90px_rgba(4,3,16,0.6)] backdrop-blur-2xl sm:rounded-[32px] sm:px-6 sm:py-8 md:px-10 md:py-10"
+          style={{
+            background: `linear-gradient(150deg, ${theme.background.from}eb, ${theme.background.to}d1)`,
+            color: theme.hud.textPrimary,
+          }}
           overlayClassName="bg-[radial-gradient(circle_at_18%_22%,rgba(107,173,255,0.18),transparent_54%),radial-gradient(circle_at_82%_78%,rgba(255,186,120,0.18),transparent_52%),linear-gradient(160deg,rgba(14,10,36,0.88),rgba(10,6,24,0.76))]"
           onPointerDownOutside={(e: Event) => {
             e.preventDefault();
@@ -186,10 +190,16 @@ export const PauseView = ({
           }}
         >
           <DialogHeader className="flex flex-col items-center gap-2 text-center sm:gap-3">
-            <DialogTitle className="text-[clamp(38px,7vw,72px)] uppercase leading-tight tracking-[0.08em] text-[color:var(--pause-accent,#ffd45c)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]">
+            <DialogTitle
+              className="text-[clamp(38px,7vw,72px)] uppercase leading-tight tracking-[0.08em] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+              style={{ color: theme.accents.combo }}
+            >
               {title}
             </DialogTitle>
-            <DialogDescription className="text-[clamp(14px,2.2vmin,20px)] tracking-[0.04em] text-[color:var(--pause-text-secondary,#cdb6ff)]">
+            <DialogDescription
+              className="text-[clamp(14px,2.2vmin,20px)] tracking-[0.04em]"
+              style={{ color: theme.hud.textSecondary }}
+            >
               {description}
             </DialogDescription>
           </DialogHeader>
@@ -216,14 +226,20 @@ export const PauseView = ({
               style={storePanelStyle}
             >
               <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                <Heading className="text-[clamp(18px,3vmin,26px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Heading
+                  className="text-[clamp(18px,3vmin,26px)] uppercase tracking-[0.04em]"
+                  style={{ color: theme.hud.textSecondary }}
+                >
                   {t('pause.entropyStore.title')}
                 </Heading>
                 <div className="flex flex-col items-start gap-0.5 font-mono text-xs uppercase tracking-[0.12em] text-white/70 sm:items-end sm:gap-1">
                   <Mono className="text-[10px] sm:text-xs">
                     {t('pause.entropyStore.coinsLabel')}
                   </Mono>
-                  <Mono className="text-[clamp(16px,3vmin,22px)] font-bold text-[color:var(--pause-accent,#ffd45c)]">
+                  <Mono
+                    className="text-[clamp(16px,3vmin,22px)] font-bold"
+                    style={{ color: theme.accents.combo }}
+                  >
                     {coinDisplay}
                   </Mono>
                 </div>
@@ -262,7 +278,10 @@ export const PauseView = ({
                           <span className="text-sm font-semibold uppercase tracking-[0.08em] sm:text-base">
                             {entry.label}
                           </span>
-                          <span className="text-xs text-[color:var(--pause-text-secondary,#cdb6ff)] sm:text-sm">
+                          <span
+                            className="text-xs sm:text-sm"
+                            style={{ color: theme.hud.textSecondary }}
+                          >
                             {formatEntropyDetail(entry, t)}
                           </span>
                         </Button>
@@ -271,13 +290,19 @@ export const PauseView = ({
                   })}
                 </ul>
               ) : (
-                <Label className="text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-secondary,#cdb6ff)]">
+                <Label
+                  className="text-[clamp(13px,1.9vmin,14px)]"
+                  style={{ color: theme.hud.textSecondary }}
+                >
                   {t('pause.entropyStore.emptyState')}
                 </Label>
               )}
 
               <div className="flex flex-col gap-3 sm:gap-4">
-                <Heading className="text-[clamp(17px,3vmin,22px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Heading
+                  className="text-[clamp(17px,3vmin,22px)] uppercase tracking-[0.04em]"
+                  style={{ color: theme.hud.textSecondary }}
+                >
                   {t('pause.audio.title')}
                 </Heading>
                 <label className="flex flex-col gap-1.5 text-sm text-white/75 sm:gap-2">
@@ -291,7 +316,7 @@ export const PauseView = ({
                     step={1}
                     value={volumePercent}
                     onChange={onVolumeChange}
-                    className="accent-[color:var(--pause-accent,#ffd45c)]"
+                    style={{ accentColor: theme.accents.combo }}
                   />
                 </label>
                 <label className="inline-flex items-center gap-2 text-sm text-white/75">
@@ -299,7 +324,7 @@ export const PauseView = ({
                     type="checkbox"
                     checked={muted}
                     onChange={onMuteToggle}
-                    className="accent-[color:var(--pause-accent,#ffd45c)]"
+                    style={{ accentColor: theme.accents.combo }}
                   />
                   <Label className="text-[clamp(13px,1.9vmin,14px)]">
                     {t('pause.audio.muteLabel')}
@@ -315,7 +340,10 @@ export const PauseView = ({
               style={legendPanelStyle}
             >
               {legendTitle ? (
-                <Heading className="text-[clamp(17px,3vmin,24px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Heading
+                  className="text-[clamp(17px,3vmin,24px)] uppercase tracking-[0.04em]"
+                  style={{ color: theme.hud.textSecondary }}
+                >
                   {legendTitle}
                 </Heading>
               ) : null}
@@ -324,7 +352,8 @@ export const PauseView = ({
                   {legendItems.map((item, index) => (
                     <li
                       key={`legend-item-${index}`}
-                      className="flex items-start gap-2.5 text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-primary,#fdf8ff)] sm:gap-3"
+                      className="flex items-start gap-2.5 text-[clamp(13px,1.9vmin,14px)] sm:gap-3"
+                      style={{ color: theme.hud.textPrimary }}
                     >
                       {item.type && <PowerUpIcon type={item.type} size={28} />}
                       <span className="flex-1 pt-0.5">{item.text}</span>
@@ -332,7 +361,10 @@ export const PauseView = ({
                   ))}
                 </ul>
               ) : (
-                <Label className="text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Label
+                  className="text-[clamp(13px,1.9vmin,14px)]"
+                  style={{ color: theme.hud.textSecondary }}
+                >
                   {t('pause.legend.emptyState')}
                 </Label>
               )}
@@ -341,7 +373,11 @@ export const PauseView = ({
             <footer className="flex flex-col items-center gap-4 sm:gap-6">
               <div className="flex flex-wrap justify-center gap-2.5 sm:gap-3">
                 <Button
-                  className="ui-interactive min-w-[180px] rounded-full border-2 border-[color:var(--pause-accent,#ffd45c)] bg-gradient-to-br from-[rgba(255,214,110,0.95)] to-[rgba(255,166,88,0.92)] px-6 py-2.5 text-sm font-bold uppercase tracking-[0.06em] text-stone-900 shadow-[0_18px_36px_rgba(255,188,96,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
+                  className="ui-interactive min-w-[180px] rounded-full border-2 px-6 py-2.5 text-sm font-bold uppercase tracking-[0.06em] text-stone-900 shadow-[0_18px_36px_rgba(255,188,96,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
+                  style={{
+                    borderColor: theme.accents.combo,
+                    background: `linear-gradient(to bottom right, ${theme.accents.combo}f2, ${theme.hud.accent}eb)`,
+                  }}
                   onClick={(e) => {
                     e.preventDefault();
                     void onResume();
@@ -353,7 +389,11 @@ export const PauseView = ({
                 </Button>
                 {onQuit && quitLabel ? (
                   <Button
-                    className="ui-interactive min-w-[180px] rounded-full border border-white/40 bg-transparent px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.06em] text-[color:var(--pause-text-secondary,#d0bcff)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
+                    className="ui-interactive min-w-[180px] rounded-full border bg-transparent px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.06em] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
+                    style={{
+                      borderColor: 'rgba(255, 255, 255, 0.4)',
+                      color: theme.hud.textSecondary,
+                    }}
                     onClick={onQuit}
                     disabled={pending !== null}
                     variant="outline"
@@ -364,7 +404,8 @@ export const PauseView = ({
                 ) : null}
               </div>
               <Button
-                className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--pause-text-secondary,#d0bcff)] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 sm:text-xs"
+                className="text-[10px] uppercase tracking-[0.1em] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 sm:text-xs"
+                style={{ color: theme.hud.textSecondary }}
                 variant="link"
                 size="sm"
                 onClick={(event) => {

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 
 export type IntroSequenceReason = 'first-launch' | 'story' | 'tutorial';
 
@@ -12,7 +12,6 @@ export interface IntroSlideView {
 export interface IntroOverlayOpenOptions {
     readonly slides: readonly IntroSlideView[];
     readonly reason: IntroSequenceReason;
-    readonly allowSkip?: boolean;
     readonly completionLabel?: string;
     readonly advanceLabel?: string;
     readonly onComplete?: () => void | Promise<void>;
@@ -22,7 +21,6 @@ interface IntroOverlayState {
     readonly visible: boolean;
     readonly slides: readonly IntroSlideView[];
     readonly activeIndex: number;
-    readonly allowSkip: boolean;
     readonly reason: IntroSequenceReason | null;
     readonly completionLabel: string;
     readonly advanceLabel: string;
@@ -33,7 +31,6 @@ const createInitialState = (): IntroOverlayState => ({
     visible: false,
     slides: [],
     activeIndex: 0,
-    allowSkip: true,
     reason: null,
     completionLabel: 'Begin',
     advanceLabel: 'Next',
@@ -91,7 +88,6 @@ export const introOverlayBridge = {
                 visible: true,
                 slides,
                 activeIndex: 0,
-                allowSkip: options.allowSkip ?? true,
                 reason: options.reason,
                 completionLabel: options.completionLabel ?? 'Enter the Casino',
                 advanceLabel: options.advanceLabel ?? 'Next',
@@ -111,16 +107,6 @@ export const introOverlayBridge = {
         const { activeIndex, slides } = state;
         if (activeIndex < slides.length - 1) {
             useIntroOverlay.setState({ activeIndex: activeIndex + 1 });
-            return;
-        }
-        finish();
-    },
-    skip(): void {
-        const state = useIntroOverlay.getState();
-        if (!state.visible) {
-            return;
-        }
-        if (!state.allowSkip) {
             return;
         }
         finish();

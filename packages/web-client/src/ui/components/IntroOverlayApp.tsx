@@ -17,8 +17,7 @@ const reasonLabels: Record<string, string> = {
 };
 
 export const IntroOverlayApp = (): JSX.Element | null => {
-  const { visible, slides, activeIndex, allowSkip, completionLabel, advanceLabel, reason } =
-    useIntroOverlay();
+  const { visible, slides, activeIndex, completionLabel, advanceLabel, reason } = useIntroOverlay();
 
   const slide = slides[activeIndex] ?? null;
   const primaryButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -61,13 +60,6 @@ export const IntroOverlayApp = (): JSX.Element | null => {
     introOverlayBridge.next();
   }, []);
 
-  const handleSkip = useCallback(() => {
-    if (!allowSkip) {
-      return;
-    }
-    introOverlayBridge.skip();
-  }, [allowSkip]);
-
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) {
@@ -79,13 +71,8 @@ export const IntroOverlayApp = (): JSX.Element | null => {
         handleAdvance();
         return;
       }
-
-      if (allowSkip && (event.key === 'Escape' || event.key === 'Backspace')) {
-        event.preventDefault();
-        handleSkip();
-      }
     },
-    [allowSkip, handleAdvance, handleSkip],
+    [handleAdvance],
   );
 
   if (!visible || !slide) {
@@ -163,16 +150,6 @@ export const IntroOverlayApp = (): JSX.Element | null => {
           >
             {primaryLabel}
           </Button>
-          {allowSkip ? (
-            <Button
-              className="ui-interactive w-full rounded-full border border-white/20 bg-[rgba(24,16,48,0.72)] font-mono text-sm uppercase tracking-[0.14em] text-[rgba(255,236,210,0.88)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:w-auto"
-              onClick={handleSkip}
-              variant="outline"
-              size="lg"
-            >
-              Skip
-            </Button>
-          ) : null}
         </footer>
       </section>
     </div>

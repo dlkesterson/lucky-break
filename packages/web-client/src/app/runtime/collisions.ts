@@ -47,7 +47,7 @@ export interface CollisionContext {
     readonly multiBallController: MultiBallController;
     readonly ball: Ball;
     readonly paddle: Paddle;
-    readonly physics: Pick<PhysicsWorldHandle, 'attachBallToPaddle' | 'remove'>;
+    readonly physics: Pick<PhysicsWorldHandle, 'attachBallToPaddle' | 'remove' | 'isBallAttached'>;
     readonly inputManager: GameInputManager;
     readonly dimensions: {
         brickWidth: number;
@@ -85,6 +85,9 @@ const WALL_LABEL_TO_SIDE: Record<string, 'left' | 'right' | 'top' | 'bottom'> = 
     'wall-top': 'top',
     'wall-bottom': 'bottom',
 };
+
+// Small gravity nudges (loadouts, bias tables) shouldn't invert the death wall; require a stronger upward pull.
+const GRAVITY_DEATH_WALL_INVERSION_THRESHOLD = 0.2;
 
 const isBall = (body: Body): boolean => body.label === 'ball';
 const isBrick = (body: Body): boolean => body.label === 'brick';
@@ -518,15 +521,21 @@ const handleBallWallCollision = (
     ballBody: Body,
     wallBody: Body,
 ): void => {
+    // Ignore wall collisions for attached balls
+    if (ctx.physics.isBallAttached(ballBody)) {
+        return;
+    }
+
     const side = WALL_LABEL_TO_SIDE[wallBody.label];
     if (!side) {
         return;
     }
 
-    // Check if we hit the "death wall" based on gravity direction
-    // When gravity is negative (upward), the top wall becomes the death wall
+    // Flip the death wall only when gravity is strongly upward so gentle offsets still behave normally.
     const gravity = ctx.getGravity();
-    const isDeathWall = (gravity < 0 && side === 'top') || (gravity >= 0 && side === 'bottom');
+    const hasStrongUpwardGravity = gravity <= -GRAVITY_DEATH_WALL_INVERSION_THRESHOLD;
+    const deathWallSide: 'top' | 'bottom' = hasStrongUpwardGravity ? 'top' : 'bottom';
+    const isDeathWall = side === deathWallSide;
 
     if (isDeathWall) {
         // Treat as ball drop

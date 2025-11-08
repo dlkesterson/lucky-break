@@ -22,13 +22,11 @@ describe('introOverlayBridge', () => {
         introOverlayBridge.open({
             slides,
             reason: 'story',
-            allowSkip: false,
         });
 
         const state = useIntroOverlay.getState();
         expect(state.visible).toBe(true);
         expect(state.reason).toBe('story');
-        expect(state.allowSkip).toBe(false);
         expect(state.completionLabel).toBe('Enter the Casino');
         expect(state.advanceLabel).toBe('Next');
         expect(state.slides).not.toBe(slides);
@@ -41,7 +39,6 @@ describe('introOverlayBridge', () => {
         introOverlayBridge.open({
             slides: createSlides(),
             reason: 'tutorial',
-            allowSkip: true,
             completionLabel: 'Begin',
             advanceLabel: 'Forward',
             onComplete,
@@ -57,35 +54,10 @@ describe('introOverlayBridge', () => {
         expect(introOverlayBridge.isActive()).toBe(false);
     });
 
-    it('skips only when skipping is allowed', () => {
-        introOverlayBridge.open({
-            slides: createSlides(),
-            reason: 'story',
-            allowSkip: false,
-        });
-
-        introOverlayBridge.skip();
-        expect(useIntroOverlay.getState().visible).toBe(true);
-
-        const onComplete = vi.fn();
-        introOverlayBridge.close();
-        introOverlayBridge.open({
-            slides: createSlides(),
-            reason: 'story',
-            allowSkip: true,
-            onComplete,
-        });
-
-        introOverlayBridge.skip();
-        expect(onComplete).toHaveBeenCalledTimes(1);
-        expect(useIntroOverlay.getState().visible).toBe(false);
-    });
-
     it('clamps manual index changes and ignores updates when hidden', () => {
         introOverlayBridge.open({
             slides: [...createSlides(), { id: 'final', heading: 'Final', body: ['Good luck'] }],
             reason: 'tutorial',
-            allowSkip: true,
         });
 
         introOverlayBridge.setIndex(2);

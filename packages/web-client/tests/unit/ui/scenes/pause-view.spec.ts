@@ -3,7 +3,7 @@ import { createElement, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { within } from '@testing-library/dom';
 import type { Root } from 'react-dom/client';
-import type { GameThemeDefinition } from 'render/theme';
+import { DEFAULT_THEME, type GameThemeDefinition } from '@lucky-break/design-system';
 import type { HudEntropyActionDescriptor } from 'render/hud';
 import {
     PauseView,
@@ -18,15 +18,20 @@ describe('PauseView', () => {
     let container: HTMLDivElement;
     let root: Root | null;
 
-    const mockTheme = {
+    const mockTheme: GameThemeDefinition = {
+        ...DEFAULT_THEME,
         hud: {
+            ...DEFAULT_THEME.hud,
             panelFill: '#222222',
             panelLine: '#333333',
             textPrimary: '#fdf8ff',
             textSecondary: '#d0bcff',
         },
-        accents: { combo: '#ffd45c' },
-    } as GameThemeDefinition;
+        accents: {
+            ...DEFAULT_THEME.accents,
+            combo: '#ffd45c',
+        },
+    };
 
     const mockEntropyAction: HudEntropyActionDescriptor = {
         action: 'reroll' as const,

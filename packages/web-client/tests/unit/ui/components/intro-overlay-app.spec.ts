@@ -14,32 +14,30 @@ interface IntroOverlayStateLike {
     readonly visible: boolean;
     readonly slides: readonly IntroSlideLike[];
     readonly activeIndex: number;
-    readonly allowSkip: boolean;
     readonly reason: 'first-launch' | 'story' | 'tutorial' | null;
     readonly completionLabel: string;
     readonly advanceLabel: string;
+    readonly onComplete: (() => void | Promise<void>) | null;
 }
 
 const createOverlayState = (overrides: Partial<IntroOverlayStateLike> = {}): IntroOverlayStateLike => ({
     visible: false,
     slides: [],
     activeIndex: 0,
-    allowSkip: true,
     reason: null,
     completionLabel: 'Begin',
     advanceLabel: 'Next',
+    onComplete: null,
     ...overrides,
 });
 
 let overlayState: IntroOverlayStateLike = createOverlayState();
 const nextMock = vi.fn();
-const skipMock = vi.fn();
 
 vi.mock('ui/state/intro-bridge', () => ({
     useIntroOverlay: () => overlayState,
     introOverlayBridge: {
         next: nextMock,
-        skip: skipMock,
     },
 }));
 
@@ -83,7 +81,7 @@ describe('IntroOverlayApp', () => {
         expect(container.innerHTML).toBe('');
     });
 
-    it('renders the active slide and wires skip/advance actions', async () => {
+    it('renders the active slide and advances when the button is clicked', async () => {
         overlayState = createOverlayState({
             visible: true,
             reason: 'tutorial',
@@ -92,7 +90,6 @@ describe('IntroOverlayApp', () => {
                 { id: 'mechanics', heading: 'Mechanics', body: ['Break the bricks'] },
             ],
             activeIndex: 0,
-            allowSkip: true,
             completionLabel: 'Enter the Casino',
             advanceLabel: 'Continue',
         });
@@ -111,9 +108,6 @@ describe('IntroOverlayApp', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
         expect(nextMock).toHaveBeenCalledTimes(1);
-
-        fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
-        expect(skipMock).toHaveBeenCalledTimes(1);
     });
 
     it('shows the completion label on the final slide and respects keyboard shortcuts', async () => {
@@ -121,7 +115,6 @@ describe('IntroOverlayApp', () => {
             visible: true,
             slides: [{ id: 'final', heading: 'Final Briefing', body: ['Seal your wager.'] }],
             activeIndex: 0,
-            allowSkip: false,
             completionLabel: 'Begin the Wager',
             advanceLabel: 'Keep Going',
             reason: null,
@@ -139,9 +132,5 @@ describe('IntroOverlayApp', () => {
         fireEvent.keyDown(dialog, { key: 'Enter' });
         fireEvent.keyDown(dialog, { key: ' ' });
         expect(nextMock).toHaveBeenCalledTimes(2);
-
-        fireEvent.keyDown(dialog, { key: 'Escape' });
-        fireEvent.keyDown(dialog, { key: 'Backspace' });
-        expect(skipMock).not.toHaveBeenCalled();
     });
 });

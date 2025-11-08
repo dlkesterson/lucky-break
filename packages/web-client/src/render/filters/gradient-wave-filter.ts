@@ -70,7 +70,7 @@ const fragmentSource = /* glsl */`
 
         vec2 radial = uv - 0.5;
         float distanceFromCenter = length(radial);
-        float circleMask = smoothstep(0.5, 0.3, distanceFromCenter);
+        float circleMask = smoothstep(0.8, 0.7, distanceFromCenter);
 
         float glow = smoothstep(0.35, 0.0, distanceFromCenter);
 

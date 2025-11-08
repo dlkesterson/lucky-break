@@ -163,12 +163,24 @@ export const MainMenuView = ({
         }}
       />
       <div
-        className="pointer-events-auto ui-interactive relative z-10 flex w-full max-w-[980px] flex-col gap-6 rounded-[24px] border px-4 pb-8 pt-6 text-[color:var(--menu-text-primary,#ffe9d6)] shadow-[0_36px_72px_rgba(8,4,18,0.6)] backdrop-blur-2xl [touch-action:auto] sm:gap-8 sm:rounded-[32px] sm:px-6 sm:pb-10 sm:pt-8 md:gap-10 md:px-10 md:pb-12 md:pt-10"
+        className="pointer-events-auto ui-interactive relative z-10 flex w-full max-w-[980px] flex-col gap-6 overflow-hidden rounded-[24px] border px-4 pb-8 pt-6 text-[color:var(--menu-text-primary,#ffe9d6)] shadow-[0_36px_72px_rgba(8,4,18,0.6)] backdrop-blur-2xl [touch-action:auto] sm:gap-8 sm:rounded-[32px] sm:px-6 sm:pb-10 sm:pt-8 md:gap-10 md:px-10 md:pb-12 md:pt-10"
         style={surfaceStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="main-menu-title"
       >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 rounded-[32px] border border-white/15"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 rounded-[32px]"
+          style={{
+            background:
+              'radial-gradient(circle at 20% 20%, rgba(255, 140, 0, 0.22), transparent 55%), radial-gradient(circle at 80% 30%, rgba(0, 210, 255, 0.16), transparent 52%)',
+          }}
+        />
         <header className="flex flex-col items-center gap-3 text-center sm:gap-4 md:gap-5">
           <Heading
             id="main-menu-title"

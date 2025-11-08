@@ -18,6 +18,7 @@ import type { GameSessionManager, GameSessionSnapshot } from 'app/state';
 import type { PrestigeAwardInput } from 'util/prestige';
 import type { GameConfig } from 'config/game';
 import type { RecordHighScoreOptions } from 'util/high-scores';
+import { celebrateLevelClear } from 'app/celebrations/level-complete-confetti';
 
 export interface RuntimeRoundCoordinatorOptions {
     readonly logger: Logger;
@@ -163,16 +164,29 @@ export const createRuntimeRoundCoordinator = ({
         spendStoredEntropy,
     });
 
-    const presentBiasPhase = (): void => {
-        if (!biasCoordinator) {
-            logger.error('Bias phase coordinator unavailable; skipping bias phase');
-            const nextLevelIndex = roundMachine.incrementLevelIndex();
-            startLevel(nextLevelIndex);
-            startLoop();
-            renderStageSoon();
-            return;
+    const runLevelCompleteCelebration = async (): Promise<void> => {
+        try {
+            await celebrateLevelClear();
+        } catch (error) {
+            logger.warn('Level clear celebration failed', { error });
         }
-        biasCoordinator.present();
+    };
+
+    const presentBiasPhase = (): void => {
+        void (async () => {
+            await runLevelCompleteCelebration();
+
+            if (!biasCoordinator) {
+                logger.error('Bias phase coordinator unavailable; skipping bias phase');
+                const nextLevelIndex = roundMachine.incrementLevelIndex();
+                startLevel(nextLevelIndex);
+                startLoop();
+                renderStageSoon();
+                return;
+            }
+
+            biasCoordinator.present();
+        })();
     };
 
     const handleLevelComplete = (): void => {

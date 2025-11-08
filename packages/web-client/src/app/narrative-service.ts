@@ -120,8 +120,6 @@ const formatTemplate = (template: string, fields: Record<string, number | string
         return String(value);
     });
 
-const reasonAllowsSkip = (reason: IntroSequenceReason): boolean => reason !== 'first-launch';
-
 const introPrologueSlide = parseMarkdownSlide(introPrologueRaw, 'awakening');
 
 const introSlides: readonly IntroSlideView[] = [introPrologueSlide];
@@ -223,7 +221,6 @@ export const createNarrativeService = ({
         introOverlayBridge.open({
             slides,
             reason,
-            allowSkip: reasonAllowsSkip(reason),
             completionLabel: 'Begin the Wager',
             advanceLabel: 'Continue',
             onComplete: markIntroSeen,
