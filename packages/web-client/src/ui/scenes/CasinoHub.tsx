@@ -152,45 +152,45 @@ export const CasinoHubApp = (): JSX.Element | null => {
 
   return (
     <div
-      className="pointer-events-auto absolute inset-0 z-[6] flex items-stretch justify-center px-4 py-6 sm:py-10"
+      className="pointer-events-none absolute inset-0 z-[6] flex items-stretch justify-center px-3 py-4 sm:px-4 sm:py-6 md:py-10"
       style={overlayStyle}
     >
       <div
         aria-hidden="true"
-        className="absolute inset-0 -z-10"
+        className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
             'radial-gradient(circle at 30% 80%, rgba(255, 140, 120, 0.16), transparent 55%), radial-gradient(circle at 78% 18%, rgba(102, 198, 255, 0.18), transparent 60%), linear-gradient(160deg, rgba(2, 0, 18, 0.82), rgba(8, 2, 24, 0.88))',
         }}
       />
       <div
-        className="ui-interactive relative flex w-full max-w-[1200px] flex-col gap-6 overflow-y-auto overflow-x-hidden rounded-[32px] border px-6 py-8 text-[color:var(--casino-text-primary,#fbeedd)] shadow-[0_42px_82px_rgba(8,4,20,0.62)] backdrop-blur-3xl sm:gap-8 sm:px-10 sm:py-10"
+        className="pointer-events-auto ui-interactive relative z-10 flex w-full max-w-[1200px] flex-col gap-4 overflow-y-auto overflow-x-hidden rounded-[24px] border px-4 py-6 text-[color:var(--casino-text-primary,#fbeedd)] shadow-[0_42px_82px_rgba(8,4,20,0.62)] backdrop-blur-3xl [touch-action:auto] sm:gap-6 sm:rounded-[32px] sm:px-6 sm:py-8 md:gap-8 md:px-10 md:py-10"
         style={surfaceStyle}
       >
         {session.levelCompleteRecap ? (
-          <section className="flex flex-col gap-6" aria-label="Level complete summary">
+          <section className="flex flex-col gap-4 sm:gap-6" aria-label="Level complete summary">
             <Panel
               tone="muted"
-              className="ui-interactive rounded-[26px] border text-[color:var(--casino-text-primary,#fbeedd)]"
+              className="ui-interactive rounded-[20px] border text-[color:var(--casino-text-primary,#fbeedd)] sm:rounded-[26px]"
               style={{
                 background:
                   'linear-gradient(155deg, rgba(42, 24, 68, 0.92), rgba(28, 16, 48, 0.84)), radial-gradient(circle at 50% 10%, rgba(255, 214, 120, 0.14), transparent 50%)',
                 borderColor: 'rgba(255, 214, 110, 0.24)',
               }}
             >
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-4 sm:gap-6">
                 <div className="flex flex-col gap-2 text-center">
-                  <Heading className="text-[clamp(32px,4.5vmin,56px)] uppercase tracking-[0.1em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]">
+                  <Heading className="text-[clamp(28px,5.5vmin,56px)] uppercase leading-tight tracking-[0.1em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]">
                     {t('casino.levelComplete.title', { level: session.nextLevel - 1 })}
                   </Heading>
                   {session.reward ? (
-                    <Label className="text-[clamp(18px,2.4vmin,24px)] font-semibold tracking-wide text-[color:var(--casino-accent-power,#ff7b33)]">
+                    <Label className="text-[clamp(16px,2.8vmin,24px)] font-semibold tracking-wide text-[color:var(--casino-accent-power,#ff7b33)]">
                       Reward Unlocked
                     </Label>
                   ) : null}
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                   {[
                     {
                       label: 'Round Score',
@@ -215,11 +215,11 @@ export const CasinoHubApp = (): JSX.Element | null => {
                       value: formatDuration(session.levelCompleteRecap.durationMs),
                     },
                   ].map((stat) => (
-                    <div key={stat.label} className="flex flex-col gap-1.5">
-                      <Mono className="text-[10px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.65)]">
+                    <div key={stat.label} className="flex flex-col gap-1 sm:gap-1.5">
+                      <Mono className="text-[9px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.65)] sm:text-[10px]">
                         {stat.label}
                       </Mono>
-                      <span className="text-[clamp(16px,2vmin,22px)] font-semibold tracking-wide">
+                      <span className="text-[clamp(15px,2.2vmin,22px)] font-semibold tracking-wide">
                         {stat.value}
                       </span>
                     </div>
@@ -228,14 +228,14 @@ export const CasinoHubApp = (): JSX.Element | null => {
 
                 {session.milestones && session.milestones.length > 0 ? (
                   <div className="flex flex-col gap-2">
-                    <Mono className="text-xs uppercase tracking-[0.22em] text-[color:var(--casino-accent-combo,#ffd45c)]">
+                    <Mono className="text-[10px] uppercase tracking-[0.22em] text-[color:var(--casino-accent-combo,#ffd45c)] sm:text-xs">
                       Milestones
                     </Mono>
                     <div className="flex flex-wrap gap-2">
                       {session.milestones.map((milestone, i) => (
                         <span
                           key={i}
-                          className="rounded-full border border-white/20 bg-white/8 px-3 py-1.5 text-sm font-medium tracking-wide"
+                          className="rounded-full border border-white/20 bg-white/8 px-2.5 py-1 text-xs font-medium tracking-wide sm:px-3 sm:py-1.5 sm:text-sm"
                         >
                           {milestone}
                         </span>
@@ -245,19 +245,19 @@ export const CasinoHubApp = (): JSX.Element | null => {
                 ) : null}
 
                 {session.achievements && session.achievements.length > 0 ? (
-                  <div className="flex flex-col gap-3">
-                    <Mono className="text-xs uppercase tracking-[0.22em] text-[color:var(--casino-accent-combo,#ffd45c)]">
+                  <div className="flex flex-col gap-2 sm:gap-3">
+                    <Mono className="text-[10px] uppercase tracking-[0.22em] text-[color:var(--casino-accent-combo,#ffd45c)] sm:text-xs">
                       Achievements Unlocked
                     </Mono>
                     {session.achievements.map((achievement) => (
                       <div
                         key={achievement.id}
-                        className="rounded-[18px] border border-white/16 bg-white/6 px-4 py-3"
+                        className="rounded-[16px] border border-white/16 bg-white/6 px-3 py-2.5 sm:rounded-[18px] sm:px-4 sm:py-3"
                       >
-                        <Label className="block text-[clamp(15px,2vmin,20px)] font-semibold tracking-wide text-[color:var(--casino-accent-power,#ff7b33)]">
+                        <Label className="block text-[clamp(14px,2.2vmin,20px)] font-semibold tracking-wide text-[color:var(--casino-accent-power,#ff7b33)]">
                           {achievement.title}
                         </Label>
-                        <Label className="text-[clamp(13px,1.8vmin,16px)] text-[rgba(255,224,180,0.75)]">
+                        <Label className="text-[clamp(12px,1.9vmin,16px)] text-[rgba(255,224,180,0.75)]">
                           {achievement.description}
                         </Label>
                       </div>
@@ -270,7 +270,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
             {onSkip ? (
               <div className="flex justify-center">
                 <Button
-                  className="ui-interactive min-w-[280px] rounded-full border-2 border-[rgba(255,214,110,0.7)] bg-gradient-to-r from-[rgba(255,212,92,0.95)] via-[rgba(255,178,85,0.9)] to-[rgba(255,122,120,0.9)] px-8 text-base font-extrabold uppercase tracking-[0.18em] text-stone-950 shadow-[0_16px_34px_rgba(255,178,85,0.28)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60"
+                  className="ui-interactive min-w-[240px] rounded-full border-2 border-[rgba(255,214,110,0.7)] bg-gradient-to-r from-[rgba(255,212,92,0.95)] via-[rgba(255,178,85,0.9)] to-[rgba(255,122,120,0.9)] px-6 text-sm font-extrabold uppercase tracking-[0.18em] text-stone-950 shadow-[0_16px_34px_rgba(255,178,85,0.28)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60 sm:min-w-[280px] sm:px-8 sm:text-base"
                   onClick={handleSkip}
                   disabled={skipDisabled}
                   size="lg"
@@ -286,49 +286,49 @@ export const CasinoHubApp = (): JSX.Element | null => {
           </section>
         ) : null}
 
-        <section className="flex flex-col gap-6" aria-label="Cosmic casino">
-          <header className="flex flex-col gap-3 text-center">
-            <Label className="text-sm uppercase tracking-[0.34em] text-white/60">
+        <section className="flex flex-col gap-4 sm:gap-6" aria-label="Cosmic casino">
+          <header className="flex flex-col gap-2 text-center sm:gap-3">
+            <Label className="text-xs uppercase tracking-[0.34em] text-white/60 sm:text-sm">
               {t('casino.subtitle')}
             </Label>
-            <Heading className="text-[clamp(46px,6.2vw,78px)] uppercase tracking-[0.08em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]">
+            <Heading className="text-[clamp(38px,7.5vw,78px)] uppercase leading-tight tracking-[0.08em] text-[color:var(--casino-accent-combo,#ffd45c)] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]">
               {t('casino.title')}
             </Heading>
-            <Label className="mx-auto max-w-3xl text-[clamp(15px,2.1vmin,20px)] tracking-[0.04em] text-[color:var(--casino-text-secondary,#ffc45a)]">
+            <Label className="mx-auto max-w-3xl text-[clamp(14px,2.3vmin,20px)] tracking-[0.04em] text-[color:var(--casino-text-secondary,#ffc45a)]">
               {t('casino.description')}
             </Label>
           </header>
 
           <Panel
             tone="muted"
-            className="ui-interactive rounded-[26px] border text-[color:var(--casino-text-primary,#fbeedd)]"
+            className="ui-interactive rounded-[20px] border text-[color:var(--casino-text-primary,#fbeedd)] sm:rounded-[26px]"
             style={{
               background: 'linear-gradient(150deg, rgba(32, 18, 58, 0.86), rgba(18, 10, 32, 0.78))',
               borderColor: 'rgba(255, 255, 255, 0.1)',
             }}
           >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-col gap-1">
-                <Mono className="text-xs uppercase tracking-[0.22em] text-[rgba(255,224,180,0.72)]">
+                <Mono className="text-[10px] uppercase tracking-[0.22em] text-[rgba(255,224,180,0.72)] sm:text-xs">
                   {t('casino.entropyVault.title')}
                 </Mono>
-                <span className="text-[clamp(32px,4vmin,46px)] font-black tracking-[0.04em] text-[color:var(--casino-accent-combo,#ffd45c)]">
+                <span className="text-[clamp(28px,5vmin,46px)] font-black tracking-[0.04em] text-[color:var(--casino-accent-combo,#ffd45c)]">
                   {formatNumber(entropyBalance)}
                 </span>
-                <Label className="text-[clamp(12px,1.6vmin,15px)] text-[rgba(255,224,180,0.65)]">
+                <Label className="text-[clamp(11px,1.7vmin,15px)] text-[rgba(255,224,180,0.65)]">
                   {t('casino.entropyVault.description')}
                 </Label>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                 {scoreboardEntries.slice(0, 2).map((entry) => (
                   <div
                     key={entry.label}
-                    className="rounded-[18px] border border-white/12 bg-white/6 px-4 py-3 text-left"
+                    className="rounded-[16px] border border-white/12 bg-white/6 px-3 py-2.5 text-left sm:rounded-[18px] sm:px-4 sm:py-3"
                   >
-                    <Mono className="block text-[10px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.72)]">
+                    <Mono className="block text-[9px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.72)] sm:text-[10px]">
                       {entry.label}
                     </Mono>
-                    <span className="text-[clamp(16px,2vmin,22px)] font-semibold tracking-wide">
+                    <span className="text-[clamp(15px,2.2vmin,22px)] font-semibold tracking-wide">
                       {entry.resolve(session)}
                     </span>
                   </div>
@@ -339,19 +339,19 @@ export const CasinoHubApp = (): JSX.Element | null => {
 
           <Panel
             tone="muted"
-            className="ui-interactive rounded-[26px] border text-[color:var(--casino-text-primary,#fbeedd)]"
+            className="ui-interactive rounded-[20px] border text-[color:var(--casino-text-primary,#fbeedd)] sm:rounded-[26px]"
             style={{
               background: 'linear-gradient(155deg, rgba(26, 14, 46, 0.86), rgba(18, 10, 32, 0.78))',
               borderColor: 'rgba(255, 255, 255, 0.08)',
             }}
           >
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
               {scoreboardEntries.slice(2).map((entry) => (
-                <div key={entry.label} className="flex flex-col gap-1.5">
-                  <Mono className="text-[10px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.65)]">
+                <div key={entry.label} className="flex flex-col gap-1 sm:gap-1.5">
+                  <Mono className="text-[9px] uppercase tracking-[0.18em] text-[rgba(255,224,180,0.65)] sm:text-[10px]">
                     {entry.label}
                   </Mono>
-                  <span className="text-[clamp(15px,1.9vmin,20px)] font-semibold tracking-wide">
+                  <span className="text-[clamp(14px,2.1vmin,20px)] font-semibold tracking-wide">
                     {entry.resolve(session)}
                   </span>
                 </div>
@@ -360,10 +360,10 @@ export const CasinoHubApp = (): JSX.Element | null => {
           </Panel>
 
           <div
-            className="grid gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]"
+            className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]"
             aria-label="Casino controls"
           >
-            <div className="grid gap-5 md:grid-cols-2" aria-label="Wagering options">
+            <div className="grid gap-4 sm:gap-5 md:grid-cols-2" aria-label="Wagering options">
               {options.map((option) => {
                 const optionDisabled = pendingAction !== null;
                 const locked = option.wager.cost > entropyBalance;
@@ -381,10 +381,10 @@ export const CasinoHubApp = (): JSX.Element | null => {
               })}
             </div>
 
-            <aside className="flex flex-col gap-5">
+            <aside className="flex flex-col gap-4 sm:gap-5">
               <Panel
                 tone="muted"
-                className="ui-interactive flex flex-col gap-5 rounded-[26px] border p-6 text-[color:var(--casino-text-primary,#fbeedd)]"
+                className="ui-interactive flex flex-col gap-4 rounded-[20px] border p-4 text-[color:var(--casino-text-primary,#fbeedd)] sm:gap-5 sm:rounded-[26px] sm:p-6"
                 style={{
                   background:
                     'linear-gradient(155deg, rgba(26, 12, 46, 0.86), rgba(12, 6, 24, 0.78)), radial-gradient(circle at 20% 15%, rgba(255, 214, 110, 0.16), transparent 65%)',
@@ -392,13 +392,13 @@ export const CasinoHubApp = (): JSX.Element | null => {
                 }}
               >
                 <div className="flex flex-col gap-1">
-                  <Mono className="text-xs uppercase tracking-[0.22em] text-[rgba(255,224,180,0.72)]">
+                  <Mono className="text-[10px] uppercase tracking-[0.22em] text-[rgba(255,224,180,0.72)] sm:text-xs">
                     Fate Roulette
                   </Mono>
-                  <Label className="text-[clamp(18px,2.4vmin,24px)] font-semibold tracking-[0.06em]">
+                  <Label className="text-[clamp(17px,2.6vmin,24px)] font-semibold tracking-[0.06em]">
                     Spindle of Possibility
                   </Label>
-                  <Label className="text-[clamp(13px,1.6vmin,16px)] text-[rgba(255,224,180,0.72)]">
+                  <Label className="text-[clamp(12px,1.7vmin,16px)] text-[rgba(255,224,180,0.72)]">
                     The wheel forecasts upcoming bias weights. Higher entropy wagers unlock rarer
                     slices.
                   </Label>
@@ -408,19 +408,19 @@ export const CasinoHubApp = (): JSX.Element | null => {
 
               <Panel
                 tone="muted"
-                className="ui-interactive rounded-[26px] border p-5 text-[color:var(--casino-text-primary,#fbeedd)]"
+                className="ui-interactive rounded-[20px] border p-4 text-[color:var(--casino-text-primary,#fbeedd)] sm:rounded-[26px] sm:p-5"
                 style={{
                   background:
                     'linear-gradient(150deg, rgba(24, 12, 38, 0.88), rgba(10, 4, 22, 0.78)), radial-gradient(circle at 70% 20%, rgba(120, 190, 255, 0.12), transparent 60%)',
                   borderColor: 'rgba(255, 255, 255, 0.08)',
                 }}
               >
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2 sm:gap-3">
                   <div>
-                    <Mono className="text-xs uppercase tracking-[0.22em] text-[rgba(255,224,180,0.68)]">
+                    <Mono className="text-[10px] uppercase tracking-[0.22em] text-[rgba(255,224,180,0.68)] sm:text-xs">
                       Nebula Slots
                     </Mono>
-                    <Label className="block text-[clamp(18px,2.2vmin,22px)] font-semibold tracking-[0.05em]">
+                    <Label className="block text-[clamp(17px,2.4vmin,22px)] font-semibold tracking-[0.05em]">
                       {slotsGame ? 'Nebula Slots' : 'Nebula Slots (offline)'}
                     </Label>
                   </div>
@@ -445,7 +445,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
                         forceAdvanceLabel={continueLabel}
                         forceAdvanceMessage="Insufficient entropy to wager. Continue to start the next volley."
                       />
-                      <Label className="text-[clamp(13px,1.6vmin,16px)] text-[rgba(255,224,180,0.72)]">
+                      <Label className="text-[clamp(12px,1.7vmin,16px)] text-[rgba(255,224,180,0.72)]">
                         Each spin costs {slotsGame.cost} entropy. Align the reels to sniff out which
                         bias will surge next volley.
                       </Label>
@@ -457,7 +457,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
                         seed={session.seed}
                         accentColor={theme.accents.powerUp}
                       />
-                      <Label className="text-[clamp(13px,1.6vmin,16px)] text-[rgba(255,224,180,0.72)]">
+                      <Label className="text-[clamp(12px,1.7vmin,16px)] text-[rgba(255,224,180,0.72)]">
                         Placeholder mini-game interface. Once wired, spend entropy to chase rare
                         sigils and volatility boosts.
                       </Label>
@@ -469,8 +469,8 @@ export const CasinoHubApp = (): JSX.Element | null => {
           </div>
         </section>
 
-        <footer className="flex flex-wrap items-center justify-between gap-4 pt-2">
-          <div className="flex flex-col gap-2 text-[clamp(12px,1.6vmin,14px)] text-[rgba(255,224,180,0.72)]">
+        <footer className="flex flex-wrap items-center justify-between gap-3 pt-1 sm:gap-4 sm:pt-2">
+          <div className="flex flex-col gap-1.5 text-[clamp(11px,1.7vmin,14px)] text-[rgba(255,224,180,0.72)] sm:gap-2">
             <span aria-live="polite">
               {session.seed !== null
                 ? t('casino.seedLabel', { seed: session.seed })
@@ -479,7 +479,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
             {onSkip && !session.levelCompleteRecap ? (
               <Button
                 variant="ghost"
-                className="ui-interactive w-fit rounded-full border border-white/20 text-xs uppercase tracking-[0.12em] text-[rgba(255,224,180,0.72)] hover:text-[color:var(--casino-accent-power,#ff7b33)]"
+                className="ui-interactive w-fit rounded-full border border-white/20 text-[10px] uppercase tracking-[0.12em] text-[rgba(255,224,180,0.72)] hover:text-[color:var(--casino-accent-power,#ff7b33)] sm:text-xs"
                 onClick={handleSkip}
                 disabled={skipDisabled}
                 size="sm"
@@ -489,7 +489,7 @@ export const CasinoHubApp = (): JSX.Element | null => {
             ) : null}
           </div>
           <Button
-            className="ui-interactive min-w-[240px] rounded-full border-2 border-[rgba(255,214,110,0.82)] bg-gradient-to-br from-[rgba(255,212,92,0.95)] via-[rgba(255,178,85,0.92)] to-[rgba(255,122,120,0.92)] text-base font-extrabold tracking-wide text-stone-950 shadow-[0_18px_42px_rgba(255,178,85,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60"
+            className="ui-interactive min-w-[200px] rounded-full border-2 border-[rgba(255,214,110,0.82)] bg-gradient-to-br from-[rgba(255,212,92,0.95)] via-[rgba(255,178,85,0.92)] to-[rgba(255,122,120,0.92)] px-6 text-sm font-extrabold tracking-wide text-stone-950 shadow-[0_18px_42px_rgba(255,178,85,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60 sm:min-w-[240px] sm:px-8 sm:text-base"
             onClick={handleCommit}
             disabled={commitDisabled}
             size="lg"

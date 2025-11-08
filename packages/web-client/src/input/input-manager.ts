@@ -134,11 +134,12 @@ export class GameInputManager implements InputManager {
             mouseTarget.addEventListener('contextmenu', this.contextMenuListener);
         }
 
-        // Touch events
-        this.container.addEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
-        this.container.addEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
-        this.container.addEventListener('touchend', this.touchEndListener);
-        this.container.addEventListener('touchcancel', this.touchCancelListener);
+        // Touch events - attach to canvas only to avoid blocking UI
+        const touchTarget = this.canvas ?? this.container;
+        touchTarget.addEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
+        touchTarget.addEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
+        touchTarget.addEventListener('touchend', this.touchEndListener);
+        touchTarget.addEventListener('touchcancel', this.touchCancelListener);
 
         // Keyboard events
         document.addEventListener('keydown', this.keyDownListener);
@@ -158,11 +159,16 @@ export class GameInputManager implements InputManager {
             this.mouseEventTarget.removeEventListener('contextmenu', this.contextMenuListener);
         }
 
+        // Remove touch events from canvas or container
+        const touchTarget = this.canvas ?? this.container;
+        if (touchTarget) {
+            touchTarget.removeEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
+            touchTarget.removeEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
+            touchTarget.removeEventListener('touchend', this.touchEndListener);
+            touchTarget.removeEventListener('touchcancel', this.touchCancelListener);
+        }
+
         if (this.container) {
-            this.container.removeEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
-            this.container.removeEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
-            this.container.removeEventListener('touchend', this.touchEndListener);
-            this.container.removeEventListener('touchcancel', this.touchCancelListener);
             this.container.removeEventListener('contextmenu', this.contextMenuListener);
         }
 

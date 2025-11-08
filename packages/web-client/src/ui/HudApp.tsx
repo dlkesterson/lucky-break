@@ -126,7 +126,7 @@ export const HudApp = (): JSX.Element | null => {
   const brickProgress = brickTotal > 0 ? 1 - brickRemaining / brickTotal : 0;
 
   return (
-    <div className="hud-layout">
+    <div className="hud-layout z-[1]">
       {/* BRICK PROGRESS BAR - Top of screen */}
       <section className="hud-brick-bar-top" aria-label="Brick progress">
         <Progress

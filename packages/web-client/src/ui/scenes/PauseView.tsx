@@ -174,7 +174,7 @@ export const PauseView = ({
     <div ref={overlayRef} style={overlayStyle}>
       <Dialog open={visible}>
         <DialogContent
-          className="max-h-[90vh] w-full max-w-[640px] overflow-y-auto rounded-[32px] border border-white/10 bg-gradient-to-br from-[rgba(24,18,44,0.92)] to-[rgba(16,10,32,0.82)] px-6 py-8 text-[color:var(--pause-text-primary,#fdf8ff)] shadow-[0_36px_90px_rgba(4,3,16,0.6)] backdrop-blur-2xl sm:px-10 sm:py-10"
+          className="max-h-[90vh] w-full max-w-[640px] overflow-y-auto rounded-[24px] border border-white/10 bg-gradient-to-br from-[rgba(24,18,44,0.92)] to-[rgba(16,10,32,0.82)] px-4 py-6 text-[color:var(--pause-text-primary,#fdf8ff)] shadow-[0_36px_90px_rgba(4,3,16,0.6)] backdrop-blur-2xl sm:rounded-[32px] sm:px-6 sm:py-8 md:px-10 md:py-10"
           overlayClassName="bg-[radial-gradient(circle_at_18%_22%,rgba(107,173,255,0.18),transparent_54%),radial-gradient(circle_at_82%_78%,rgba(255,186,120,0.18),transparent_52%),linear-gradient(160deg,rgba(14,10,36,0.88),rgba(10,6,24,0.76))]"
           onPointerDownOutside={(e: Event) => {
             e.preventDefault();
@@ -185,26 +185,26 @@ export const PauseView = ({
             void onResume();
           }}
         >
-          <DialogHeader className="flex flex-col items-center gap-3 text-center">
-            <DialogTitle className="text-[clamp(44px,6vw,72px)] uppercase tracking-[0.08em] text-[color:var(--pause-accent,#ffd45c)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]">
+          <DialogHeader className="flex flex-col items-center gap-2 text-center sm:gap-3">
+            <DialogTitle className="text-[clamp(38px,7vw,72px)] uppercase leading-tight tracking-[0.08em] text-[color:var(--pause-accent,#ffd45c)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)]">
               {title}
             </DialogTitle>
-            <DialogDescription className="text-[clamp(15px,2vmin,20px)] tracking-[0.04em] text-[color:var(--pause-text-secondary,#cdb6ff)]">
+            <DialogDescription className="text-[clamp(14px,2.2vmin,20px)] tracking-[0.04em] text-[color:var(--pause-text-secondary,#cdb6ff)]">
               {description}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-6 sm:gap-7">
+          <div className="flex flex-col gap-4 sm:gap-6 md:gap-7">
             <Panel
               tone="muted"
               aria-label="Current score"
-              className="flex flex-col items-center gap-2 rounded-[24px] text-center"
+              className="flex flex-col items-center gap-1.5 rounded-[20px] text-center sm:gap-2 sm:rounded-[24px]"
               style={scorePanelStyle}
             >
-              <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">
+              <Mono className="text-[10px] uppercase tracking-[0.12em] text-white/70 sm:text-xs">
                 {t('pause.scoreLabel')}
               </Mono>
-              <span className="text-[clamp(32px,5.2vmin,54px)] font-extrabold">
+              <span className="text-[clamp(28px,6vmin,54px)] font-extrabold">
                 {formatScore(score)}
               </span>
             </Panel>
@@ -212,30 +212,32 @@ export const PauseView = ({
             <Panel
               tone="muted"
               aria-label="Entropy store"
-              className="flex flex-col gap-4 rounded-[24px]"
+              className="flex flex-col gap-3 rounded-[20px] sm:gap-4 sm:rounded-[24px]"
               style={storePanelStyle}
             >
-              <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <Heading className="text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+              <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <Heading className="text-[clamp(18px,3vmin,26px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
                   {t('pause.entropyStore.title')}
                 </Heading>
-                <div className="flex flex-col items-end gap-1 font-mono text-xs uppercase tracking-[0.12em] text-white/70">
-                  <Mono className="text-xs">{t('pause.entropyStore.coinsLabel')}</Mono>
-                  <Mono className="text-[color:var(--pause-accent,#ffd45c)] text-[clamp(18px,2.6vmin,22px)] font-bold">
+                <div className="flex flex-col items-start gap-0.5 font-mono text-xs uppercase tracking-[0.12em] text-white/70 sm:items-end sm:gap-1">
+                  <Mono className="text-[10px] sm:text-xs">
+                    {t('pause.entropyStore.coinsLabel')}
+                  </Mono>
+                  <Mono className="text-[clamp(16px,3vmin,22px)] font-bold text-[color:var(--pause-accent,#ffd45c)]">
                     {coinDisplay}
                   </Mono>
                 </div>
               </header>
 
               {entropyActions.length > 0 ? (
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-2.5 sm:gap-3">
                   {entropyActions.map((entry) => {
                     const available = isEntropyActionAvailable(entry);
                     const charged = entry.charges > 0;
                     const disabled = !available || pending !== null;
 
                     const actionClass = cn(
-                      'ui-interactive flex w-full flex-col items-start justify-start gap-1 rounded-2xl border border-white/15 bg-[rgba(12,8,24,0.42)] px-4 py-3 text-left text-[clamp(14px,1.9vmin,17px)] transition-all duration-150',
+                      'ui-interactive flex w-full flex-col items-start justify-start gap-0.5 rounded-2xl border border-white/15 bg-[rgba(12,8,24,0.42)] px-3 py-2.5 text-left text-[clamp(13px,2.1vmin,17px)] transition-all duration-150 sm:gap-1 sm:px-4 sm:py-3',
                       'hover:-translate-y-0.5 focus-visible:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60',
                       charged &&
                         'border-[rgba(255,213,110,0.65)] shadow-[0_0_22px_rgba(255,213,110,0.25)]',
@@ -257,10 +259,10 @@ export const PauseView = ({
                             onEntropyAction(entry.action);
                           }}
                         >
-                          <span className="font-semibold uppercase tracking-[0.08em]">
+                          <span className="text-sm font-semibold uppercase tracking-[0.08em] sm:text-base">
                             {entry.label}
                           </span>
-                          <span className="text-sm text-[color:var(--pause-text-secondary,#cdb6ff)]">
+                          <span className="text-xs text-[color:var(--pause-text-secondary,#cdb6ff)] sm:text-sm">
                             {formatEntropyDetail(entry, t)}
                           </span>
                         </Button>
@@ -269,17 +271,17 @@ export const PauseView = ({
                   })}
                 </ul>
               ) : (
-                <Label className="text-sm text-[color:var(--pause-text-secondary,#cdb6ff)]">
+                <Label className="text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-secondary,#cdb6ff)]">
                   {t('pause.entropyStore.emptyState')}
                 </Label>
               )}
 
-              <div className="flex flex-col gap-4">
-                <Heading className="text-[clamp(18px,2.6vmin,22px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+              <div className="flex flex-col gap-3 sm:gap-4">
+                <Heading className="text-[clamp(17px,3vmin,22px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
                   {t('pause.audio.title')}
                 </Heading>
-                <label className="flex flex-col gap-2 text-sm text-white/75">
-                  <Label className="text-sm">
+                <label className="flex flex-col gap-1.5 text-sm text-white/75 sm:gap-2">
+                  <Label className="text-[clamp(13px,1.9vmin,14px)]">
                     {t('pause.audio.volumeLabel', { percent: volumePercent })}
                   </Label>
                   <input
@@ -299,7 +301,9 @@ export const PauseView = ({
                     onChange={onMuteToggle}
                     className="accent-[color:var(--pause-accent,#ffd45c)]"
                   />
-                  <Label className="text-sm">{t('pause.audio.muteLabel')}</Label>
+                  <Label className="text-[clamp(13px,1.9vmin,14px)]">
+                    {t('pause.audio.muteLabel')}
+                  </Label>
                 </label>
               </div>
             </Panel>
@@ -307,20 +311,20 @@ export const PauseView = ({
             <Panel
               tone="muted"
               aria-label="Power-up legend"
-              className="flex flex-col gap-4 rounded-[24px] text-left"
+              className="flex flex-col gap-3 rounded-[20px] text-left sm:gap-4 sm:rounded-[24px]"
               style={legendPanelStyle}
             >
               {legendTitle ? (
-                <Heading className="text-[clamp(18px,2.6vmin,24px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Heading className="text-[clamp(17px,3vmin,24px)] uppercase tracking-[0.04em] text-[color:var(--pause-text-secondary,#d0bcff)]">
                   {legendTitle}
                 </Heading>
               ) : null}
               {legendItems.length > 0 ? (
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-2.5 sm:gap-3">
                   {legendItems.map((item, index) => (
                     <li
                       key={`legend-item-${index}`}
-                      className="flex items-start gap-3 text-sm text-[color:var(--pause-text-primary,#fdf8ff)]"
+                      className="flex items-start gap-2.5 text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-primary,#fdf8ff)] sm:gap-3"
                     >
                       {item.type && <PowerUpIcon type={item.type} size={28} />}
                       <span className="flex-1 pt-0.5">{item.text}</span>
@@ -328,16 +332,16 @@ export const PauseView = ({
                   ))}
                 </ul>
               ) : (
-                <Label className="text-sm text-[color:var(--pause-text-secondary,#d0bcff)]">
+                <Label className="text-[clamp(13px,1.9vmin,14px)] text-[color:var(--pause-text-secondary,#d0bcff)]">
                   {t('pause.legend.emptyState')}
                 </Label>
               )}
             </Panel>
 
-            <footer className="flex flex-col items-center gap-6">
-              <div className="flex flex-wrap justify-center gap-3">
+            <footer className="flex flex-col items-center gap-4 sm:gap-6">
+              <div className="flex flex-wrap justify-center gap-2.5 sm:gap-3">
                 <Button
-                  className="ui-interactive min-w-[200px] rounded-full border-2 border-[color:var(--pause-accent,#ffd45c)] bg-gradient-to-br from-[rgba(255,214,110,0.95)] to-[rgba(255,166,88,0.92)] text-base font-bold uppercase tracking-[0.06em] text-stone-900 shadow-[0_18px_36px_rgba(255,188,96,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
+                  className="ui-interactive min-w-[180px] rounded-full border-2 border-[color:var(--pause-accent,#ffd45c)] bg-gradient-to-br from-[rgba(255,214,110,0.95)] to-[rgba(255,166,88,0.92)] px-6 py-2.5 text-sm font-bold uppercase tracking-[0.06em] text-stone-900 shadow-[0_18px_36px_rgba(255,188,96,0.35)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
                   onClick={(e) => {
                     e.preventDefault();
                     void onResume();
@@ -349,7 +353,7 @@ export const PauseView = ({
                 </Button>
                 {onQuit && quitLabel ? (
                   <Button
-                    className="ui-interactive min-w-[200px] rounded-full border border-white/40 bg-transparent font-semibold uppercase tracking-[0.06em] text-[color:var(--pause-text-secondary,#d0bcff)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
+                    className="ui-interactive min-w-[180px] rounded-full border border-white/40 bg-transparent px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.06em] text-[color:var(--pause-text-secondary,#d0bcff)] transition-transform duration-150 hover:-translate-y-0.5 focus-visible:-translate-y-0.5 sm:min-w-[200px] sm:px-8 sm:py-3 sm:text-base"
                     onClick={onQuit}
                     disabled={pending !== null}
                     variant="outline"
@@ -360,7 +364,7 @@ export const PauseView = ({
                 ) : null}
               </div>
               <Button
-                className="text-xs uppercase tracking-[0.1em] text-[color:var(--pause-text-secondary,#d0bcff)] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100"
+                className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--pause-text-secondary,#d0bcff)] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 sm:text-xs"
                 variant="link"
                 size="sm"
                 onClick={(event) => {

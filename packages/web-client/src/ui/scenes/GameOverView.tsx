@@ -115,26 +115,30 @@ export const GameOverView = ({
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-[7] flex items-center justify-center px-4 py-10 sm:px-6"
+      className="pointer-events-none absolute inset-0 z-[7] flex items-center justify-center px-3 py-6 sm:px-4 sm:py-10 md:px-6"
       style={overlayStyle}
       ref={overlayRef}
     >
-      <div aria-hidden="true" className="absolute inset-0 -z-10" style={backdropStyle} />
       <div
-        className="pointer-events-auto relative flex w-full max-w-[720px] flex-col gap-6 rounded-[36px] border px-6 py-8 text-[color:var(--game-over-text-primary,#f6f1ff)] shadow-[0_44px_120px_rgba(4,3,16,0.65)] backdrop-blur-2xl sm:gap-8 sm:px-10 sm:py-10"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={backdropStyle}
+      />
+      <div
+        className="pointer-events-auto relative z-10 flex w-full max-w-[720px] flex-col gap-4 rounded-[28px] border px-4 py-6 text-[color:var(--game-over-text-primary,#f6f1ff)] shadow-[0_44px_120px_rgba(4,3,16,0.65)] backdrop-blur-2xl [touch-action:auto] sm:gap-6 sm:rounded-[36px] sm:px-6 sm:py-8 md:gap-8 md:px-10 md:py-10"
         style={surfaceStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="game-over-title"
       >
-        <header className="flex flex-col items-center gap-4 text-center">
+        <header className="flex flex-col items-center gap-3 text-center sm:gap-4">
           <Heading
             id="game-over-title"
-            className="text-[clamp(46px,6.4vw,84px)] uppercase tracking-[0.1em] text-[color:var(--game-over-accent,#ff6c84)] drop-shadow-[0_16px_36px_rgba(0,0,0,0.65)]"
+            className="text-[clamp(40px,7.5vw,84px)] uppercase leading-tight tracking-[0.1em] text-[color:var(--game-over-accent,#ff6c84)] drop-shadow-[0_16px_36px_rgba(0,0,0,0.65)]"
           >
             {title}
           </Heading>
-          <Label className="text-[clamp(14px,1.8vmin,18px)] tracking-[0.05em] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+          <Label className="text-[clamp(13px,2vmin,18px)] tracking-[0.05em] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
             {scoreLabel}
           </Label>
         </header>
@@ -142,24 +146,24 @@ export const GameOverView = ({
         <Panel
           tone="muted"
           aria-label="Run summary"
-          className="pointer-events-auto grid gap-4 rounded-[28px]"
+          className="pointer-events-auto grid gap-3 rounded-[22px] sm:gap-4 sm:rounded-[28px]"
           style={scorePanelStyle}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col items-center gap-2 text-center">
-              <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+            <div className="flex flex-col items-center gap-1.5 text-center sm:gap-2">
+              <Mono className="text-[10px] uppercase tracking-[0.12em] text-white/70 sm:text-xs">
                 {t('gameOver.scoreLabel')}
               </Mono>
-              <span className="text-[clamp(36px,5.4vmin,60px)] font-extrabold">
+              <span className="text-[clamp(32px,6vmin,60px)] font-extrabold">
                 {formatScore(score)}
               </span>
             </div>
             {dustLabel ? (
-              <div className="flex flex-col items-center gap-2 text-center">
-                <Mono className="text-xs uppercase tracking-[0.12em] text-white/70">
+              <div className="flex flex-col items-center gap-1.5 text-center sm:gap-2">
+                <Mono className="text-[10px] uppercase tracking-[0.12em] text-white/70 sm:text-xs">
                   {certaintyDustLabel}
                 </Mono>
-                <span className="text-[clamp(26px,3.8vmin,40px)] font-bold text-[color:var(--game-over-highlight,#ffd45c)]">
+                <span className="text-[clamp(24px,4.5vmin,40px)] font-bold text-[color:var(--game-over-highlight,#ffd45c)]">
                   {dustLabel}
                 </span>
               </div>
@@ -170,19 +174,21 @@ export const GameOverView = ({
         <Panel
           tone="muted"
           aria-label="Achievements unlocked"
-          className="pointer-events-auto flex flex-col gap-4 rounded-[28px]"
+          className="pointer-events-auto flex flex-col gap-3 rounded-[22px] sm:gap-4 sm:rounded-[28px]"
           style={achievementsPanelStyle}
         >
           {achievements.length > 0 ? (
             <>
-              <Heading className="text-[clamp(20px,2.6vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--game-over-highlight,#ffd45c)]">
+              <Heading className="text-[clamp(18px,3vmin,26px)] uppercase tracking-[0.06em] text-[color:var(--game-over-highlight,#ffd45c)]">
                 {achievementsTitle}
               </Heading>
-              <ul className="flex flex-col gap-3 text-sm text-[color:var(--game-over-text-primary,#f6f1ff)]">
+              <ul className="flex flex-col gap-2.5 text-sm text-[color:var(--game-over-text-primary,#f6f1ff)] sm:gap-3">
                 {achievements.map((achievement) => (
-                  <li key={achievement.id} className="flex flex-col gap-1">
-                    <Label className="font-semibold tracking-[0.04em]">{achievement.title}</Label>
-                    <Label className="text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+                  <li key={achievement.id} className="flex flex-col gap-0.5 sm:gap-1">
+                    <Label className="text-[clamp(14px,2vmin,16px)] font-semibold tracking-[0.04em]">
+                      {achievement.title}
+                    </Label>
+                    <Label className="text-[clamp(12px,1.8vmin,14px)] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
                       {achievement.description}
                     </Label>
                   </li>
@@ -190,14 +196,14 @@ export const GameOverView = ({
               </ul>
             </>
           ) : (
-            <Label className="text-sm text-[color:var(--game-over-text-secondary,#d8c6ff)]">
+            <Label className="text-[clamp(13px,1.8vmin,14px)] text-[color:var(--game-over-text-secondary,#d8c6ff)]">
               {achievementsEmptyState}
             </Label>
           )}
         </Panel>
 
         <Button
-          className="ui-interactive mx-auto mt-2 min-w-[220px] rounded-full border-2 border-[rgba(255,202,140,0.6)] bg-gradient-to-br from-[rgba(255,198,108,0.95)] to-[rgba(255,146,132,0.95)] text-lg font-extrabold uppercase tracking-[0.12em] text-stone-900 shadow-[0_30px_60px_rgba(255,172,140,0.45)] transition-transform duration-150 hover:-translate-y-1 focus-visible:-translate-y-1 disabled:translate-y-0 disabled:opacity-65"
+          className="ui-interactive mx-auto mt-1 min-w-[200px] rounded-full border-2 border-[rgba(255,202,140,0.6)] bg-gradient-to-br from-[rgba(255,198,108,0.95)] to-[rgba(255,146,132,0.95)] px-6 py-3 text-base font-extrabold uppercase tracking-[0.12em] text-stone-900 shadow-[0_30px_60px_rgba(255,172,140,0.45)] transition-transform duration-150 [touch-action:manipulation] hover:-translate-y-1 focus-visible:-translate-y-1 disabled:translate-y-0 disabled:opacity-65 sm:min-w-[220px] sm:px-8 sm:text-lg md:mt-2"
           onClick={onRestart}
           disabled={pending}
           size="lg"

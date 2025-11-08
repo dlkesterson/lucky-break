@@ -10,6 +10,7 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
+  z-index: 100;
   font-family: 'Overpass', 'Overpass Mono', system-ui, sans-serif;
   color: #ffffff;
   text-shadow:
