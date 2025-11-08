@@ -71,8 +71,8 @@ describe('FateLedgerView', () => {
     it('renders the title and description', () => {
         renderComponent(defaultProps);
         const ctx = within(container);
-        expect(ctx.getByText(/fate ledger/i)).toBeDefined();
-        expect(ctx.getByText(/chronicle of idle rolls/i)).toBeDefined();
+        expect(ctx.getByText(/Activity Log/i)).toBeDefined();
+        expect(ctx.getByText(/Idle play history and rewards/i)).toBeDefined();
     });
 
     it('renders summary lines with correct structure', () => {
@@ -100,7 +100,7 @@ describe('FateLedgerView', () => {
     it('displays empty state when no entry lines', () => {
         renderComponent({ ...defaultProps, entryLines: [] });
         const ctx = within(container);
-        expect(ctx.getByText(/no idle rolls recorded yet/i)).toBeDefined();
+        expect(ctx.getByText(/No idle activity yet/i)).toBeDefined();
     });
 
     it('calls onClose when overlay backdrop is clicked', () => {
@@ -198,6 +198,6 @@ describe('FateLedgerView', () => {
     it('renders close hint text', () => {
         renderComponent(defaultProps);
         const ctx = within(container);
-        expect(ctx.getByText(/tap anywhere outside/i)).toBeDefined();
+        expect(ctx.getByText(/Tap outside to close/i)).toBeDefined();
     });
 });

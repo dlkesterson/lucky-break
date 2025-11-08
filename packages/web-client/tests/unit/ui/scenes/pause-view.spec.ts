@@ -119,7 +119,7 @@ describe('PauseView', () => {
 
     it('displays empty state when no entropy actions', () => {
         renderComponent({ ...defaultProps, entropyActions: [] });
-        expect(document.body.textContent).toContain('No entropy plays available');
+        expect(document.body.textContent).toContain('Build combo and coins to unlock');
     });
 
     it('calls onEntropyAction when clicking an action button', () => {
@@ -177,7 +177,7 @@ describe('PauseView', () => {
 
     it('displays empty state when no legend lines', () => {
         renderComponent({ ...defaultProps, legendItems: [], legendTitle: null });
-        expect(document.body.textContent).toContain('No legend entries yet');
+        expect(document.body.textContent).toContain('No entries yet');
     });
 
     it('renders volume slider with current value', () => {

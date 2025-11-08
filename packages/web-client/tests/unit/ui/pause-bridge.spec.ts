@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pauseUiBridge, usePauseUi } from 'ui/state/pause-bridge';
-import type { LegendItem } from 'ui/scenes/PauseView';
 
 const resetPauseState = () => {
     usePauseUi.setState({ visible: false, suspended: false, snapshot: null }, true);

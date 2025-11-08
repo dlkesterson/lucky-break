@@ -102,8 +102,8 @@ describe('LoadoutSelectionView', () => {
     it('renders the title and description', () => {
         renderComponent(defaultProps);
         const ctx = within(container);
-        expect(ctx.getByText(/choose your ball/i)).toBeDefined();
-        expect(ctx.getByText(/shape mayhaps/i)).toBeDefined();
+        expect(ctx.getByText(/choose your starting loadout/i)).toBeDefined();
+        expect(ctx.getByText(/select ball/i)).toBeDefined();
     });
 
     it('renders selected preset details', () => {
@@ -130,7 +130,7 @@ describe('LoadoutSelectionView', () => {
         const ctx = within(container);
         const preview = ctx.getByLabelText(/selected form/i);
         const previewCtx = within(preview);
-        expect(previewCtx.getByText(/select a form to begin/i)).toBeDefined();
+        expect(previewCtx.getAllByText(/select a ball/i).length).toBeGreaterThan(0);
     });
 
     it('renders loadout cards for all presets', () => {

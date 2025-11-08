@@ -167,7 +167,7 @@ describe('LoadoutSelectionApp', () => {
 
         const overlay = container.querySelector('.loadout-overlay');
         expect(overlay).toBeTruthy();
-        expect(within(container).getByText(/choose your ball/i)).toBeTruthy();
+        expect(within(container).getByText(/choose your starting loadout/i)).toBeTruthy();
     });
 
     it('initializes with the default form selected', () => {

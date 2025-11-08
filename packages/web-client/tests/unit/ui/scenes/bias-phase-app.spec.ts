@@ -149,9 +149,9 @@ describe('CasinoHubApp', () => {
         await renderApp();
 
         const screen = within(container);
-        screen.getByRole('heading', { name: /Cosmic Casino/i });
+        screen.getByRole('heading', { name: /Upgrades/i });
         const optionButton = getButton(screen, /Nebular Drift Table/i);
-        const commitButton = getButton(screen, /Commit Selection/i);
+        const commitButton = getButton(screen, /Select First/i);
         expect(commitButton.disabled).toBe(true);
 
         await act(async () => {
@@ -168,7 +168,7 @@ describe('CasinoHubApp', () => {
         expect(onSelect).toHaveBeenCalledWith('option-b');
         const committingButton = getButton(screen, /Committing/i);
         expect(committingButton.disabled).toBe(true);
-        const skipButton = getButton(screen, /Continue to Next Round/i);
+        const skipButton = getButton(screen, /Next Round/i);
         expect(skipButton.disabled).toBe(true);
         expect(onSkip).not.toHaveBeenCalled();
     });
@@ -189,7 +189,7 @@ describe('CasinoHubApp', () => {
         await renderApp();
 
         const screen = within(container);
-        const skipButton = getButton(screen, /Continue to Next Round/i);
+        const skipButton = getButton(screen, /Next Round/i);
 
         await act(async () => {
             fireEvent.click(skipButton);
@@ -241,14 +241,14 @@ describe('CasinoHubApp', () => {
 
         await renderApp();
 
-        const commitButton = getButton(screen, /Commit Selection/i);
+        const commitButton = getButton(screen, /Select First/i);
         expect(commitButton.disabled).toBe(true);
 
         await act(async () => {
             fireEvent.click(getButton(screen, /Vault Lock Table/i));
         });
 
-        const shortfallButton = getButton(screen, /Need 3 more entropy/i);
+        const shortfallButton = getButton(screen, /Need 3 entropy/i);
         expect(shortfallButton.disabled).toBe(true);
     });
 
@@ -269,7 +269,7 @@ describe('CasinoHubApp', () => {
         await renderApp();
 
         const screen = within(container);
-        const skipButton = getButton(screen, /Continue to Next Round/i);
+        const skipButton = getButton(screen, /Next Round/i);
 
         await act(async () => {
             fireEvent.click(skipButton);
@@ -322,8 +322,10 @@ describe('CasinoHubApp', () => {
         expect(onSpin).toHaveBeenCalledTimes(1);
         await screen.findByText(/Mock Bias Forecast/i, {}, { timeout: 5000 });
 
-        const vaultLabel = screen.getByText(/Entropy Vault/i);
-        const vaultValue = vaultLabel.nextElementSibling;
+        const entropyLabels = screen.getAllByText(/^Entropy$/i);
+        const vaultLabel = entropyLabels.find((el) => el.tagName === 'CODE');
+        expect(vaultLabel).toBeDefined();
+        const vaultValue = vaultLabel?.nextElementSibling;
         expect(vaultValue?.textContent).toBe('8');
     });
 });

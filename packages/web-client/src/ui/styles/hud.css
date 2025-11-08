@@ -1,9 +1,9 @@
 :root {
-  --t--1: clamp(10px, 1.1vw, 12px);
-  --t-0: clamp(12px, 1.3vw, 14px);
-  --t-1: clamp(14px, 1.6vw, 18px);
-  --t-2: clamp(18px, 2.2vw, 26px);
-  --hud-pad: max(8px, 1vmin);
+  --t--1: clamp(11px, 1.2vw, 14px);
+  --t-0: clamp(14px, 1.5vw, 16px);
+  --t-1: clamp(16px, 1.8vw, 22px);
+  --t-2: clamp(32px, 3.5vw, 56px);
+  --hud-pad: max(6px, 0.8vmin);
 }
 
 #ui-root {
@@ -11,8 +11,10 @@
   inset: 0;
   pointer-events: none;
   font-family: 'Overpass', 'Overpass Mono', system-ui, sans-serif;
-  color: #f8f8f8;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .ui-stage-blocked {
@@ -55,13 +57,11 @@
 .hud-bottom {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--hud-pad) * 0.8);
+  gap: calc(var(--hud-pad) * 0.6);
   pointer-events: none;
-  /* background: linear-gradient(135deg, rgba(22, 20, 44, 0.92), rgba(32, 18, 60, 0.68)); */
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: calc(var(--hud-pad) * 1.2);
-  /* backdrop-filter: saturate(1.4) blur(8px); */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: calc(var(--hud-pad) * 1);
 }
 
 .hud-layout .ui-interactive {
@@ -75,8 +75,8 @@
   flex-direction: row;
   justify-content: space-between;
   align-self: start;
-  gap: calc(var(--hud-pad) * 0.5);
-  padding: calc(var(--hud-pad) * 0.9) calc(var(--hud-pad) * 1.1);
+  gap: calc(var(--hud-pad) * 1);
+  padding: calc(var(--hud-pad) * 1.2) calc(var(--hud-pad) * 1.5);
 }
 
 .hud-right {
@@ -110,24 +110,30 @@
 
 .hud-stat-label {
   font-size: var(--t--1);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  opacity: 0.6;
-  font-weight: 500;
+  opacity: 0.85;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .hud-stat-value {
-  font-size: clamp(28px, 3.5vw, 48px);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1;
+  font-size: clamp(36px, 4.5vw, 64px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  text-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(0, 0, 0, 0.6);
 }
 
 .hud-stat-unit {
-  font-size: var(--t-0);
-  opacity: 0.7;
+  font-size: var(--t--1);
+  opacity: 0.8;
   letter-spacing: 0.08em;
   text-transform: lowercase;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .hud-bottom {
@@ -136,8 +142,8 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: calc(var(--hud-pad) * 0.4);
-  padding: calc(var(--hud-pad) * 0.5) calc(var(--hud-pad) * 1);
+  gap: calc(var(--hud-pad) * 0.8);
+  padding: calc(var(--hud-pad) * 1) calc(var(--hud-pad) * 1.5);
   margin-bottom: env(safe-area-inset-bottom, 0px);
   min-height: 0;
 }
@@ -158,11 +164,9 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--hud-pad) * 0.8);
-  /* background: linear-gradient(135deg, rgba(22, 20, 44, 0.92), rgba(32, 18, 60, 0.68)); */
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   padding: calc(var(--hud-pad) * 1.2);
-  /* backdrop-filter: saturate(1.4) blur(8px); */
   min-width: min(420px, 80vw);
 }
 
@@ -174,14 +178,18 @@
 
 .hud-status-text {
   font-size: var(--t-1);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.04em;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .hud-summary {
   font-size: var(--t-0);
-  opacity: 0.78;
+  opacity: 0.9;
   letter-spacing: 0.02em;
+  font-weight: 600;
 }
 
 .hud-primary-metrics {
@@ -192,8 +200,11 @@
 
 .hud-score {
   font-size: var(--t-2);
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(0, 0, 0, 0.6);
 }
 
 .hud-primary-row {
@@ -209,9 +220,15 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  font-size: var(--t-0);
+  font-weight: 700;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .hud-entry-list {
@@ -228,10 +245,14 @@
 }
 
 .hud-bricks-label {
-  font-size: var(--t--1);
+  font-size: var(--t-0);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.72;
+  opacity: 0.95;
+  font-weight: 700;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .hud-bricks-bar {
@@ -244,18 +265,11 @@
 
 .hud-bricks-bar-fullwidth {
   position: relative;
-  height: 6px;
+  height: 8px;
   width: 100%;
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.hud-bricks-fill {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(149, 255, 225, 0.95), rgba(66, 214, 255, 0.88));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .hud-entry {
@@ -276,32 +290,39 @@
 }
 
 .hud-difficulty {
-  font-size: var(--t--1);
+  font-size: var(--t-0);
   letter-spacing: 0.08em;
-  opacity: 0.75;
+  opacity: 0.9;
   white-space: nowrap;
+  font-weight: 700;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .hud-combo {
   --combo-pulse: 0;
   display: flex;
-  gap: calc(var(--hud-pad) * 0.6);
+  gap: calc(var(--hud-pad) * 0.8);
   font-size: var(--t-0);
-  font-weight: 500;
+  font-weight: 700;
   align-items: baseline;
-  color: #ffd966;
-  transform: scale(calc(1 + 0.08 * var(--combo-pulse)));
-  text-shadow: 0 0 calc(14px * var(--combo-pulse)) rgba(255, 217, 102, var(--combo-pulse));
+  color: #ffdd66;
+  transform: scale(calc(1 + 0.1 * var(--combo-pulse)));
+  text-shadow:
+    0 0 calc(18px * var(--combo-pulse)) rgba(255, 217, 102, calc(0.8 * var(--combo-pulse))),
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(255, 217, 102, 0.3);
   transition:
     transform 180ms ease,
     text-shadow 180ms ease;
 }
 
 .hud-combo-value {
-  font-size: var(--t-1);
-  font-weight: 600;
+  font-size: clamp(20px, 2.5vw, 32px);
+  font-weight: 800;
   transition: filter 180ms ease;
-  filter: brightness(calc(1 + 0.25 * var(--combo-pulse)));
+  filter: brightness(calc(1 + 0.3 * var(--combo-pulse)));
 }
 
 .hud-combo-timer {
@@ -440,28 +461,14 @@
   overflow: hidden;
 }
 
-.hud-momentum-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  background: linear-gradient(90deg, rgba(255, 218, 124, 0.95), rgba(255, 160, 67, 0.88));
-}
-
-.hud-momentum-value {
-  font-size: var(--t--1);
-  opacity: 0.78;
-}
-
-.hud-momentum-volley {
-  font-size: var(--t--1);
-  opacity: 0.7;
-}
-
 .hud-fps {
   font-size: var(--t--1);
-  opacity: 0.75;
+  opacity: 0.85;
   white-space: nowrap;
+  font-weight: 600;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(0, 0, 0, 0.5);
 }
 
 .hud-speed,
@@ -480,13 +487,19 @@
 }
 
 .hud-stat-value.hud-gravity-up {
-  color: #b5e1ff;
-  text-shadow: 0 0 12px rgba(181, 225, 255, 0.4);
+  color: #c5f1ff;
+  text-shadow:
+    0 0 16px rgba(181, 225, 255, 0.6),
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(0, 0, 0, 0.6);
 }
 
 .hud-stat-value.hud-gravity-down {
-  color: #ffd9b5;
-  text-shadow: 0 0 12px rgba(255, 217, 181, 0.4);
+  color: #ffe9c5;
+  text-shadow:
+    0 0 16px rgba(255, 217, 181, 0.6),
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(0, 0, 0, 0.6);
 }
 
 .hud-prompts {
@@ -515,59 +528,6 @@
 
 .hud-entropy li {
   list-style: none;
-}
-
-.hud-entropy-action {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.06);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
-}
-
-.hud-entropy-action:hover:not(:disabled),
-.hud-entropy-action:focus-visible {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(149, 255, 225, 0.45);
-  box-shadow: 0 0 14px rgba(66, 214, 255, 0.35);
-  outline: none;
-  transform: translateY(-1px);
-}
-
-.hud-entropy-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.04);
-}
-
-.hud-entropy-action--charged {
-  background: linear-gradient(135deg, rgba(149, 255, 225, 0.14), rgba(66, 214, 255, 0.1));
-  border-color: rgba(149, 255, 225, 0.35);
-}
-
-.hud-entropy-action--ready:hover:not(:disabled),
-.hud-entropy-action--charged:hover:not(:disabled),
-.hud-entropy-action--ready:focus-visible,
-.hud-entropy-action--charged:focus-visible {
-  border-color: rgba(149, 255, 225, 0.55);
-  box-shadow: 0 0 16px rgba(149, 255, 225, 0.4);
-}
-
-.hud-entropy-action--locked {
-  border-color: rgba(255, 255, 255, 0.04);
 }
 
 .hud-prompt {
@@ -607,7 +567,7 @@
     align-items: center;
     flex-direction: row;
     justify-content: space-around;
-    padding: calc(var(--hud-pad) * 0.5);
+    padding: calc(var(--hud-pad) * 1);
   }
 
   .hud-stat {
@@ -616,7 +576,15 @@
   }
 
   .hud-stat-value {
-    font-size: clamp(24px, 6vw, 32px);
+    font-size: clamp(28px, 7vw, 40px);
+  }
+
+  .hud-score {
+    font-size: clamp(24px, 6vw, 40px);
+  }
+
+  .hud-combo-value {
+    font-size: clamp(18px, 5vw, 28px);
   }
 
   .hud-row {

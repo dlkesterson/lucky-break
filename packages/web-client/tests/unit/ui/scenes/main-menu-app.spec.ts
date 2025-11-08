@@ -284,7 +284,7 @@ describe('MainMenuApp', () => {
             root.render(wrapWithI18n(createElement(MainMenuApp)));
         });
 
-        const themeButton = within(container).getByRole('button', { name: /color mode/i });
+        const themeButton = within(container).getByRole('button', { name: /theme:/i });
         act(() => {
             themeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });

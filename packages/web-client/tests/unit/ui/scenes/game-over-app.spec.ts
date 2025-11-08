@@ -129,7 +129,7 @@ describe('GameOverApp', () => {
         screen.getByText('Score 987,654');
         screen.getByText(Number(987654).toLocaleString());
         screen.getByText(Number(4200).toLocaleString());
-        screen.getByText('Achievements Unlocked');
+        screen.getByText('Achievements');
         screen.getByText(achievements[0]?.title ?? '');
         screen.getByText(achievements[1]?.description ?? '');
 

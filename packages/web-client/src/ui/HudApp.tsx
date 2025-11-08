@@ -140,9 +140,6 @@ export const HudApp = (): JSX.Element | null => {
       <section className="hud-top" aria-live="polite">
         <header className="hud-header">
           <Label className="hud-status-text">{scoreboard.statusText}</Label>
-          {scoreboard.summaryLine && (
-            <Label className="hud-summary">{scoreboard.summaryLine}</Label>
-          )}
         </header>
 
         <div className="hud-primary-metrics">
@@ -157,7 +154,7 @@ export const HudApp = (): JSX.Element | null => {
 
         <section className="hud-bricks" aria-label="Brick count">
           <Mono className="hud-bricks-label">
-            {t('hud.bricks', { remaining: brickRemaining, total: brickTotal > 0 ? brickTotal : 0 })}
+            {brickRemaining} / {brickTotal > 0 ? brickTotal : 0}
           </Mono>
         </section>
       </section>
@@ -185,14 +182,6 @@ export const HudApp = (): JSX.Element | null => {
       <section className="hud-bottom" aria-live="polite">
         <div className="hud-bottom-left">
           <LivesDialHeart value={lives} max={3} size={72} />
-          {reward ? (
-            <div className="hud-reward" aria-label="Reward status">
-              <Label className="hud-reward-label">{reward.label}</Label>
-              {reward.remaining ? (
-                <Mono className="hud-reward-remaining">{reward.remaining}</Mono>
-              ) : null}
-            </div>
-          ) : null}
           {flavor ? (
             <div className={flavorClass} aria-live="polite">
               <Label>{flavor.text}</Label>
@@ -200,9 +189,6 @@ export const HudApp = (): JSX.Element | null => {
           ) : null}
         </div>
         <div className="hud-bottom-right">
-          <Mono className="hud-difficulty">
-            {t('hud.difficulty', { value: difficultyMultiplier.toFixed(2) })}
-          </Mono>
           {fpsLabel && (
             <Mono className="hud-fps" aria-label="Frame rate">
               {fpsLabel}

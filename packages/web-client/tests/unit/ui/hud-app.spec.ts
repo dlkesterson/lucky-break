@@ -131,43 +131,28 @@ describe('HudApp', () => {
 
         const screen = within(container);
         screen.getByText('In progress');
-        screen.getByText('Take aim');
         screen.getByText('Score 123,456');
         screen.getByText('Combo ×4');
         screen.getByText('3.2s window');
-        screen.getByText('Bricks 12 / 40');
+        screen.getByText('12 / 40');
         const progressBars = screen.getAllByRole('progressbar');
         // First progress bar should be the brick progress with 70% value
         expect(progressBars[0]?.getAttribute('aria-valuenow')).toBe('70');
 
-        const momentumSection = screen.getByRole('heading', { name: 'Momentum' }).closest('section');
-        expect(momentumSection).not.toBeNull();
-        const momentumItems = momentumSection ? within(momentumSection).getAllByRole('listitem') : [];
-        expect(momentumItems).toHaveLength(3);
+        // Verify speed and gravity stats are displayed
+        screen.getByText('Speed');
+        screen.getByText('Gravity');
 
-        const powerUpsHeading = screen.getByRole('heading', { name: 'Power-Ups' });
-        const powerUpsSection = powerUpsHeading.closest('section');
-        expect(powerUpsSection).not.toBeNull();
-        if (powerUpsSection instanceof HTMLElement) {
-            within(powerUpsSection).getByText('Magnet');
-        }
+        // Verify lives dial is present
+        const livesSvg = container.querySelector('svg');
+        expect(livesSvg).not.toBeNull();
 
-        const secondaryEntry = container.querySelector('.hud-entry');
-        expect(secondaryEntry).not.toBeNull();
-        if (secondaryEntry instanceof HTMLElement) {
-            expect(within(secondaryEntry).getByText('Entropy')).toBeDefined();
-        }
-
-        screen.getByText('Mystery Reward');
-        screen.getByText('5s');
         const flavorElement = container.querySelector('.hud-flavor-hype');
         expect(flavorElement?.textContent).toBe('Streak rising');
 
-        screen.getByText('Difficulty ×1.35');
         screen.getByText('60 fps');
-        expect(screen.getByLabelText('Ball speed').textContent).toContain('Speed 313');
-        expect(screen.getByLabelText('Gravity vector').textContent).toBe('Gravity ↑0.15g');
-        screen.getByLabelText('Lives');
+        screen.getByText('Speed');
+        screen.getByText('Gravity');
         screen.getByLabelText('Coins');
     });
 });

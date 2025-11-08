@@ -235,7 +235,7 @@ describe('generateLevelLayout', () => {
         const gambleBricks = layoutA.bricks.filter((brick) => brick.traits?.includes('gamble'));
         expect(gambleBricks.length).toBeLessThanOrEqual(maxGamble);
         gambleBricks.forEach((brick) => {
-            expect(brick.hp).toBe(1);
+            expect(brick.hp).toBe(2); // primeResetHp config value
         });
     });
 

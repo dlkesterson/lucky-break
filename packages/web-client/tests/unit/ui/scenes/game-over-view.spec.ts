@@ -109,7 +109,7 @@ describe('GameOverView', () => {
         await renderView({ achievements });
         const queries = within(container);
 
-        queries.getByText('Achievements Unlocked');
+        queries.getByText('Achievements');
         queries.getByText('Combo King');
         queries.getByText('Reach a combo of 8.');
         queries.getByText('Brick Marathon');
@@ -120,7 +120,7 @@ describe('GameOverView', () => {
         await renderView({ achievements: [] });
         const queries = within(container);
 
-        expect(queries.queryByText('Achievements Unlocked')).toBeNull();
+        expect(queries.queryByText('Achievements')).toBeNull();
         queries.getByText(/no new achievements/i);
     });
 
