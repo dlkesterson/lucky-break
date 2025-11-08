@@ -120,7 +120,7 @@ describe('React HUD bridge', () => {
         expect(useHud.getState().comboPulse).toBe(0);
     });
 
-    it('clears timers and restores defaults on reset', () => {
+    it('clears timers while preserving last applied settings on reset', () => {
         hudSetters.updateFromRuntime({
             score: 900,
             lives: 1,
@@ -170,9 +170,9 @@ describe('React HUD bridge', () => {
             momentum: null,
             prompts: [],
             settings: {
-                muted: false,
-                masterVolume: 1,
-                reducedMotion: false,
+                muted: true,
+                masterVolume: 0,
+                reducedMotion: true,
             },
             physics: null,
         });

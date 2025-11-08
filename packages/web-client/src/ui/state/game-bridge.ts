@@ -73,6 +73,18 @@ export interface HudState {
     readonly physics: HudPhysicsSnapshot | null;
 }
 
+const createInitialSettings = (): HudSettings => ({
+    muted: false,
+    masterVolume: 1,
+    reducedMotion: false,
+});
+
+const cloneSettings = (settings: HudSettings): HudSettings => ({
+    muted: settings.muted,
+    masterVolume: settings.masterVolume,
+    reducedMotion: settings.reducedMotion,
+});
+
 const createInitialState = (): HudState => ({
     score: 0,
     lives: 3,
@@ -92,11 +104,7 @@ const createInitialState = (): HudState => ({
     prompts: [],
     visible: false,
     attemptEntropyAction: undefined,
-    settings: {
-        muted: false,
-        masterVolume: 1,
-        reducedMotion: false,
-    },
+    settings: createInitialSettings(),
     updateSettings: undefined,
     flavor: null,
     physics: null,
@@ -109,12 +117,15 @@ let comboPulseRevision = 0;
 let entropyActionHandler: ((action: RewardEntropyAction) => void) | undefined;
 let settingsUpdateHandler: ((changes: HudSettingsUpdate) => void) | undefined;
 let flavorResetHandle: ReturnType<typeof setTimeout> | undefined;
+let lastSettings: HudSettings = createInitialSettings();
 
 export const hudSetters = {
     setVisibility: (visible: boolean): void => {
         useHud.setState((previous) => (previous.visible === visible ? previous : { ...previous, visible }));
     },
     updateFromRuntime: (payload: RuntimeHudPayload): void => {
+        const nextSettings = cloneSettings(payload.settings);
+        lastSettings = nextSettings;
         useHud.setState((previous) => ({
             ...previous,
             score: payload.score,
@@ -132,7 +143,7 @@ export const hudSetters = {
             entropyActions: payload.entropyActions,
             momentum: payload.momentum,
             prompts: payload.prompts,
-            settings: payload.settings,
+            settings: nextSettings,
             physics: payload.physics ?? null,
         }));
     },
@@ -174,15 +185,17 @@ export const hudSetters = {
         useHud.setState((previous) => (previous.attemptEntropyAction === handler ? previous : { ...previous, attemptEntropyAction: handler }));
     },
     applySettings: (settings: HudSettings): void => {
+        const nextSettings = cloneSettings(settings);
+        lastSettings = nextSettings;
         useHud.setState((previous) => {
             if (
-                previous.settings.masterVolume === settings.masterVolume &&
-                previous.settings.muted === settings.muted &&
-                previous.settings.reducedMotion === settings.reducedMotion
+                previous.settings.masterVolume === nextSettings.masterVolume &&
+                previous.settings.muted === nextSettings.muted &&
+                previous.settings.reducedMotion === nextSettings.reducedMotion
             ) {
                 return previous;
             }
-            return { ...previous, settings };
+            return { ...previous, settings: nextSettings };
         });
     },
     setSettingsUpdater: (handler: ((changes: HudSettingsUpdate) => void) | undefined): void => {
@@ -224,8 +237,11 @@ export const hudSetters = {
             flavorResetHandle = undefined;
         }
         const baseline = createInitialState();
+        const preservedSettings = cloneSettings(lastSettings);
+        lastSettings = preservedSettings;
         const nextState: HudState = {
             ...baseline,
+            settings: preservedSettings,
             ...(entropyActionHandler ? { attemptEntropyAction: entropyActionHandler } : {}),
             ...(settingsUpdateHandler ? { updateSettings: settingsUpdateHandler } : {}),
         };
