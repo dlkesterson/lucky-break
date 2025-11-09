@@ -4,7 +4,7 @@ import type { UiSceneTransitionAction } from 'app/events';
 import { toggleTheme } from 'render/theme';
 import type { HighScoreEntry } from 'util/high-scores';
 import { getSettings, subscribeSettings, updateSettings, type SettingsSnapshot } from 'util/settings';
-import { mainMenuUiBridge, type MainMenuUiPrologue, type MainMenuUiScore } from 'ui/state/main-menu-bridge';
+import { mainMenuUiBridge, type MainMenuUiScore } from 'ui/state/main-menu-bridge';
 
 export interface MainMenuSceneOptions {
     readonly title?: string;
@@ -78,21 +78,6 @@ export const createMainMenuScene = (
         return mapScores(entries);
     };
 
-    const resolvePrologue = (): MainMenuUiPrologue | null => {
-        const narrative = context.narrative;
-        if (!narrative || typeof narrative.consumeIntroPrologue !== 'function') {
-            return null;
-        }
-        const slide = narrative.consumeIntroPrologue();
-        if (!slide) {
-            return null;
-        }
-        return {
-            heading: slide.heading,
-            body: [...slide.body],
-        } satisfies MainMenuUiPrologue;
-    };
-
     const publishScores = () => {
         if (destroyed) {
             return;
@@ -157,7 +142,6 @@ export const createMainMenuScene = (
             destroyed = false;
             currentSettings = getSettings();
             const scores = resolveScores();
-            const prologue = resolvePrologue();
             const helpLines = options.helpText && options.helpText.length > 0
                 ? [...options.helpText]
                 : [...DEFAULT_HELP_LINES];
@@ -166,7 +150,7 @@ export const createMainMenuScene = (
                 title: options.title ?? DEFAULT_TITLE,
                 prompt: options.prompt ?? DEFAULT_PROMPT,
                 helpLines,
-                prologue,
+                prologue: null,
                 scores,
                 performanceEnabled: currentSettings.performance,
                 onStart: handleStart,

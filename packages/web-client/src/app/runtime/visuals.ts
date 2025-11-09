@@ -3,8 +3,6 @@ import { GameTheme } from 'render/theme';
 import { createPlayfieldBackgroundLayer } from 'render/playfield-visuals';
 import {
     createEffectRegistry,
-    createAudioWaveBackdrop,
-    type AudioWaveBackdrop,
     createBallTrailsEffect,
     type BallTrailEffectOptions,
     type BallTrailSource,
@@ -22,8 +20,8 @@ import {
     type LaserEffect,
     createChromaticTrailEffect,
     type ChromaticTrailEffectOptions,
+    type ChromaticTrailEffect,
 } from 'render/effects';
-import type { ChromaticTrailEffect } from 'render/effects';
 import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
 import { createComboRing } from 'render/combo-ring';
 import { InputDebugOverlay, PhysicsDebugOverlay } from 'render/debug-overlay';
@@ -54,7 +52,6 @@ export interface RuntimeVisualsDeps {
 
 export interface RuntimeVisuals {
     readonly playfieldBackground: ReturnType<typeof createPlayfieldBackgroundLayer> | null;
-    readonly audioWaveBackdrop: AudioWaveBackdrop | null;
     readonly comboBloomEffect: ReturnType<typeof createComboBloomEffect> | null;
     readonly chromaticTrailEffect: ChromaticTrailEffect | null;
     readonly ballTrailsEffect: ReturnType<typeof createBallTrailsEffect> | null;
@@ -125,20 +122,6 @@ export const createRuntimeVisuals = ({
     const playfieldBackground = createPlayfieldBackgroundLayer(playfieldDimensions);
     stage.addToLayer('playfield', playfieldBackground.container);
     effects.trackContainer(playfieldBackground.container, { destroy: { children: true } });
-
-    const audioWaveBackdrop = effects.track(
-        createAudioWaveBackdrop({
-            width: playfieldDimensions.width,
-            height: playfieldDimensions.height,
-        }),
-        (backdrop) => {
-            removeFromParent(backdrop.container);
-            backdrop.destroy();
-        },
-    );
-    audioWaveBackdrop.container.zIndex = 2;
-    audioWaveBackdrop.setVisible(false);
-    stage.addToLayer('playfield', audioWaveBackdrop.container);
 
     const comboBloomEffect = effects.track(
         createComboBloomEffect({ baseColor: themeAccents.combo }),
@@ -437,9 +420,6 @@ export const createRuntimeVisuals = ({
     return {
         get playfieldBackground() {
             return playfieldBackground;
-        },
-        get audioWaveBackdrop() {
-            return audioWaveBackdrop;
         },
         get comboBloomEffect() {
             return comboBloomEffect ?? null;

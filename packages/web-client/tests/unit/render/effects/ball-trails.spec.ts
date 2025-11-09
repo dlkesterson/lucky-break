@@ -21,6 +21,7 @@ const pixiState = vi.hoisted(() => {
         blendMode: string | null = null;
         moveToCalls: { x: number; y: number }[] = [];
         lineToCalls: { x: number; y: number }[] = [];
+        circleCalls: { x: number; y: number; radius: number }[] = [];
         strokeCalls: { color?: number; width?: number; alpha?: number }[] = [];
         clearCalls = 0;
         destroyCalls = 0;
@@ -32,6 +33,10 @@ const pixiState = vi.hoisted(() => {
 
         lineTo(x: number, y: number) {
             this.lineToCalls.push({ x, y });
+        }
+
+        circle(x: number, y: number, radius: number) {
+            this.circleCalls.push({ x, y, radius });
         }
 
         stroke(options: { color?: number; width?: number; alpha?: number }) {
@@ -169,7 +174,8 @@ describe('ball-trails effect', () => {
                 { id: 1, position: { x: 2, y: 2 }, radius: 4, normalizedSpeed: 0.6, isPrimary: false },
             ],
         });
-        expect(effect.container.children.length).toBe(1);
+        // Each trail has 3 channels (RGB chromatic effect), so 1 trail = 3 children
+        expect(effect.container.children.length).toBe(3);
 
         effect.destroy();
         expect(primary.destroyCalls).toBeGreaterThan(0);

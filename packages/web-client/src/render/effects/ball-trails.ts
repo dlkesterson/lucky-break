@@ -117,7 +117,7 @@ export const createBallTrailsEffect = (theme: BallTrailTheme): BallTrailEffect =
 
     let maxPoints = DEFAULT_MAX_POINTS;
     let fadeDuration = DEFAULT_FADE_DURATION;
-    let offsetScale = DEFAULT_OFFSET_SCALE;
+    const offsetScale = DEFAULT_OFFSET_SCALE;
     let enabled = true;
 
     let activeTheme: BallTrailTheme = { ...theme };

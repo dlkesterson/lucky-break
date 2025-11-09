@@ -101,8 +101,6 @@ export const createEffectRegistry = (): EffectRegistry => {
     } satisfies EffectRegistry;
 };
 
-export { createAudioWaveBackdrop } from './audio-waves';
-export type { AudioWaveBackdrop, AudioWaveBackdropOptions, AudioWaveBumpOptions, AudioWaveKind } from './audio-waves';
 export { createBallTrailsEffect } from './ball-trails';
 export type { BallTrailEffect, BallTrailSource, BallTrailTheme, BallTrailEffectOptions } from './ball-trails';
 export { createChromaticTrailEffect } from './chromatic-trail';

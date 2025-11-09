@@ -528,7 +528,11 @@ export const createRuntimeFacade = async ({
         visualBodies,
     } = runtimePhysics;
 
-    type ChromaticTrailSample = { time: number; x: number; y: number };
+    interface ChromaticTrailSample {
+        time: number;
+        x: number;
+        y: number;
+    }
     const chromaticTrailHistory = new Map<number, ChromaticTrailSample[]>();
 
     const getOrCreateHistory = (id: number): ChromaticTrailSample[] => {
@@ -903,8 +907,6 @@ export const createRuntimeFacade = async ({
     const foreshadowing = createForeshadowingRuntime({
         randomSeed: random.seed(),
         runtimeState,
-        scheduler,
-        getVisuals: () => visuals,
         multiBallController,
         levelRuntime,
         config: {
@@ -914,7 +916,6 @@ export const createRuntimeFacade = async ({
             minLeadSeconds: FORESHADOW_MIN_LEAD_SECONDS,
             maxLeadSeconds: FORESHADOW_MAX_LEAD_SECONDS,
         },
-        scheduleVisualEffect,
     });
 
     gambleRuntime = createGambleRuntime({
@@ -2209,7 +2210,6 @@ export const createRuntimeFacade = async ({
         }
 
         visuals?.heatRippleEffect?.update(deltaSeconds);
-        visuals?.audioWaveBackdrop?.update(deltaSeconds);
 
         runtimeState.ballGlowPulse = Math.max(0, runtimeState.ballGlowPulse - deltaSeconds * 1.6);
         runtimeState.paddleGlowPulse = Math.max(0, runtimeState.paddleGlowPulse - deltaSeconds * 1.3);

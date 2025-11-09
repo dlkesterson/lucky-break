@@ -14,7 +14,8 @@
     "lint:fix": "pnpm --filter @lucky-break/core-domain lint:fix && pnpm --filter @lucky-break/design-system lint:fix && pnpm --filter @lucky-break/cli-sim lint:fix && pnpm --filter @lucky-break/web-client lint:fix",
     "typecheck": "pnpm --filter @lucky-break/core-domain typecheck && pnpm --filter @lucky-break/design-system typecheck && pnpm --filter @lucky-break/cli-sim typecheck && pnpm --filter @lucky-break/web-client typecheck",
     "simulate:verify": "pnpm --filter @lucky-break/cli-sim simulate:verify",
-    "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify"
+    "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify",
+    "storybook": "pnpm --filter @lucky-break/design-system storybook"
   },
   "devDependencies": {
     "@types/node": "^24.7.2",

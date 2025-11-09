@@ -1,18 +1,12 @@
 import { rootLogger, type Logger } from 'util/log';
 import { hudSetters, type HudFlavorTone } from '../ui/state/game-bridge';
-import {
-    introOverlayBridge,
-    type IntroSequenceReason,
-    type IntroSlideView,
-} from '../ui/state/intro-bridge';
+import { introOverlayBridge, type IntroSequenceReason } from '../ui/state/intro-bridge';
 import type { LuckyBreakEventBus, EventEnvelope } from 'app/events';
 import type { RandomManager } from 'util/random';
 import type { IdleSimulationResultSummary } from './runtime/idle';
 import { generateFateLedgerIdleNarrative } from './fate-ledger';
 import { i18n } from '../i18n';
-import introPrologueRaw from '../../assets/narrative/intro/prologue.md?raw';
 
-const INTRO_STORAGE_KEY = 'lucky-break::narrative::intro::v1';
 const PADDLE_FLAVOR_COOLDOWN_MS = 2400;
 const COMBO_FLAVOR_COOLDOWN_MS = 4400;
 const FLAVOR_DURATION_MS = 5200;
@@ -20,82 +14,19 @@ const FLAVOR_DURATION_MS = 5200;
 const DEFAULT_PADDLE_FLAVOR = 'Nice hit!';
 const DEFAULT_COMBO_FLAVOR = 'Combo active!';
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
-
 export interface NarrativeServiceOptions {
     readonly bus: LuckyBreakEventBus;
     readonly random: RandomManager;
     readonly logger?: Logger;
-    readonly storage?: StorageLike | null;
     readonly now?: () => number;
     readonly isMobile?: boolean;
 }
 
 export interface NarrativeService {
-    readonly showIntroIfNeeded: () => Promise<boolean>;
-    readonly consumeIntroPrologue: () => IntroSlideView | null;
     readonly openIntro: (reason?: IntroSequenceReason) => Promise<void>;
-    readonly markIntroSeen: () => void;
     readonly handleIdleResume: (summary: IdleSimulationResultSummary | null) => void;
     readonly dispose: () => void;
 }
-
-const resolveStorage = (storage?: StorageLike | null): StorageLike | null => {
-    if (storage !== undefined) {
-        return storage ?? null;
-    }
-    try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-            return window.localStorage;
-        }
-    } catch (error) {
-        void error;
-    }
-    return null;
-};
-
-const parseMarkdownSlide = (raw: string, fallbackId: string): IntroSlideView => {
-    const lines = raw.replace(/\r/g, '').split('\n');
-    let heading = fallbackId;
-    const paragraphs: string[] = [];
-    let buffer: string[] = [];
-
-    const flush = () => {
-        if (buffer.length === 0) {
-            return;
-        }
-        const merged = buffer.join(' ').trim();
-        if (merged.length > 0) {
-            paragraphs.push(merged);
-        }
-        buffer = [];
-    };
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.length === 0) {
-            flush();
-            continue;
-        }
-        if (trimmed.startsWith('## ')) {
-            flush();
-            heading = trimmed.slice(3).trim() || heading;
-            continue;
-        }
-        buffer.push(trimmed);
-    }
-    flush();
-
-    if (paragraphs.length === 0) {
-        paragraphs.push('Fortune favors the bold. Take your opening shot.');
-    }
-
-    return {
-        id: fallbackId,
-        heading,
-        body: paragraphs,
-    } satisfies IntroSlideView;
-};
 
 const selectRandomEntry = <T>(random: RandomManager, items: readonly T[], fallback: T): T => {
     if (items.length === 0) {
@@ -105,12 +36,6 @@ const selectRandomEntry = <T>(random: RandomManager, items: readonly T[], fallba
     return items[Math.max(0, Math.min(items.length - 1, index))] ?? fallback;
 };
 
-const cloneSlide = (slide: IntroSlideView): IntroSlideView => ({
-    id: slide.id,
-    heading: slide.heading,
-    body: [...slide.body],
-});
-
 const formatTemplate = (template: string, fields: Record<string, number | string>): string =>
     template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
         const value = fields[key];
@@ -119,10 +44,6 @@ const formatTemplate = (template: string, fields: Record<string, number | string
         }
         return String(value);
     });
-
-const introPrologueSlide = parseMarkdownSlide(introPrologueRaw, 'awakening');
-
-const introSlides: readonly IntroSlideView[] = [introPrologueSlide];
 
 const buildFlavorId = (prefix: string, clock: () => number, random: RandomManager): string => {
     const tick = Math.round(clock());
@@ -171,76 +92,23 @@ export const createNarrativeService = ({
     bus,
     random,
     logger: explicitLogger,
-    storage: explicitStorage,
     now,
     isMobile = false,
 }: NarrativeServiceOptions): NarrativeService => {
     const logger = explicitLogger ?? rootLogger.child('narrative');
     const clock = now ?? Date.now;
-    const storage = resolveStorage(explicitStorage);
 
-    const readIntroSeen = (): boolean => {
-        if (!storage) {
-            return false;
-        }
-        try {
-            return storage.getItem(INTRO_STORAGE_KEY) === '1';
-        } catch (error) {
-            logger.warn('Failed to read intro flag', { error });
-            return false;
-        }
-    };
-
-    let introSeen = readIntroSeen();
-
-    const persistIntroSeen = () => {
-        if (!storage) {
-            return;
-        }
-        try {
-            storage.setItem(INTRO_STORAGE_KEY, '1');
-        } catch (error) {
-            logger.warn('Failed to persist intro flag', { error });
-        }
-    };
-
-    const markIntroSeen = () => {
-        if (introSeen) {
-            return;
-        }
-        introSeen = true;
-        persistIntroSeen();
-    };
-
-    const openIntroInternal = (reason: IntroSequenceReason): void => {
+    const openIntro = (reason: IntroSequenceReason = 'story'): Promise<void> => {
         if (introOverlayBridge.isActive()) {
-            return;
+            return Promise.resolve();
         }
 
-        const slides = introSlides.map(cloneSlide);
         introOverlayBridge.open({
-            slides,
+            slides: [],
             reason,
             completionLabel: 'Begin the Wager',
             advanceLabel: 'Continue',
-            onComplete: markIntroSeen,
         });
-    };
-
-    const consumeIntroPrologue = (): IntroSlideView | null => {
-        if (introSeen) {
-            return null;
-        }
-        markIntroSeen();
-        return cloneSlide(introPrologueSlide);
-    };
-
-    const showIntroIfNeeded = (): Promise<boolean> => {
-        return Promise.resolve(consumeIntroPrologue() !== null);
-    };
-
-    const openIntro = (reason: IntroSequenceReason = 'story'): Promise<void> => {
-        openIntroInternal(reason);
         return Promise.resolve();
     };
 
@@ -316,10 +184,7 @@ export const createNarrativeService = ({
     };
 
     return {
-        showIntroIfNeeded,
-        consumeIntroPrologue,
         openIntro,
-        markIntroSeen,
         handleIdleResume,
         dispose,
     } satisfies NarrativeService;

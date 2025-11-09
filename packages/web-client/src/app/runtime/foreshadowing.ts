@@ -5,13 +5,11 @@ import {
     disposeForeshadower,
 } from 'audio/foreshadow-api';
 import type { ForeshadowDiagnostics } from 'audio/AudioForeshadower';
-import type { ToneScheduler } from 'audio/scheduler';
-import { Transport } from 'tone';
-import { clampUnit } from 'render/playfield-visuals';
 import { Vector as MatterVector } from 'physics/matter';
 import type { MatterBody as Body } from 'physics/matter';
+import { clampUnit } from 'util/math';
 import { deriveForeshadowScale, FORESHADOW_EVENT_SALT, clampMidiNote } from './audio-bootstrap';
-import type { RuntimeVisuals, ForeshadowInstrument } from './visuals';
+import type { ForeshadowInstrument } from './visuals';
 import type { GameplayRuntimeState } from './types';
 import type { MultiBallController } from '../multi-ball-controller';
 import type { LevelRuntimeHandle } from '../level-runtime';
@@ -102,12 +100,9 @@ export interface ForeshadowingRuntimeDeps {
         GameplayRuntimeState,
         'sessionElapsedSeconds' | 'currentMaxSpeed' | 'audioVisualSkewSeconds'
     >;
-    readonly scheduler: ToneScheduler;
-    readonly getVisuals: () => RuntimeVisuals | null;
     readonly multiBallController: ForeshadowMultiBallAdapter;
     readonly levelRuntime: ForeshadowLevelAdapter;
     readonly config: ForeshadowingConfig;
-    readonly scheduleVisualEffect: (scheduledTime: number | undefined, effect: () => void) => void;
 }
 
 export interface ForeshadowingRuntime {
@@ -122,74 +117,29 @@ export interface ForeshadowingRuntime {
 export const createForeshadowingRuntime = ({
     randomSeed,
     runtimeState,
-    scheduler,
-    getVisuals,
     multiBallController,
     levelRuntime,
     config,
-    scheduleVisualEffect,
 }: ForeshadowingRuntimeDeps): ForeshadowingRuntime => {
     const foreshadowScale = deriveForeshadowScale(randomSeed);
     const foreshadowSeed = (randomSeed ^ FORESHADOW_EVENT_SALT) >>> 0;
     const foreshadowVisualEvents = new Map<string, ForeshadowInstrument>();
 
-    const resolveForeshadowVisualTime = (transportTime: number): number | undefined => {
-        if (!Number.isFinite(transportTime)) {
-            return undefined;
-        }
-        const nowSeconds = Transport.now();
-        const deltaSeconds = Math.max(0, transportTime - nowSeconds);
-        const offsetMs = deltaSeconds * 1000 - scheduler.lookAheadMs;
-        if (!Number.isFinite(offsetMs)) {
-            return undefined;
-        }
-        return scheduler.predictAt(offsetMs);
-    };
-
-    const triggerForeshadowWave = (
-        accent: 'schedule' | 'note' | 'cancel',
-        instrument: ForeshadowInstrument,
-        intensity: number,
-        transportTime?: number,
-    ): void => {
-        const visuals = getVisuals();
-        const backdrop = visuals?.audioWaveBackdrop;
-        if (!backdrop) {
-            return;
-        }
-        const clampedIntensity = clampUnit(intensity);
-        if (clampedIntensity <= 0 && accent !== 'cancel') {
-            return;
-        }
-        const applyBump = () => {
-            const resolved = accent === 'cancel' ? Math.max(clampedIntensity, 0.35) : clampedIntensity;
-            backdrop.setVisible(true);
-            backdrop.bump('foreshadow', {
-                accent,
-                instrument,
-                intensity: resolved,
-            });
-        };
-        const scheduledTime = typeof transportTime === 'number'
-            ? resolveForeshadowVisualTime(transportTime)
-            : undefined;
-        scheduleVisualEffect(scheduledTime, applyBump);
+    const triggerForeshadowWave = (): void => {
+        // Audio wave backdrop has been removed - this is now a no-op
     };
 
     const diagnostics: ForeshadowDiagnostics = {
-        onPatternScheduled: ({ event, instrument, averageVelocity, startTime }) => {
-            foreshadowVisualEvents.set(event.id, instrument);
-            triggerForeshadowWave('schedule', instrument, averageVelocity, startTime);
+        onPatternScheduled: ({ event }) => {
+            foreshadowVisualEvents.set(event.id, 'melodic');
+            triggerForeshadowWave();
         },
-        onNoteTriggered: ({ eventId, instrument, velocity, time }) => {
-            foreshadowVisualEvents.set(eventId, instrument);
-            triggerForeshadowWave('note', instrument, velocity, time);
+        onNoteTriggered: ({ eventId }) => {
+            foreshadowVisualEvents.set(eventId, 'melodic');
+            triggerForeshadowWave();
         },
-        onEventFinalized: ({ eventId, reason }) => {
-            const instrument = foreshadowVisualEvents.get(eventId) ?? 'melodic';
-            if (reason === 'cancelled') {
-                triggerForeshadowWave('cancel', instrument, 0.6);
-            }
+        onEventFinalized: ({ eventId }) => {
+            triggerForeshadowWave();
             foreshadowVisualEvents.delete(eventId);
         },
     };
@@ -236,7 +186,6 @@ export const createForeshadowingRuntime = ({
         activeForeshadowByBall.clear();
         foreshadowEventCounter = 0;
         foreshadowVisualEvents.clear();
-        getVisuals()?.audioWaveBackdrop?.setVisible(false);
     };
 
     interface PredictedBrickImpact {
