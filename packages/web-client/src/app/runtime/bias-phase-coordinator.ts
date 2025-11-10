@@ -30,7 +30,7 @@ export interface BiasPhaseCoordinatorDeps {
     readonly modifierConfig: GameConfig['modifiers'];
     readonly stage: StageHandle;
     readonly startLoop: () => void;
-    readonly startLevel: (levelIndex: number) => void;
+    readonly startLevel: (levelIndex: number) => Promise<void>;
     readonly renderStageSoon: () => void;
     readonly replayBuffer: ReplayBuffer;
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
@@ -467,7 +467,7 @@ export const createBiasPhaseCoordinator = ({
         if (options.length === 0) {
             automation = null;
             const nextLevelIndex = roundMachine.incrementLevelIndex();
-            startLevel(nextLevelIndex);
+            void startLevel(nextLevelIndex);
             startLoop();
             renderStageSoon();
             return;
@@ -485,7 +485,7 @@ export const createBiasPhaseCoordinator = ({
                 stage.pop();
             }
             const nextLevelIndex = roundMachine.incrementLevelIndex();
-            startLevel(nextLevelIndex);
+            void startLevel(nextLevelIndex);
             startLoop();
             renderStageSoon();
         };

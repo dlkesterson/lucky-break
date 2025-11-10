@@ -409,7 +409,7 @@ beforeEach(() => {
 });
 
 describe('createLevelRuntime', () => {
-    it('loads bricks, tracks state, and updates visuals', () => {
+    it('loads bricks, tracks state, and updates visuals', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 150, y: 120, hp: 3 },
@@ -420,7 +420,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, physics, stage, visualBodies } = createRuntime({ layout, levelSpec: { powerUpChanceMultiplier: 1.4 } });
-        const result = runtime.loadLevel(0);
+        const result = await runtime.loadLevel(0);
 
         expect(physics.factory.brick).toHaveBeenCalledTimes(2);
         expect(stage.layers.playfield.addChild).toHaveBeenCalledTimes(2);
@@ -452,7 +452,7 @@ describe('createLevelRuntime', () => {
         expect(firstVisual.texture).toBe('texture-0');
     });
 
-    it('refreshes brick textures when row colors change', () => {
+    it('refreshes brick textures when row colors change', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 150, y: 120, hp: 3 },
@@ -463,7 +463,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, visualBodies } = createRuntime({ layout });
-        runtime.loadLevel(0);
+        await runtime.loadLevel(0);
 
         const [firstBody, firstVisual] = Array.from(visualBodies.entries())[0];
         expect(firstBody).toBeDefined();
@@ -480,7 +480,7 @@ describe('createLevelRuntime', () => {
         expect(firstVisual.texture).toBe('texture-3');
     });
 
-    it('applies power-up lifecycle helpers', () => {
+    it('applies power-up lifecycle helpers', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 150, y: 120, hp: 2 },
@@ -490,7 +490,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, physics, stage, visualBodies } = createRuntime({ layout });
-        runtime.loadLevel(0);
+        await runtime.loadLevel(0);
 
         runtime.spawnPowerUp('multi-ball' as PowerUpType, { x: 300, y: 220 });
         expect(matterState.circleMock).toHaveBeenCalledWith(300, 220, 16, expect.objectContaining({ label: 'powerup' }));
@@ -511,7 +511,7 @@ describe('createLevelRuntime', () => {
         expect(stage.layers.effects.children).toHaveLength(0);
     });
 
-    it('manages ghost brick rewards and timers', () => {
+    it('manages ghost brick rewards and timers', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 120, y: 100, hp: 1 },
@@ -522,7 +522,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, visualBodies } = createRuntime({ layout });
-        const result = runtime.loadLevel(0);
+        const result = await runtime.loadLevel(0);
         expect(result.layoutBounds).not.toBeNull();
 
         const [firstBody, firstVisual] = Array.from(visualBodies.entries())[0];
@@ -545,7 +545,7 @@ describe('createLevelRuntime', () => {
         expect(runtime.getGhostBrickRemainingDuration()).toBe(0);
     });
 
-    it('handles empty layouts and remixed levels', () => {
+    it('handles empty layouts and remixed levels', async () => {
         const emptyLayout = {
             bricks: [],
             breakableCount: 0,
@@ -553,7 +553,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime: emptyRuntime, physics } = createRuntime({ layout: emptyLayout, presetCount: 1 });
-        const emptyResult = emptyRuntime.loadLevel(0);
+        const emptyResult = await emptyRuntime.loadLevel(0);
         expect(emptyResult.layoutBounds).toBeNull();
         expect(physics.factory.brick).not.toHaveBeenCalled();
 
@@ -573,13 +573,13 @@ describe('createLevelRuntime', () => {
             presetCount: 1,
             levelSpec: { powerUpChanceMultiplier: 1 },
         });
-        const loopResult = loopRuntime.loadLevel(3);
+        const loopResult = await loopRuntime.loadLevel(3);
         expect(remixLevelMock).toHaveBeenCalledWith(expect.anything(), 3);
         expect(loopResult.powerUpChanceMultiplier).toBe(1);
         expect(loopResult.difficultyMultiplier).toBeCloseTo(1.3);
     });
 
-    it('spawns gravity well hazards on looped levels', () => {
+    it('spawns gravity well hazards on looped levels', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 140, y: 120, hp: 1 },
@@ -590,7 +590,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, physics, stage } = createRuntime({ layout, presetCount: 5 });
-        const result = runtime.loadLevel(5);
+        const result = await runtime.loadLevel(5);
 
         expect(physics.addHazard).toHaveBeenCalledTimes(1);
         expect(result.hazards).toHaveLength(1);
@@ -605,7 +605,7 @@ describe('createLevelRuntime', () => {
         expect(stage.layers.effects.removeChild).toHaveBeenCalled();
     });
 
-    it('scales hazard intensity when the multiplier increases', () => {
+    it('scales hazard intensity when the multiplier increases', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 120, y: 80, hp: 1 },
@@ -618,7 +618,7 @@ describe('createLevelRuntime', () => {
         } satisfies TestLayout;
 
         const baseline = createRuntime({ layout, presetCount: 5 });
-        baseline.runtime.loadLevel(17);
+        await baseline.runtime.loadLevel(17);
         expect(baseline.physics.addHazard).toHaveBeenCalledTimes(3);
         const [baseGravityCall, baseBumperCall, basePortalCall] = baseline.physics.addHazard.mock.calls;
         const baseGravity = baseGravityCall[0];
@@ -627,7 +627,7 @@ describe('createLevelRuntime', () => {
 
         const boosted = createRuntime({ layout, presetCount: 5 });
         boosted.runtime.setHazardIntensityMultiplier(1.6);
-        boosted.runtime.loadLevel(17);
+        await boosted.runtime.loadLevel(17);
         expect(boosted.physics.addHazard).toHaveBeenCalledTimes(3);
         const [boostGravityCall, boostBumperCall, boostPortalCall] = boosted.physics.addHazard.mock.calls;
         const boostGravity = boostGravityCall[0];
@@ -640,7 +640,7 @@ describe('createLevelRuntime', () => {
         expect(boostPortal.cooldownSeconds).toBeCloseTo(expectedCooldown, 6);
     });
 
-    it('spawns moving bumpers and portals on deeper loops and cleans them up', () => {
+    it('spawns moving bumpers and portals on deeper loops and cleans them up', async () => {
         const layout = {
             bricks: [
                 { row: 0, col: 0, x: 120, y: 90, hp: 1 },
@@ -653,7 +653,7 @@ describe('createLevelRuntime', () => {
         };
 
         const { runtime, physics, stage } = createRuntime({ layout, presetCount: 1, playfieldWidth: 480 });
-        const result = runtime.loadLevel(4);
+        const result = await runtime.loadLevel(4);
 
         expect(physics.addHazard).toHaveBeenCalledTimes(3);
         const hazardTypes = result.hazards.map((hazard) => hazard.type).sort();

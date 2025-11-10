@@ -29,7 +29,7 @@ export interface RuntimeRoundCoordinatorOptions {
     readonly stage: StageHandle;
     readonly startLoop: () => void;
     readonly stopLoop: () => void;
-    readonly startLevel: (levelIndex: number) => void;
+    readonly startLevel: (levelIndex: number) => Promise<void>;
     readonly renderStageSoon: () => void;
     readonly replayBuffer: ReplayBuffer;
     readonly runtimeState: Pick<GameplayRuntimeState, 'sessionElapsedSeconds'>;
@@ -179,7 +179,7 @@ export const createRuntimeRoundCoordinator = ({
             if (!biasCoordinator) {
                 logger.error('Bias phase coordinator unavailable; skipping bias phase');
                 const nextLevelIndex = roundMachine.incrementLevelIndex();
-                startLevel(nextLevelIndex);
+                await startLevel(nextLevelIndex);
                 startLoop();
                 renderStageSoon();
                 return;

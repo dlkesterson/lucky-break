@@ -24,6 +24,14 @@ import {
 import { mixColors } from 'render/playfield-visuals';
 import { drawPowerUpVisual } from 'render/powerup-visuals';
 import { createBrickTextureCache, type BrickTextureOverrides } from 'render/brick-texture-cache';
+import {
+    generateBrickVariants,
+    generateCrackTextures,
+    attachBrickFX,
+    applyDamageOverlay,
+    type BrickVariantSets,
+    type BrickStyle,
+} from 'render/bricks';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
 import {
@@ -134,7 +142,7 @@ export interface LevelRuntimeHandle {
         isBreakable: boolean;
     }>;
     setHazardIntensityMultiplier(multiplier: number): void;
-    loadLevel(levelIndex: number): LevelLoadResult;
+    loadLevel(levelIndex: number): Promise<LevelLoadResult>;
     setRowColors(rowColors: readonly number[]): void;
     updateBrickLighting(position: { readonly x: number; readonly y: number }): void;
     updateBrickDamage(body: Body, currentHp: number): void;
@@ -187,6 +195,7 @@ export const createLevelRuntime = ({
         isBreakable: boolean;
         alwaysShowHpLabel: boolean;
         textureOverride?: BrickTextureOverrides;
+        usesProceduralVariant?: boolean; // Track if using new brick system
     }>();
     const ghostBrickEffects: GhostBrickEffect[] = [];
     const activePowerUps: FallingPowerUp[] = [];
@@ -205,6 +214,42 @@ export const createLevelRuntime = ({
     const activeHazards: ActiveHazardEntry[] = [];
     const hazardByBody = new Map<Body, LevelHazardDescriptor>();
     const brickTextures = createBrickTextureCache(stage.app.renderer);
+
+    // Initialize procedural brick variant system
+    let brickVariants: BrickVariantSets | null = null;
+    let crackTextures: Record<1 | 2 | 3, Texture> | null = null;
+
+    const initBrickVariants = async () => {
+        const renderer = stage.app.renderer as any; // PixiJS v8 has generateTexture at runtime
+        if (typeof renderer?.generateTexture === 'function') {
+            brickVariants = await generateBrickVariants(renderer, brickSize.width, brickSize.height);
+            crackTextures = generateCrackTextures(renderer, brickSize.width, brickSize.height);
+        }
+    };
+
+    // Helper to pick a brick style based on position
+    const getBrickStyle = (x: number, y: number): BrickStyle => {
+        const gridX = Math.floor(x / brickSize.width);
+        const gridY = Math.floor(y / brickSize.height);
+        if (gridY % 3 === 0) return 'neon';
+        return (gridX + gridY) % 2 === 0 ? 'mosaic' : 'marble';
+    };
+
+    // Helper to pick a weighted random variant from a style matching the brick form
+    const pickBrickVariant = (style: BrickStyle, form: BrickForm) => {
+        if (!brickVariants) return null;
+        const pool = brickVariants[style].filter(v => v.form === form);
+        if (!pool || pool.length === 0) return null;
+
+        const total = pool.reduce((sum, v) => sum + v.rarity, 0);
+        let r = Math.random() * total;
+        for (const variant of pool) {
+            r -= variant.rarity;
+            if (r <= 0) return variant;
+        }
+        return pool[pool.length - 1];
+    };
+
     let hazardIntensityMultiplier = 1;
     const ensureHpLabel = (
         visual: Sprite,
@@ -363,15 +408,30 @@ export const createLevelRuntime = ({
             return;
         }
 
-        visual.texture = brickTextures.get({
-            baseColor: state.baseColor,
-            maxHp: state.maxHp,
-            currentHp: safeHp,
-            width: brickSize.width,
-            height: brickSize.height,
-            form: state.form,
-            override: state.textureOverride,
-        });
+        // For procedural variants, apply crack overlays instead of swapping texture
+        if (state.usesProceduralVariant && crackTextures && state.maxHp > 0) {
+            const damagePercent = 1 - (safeHp / state.maxHp);
+
+            if (damagePercent > 0.66 && crackTextures[3]) {
+                applyDamageOverlay(visual, crackTextures[3], 3);
+            } else if (damagePercent > 0.33 && crackTextures[2]) {
+                applyDamageOverlay(visual, crackTextures[2], 2);
+            } else if (damagePercent > 0 && crackTextures[1]) {
+                applyDamageOverlay(visual, crackTextures[1], 1);
+            }
+        } else {
+            // Traditional texture swap for non-procedural bricks
+            visual.texture = brickTextures.get({
+                baseColor: state.baseColor,
+                maxHp: state.maxHp,
+                currentHp: safeHp,
+                width: brickSize.width,
+                height: brickSize.height,
+                form: state.form,
+                override: state.textureOverride,
+            });
+        }
+
         visual.alpha = brickLighting.restAlpha;
         visual.tint = 0xffffff;
         visual.blendMode = 'normal';
@@ -443,12 +503,17 @@ export const createLevelRuntime = ({
         };
     };
 
-    const loadLevel: LevelRuntimeHandle['loadLevel'] = (levelIndex) => {
+    const loadLevel: LevelRuntimeHandle['loadLevel'] = async (levelIndex) => {
         resetGhostBricks();
         clearBricks();
         clearActivePowerUps();
         clearActiveCoins();
         clearActiveHazards();
+
+        // Initialize brick variants on first level load
+        if (!brickVariants) {
+            await initBrickVariants(); // Await to ensure variants ready before brick creation
+        }
 
         let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
         const loopCount = Math.floor(levelIndex / presetLevelCount);
@@ -521,22 +586,49 @@ export const createLevelRuntime = ({
             const rawHp = Math.max(1, brickSpec.hp);
             const maxHp = isBreakable ? Math.min(MAX_LEVEL_BRICK_HP, rawHp) : rawHp;
             const baseColor = isBreakable ? paletteColor : WALL_BRICK_COLOR;
-            const textureOverride: BrickTextureOverrides | undefined = isBreakable
-                ? undefined
-                : {
-                    strokeColor: WALL_STROKE_COLOR,
-                    fillColor: WALL_BRICK_COLOR,
-                    useFlatFill: true,
-                };
-            const texture = brickTextures.get({
-                baseColor,
-                maxHp,
-                currentHp: maxHp,
-                width: brickSize.width,
-                height: brickSize.height,
-                form: brickForm,
-                override: textureOverride,
-            });
+
+            // Use procedural brick variants for breakable bricks if available
+            let texture: Texture;
+            let usesProceduralVariant = false;
+            let textureOverride: BrickTextureOverrides | undefined;
+
+            if (isBreakable && brickVariants) {
+                const style = getBrickStyle(brickSpec.x, brickSpec.y);
+                const variant = pickBrickVariant(style, brickForm);
+                if (variant) {
+                    texture = variant.texture;
+                    usesProceduralVariant = true;
+                } else {
+                    // Fallback to texture cache
+                    texture = brickTextures.get({
+                        baseColor,
+                        maxHp,
+                        currentHp: maxHp,
+                        width: brickSize.width,
+                        height: brickSize.height,
+                        form: brickForm,
+                    });
+                }
+            } else {
+                // Non-breakable bricks use traditional texture cache
+                textureOverride = isBreakable
+                    ? undefined
+                    : {
+                        strokeColor: WALL_STROKE_COLOR,
+                        fillColor: WALL_BRICK_COLOR,
+                        useFlatFill: true,
+                    };
+                texture = brickTextures.get({
+                    baseColor,
+                    maxHp,
+                    currentHp: maxHp,
+                    width: brickSize.width,
+                    height: brickSize.height,
+                    form: brickForm,
+                    override: textureOverride,
+                });
+            }
+
             const brickVisual = new Sprite(texture);
             brickVisual.anchor.set(0.5);
             brickVisual.sortableChildren = true;
@@ -544,6 +636,16 @@ export const createLevelRuntime = ({
             brickVisual.zIndex = 5;
             brickVisual.alpha = isBreakable ? brickLighting.restAlpha : Math.min(brickLighting.restAlpha, 0.7);
             brickVisual.eventMode = 'none';
+
+            // Attach FX for procedural variants
+            if (usesProceduralVariant && isBreakable) {
+                const style = getBrickStyle(brickSpec.x, brickSpec.y);
+                attachBrickFX(brickVisual, {
+                    twinkle: style === 'mosaic',
+                    sweep: style !== 'mosaic',
+                });
+            }
+
             visualBodies.set(brick, brickVisual);
             stage.layers.playfield.addChild(brickVisual);
 
@@ -567,6 +669,7 @@ export const createLevelRuntime = ({
                 isBreakable,
                 alwaysShowHpLabel,
                 textureOverride,
+                usesProceduralVariant,
             });
 
             minX = Math.min(minX, brickSpec.x - brickSize.width / 2);

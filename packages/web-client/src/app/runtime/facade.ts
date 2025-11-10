@@ -1006,9 +1006,9 @@ export const createRuntimeFacade = async ({
         syncAutoCompleteCountdownDisplay();
     };
 
-    const loadLevel = (levelIndex: number) => {
+    const loadLevel = async (levelIndex: number) => {
         gambleRuntime?.prepareLevel();
-        const result = levelRuntime.loadLevel(levelIndex);
+        const result = await levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
         roundMachine.setLevelDifficultyMultiplier(result.difficultyMultiplier);
         session.startRound({

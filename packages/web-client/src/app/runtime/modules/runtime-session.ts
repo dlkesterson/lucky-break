@@ -49,7 +49,7 @@ export interface RuntimeSessionCoordinatorOptions {
 
 export interface RuntimeSessionCoordinator {
     beginNewSession(this: void, options?: BeginSessionOptions): Promise<void>;
-    startLevel(this: void, levelIndex: number, options?: { readonly resetScore?: boolean }): void;
+    startLevel(this: void, levelIndex: number, options?: { readonly resetScore?: boolean }): Promise<void>;
 }
 
 export interface BeginSessionOptions {
@@ -100,7 +100,7 @@ export const createRuntimeSessionCoordinator = ({
         onLoadoutApplied(activeLoadout);
     };
 
-    const startLevel: RuntimeSessionCoordinator['startLevel'] = (levelIndex, options) => {
+    const startLevel: RuntimeSessionCoordinator['startLevel'] = async (levelIndex, options) => {
         const resetScore = options?.resetScore === true;
 
         setIsPaused(false);
@@ -137,7 +137,7 @@ export const createRuntimeSessionCoordinator = ({
         applyActiveLoadout();
         clearExtraBalls();
         foreshadowing.reset();
-        loadLevel(levelIndex);
+        await loadLevel(levelIndex);
 
         const biasCoordinator = getBiasCoordinator();
         biasCoordinator?.applySelection(pendingBiasSelection);
