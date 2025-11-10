@@ -364,7 +364,7 @@ export interface ThemeMock {
     ball: { core: string; aura: string; highlight: string };
     paddle: { gradient: string[]; glow: number };
     accents: { combo: string; powerUp: string };
-    background: { from: number; to: number; starAlpha: number };
+    background: { from: string; to: string; starAlpha: number };
     font: string;
     monoFont: string;
     hud: {
@@ -394,8 +394,8 @@ const createThemeMockState = () => {
             powerUp: '#fedcba',
         },
         background: {
-            from: 0x111111,
-            to: 0x222222,
+            from: '#111111',
+            to: '#222222',
             starAlpha: 0.2,
         },
         font: 'Test Font',

@@ -70,6 +70,7 @@ describe('React HUD bridge', () => {
                 speedPressure: 0.55,
                 brickDensity: 0.3,
                 comboTimer: 1.8,
+                mirageStacks: 0,
             },
             prompts: [
                 { id: 'alert', severity: 'warning', message: 'Brace yourself!' },
@@ -140,6 +141,7 @@ describe('React HUD bridge', () => {
                 speedPressure: 0.1,
                 brickDensity: 0.4,
                 comboTimer: 0.6,
+                mirageStacks: 0,
             },
             prompts: [],
             settings: {

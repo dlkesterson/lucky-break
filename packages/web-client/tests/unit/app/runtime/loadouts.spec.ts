@@ -81,6 +81,8 @@ describe('runtime loadouts', () => {
             'stop-sign': 0xff2f2f,
             'crystal-probability': 0x5be4ff,
             'entropy-core': 0xff6b6b,
+            'shadow-mirage': 0x6b3f9f,
+            'vortex-weaver': 0x2fb8d9,
         };
 
         (Object.keys(expectedBaseColors) as LoadoutFormId[]).forEach((form) => {

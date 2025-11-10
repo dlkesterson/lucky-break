@@ -120,8 +120,8 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
         const burstCount = Math.max(2, Math.min(available, Math.round(baseBurstCount * burstMultiplier + totalIntensity * 9)));
 
         // Enable chromatic separation if colors are provided
-        const useChromaticEffect = chromaticColors !== undefined && chromaticColors.length === 3;
-        const channels: Array<'red' | 'green' | 'blue'> = ['red', 'green', 'blue'];
+        const useChromaticEffect = chromaticColors?.length === 3;
+        const channels: ('red' | 'green' | 'blue')[] = ['red', 'green', 'blue'];
 
         for (let index = 0; index < burstCount; index += 1) {
             const particle = acquireParticle();

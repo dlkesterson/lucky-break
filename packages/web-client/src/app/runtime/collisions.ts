@@ -14,10 +14,14 @@ import type { PhysicsWorldHandle } from 'physics/world';
 import type { LevelRuntimeHandle } from '../level-runtime';
 import type { RandomManager } from 'util/random';
 import type { GambleBrickManager } from 'game/gamble-brick-manager';
+import type { EchoTrailManager } from 'game/echo-trails';
+import type { PhantomBrickManager } from 'game/phantom-bricks';
+import type { VortexFieldManager } from 'physics/field-effects';
 import type { GameInputManager } from 'input/input-manager';
 import type { RuntimeScoringHandle } from './scoring';
 import type { RoundMachine } from './round-machine';
 import type { CollisionEffectHooks } from './contracts';
+import type { LoadoutRuntimeRuleEffects } from 'config/loadouts';
 
 export interface CollisionRuntime {
     wire(): void;
@@ -39,6 +43,9 @@ export interface CollisionContext {
     readonly session: GameSessionManager;
     readonly scoring: RuntimeScoringHandle;
     readonly gambleManager: GambleBrickManager;
+    readonly echoTrailManager: EchoTrailManager;
+    readonly phantomBrickManager: PhantomBrickManager;
+    readonly vortexFieldManager: VortexFieldManager;
     readonly levelRuntime: LevelRuntimeHandle;
     readonly brickHealth: Map<Body, number>;
     readonly brickMetadata: BrickMetadataMap;
@@ -67,6 +74,7 @@ export interface CollisionContext {
         maxValue: number;
     };
     readonly getGravity: () => number;
+    readonly getRuleEffects: () => LoadoutRuntimeRuleEffects;
     readonly functions: CollisionEffectHooks;
     readonly roundMachine: RoundMachine;
 }
@@ -463,6 +471,33 @@ const handleBallBrickCollision = (
     }
 
     fx.clearGhostEffect(brick);
+
+    const rules = ctx.getRuleEffects();
+
+    if (rules.echoPhaseChance > 0) {
+        ctx.echoTrailManager.register(
+            ballBody,
+            { x: ballBody.position.x, y: ballBody.position.y },
+            { x: ballBody.velocity.x, y: ballBody.velocity.y },
+        );
+    }
+
+    if (rules.vortexPullStrength > 0) {
+        ctx.vortexFieldManager.spawn({
+            x: brick.position.x,
+            y: brick.position.y,
+        });
+    }
+
+    if (ctx.phantomBrickManager.isPhantom(brick)) {
+        const entropyReward = ctx.phantomBrickManager.getEntropyReward();
+        ctx.session.grantStoredEntropy(entropyReward);
+        ctx.phantomBrickManager.unregister(brick);
+    }
+
+    if (scoringState.combo > 0) {
+        ctx.session.incrementMirageStacks();
+    }
 
     ctx.physics.remove(brick);
     fx.removeBodyVisual(brick);

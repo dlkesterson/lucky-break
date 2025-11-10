@@ -2,7 +2,10 @@ import { useMemo, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Heading, Label, Mono } from '@lucky-break/design-system';
 import type { GameThemeDefinition } from 'render/theme';
-import type { LoadoutFormPreset as ImportedLoadoutFormPreset } from 'app/runtime/loadouts';
+import type {
+  LoadoutFormPreset as ImportedLoadoutFormPreset,
+  LoadoutPreviewEffect,
+} from 'app/runtime/loadouts';
 
 // Re-export for external use
 export type LoadoutFormPreset = ImportedLoadoutFormPreset;
@@ -154,6 +157,116 @@ export const LoadoutSelectionView = ({
                 />
               ))}
             </div>
+            {selectedPreset?.preview.effect === 'echo-trails' && (
+              <svg
+                className="loadout-ball-effect-svg"
+                viewBox="0 0 200 200"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                focusable="false"
+              >
+                {[0, 1, 2, 3].map((index) => {
+                  const offset = index * 15;
+                  const opacity = 0.5 - index * 0.1;
+                  const scale = 1 - index * 0.08;
+                  return (
+                    <g
+                      key={`echo-${index}`}
+                      className="loadout-ball-echo-trail"
+                      style={
+                        {
+                          '--echo-delay': `${index * 0.15}s`,
+                          '--echo-offset': offset,
+                          opacity,
+                        } as CSSProperties
+                      }
+                      transform={`translate(${offset}, ${offset}) scale(${scale})`}
+                    >
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r="45"
+                        fill="none"
+                        stroke="var(--loadout-ball-accent)"
+                        strokeWidth="2"
+                        opacity={opacity * 0.8}
+                      />
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r="35"
+                        fill="var(--loadout-ball-accent)"
+                        opacity={opacity * 0.3}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
+            {selectedPreset?.preview.effect === 'vortex-field' && (
+              <svg
+                className="loadout-ball-effect-svg"
+                viewBox="0 0 200 200"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <defs>
+                  <radialGradient id="vortex-gradient">
+                    <stop offset="0%" stopColor="var(--loadout-ball-accent)" stopOpacity="0.6" />
+                    <stop offset="50%" stopColor="var(--loadout-ball-accent)" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="var(--loadout-ball-accent)" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <g className="loadout-ball-vortex-field">
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="70"
+                    fill="url(#vortex-gradient)"
+                    className="loadout-ball-vortex-glow"
+                  />
+                  {[0, 1, 2, 3, 4, 5].map((index) => {
+                    const turns = 2;
+                    const segments = 32;
+                    const angleStep = (Math.PI * 2 * turns) / segments;
+                    const startAngle = (index * Math.PI) / 3;
+                    const points = Array.from({ length: segments }, (_, i) => {
+                      const angle = startAngle + i * angleStep;
+                      const radiusFactor = 1 - i / segments;
+                      const radius = 60 * radiusFactor;
+                      const x = 100 + Math.cos(angle) * radius;
+                      const y = 100 + Math.sin(angle) * radius;
+                      return `${x},${y}`;
+                    }).join(' ');
+                    return (
+                      <polyline
+                        key={`vortex-arm-${index}`}
+                        className="loadout-ball-vortex-arm"
+                        points={points}
+                        fill="none"
+                        stroke="var(--loadout-ball-accent)"
+                        strokeWidth="1.5"
+                        opacity="0.6"
+                        style={
+                          {
+                            '--vortex-arm-delay': `${index * 0.1}s`,
+                          } as CSSProperties
+                        }
+                      />
+                    );
+                  })}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="8"
+                    fill="var(--loadout-ball-accent)"
+                    className="loadout-ball-vortex-core"
+                    opacity="0.9"
+                  />
+                </g>
+              </svg>
+            )}
           </div>
 
           <div className="loadout-preview-details">

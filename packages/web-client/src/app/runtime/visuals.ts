@@ -21,6 +21,8 @@ import {
     createChromaticTrailEffect,
     type ChromaticTrailEffectOptions,
     type ChromaticTrailEffect,
+    createEchoTrailEffect,
+    createVortexFieldEffect,
 } from 'render/effects';
 import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
 import { createComboRing } from 'render/combo-ring';
@@ -70,6 +72,8 @@ export interface RuntimeVisuals {
     readonly chromaticTrailSources: BallTrailSource[];
     readonly heatDistortionSources: HeatDistortionSource[];
     readonly laserEffect: LaserEffect | null;
+    readonly echoTrailEffect: ReturnType<typeof createEchoTrailEffect> | null;
+    readonly vortexFieldEffect: ReturnType<typeof createVortexFieldEffect> | null;
     setEffectProfile(profile: 'quality' | 'performance'): void;
     replacePaddleLight(color: number): void;
     dispose(): void;
@@ -203,6 +207,26 @@ export const createRuntimeVisuals = ({
     );
     laserEffect.container.zIndex = 54;
     stage.addToLayer('effects', laserEffect.container);
+
+    const echoTrailEffect = effects.track(
+        createEchoTrailEffect(),
+        (effect) => {
+            removeFromParent(effect.container);
+            effect.destroy();
+        },
+    );
+    echoTrailEffect.container.zIndex = 46;
+    stage.addToLayer('effects', echoTrailEffect.container);
+
+    const vortexFieldEffect = effects.track(
+        createVortexFieldEffect(),
+        (effect) => {
+            removeFromParent(effect.container);
+            effect.destroy();
+        },
+    );
+    vortexFieldEffect.container.zIndex = 45;
+    stage.addToLayer('effects', vortexFieldEffect.container);
 
     const brickParticles = effects.track(
         createBrickParticleSystem({
@@ -446,6 +470,12 @@ export const createRuntimeVisuals = ({
         },
         get laserEffect() {
             return laserEffect;
+        },
+        get echoTrailEffect() {
+            return echoTrailEffect;
+        },
+        get vortexFieldEffect() {
+            return vortexFieldEffect;
         },
         get brickParticles() {
             return brickParticles;

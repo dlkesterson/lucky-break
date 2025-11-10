@@ -92,7 +92,7 @@ const mockPresets: LoadoutFormPreset[] = [
     id: 'ivory-orb',
     name: 'Ivory Orb',
     description: 'Balanced and reliable',
-    preview: { shape: 'sphere', baseColor: 0xf4e8d8, accentColor: 0xffcc66 },
+    preview: { shape: 'sphere', baseColor: 0xf4e8d8, accentColor: 0xffcc66, effect: null },
     trait: {
       id: 'fortune-favored',
       name: 'Fortune Favored',
@@ -128,7 +128,7 @@ const mockPresets: LoadoutFormPreset[] = [
     id: 'stop-sign',
     name: 'Stop Sign',
     description: 'Unpredictable angles',
-    preview: { shape: 'octagon', baseColor: 0xff6b4a, accentColor: 0xffd700 },
+    preview: { shape: 'octagon', baseColor: 0xff6b4a, accentColor: 0xffd700, effect: null },
     trait: {
       id: 'entropy-bound',
       name: 'Entropy Bound',
@@ -159,7 +159,7 @@ const mockPresets: LoadoutFormPreset[] = [
     id: 'd20-diceform',
     name: 'D20 Diceform',
     description: 'Maximum variance',
-    preview: { shape: 'd20', baseColor: 0x8a4fff, accentColor: 0xff66cc },
+    preview: { shape: 'd20', baseColor: 0x8a4fff, accentColor: 0xff66cc, effect: null },
     trait: {
       id: 'double-edged',
       name: 'Double-Edged',
@@ -334,7 +334,7 @@ export const ManyForms: Story = {
         id: 'nebular-jelly',
         name: 'Nebular Jelly',
         description: 'Soft and flowing',
-        preview: { shape: 'sphere', baseColor: 0x4a90ff, accentColor: 0x66ffcc },
+        preview: { shape: 'sphere', baseColor: 0x4a90ff, accentColor: 0x66ffcc, effect: null },
         trait: {
           id: 'stable-bias',
           name: 'Stable Bias',
@@ -366,7 +366,7 @@ export const ManyForms: Story = {
         id: 'entropy-core',
         name: 'Entropy Core',
         description: 'Pure chaos',
-        preview: { shape: 'sphere', baseColor: 0xff4400, accentColor: 0x00ffff },
+        preview: { shape: 'sphere', baseColor: 0xff4400, accentColor: 0x00ffff, effect: null },
         trait: {
           id: 'drifters-calm',
           name: "Drifter's Calm",
@@ -413,7 +413,7 @@ export const EmptySummary: Story = {
         id: 'crystal-probability',
         name: 'Crystal Probability',
         description: 'No effects',
-        preview: { shape: 'sphere', baseColor: 0xcccccc, accentColor: 0x999999 },
+        preview: { shape: 'sphere', baseColor: 0xcccccc, accentColor: 0x999999, effect: null },
         trait: {
           id: 'fortune-favored',
           name: 'Fortune Favored',

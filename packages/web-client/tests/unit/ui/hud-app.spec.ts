@@ -117,6 +117,7 @@ describe('HudApp', () => {
                 brickDensity: -0.2,
                 comboTimer: 1.5,
                 volleyLength: 6.7,
+                mirageStacks: 0,
             },
             flavor: { id: 'flavor-1', text: 'Streak rising', tone: 'hype' },
             physics: {

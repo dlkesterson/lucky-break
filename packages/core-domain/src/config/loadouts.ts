@@ -6,7 +6,9 @@ export type LoadoutFormId =
     | 'd20-diceform'
     | 'stop-sign'
     | 'crystal-probability'
-    | 'entropy-core';
+    | 'entropy-core'
+    | 'shadow-mirage'
+    | 'vortex-weaver';
 
 export type LoadoutTraitId =
     | 'fortune-favored'
@@ -56,6 +58,12 @@ export interface LoadoutRuntimeRuleEffects {
     difficultyMultiplier: number;
     doublePointsMultiplier: number;
     hazardIntensityMultiplier: number;
+    echoPhaseChance: number;
+    phantomBrickChance: number;
+    rewardDuplicateChance: number;
+    vortexPullStrength: number;
+    vortexChainBonus: number;
+    entropyDiscountNearPortal: number;
 }
 
 export type LoadoutVoicePaletteOverrides = Record<string, unknown>;
@@ -274,6 +282,104 @@ export const loadoutForms: readonly LoadoutOptionDefinition<LoadoutFormId>[] = [
                     innerColor: 0xffd26f,
                     innerAlpha: 0.45,
                     innerScale: 0.48,
+                },
+            },
+        },
+    },
+    {
+        id: 'shadow-mirage',
+        name: 'Shadow Mirage',
+        description: 'Deceptive illusions create phantom trails and duplicate rewards.',
+        effectSummary: ['Echo trails phase through hazards', 'Phantom bricks grant bonus entropy', '+15% reward duplication'],
+        contribution: {
+            physics: {
+                restitutionMultiplier: 0.98,
+                baseSpeedMultiplier: 0.95,
+            },
+            rules: {
+                echoPhaseChance: 0.2,
+                phantomBrickChance: 0.12,
+                rewardDuplicateChance: 0.15,
+            },
+            session: {
+                entropyGainMultiplier: 1.08,
+            },
+            audio: {
+                paletteOverrides: {
+                    brickSynth: {
+                        oscillatorType: 'triangle',
+                        envelope: { attack: 0.06, decay: 0.24, sustain: 0.18, release: 1.2 },
+                        volume: -7,
+                    },
+                    chimeSynth: {
+                        oscillatorType: 'triangle',
+                        envelope: { attack: 0.1, release: 1.6 },
+                        volume: -5,
+                    },
+                    percussion: {
+                        volume: -8,
+                        octaves: 1.8,
+                        pitchDecay: 0.12,
+                    },
+                },
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0x6b3f9f,
+                    baseAlpha: 0.78,
+                    rimColor: 0xc89fff,
+                    rimAlpha: 0.52,
+                    innerColor: 0x9f6fff,
+                    innerAlpha: 0.44,
+                    innerScale: 0.62,
+                },
+            },
+        },
+    },
+    {
+        id: 'vortex-weaver',
+        name: 'Vortex Weaver',
+        description: 'Swirling portals pull bricks and redirect ball paths.',
+        effectSummary: ['Vortices pull nearby bricks', '+25% score for portal redirects', '-10% entropy cost near portals'],
+        contribution: {
+            physics: {
+                gravityOffset: -0.03,
+            },
+            rules: {
+                vortexPullStrength: 0.35,
+                vortexChainBonus: 0.25,
+                entropyDiscountNearPortal: 0.1,
+            },
+            session: {
+                comboWindowBonusSeconds: 0.2,
+            },
+            audio: {
+                paletteOverrides: {
+                    brickSynth: {
+                        oscillatorType: 'sine',
+                        envelope: { attack: 0.02, decay: 0.16, sustain: 0.24, release: 0.7 },
+                        volume: -6,
+                    },
+                    chimeSynth: {
+                        oscillatorType: 'sine',
+                        envelope: { attack: 0.05, decay: 0.2, release: 1.1 },
+                        volume: -4,
+                    },
+                    percussion: {
+                        volume: -5,
+                        octaves: 2.2,
+                    },
+                },
+            },
+            visuals: {
+                ball: {
+                    baseColor: 0x2fb8d9,
+                    baseAlpha: 0.82,
+                    rimColor: 0x8ff4ff,
+                    rimAlpha: 0.56,
+                    innerColor: 0x5ddaff,
+                    innerAlpha: 0.48,
+                    innerScale: 0.58,
                 },
             },
         },
@@ -563,6 +669,12 @@ export const mergeLoadoutEffects = (
         difficultyMultiplier: 1,
         doublePointsMultiplier: 1,
         hazardIntensityMultiplier: 1,
+        echoPhaseChance: 0,
+        phantomBrickChance: 0,
+        rewardDuplicateChance: 0,
+        vortexPullStrength: 0,
+        vortexChainBonus: 0,
+        entropyDiscountNearPortal: 0,
     };
     const audio: LoadoutRuntimeAudioEffects = {};
     let ballVisuals: LoadoutBallVisualOverrides | undefined;
@@ -592,6 +704,12 @@ export const mergeLoadoutEffects = (
             rules.difficultyMultiplier *= contribution.rules.difficultyMultiplier ?? 1;
             rules.doublePointsMultiplier *= contribution.rules.doublePointsMultiplier ?? 1;
             rules.hazardIntensityMultiplier *= contribution.rules.hazardIntensityMultiplier ?? 1;
+            rules.echoPhaseChance = Math.max(rules.echoPhaseChance, contribution.rules.echoPhaseChance ?? 0);
+            rules.phantomBrickChance = Math.max(rules.phantomBrickChance, contribution.rules.phantomBrickChance ?? 0);
+            rules.rewardDuplicateChance = Math.max(rules.rewardDuplicateChance, contribution.rules.rewardDuplicateChance ?? 0);
+            rules.vortexPullStrength = Math.max(rules.vortexPullStrength, contribution.rules.vortexPullStrength ?? 0);
+            rules.vortexChainBonus += contribution.rules.vortexChainBonus ?? 0;
+            rules.entropyDiscountNearPortal += contribution.rules.entropyDiscountNearPortal ?? 0;
         }
         if (contribution.audio) {
             audio.paletteOverrides = {

@@ -66,6 +66,22 @@ const pixiState = vi.hoisted(() => {
             this.roundRectCalls = [];
         }
 
+        moveTo() {
+            // Mock implementation
+        }
+
+        arc() {
+            // Mock implementation
+        }
+
+        lineTo() {
+            // Mock implementation
+        }
+
+        closePath() {
+            // Mock implementation
+        }
+
         circle(x: number, y: number, radius: number) {
             this.circleCalls.push({ x, y, radius });
         }
@@ -259,9 +275,13 @@ describe('round-countdown effect', () => {
 
     const extractElements = (display: ReturnType<typeof createRoundCountdown>) => {
         const halo = display.container.children[0] as unknown as MockGraphics;
-        const shadowText = display.container.children[1] as unknown as MockText;
-        const valueText = display.container.children[2] as unknown as MockText;
-        return { halo, shadowText, valueText, glow: (valueText.filters?.[0] ?? null) as MockGlowFilter | null };
+        const backplate = display.container.children[1] as unknown as MockGraphics;
+        const innerGlow = display.container.children[2] as unknown as MockGraphics;
+        const ghostText = display.container.children[3] as unknown as MockText;
+        const progressRing = display.container.children[4] as unknown as MockGraphics;
+        const shadowText = display.container.children[5] as unknown as MockText;
+        const valueText = display.container.children[6] as unknown as MockText;
+        return { halo, backplate, innerGlow, ghostText, progressRing, shadowText, valueText, glow: (valueText.filters?.[0] ?? null) as MockGlowFilter | null };
     };
 
     it('updates severity visuals as the timer crosses thresholds', () => {
@@ -275,15 +295,23 @@ describe('round-countdown effect', () => {
 
         display.show(5.4, 10);
 
-        const cautionFill = toColorNumber(baseTheme.accents.powerUp);
-        const cautionStroke = mixColors(cautionFill, toColorNumber(baseTheme.background.to), 0.35);
+        const cautionBaseColor = mixColors(
+            toColorNumber(baseTheme.accents.powerUp),
+            toColorNumber(baseTheme.hud.textPrimary),
+            0.35,
+        );
+        const cautionFill = mixColors(cautionBaseColor, 0xffffff, 0.38);
+        const cautionStroke = mixColors(cautionBaseColor, 0xffffff, 0.56);
+        const cautionGlow = mixColors(cautionBaseColor, 0xffffff, 0.24);
+        const cautionHaloInput = mixColors(cautionBaseColor, 0xffffff, 0.22);
+        const cautionHalo = mixColors(cautionHaloInput, 0xffffff, 0.35);
         expect(display.container.visible).toBe(true);
         expect(valueText.text).toBe('6');
         expect(shadowText.text).toBe('6');
         expect(valueText.style.fill).toBe(cautionFill);
         expect(valueText.style.stroke.color).toBe(cautionStroke);
-        expect(glow?.color).toBe(toColorNumber(baseTheme.accents.combo));
-        expect(halo.lastStroke?.color).toBe(cautionFill);
+        expect(glow?.color).toBe(cautionGlow);
+        expect(halo.lastStroke?.color).toBe(cautionHalo);
 
         const fractionalCaution = 5.4 - Math.floor(5.4);
         const pulseCaution = (() => {
@@ -291,20 +319,25 @@ describe('round-countdown effect', () => {
             const oneMinus = 1 - t;
             return 1 - oneMinus * oneMinus * oneMinus;
         })();
-        expectCloseTo(halo.alpha, 0.2 + pulseCaution * 0.3);
-        expectCloseTo(valueText.scale.x, 1 + pulseCaution * 0.18);
-        expectCloseTo(shadowText.scale.x, (1 + pulseCaution * 0.18) * 1.015);
+        expectCloseTo(halo.alpha, 0.12 + pulseCaution * 0.18);
+        expectCloseTo(valueText.scale.x, 1 + pulseCaution * 0.14);
+        expectCloseTo(shadowText.scale.x, (1 + pulseCaution * 0.14) * 1.01);
 
         display.show(2.1, 10);
 
-        const warningFill = toColorNumber(baseTheme.hud.danger);
+        const warningBaseColor = toColorNumber(baseTheme.hud.danger);
+        const warningFill = mixColors(warningBaseColor, 0xffffff, 0.28);
+        const warningStroke = mixColors(warningBaseColor, 0xffffff, 0.5);
+        const warningGlow = mixColors(warningBaseColor, 0xffffff, 0.18);
+        const warningHaloInput = mixColors(warningBaseColor, 0xffffff, 0.18);
+        const warningHalo = mixColors(warningHaloInput, 0xffffff, 0.35);
         expect(valueText.text).toBe('3');
         expect(valueText.style.fill).toBe(warningFill);
-        expect(valueText.style.stroke.color).toBe(warningFill);
-        expect(glow?.color).toBe(warningFill);
-        expect(halo.lastStroke?.color).toBe(warningFill);
+        expect(valueText.style.stroke.color).toBe(warningStroke);
+        expect(glow?.color).toBe(warningGlow);
+        expect(halo.lastStroke?.color).toBe(warningHalo);
         const normalizedWarning = Math.min(1, Math.max(0, 2.1 / 10));
-        expectCloseTo(display.container.alpha, 0.6 + (1 - normalizedWarning) * 0.3);
+        expectCloseTo(display.container.alpha, 0.4 + (1 - normalizedWarning) * 0.18);
 
         const fractionalWarning = 2.1 - Math.floor(2.1);
         const pulseWarning = (() => {
@@ -312,22 +345,26 @@ describe('round-countdown effect', () => {
             const oneMinus = 1 - t;
             return 1 - oneMinus * oneMinus * oneMinus;
         })();
-        expectCloseTo(valueText.scale.x, 1 + pulseWarning * 0.18);
-        expectCloseTo(shadowText.scale.x, (1 + pulseWarning * 0.18) * 1.015);
+        expectCloseTo(valueText.scale.x, 1 + pulseWarning * 0.14);
+        expectCloseTo(shadowText.scale.x, (1 + pulseWarning * 0.14) * 1.01);
 
         display.show(0, 10);
         expect(display.container.visible).toBe(false);
         expect(halo.alpha).toBe(0);
 
         display.show(7.1, 10);
-        const normalFill = toColorNumber(baseTheme.hud.textPrimary);
-        const normalStroke = mixColors(toColorNumber(baseTheme.accents.combo), toColorNumber(baseTheme.background.to), 0.25);
+        const normalBaseColor = toColorNumber(baseTheme.accents.combo);
+        const normalFill = mixColors(normalBaseColor, 0xffffff, 0.48);
+        const normalStroke = mixColors(normalBaseColor, 0xffffff, 0.6);
+        const normalGlow = mixColors(normalBaseColor, 0xffffff, 0.24);
+        const normalHaloInput = mixColors(normalBaseColor, 0xffffff, 0.26);
+        const normalHalo = mixColors(normalHaloInput, 0xffffff, 0.35);
         expect(display.container.visible).toBe(true);
         expect(valueText.text).toBe('8');
         expect(valueText.style.fill).toBe(normalFill);
         expect(valueText.style.stroke.color).toBe(normalStroke);
-        expect(glow?.color).toBe(toColorNumber(baseTheme.accents.combo));
-        expect(halo.lastStroke?.color).toBe(toColorNumber(baseTheme.accents.combo));
+        expect(glow?.color).toBe(normalGlow);
+        expect(halo.lastStroke?.color).toBe(normalHalo);
     });
 
     it('adapts typography and glow when the theme changes', () => {
@@ -339,15 +376,12 @@ describe('round-countdown effect', () => {
 
         display.setTheme(alternateTheme);
 
-        const expectedFontSize = Math.round(640 * 0.32);
+        const expectedFontSize = Math.round(640 * 0.26);
         const expectedSpacing = Math.round(expectedFontSize * 0.08);
-        const expectedStrokeWidth = Math.max(6, Math.round(expectedFontSize * 0.12));
-        const expectedShadowOffset = Math.max(6, Math.round(expectedFontSize * 0.08));
-        const expectedNormalStroke = mixColors(
-            toColorNumber(alternateTheme.accents.combo),
-            toColorNumber(alternateTheme.background.to),
-            0.25,
-        );
+        const expectedStrokeWidth = Math.max(4, Math.round(expectedFontSize * 0.14));
+        const expectedShadowOffset = Math.max(4, Math.round(expectedFontSize * 0.06));
+        const normalBaseColor = toColorNumber(alternateTheme.accents.combo);
+        const expectedNormalStroke = mixColors(normalBaseColor, 0xffffff, 0.6);
 
         expect(valueText.style.fontFamily).toBe(alternateTheme.font);
         expect(shadowText.style.fontFamily).toBe(alternateTheme.font);
@@ -357,9 +391,13 @@ describe('round-countdown effect', () => {
         expect(shadowText.position.y).toBe(expectedShadowOffset);
         expect(valueText.style.stroke.width).toBe(expectedStrokeWidth);
         expect(valueText.style.stroke.color).toBe(expectedNormalStroke);
-        expect(valueText.style.fill).toBe(toColorNumber(alternateTheme.hud.textPrimary));
-        expect(glow?.color).toBe(toColorNumber(alternateTheme.accents.combo));
-        expect(halo.lastStroke?.color).toBe(toColorNumber(alternateTheme.accents.combo));
+        const expectedNormalFill = mixColors(toColorNumber(alternateTheme.accents.combo), 0xffffff, 0.48);
+        const expectedNormalGlow = mixColors(toColorNumber(alternateTheme.accents.combo), 0xffffff, 0.24);
+        const expectedNormalHaloInput = mixColors(toColorNumber(alternateTheme.accents.combo), 0xffffff, 0.26);
+        const expectedNormalHalo = mixColors(expectedNormalHaloInput, 0xffffff, 0.35);
+        expect(valueText.style.fill).toBe(expectedNormalFill);
+        expect(glow?.color).toBe(expectedNormalGlow);
+        expect(halo.lastStroke?.color).toBe(expectedNormalHalo);
     });
 
     it('sanitizes countdown inputs and manages visibility safely', () => {
@@ -383,11 +421,20 @@ describe('round-countdown effect', () => {
             const oneMinus = 1 - t;
             return 1 - oneMinus * oneMinus * oneMinus;
         })();
-        expectCloseTo(valueText.scale.x, 1 + pulseFull * 0.18);
-        expectCloseTo(shadowText.scale.x, (1 + pulseFull * 0.18) * 1.015);
-        expectCloseTo(halo.scale.x, 0.94 + pulseFull * 0.3);
-        expectCloseTo(halo.alpha, 0.2 + pulseFull * 0.3);
-        expectCloseTo(display.container.alpha, 0.6);
+        
+        const haloShrink = 10 <= 5 ? Math.max(0.7, 1 - (5 - 10) * 0.08) : 1;
+        const haloScale = 0.94 + pulseFull * 0.3;
+        const shortestEdge = 512;
+        const haloRadius = shortestEdge * 0.46;
+        const minHaloRadius = haloRadius * 0.78;
+        const targetHaloRadius = Math.max(minHaloRadius, haloRadius * haloScale * haloShrink);
+        const effectiveHaloScale = targetHaloRadius / haloRadius;
+        
+        expectCloseTo(valueText.scale.x, 1 + pulseFull * 0.14);
+        expectCloseTo(shadowText.scale.x, (1 + pulseFull * 0.14) * 1.01);
+        expectCloseTo(halo.scale.x, effectiveHaloScale);
+        expectCloseTo(halo.alpha, 0.12 + pulseFull * 0.18);
+        expectCloseTo(display.container.alpha, 0.4 + (1 - 1) * 0.18);
 
         display.hide();
         expect(display.container.visible).toBe(false);

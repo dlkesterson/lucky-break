@@ -226,12 +226,8 @@ export const createRoundCountdown = ({ playfieldSize, theme }: RoundCountdownOpt
         const endAngle = startAngle + Math.PI * 2 * clamped;
         const outerStartX = Math.cos(startAngle) * progressOuterRadius;
         const outerStartY = Math.sin(startAngle) * progressOuterRadius;
-        const outerEndX = Math.cos(endAngle) * progressOuterRadius;
-        const outerEndY = Math.sin(endAngle) * progressOuterRadius;
         const innerEndX = Math.cos(endAngle) * progressInnerRadius;
         const innerEndY = Math.sin(endAngle) * progressInnerRadius;
-        const innerStartX = Math.cos(startAngle) * progressInnerRadius;
-        const innerStartY = Math.sin(startAngle) * progressInnerRadius;
 
         progressRing.moveTo(outerStartX, outerStartY);
         progressRing.arc(0, 0, progressOuterRadius, startAngle, endAngle, false);

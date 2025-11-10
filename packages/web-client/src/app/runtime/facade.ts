@@ -51,6 +51,9 @@ import { recordHighScore } from 'util/high-scores';
 import type { GameSceneServices } from '../scene-services';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
 import { createGambleRuntime } from './gamble';
+import { createEchoTrailManager } from 'game/echo-trails';
+import { createPhantomBrickManager } from 'game/phantom-bricks';
+import { createVortexFieldManager } from 'physics/field-effects';
 import { createRuntimeScoring, type RuntimeScoringHandle } from './scoring';
 import { createRoundMachine, type RoundMachine } from './round-machine';
 import type { RuntimePowerups } from './powerups';
@@ -941,6 +944,22 @@ export const createRuntimeFacade = async ({
     });
     const { manager: gambleManager } = gambleRuntime;
 
+    const echoTrailManager = createEchoTrailManager({
+        durationSeconds: 4,
+        phaseChance: 0,
+    });
+
+    const phantomBrickManager = createPhantomBrickManager({
+        entropyReward: 5,
+    });
+
+    const vortexFieldManager = createVortexFieldManager({
+        pullStrength: 0,
+        radiusPixels: 120,
+        durationSeconds: 6,
+        chainBonus: 0,
+    });
+
     const applyGambleAppearance = (body: Body): void => {
         gambleRuntime?.applyAppearance(body);
     };
@@ -1298,6 +1317,10 @@ export const createRuntimeFacade = async ({
             gambleBricksMoreLikely: ruleEffects.gambleBricksMoreLikely,
         });
 
+        echoTrailManager.clear();
+        phantomBrickManager.clear();
+        vortexFieldManager.clear();
+
         runtimeState.currentBaseSpeed = BALL_BASE_SPEED * loadoutPhysicsMultipliers.baseSpeed;
         runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
         runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
@@ -1600,6 +1623,9 @@ export const createRuntimeFacade = async ({
         },
         scoring,
         gambleManager,
+        echoTrailManager,
+        phantomBrickManager,
+        vortexFieldManager,
         levelRuntime,
         brickHealth,
         brickMetadata,
@@ -1633,6 +1659,7 @@ export const createRuntimeFacade = async ({
             maxValue: COIN_MAX_VALUE,
         },
         getGravity: () => runtimeState.gravity,
+        getRuleEffects: () => activeLoadoutBundle.combined.runtime.rules,
         functions: {
             getSessionElapsedSeconds: () => runtimeState.sessionElapsedSeconds,
             getFrameTimestampMs: () => runtimeState.frameTimestampMs,
@@ -1817,6 +1844,9 @@ export const createRuntimeFacade = async ({
 
         updateGhostBricks(deltaSeconds);
         gambleRuntime?.tick(deltaSeconds);
+        echoTrailManager.tick(deltaSeconds);
+        vortexFieldManager.tick(deltaSeconds);
+
         const paddleScale = powerups.getPaddleWidthScale();
         const targetPaddleWidth = runtimeState.paddleBaseWidth * paddleScale;
         setPaddleWidth(targetPaddleWidth);
@@ -2215,6 +2245,30 @@ export const createRuntimeFacade = async ({
         }
 
         visuals?.heatRippleEffect?.update(deltaSeconds);
+
+        const echoTrailEffect = visuals?.echoTrailEffect;
+        if (echoTrailEffect) {
+            const echoes: import('game/echo-trails').EchoTrailSnapshot[] = [];
+            echoTrailManager.forEach((_ball, snapshot) => {
+                echoes.push(snapshot);
+            });
+            echoTrailEffect.update({
+                deltaSeconds,
+                echoes,
+            });
+        }
+
+        const vortexFieldEffect = visuals?.vortexFieldEffect;
+        if (vortexFieldEffect) {
+            const vortices: import('physics/field-effects').VortexInstance[] = [];
+            vortexFieldManager.forEach((vortex) => {
+                vortices.push(vortex);
+            });
+            vortexFieldEffect.update({
+                deltaSeconds,
+                vortices,
+            });
+        }
 
         runtimeState.ballGlowPulse = Math.max(0, runtimeState.ballGlowPulse - deltaSeconds * 1.6);
         runtimeState.paddleGlowPulse = Math.max(0, runtimeState.paddleGlowPulse - deltaSeconds * 1.3);

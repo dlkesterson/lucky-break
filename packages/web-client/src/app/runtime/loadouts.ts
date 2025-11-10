@@ -34,6 +34,8 @@ export interface LoadoutEffectsBundle {
     readonly combined: LoadoutCombinedEffects;
 }
 
+export type LoadoutPreviewEffect = 'echo-trails' | 'vortex-field' | null;
+
 export interface LoadoutFormPreset {
     readonly id: LoadoutFormId;
     readonly name: string;
@@ -48,6 +50,7 @@ export interface LoadoutFormPreset {
         readonly baseColor: number;
         readonly accentColor: number;
         readonly shape: LoadoutBallShape;
+        readonly effect: LoadoutPreviewEffect;
     };
 }
 
@@ -120,12 +123,23 @@ const FORM_PRESETS: Record<LoadoutFormId, { trait: LoadoutTraitId; sigil: Loadou
         sigil: 'mirror-spiral',
         voice: 'coinfall',
     },
+    'shadow-mirage': {
+        trait: 'fortune-favored',
+        sigil: 'mirror-spiral',
+        voice: 'whisper',
+    },
+    'vortex-weaver': {
+        trait: 'entropy-bound',
+        sigil: 'void-bloom',
+        voice: 'pulse',
+    },
 };
 
 const DEFAULT_PREVIEW = {
     baseColor: 0xf4f4f4,
     accentColor: 0xffcc66,
     shape: 'sphere' as LoadoutBallShape,
+    effect: null as LoadoutPreviewEffect,
 } as const;
 
 const uniqueSummary = (entries: readonly string[]): readonly string[] => {
@@ -174,6 +188,15 @@ export const buildLoadoutFormPresets = (): readonly LoadoutFormPreset[] =>
         ]);
         const cardSummary = uniqueSummary(form.effectSummary);
         const previewVisuals = form.contribution.visuals?.ball;
+
+        // Determine visual effect based on loadout form
+        let effect: LoadoutPreviewEffect = null;
+        if (form.id === 'shadow-mirage') {
+            effect = 'echo-trails';
+        } else if (form.id === 'vortex-weaver') {
+            effect = 'vortex-field';
+        }
+
         const preview = previewVisuals
             ? {
                 baseColor: previewVisuals.baseColor ?? DEFAULT_PREVIEW.baseColor,
@@ -181,8 +204,9 @@ export const buildLoadoutFormPresets = (): readonly LoadoutFormPreset[] =>
                     ?? previewVisuals.rimColor
                     ?? DEFAULT_PREVIEW.accentColor,
                 shape: previewVisuals.shape ?? DEFAULT_PREVIEW.shape,
+                effect,
             }
-            : DEFAULT_PREVIEW;
+            : { ...DEFAULT_PREVIEW, effect };
         return {
             id: form.id,
             name: form.name,

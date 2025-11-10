@@ -11,6 +11,18 @@ Lucky Break is a high-tempo brick breaker with deterministic physics, multi-ball
 
 The latest build is published via GitHub Pages: https://dlkesterson.github.io/lucky-break/
 
+## Gameplay Video
+
+<!-- Uncomment and update the path once you've optimized your video with ffmpeg -->
+<!-- See docs/video-optimization.md for optimization commands -->
+
+<!--
+<video width="100%" controls>
+  <source src="docs/gameplay.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+-->
+
 ## Gameplay Overview
 
 - Lean paddle-and-ball play: aim the paddle, keep volleys alive, and clear wagered bricks before the countdown expires.

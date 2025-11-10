@@ -68,6 +68,7 @@ const buildSessionSnapshot = (session: { coins: number; entropyStored: number })
             brickDensity: 0,
             comboHeat: 0,
             comboTimer: 0,
+            mirageStacks: 0,
             updatedAt: 0,
         },
         audio: {
@@ -105,6 +106,7 @@ const buildSessionSnapshot = (session: { coins: number; entropyStored: number })
                 brickDensity: 0,
                 comboHeat: 0,
                 comboTimer: 0,
+                mirageStacks: 0,
             },
             entropy: {
                 charge: 0,

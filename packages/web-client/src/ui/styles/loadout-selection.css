@@ -541,6 +541,105 @@
   animation-delay: -1.4s;
 }
 
+/* Visual effect overlay for Shadow Mirage and Vortex Weaver */
+.loadout-ball-effect-svg {
+  position: absolute;
+  inset: -25%;
+  width: 150%;
+  height: 150%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Echo Trail effect for Shadow Mirage */
+.loadout-ball-echo-trail {
+  animation: loadout-echo-fade 2.5s ease-in-out infinite;
+  animation-delay: var(--echo-delay, 0s);
+  transform-origin: center;
+}
+
+@keyframes loadout-echo-fade {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1);
+  }
+  15% {
+    opacity: var(--echo-opacity, 0.5);
+  }
+  85% {
+    opacity: var(--echo-opacity, 0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--echo-offset, 0px), var(--echo-offset, 0px))
+      scale(calc(1 - var(--echo-offset, 0) * 0.002));
+  }
+}
+
+/* Vortex Field effect for Vortex Weaver */
+.loadout-ball-vortex-field {
+  animation: loadout-vortex-rotate 8s linear infinite;
+  transform-origin: center;
+}
+
+.loadout-ball-vortex-glow {
+  animation: loadout-vortex-pulse 3s ease-in-out infinite;
+}
+
+.loadout-ball-vortex-arm {
+  animation: loadout-vortex-shimmer 2s ease-in-out infinite;
+  animation-delay: var(--vortex-arm-delay, 0s);
+}
+
+.loadout-ball-vortex-core {
+  animation: loadout-vortex-core-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loadout-vortex-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loadout-vortex-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes loadout-vortex-shimmer {
+  0%,
+  100% {
+    opacity: 0.4;
+    stroke-width: 1.5;
+  }
+  50% {
+    opacity: 0.8;
+    stroke-width: 2;
+  }
+}
+
+@keyframes loadout-vortex-core-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
+
 .loadout-preview-details {
   display: flex;
   flex-direction: column;

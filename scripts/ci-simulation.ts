@@ -54,6 +54,7 @@ const EXPECTED: SimulationResult = {
             brickDensity: 0.6666666666666666,
             comboHeat: 0,
             comboTimer: 0,
+            mirageStacks: 0,
             updatedAt: 120_000,
         },
         audio: {
@@ -95,6 +96,7 @@ const EXPECTED: SimulationResult = {
                 brickDensity: 0.6666666666666666,
                 comboHeat: 0,
                 comboTimer: 0,
+                mirageStacks: 0,
             },
             entropy: {
                 charge: 58.740003034756896,

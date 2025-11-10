@@ -17,6 +17,7 @@ export interface MomentumMetrics {
     readonly brickDensity: number;
     readonly comboHeat: number;
     readonly comboTimer: number; // Time remaining before combo resets (in seconds)
+    readonly mirageStacks: number; // Shadow Mirage combo multiplier stacks
     readonly updatedAt: number;
 }
 
@@ -162,6 +163,8 @@ export interface GameSessionManager {
     readonly spendCoins: (amount: number) => boolean;
     readonly getEntropyState: () => EntropySnapshot;
     readonly updateMomentum: (snapshot: MomentumSnapshot) => void;
+    readonly incrementMirageStacks: () => number;
+    readonly getMirageStacks: () => number;
     readonly spendStoredEntropy: (options: EntropySpendOptions) => EntropySpendResult;
     readonly grantStoredEntropy: (amount: number) => number;
     readonly setLoadout: (selection: LoadoutSelection, effects: LoadoutSessionEffects) => void;
@@ -284,6 +287,7 @@ const toHudSnapshot = (
         brickDensity: state.momentum.brickDensity,
         comboHeat: state.momentum.comboHeat,
         comboTimer: state.momentum.comboTimer,
+        mirageStacks: state.momentum.mirageStacks,
     },
     entropy: {
         charge: state.entropy.charge,
@@ -331,6 +335,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         brickDensity: 1,
         comboHeat: 0,
         comboTimer: 0,
+        mirageStacks: 0,
         updatedAt: now(),
     };
 
@@ -700,6 +705,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         momentum.volleyLength = 0;
         momentum.comboHeat = 0;
         momentum.comboTimer = 0;
+        momentum.mirageStacks = 0;
         momentum.speedPressure = clamp01(momentum.speedPressure * 0.5);
         momentum.updatedAt = timestamp;
 
@@ -800,6 +806,16 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
 
     const updateMomentum: GameSessionManager['updateMomentum'] = (snapshot) => {
         commitMomentumSnapshot(snapshot, now());
+    };
+
+    const incrementMirageStacks: GameSessionManager['incrementMirageStacks'] = () => {
+        momentum.mirageStacks = Math.min(100, momentum.mirageStacks + 1);
+        momentum.updatedAt = now();
+        return momentum.mirageStacks;
+    };
+
+    const getMirageStacks: GameSessionManager['getMirageStacks'] = () => {
+        return momentum.mirageStacks;
     };
 
     const spendStoredEntropy: GameSessionManager['spendStoredEntropy'] = ({ action, cost }) => {
@@ -930,6 +946,8 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         spendCoins,
         getEntropyState,
         updateMomentum,
+        incrementMirageStacks,
+        getMirageStacks,
         spendStoredEntropy,
         grantStoredEntropy,
         setLoadout,

@@ -20,6 +20,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
             brickDensity: 32 / 96,
             comboHeat: 0.7,
             comboTimer: 1.2,
+            mirageStacks: 0,
             updatedAt: 120_000,
         },
         audio: {
@@ -57,6 +58,7 @@ const createSnapshot = (overrides: Partial<GameSessionSnapshot> = {}): GameSessi
                 brickDensity: 32 / 96,
                 comboHeat: 0.7,
                 comboTimer: 1.2,
+                mirageStacks: 0,
             },
             entropy: {
                 charge: 48,
@@ -154,6 +156,7 @@ describe('buildHudScoreboard', () => {
                     brickDensity: 0,
                     comboHeat: 0.95,
                     comboTimer: 1.4,
+                    mirageStacks: 0,
                 },
                 entropy: {
                     charge: 62,
@@ -225,6 +228,7 @@ describe('buildHudScoreboard', () => {
                     brickDensity: 0.125,
                     comboHeat: 0.1,
                     comboTimer: 0.4,
+                    mirageStacks: 0,
                 },
                 entropy: {
                     charge: 12,

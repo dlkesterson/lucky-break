@@ -128,3 +128,7 @@ export { createSpeedRing } from './speed-ring';
 export type { SpeedRingHandle, SpeedRingOptions, SpeedRingPalette, SpeedRingUpdate } from './speed-ring';
 export { createLaserEffect } from './laser';
 export type { LaserEffect, LaserEffectOptions, LaserFirePayload, LaserBeamPayload } from './laser';
+export { createEchoTrailEffect } from './echo-trails';
+export type { EchoTrailEffect, EchoTrailTheme } from './echo-trails';
+export { createVortexFieldEffect } from './vortex-field';
+export type { VortexFieldEffect, VortexFieldTheme } from './vortex-field';
