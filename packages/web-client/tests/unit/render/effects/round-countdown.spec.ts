@@ -421,7 +421,7 @@ describe('round-countdown effect', () => {
             const oneMinus = 1 - t;
             return 1 - oneMinus * oneMinus * oneMinus;
         })();
-        
+
         const haloShrink = 10 <= 5 ? Math.max(0.7, 1 - (5 - 10) * 0.08) : 1;
         const haloScale = 0.94 + pulseFull * 0.3;
         const shortestEdge = 512;
@@ -429,7 +429,7 @@ describe('round-countdown effect', () => {
         const minHaloRadius = haloRadius * 0.78;
         const targetHaloRadius = Math.max(minHaloRadius, haloRadius * haloScale * haloShrink);
         const effectiveHaloScale = targetHaloRadius / haloRadius;
-        
+
         expectCloseTo(valueText.scale.x, 1 + pulseFull * 0.14);
         expectCloseTo(shadowText.scale.x, (1 + pulseFull * 0.14) * 1.01);
         expectCloseTo(halo.scale.x, effectiveHaloScale);

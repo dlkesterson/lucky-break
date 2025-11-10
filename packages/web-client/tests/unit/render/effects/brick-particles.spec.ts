@@ -58,4 +58,265 @@ describe('brick-particles', () => {
 
         system.destroy();
     });
+
+    it('emits particles with isBreak flag for brick destruction', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 10, y: 20 },
+            baseColor: 0x00ff00,
+            intensity: 0.8,
+            isBreak: true,
+        });
+
+        expect(system.container.visible).toBe(true);
+        const activeSprites = system.container.children.filter((child) => child.visible) as Sprite[];
+        expect(activeSprites.length).toBeGreaterThan(0);
+
+        system.destroy();
+    });
+
+    it('emits particles without isBreak flag for hits', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 10, y: 20 },
+            baseColor: 0x0000ff,
+            intensity: 0.5,
+            isBreak: false,
+        });
+
+        expect(system.container.visible).toBe(true);
+        const activeSprites = system.container.children.filter((child) => child.visible) as Sprite[];
+        expect(activeSprites.length).toBeGreaterThan(0);
+
+        system.destroy();
+    });
+
+    it('uses chromatic colors when provided', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 50, y: 60 },
+            baseColor: 0xffffff,
+            intensity: 0.6,
+            chromaticColors: [0xff0000, 0x00ff00, 0x0000ff],
+        });
+
+        expect(system.container.visible).toBe(true);
+        const activeSprites = system.container.children.filter((child) => child.visible) as Sprite[];
+        expect(activeSprites.length).toBeGreaterThan(0);
+
+        // Check that particles have different tints from chromatic colors
+        const tints = new Set(activeSprites.map((s) => s.tint));
+        expect(tints.size).toBeGreaterThan(1); // Should have multiple colors
+
+        system.destroy();
+    });
+
+    it('does not emit particles when at max capacity', () => {
+        const system = createBrickParticleSystem({
+            maxParticles: 5,
+            baseBurstCount: 10,
+            random: createDeterministicRandom([0.5]),
+        });
+
+        // First emit should work
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const firstCount = system.container.children.filter((child) => child.visible).length;
+        expect(firstCount).toBeGreaterThan(0);
+
+        // Second emit when at capacity should not add more
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const secondCount = system.container.children.filter((child) => child.visible).length;
+        expect(secondCount).toBe(firstCount); // No new particles added
+
+        system.destroy();
+    });
+
+    it('handles update with zero delta', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const countBefore = system.container.children.filter((child) => child.visible).length;
+
+        system.update(0);
+
+        const countAfter = system.container.children.filter((child) => child.visible).length;
+        expect(countAfter).toBe(countBefore); // No change with zero delta
+
+        system.destroy();
+    });
+
+    it('handles update with non-finite delta', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const countBefore = system.container.children.filter((child) => child.visible).length;
+
+        system.update(NaN);
+
+        const countAfter = system.container.children.filter((child) => child.visible).length;
+        expect(countAfter).toBe(countBefore); // No change with NaN delta
+
+        system.destroy();
+    });
+
+    it('setBudget adjusts maxParticles and removes overflow', () => {
+        const system = createBrickParticleSystem({
+            maxParticles: 20,
+            baseBurstCount: 10,
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const countBefore = system.container.children.filter((child) => child.visible).length;
+
+        // Reduce max particles below current count
+        system.setBudget({ maxParticles: 3 });
+
+        const countAfter = system.container.children.filter((child) => child.visible).length;
+        expect(countAfter).toBeLessThanOrEqual(3);
+        expect(countAfter).toBeLessThan(countBefore);
+
+        system.destroy();
+    });
+
+    it('setBudget adjusts baseBurstCount', () => {
+        const system = createBrickParticleSystem({
+            maxParticles: 50,
+            baseBurstCount: 10,
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.setBudget({ baseBurstCount: 5 });
+
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        const count = system.container.children.filter((child) => child.visible).length;
+        expect(count).toBeGreaterThan(0);
+        expect(count).toBeLessThan(50); // Should use reduced burst count
+
+        system.destroy();
+    });
+
+    it('setBudget handles non-finite values gracefully', () => {
+        const system = createBrickParticleSystem({
+            maxParticles: 20,
+            baseBurstCount: 10,
+        });
+
+        system.setBudget({ maxParticles: NaN });
+        system.setBudget({ baseBurstCount: Infinity });
+
+        // System should still function
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        expect(system.container.visible).toBe(true);
+
+        system.destroy();
+    });
+
+    it('handles pick function when min >= max', () => {
+        const system = createBrickParticleSystem({
+            random: () => 0.5,
+        });
+
+        // The pick function is used internally with min/max ranges
+        // This test verifies the system works even with edge case values
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+            intensity: 1.0,
+        });
+
+        expect(system.container.visible).toBe(true);
+
+        system.destroy();
+    });
+
+    it('updates chromatic particles with offset calculations', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5, 0.6, 0.7]),
+        });
+
+        system.emit({
+            position: { x: 100, y: 100 },
+            baseColor: 0xffffff,
+            chromaticColors: [0xff0000, 0x00ff00, 0x0000ff],
+            intensity: 0.8,
+        });
+
+        const initialPositions = (system.container.children.filter((child) => child.visible) as Sprite[]).map(
+            (s) => ({ x: s.x, y: s.y }),
+        );
+
+        system.update(0.016); // ~1 frame at 60fps
+
+        const updatedPositions = (system.container.children.filter((child) => child.visible) as Sprite[]).map(
+            (s) => ({ x: s.x, y: s.y }),
+        );
+
+        // Positions should have changed
+        expect(updatedPositions.some((p, i) => p.x !== initialPositions[i].x || p.y !== initialPositions[i].y)).toBe(true);
+
+        system.destroy();
+    });
+
+    it('does not update when container is invisible', () => {
+        const system = createBrickParticleSystem({
+            random: createDeterministicRandom([0.5]),
+        });
+
+        system.emit({
+            position: { x: 0, y: 0 },
+            baseColor: 0xffffff,
+        });
+
+        // Age out all particles
+        system.update(10);
+        expect(system.container.visible).toBe(false);
+
+        // Further updates should do nothing
+        system.update(1);
+        expect(system.container.visible).toBe(false);
+
+        system.destroy();
+    });
 });
