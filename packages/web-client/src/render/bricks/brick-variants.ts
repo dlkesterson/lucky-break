@@ -50,6 +50,7 @@ export async function generateBrickVariants(
 
     /**
      * Draw the base shape for a brick based on form.
+     * Enhanced with better highlights and depth for visibility.
      */
     const drawBrickBase = (g: Graphics, baseColor: number, form: BrickForm): void => {
         const cx = width / 2;
@@ -57,21 +58,28 @@ export async function generateBrickVariants(
 
         switch (form) {
             case 'rectangle':
-                // Rounded rectangle brick
+                // Rounded rectangle brick with enhanced depth
                 g.beginFill(baseColor).drawRoundedRect(0, 0, width, height, Math.min(4, height / 3)).endFill();
-                g.lineStyle(1, 0x000000, 0.35).drawRoundedRect(0.5, 0.5, width - 1, height - 1, Math.min(4, height / 3));
-                // Inner bevel highlight/shadow
+                
+                // Brighter edge definition
+                g.lineStyle(1.5, 0x000000, 0.5).drawRoundedRect(0.5, 0.5, width - 1, height - 1, Math.min(4, height / 3));
+                
+                // Enhanced inner bevel with stronger highlight
                 g.lineStyle(0)
-                    .beginFill(0xffffff, 0.04)
-                    .drawRoundedRect(2, 2, width - 4, height / 2.2, Math.min(3, height / 4))
+                    .beginFill(0xffffff, 0.12)
+                    .drawRoundedRect(2, 2, width - 4, height / 2.5, Math.min(3, height / 4))
                     .endFill();
-                g.beginFill(0x000000, 0.06)
-                    .drawRoundedRect(2, height / 2, width - 4, height / 2.2, Math.min(3, height / 4))
+                g.beginFill(0x000000, 0.1)
+                    .drawRoundedRect(2, height / 1.8, width - 4, height / 2.5, Math.min(3, height / 4))
                     .endFill();
+                    
+                // Subtle inner rim highlight for 3D effect
+                g.lineStyle(1, 0xffffff, 0.08);
+                g.drawRoundedRect(1.5, 1.5, width - 3, height - 3, Math.min(3.5, height / 3.5));
                 break;
 
             case 'diamond':
-                // Diamond shape (rotated square)
+                // Diamond shape (rotated square) with faceted appearance
                 g.beginFill(baseColor);
                 g.moveTo(cx, 2)
                     .lineTo(width - 2, cy)
@@ -79,15 +87,34 @@ export async function generateBrickVariants(
                     .lineTo(2, cy)
                     .closePath();
                 g.endFill();
-                g.lineStyle(1, 0x000000, 0.35);
+                
+                // Stronger edge
+                g.lineStyle(1.5, 0x000000, 0.5);
                 g.moveTo(cx, 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, height - 2)
                     .lineTo(2, cy)
                     .closePath();
-                // Highlight on top facets
-                g.lineStyle(0).beginFill(0xffffff, 0.06);
+                
+                // Enhanced facet highlights for gem-like appearance
+                g.lineStyle(0).beginFill(0xffffff, 0.15);
                 g.moveTo(cx, 2)
+                    .lineTo(width - 2, cy)
+                    .lineTo(cx, cy)
+                    .closePath();
+                g.endFill();
+                
+                // Left facet highlight
+                g.beginFill(0xffffff, 0.08);
+                g.moveTo(2, cy)
+                    .lineTo(cx, 2)
+                    .lineTo(cx, cy)
+                    .closePath();
+                g.endFill();
+                
+                // Bottom facet shadow
+                g.beginFill(0x000000, 0.12);
+                g.moveTo(cx, height - 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, cy)
                     .closePath();
@@ -95,14 +122,27 @@ export async function generateBrickVariants(
                 break;
 
             case 'circle':
-                // Circle/ball shape using ellipse for landscape orientation
+                // Circle/ball shape using ellipse with enhanced specular
                 const radiusX = width / 2 - 2;
                 const radiusY = height / 2 - 2;
                 g.beginFill(baseColor).drawEllipse(cx, cy, radiusX, radiusY).endFill();
-                g.lineStyle(1, 0x000000, 0.35).drawEllipse(cx, cy, radiusX, radiusY);
-                // Specular highlight
-                g.lineStyle(0).beginFill(0xffffff, 0.08);
-                g.drawEllipse(cx - radiusX * 0.3, cy - radiusY * 0.3, radiusX * 0.4, radiusY * 0.4);
+                
+                // Stronger edge
+                g.lineStyle(1.5, 0x000000, 0.5).drawEllipse(cx, cy, radiusX, radiusY);
+                
+                // Enhanced specular highlight for sphere effect
+                g.lineStyle(0).beginFill(0xffffff, 0.18);
+                g.drawEllipse(cx - radiusX * 0.25, cy - radiusY * 0.25, radiusX * 0.35, radiusY * 0.35);
+                g.endFill();
+                
+                // Subtle secondary highlight
+                g.beginFill(0xffffff, 0.06);
+                g.drawEllipse(cx - radiusX * 0.4, cy - radiusY * 0.4, radiusX * 0.2, radiusY * 0.2);
+                g.endFill();
+                
+                // Bottom shadow for depth
+                g.beginFill(0x000000, 0.08);
+                g.drawEllipse(cx + radiusX * 0.2, cy + radiusY * 0.3, radiusX * 0.4, radiusY * 0.3);
                 g.endFill();
                 break;
         }
@@ -225,48 +265,96 @@ export async function generateBrickVariants(
     }
 
     // ── Constellation Mosaic ────────────────────────────────────────
+    const cosmicBlue = 0x1e2847;
+    const deepSpace = 0x16181f;
+    
     for (const form of forms) {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
+            const baseColor = i === 0 ? cosmicBlue : deepSpace;
+            const starColor = i === 2 ? 0xe9c46a : 0xffffff;
+            
             const rt = bake((g) => {
-                drawBrickBase(g, midnight, form);
+                // Subtle cosmic glow
+                g.lineStyle(2, 0x6b8cff, 0.2);
+                if (form === 'rectangle') {
+                    g.drawRoundedRect(0, 0, width, height, Math.min(4, height / 3));
+                }
+                
+                drawBrickBase(g, baseColor, form);
 
-                // Sparse stardust field
-                g.beginFill(0xffffff, 0.12);
-                for (let s = 0; s < 24; s++) {
-                    g.drawCircle(Math.random() * width, Math.random() * height, Math.random() * 1.2 + 0.2);
+                // Brighter stardust field with variety
+                const starCount = 16 + i * 4;
+                g.beginFill(starColor, i === 2 ? 0.3 : 0.22);
+                for (let s = 0; s < starCount; s++) {
+                    const size = Math.random() * 1.5 + 0.3;
+                    g.drawCircle(Math.random() * width, Math.random() * height, size);
                 }
                 g.endFill();
 
-                // Faint gold seam accents
-                if (form === 'rectangle') {
-                    g.lineStyle(1, 0xe9c46a, 0.35);
+                // Enhanced gold constellation lines
+                if (i === 2) {
+                    g.lineStyle(1.5, 0xe9c46a, 0.5);
+                    const cx = width / 2, cy = height / 2;
+                    g.moveTo(cx - width * 0.25, cy - height * 0.2);
+                    g.lineTo(cx, cy);
+                    g.lineTo(cx + width * 0.25, cy + height * 0.2);
+                } else if (form === 'rectangle') {
+                    g.lineStyle(1, 0x6b8cff, 0.4);
                     g.moveTo(6, height - 6).lineTo(width - 6, 6);
                 }
             });
-            sets.mosaic.push({ texture: rt, style: 'mosaic', form, rarity: 1 });
+            sets.mosaic.push({ texture: rt, style: 'mosaic', form, rarity: i === 2 ? 0.1 : 1 });
         }
     }
 
     // ── Pearlescent Marble ──────────────────────────────────────────
+    const obsidian = 0x1a1d28;
+    const charcoal = 0x252833;
+    
     for (const form of forms) {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
+            const baseColor = i % 2 === 0 ? obsidian : charcoal;
+            const veinColor = i === 2 ? 0xd4af37 : 0xb0b0b0;
+            const veinAlpha = i === 2 ? 0.35 : 0.25;
+            
             const rt = bake((g) => {
-                drawBrickBase(g, obsidian, form);
+                // Pearlescent rim glow
+                g.lineStyle(2, veinColor, 0.15);
+                if (form === 'rectangle') {
+                    g.drawRoundedRect(0, 0, width, height, Math.min(4, height / 3));
+                }
+                
+                drawBrickBase(g, baseColor, form);
 
-                // Black marble veining
-                g.lineStyle(1, 0xa0a0a0, 0.16);
-                let x = Math.random() * width * 0.4;
+                // Enhanced marble veining with more contrast
+                g.lineStyle(1.5, veinColor, veinAlpha);
+                let x = width * 0.2 + Math.random() * width * 0.3;
+                for (let y = 6; y < height - 6; y += 3) {
+                    g.moveTo(x, y);
+                    x += (Math.random() - 0.5) * 8;
+                    g.lineTo(Math.max(4, Math.min(width - 4, x)), y + 3);
+                }
+                
+                // Add a second vein for complexity
+                g.lineStyle(1, veinColor, veinAlpha * 0.6);
+                x = width * 0.6 + Math.random() * width * 0.2;
                 for (let y = 8; y < height - 8; y += 4) {
                     g.moveTo(x, y);
                     x += (Math.random() - 0.5) * 6;
                     g.lineTo(Math.max(6, Math.min(width - 6, x)), y + 4);
                 }
 
-                // Rare gold star studs
-                if (Math.random() < 0.3) {
-                    g.beginFill(0xe9c46a, 0.8);
-                    g.drawCircle(width - 8, 8, 2);
-                    g.drawCircle(8, height - 8, 2);
+                // Gold accent studs for premium variants
+                if (i === 2) {
+                    g.beginFill(0xd4af37, 0.9);
+                    g.drawCircle(width - 7, 7, 2.5);
+                    g.drawCircle(7, height - 7, 2.5);
+                    g.endFill();
+                    
+                    // Subtle stud glow
+                    g.beginFill(0xd4af37, 0.15);
+                    g.drawCircle(width - 7, 7, 5);
+                    g.drawCircle(7, height - 7, 5);
                     g.endFill();
                 }
             });
@@ -274,7 +362,7 @@ export async function generateBrickVariants(
                 texture: rt,
                 style: 'marble',
                 form,
-                rarity: i === 1 ? 0.05 : 1,
+                rarity: i === 2 ? 0.08 : 1,
             });
         }
     }
@@ -284,7 +372,7 @@ export async function generateBrickVariants(
 
 /**
  * Generate crack overlay textures for damage states.
- * These work for all brick forms.
+ * Enhanced visibility with glowing cracks for cosmic theme.
  */
 export function generateCrackTextures(
     renderer: TextureRenderer,
@@ -300,20 +388,38 @@ export function generateCrackTextures(
     };
 
     const drawCracks = (g: Graphics, density: number): void => {
-        g.lineStyle(1, 0x000000, 0.5);
         const midX = width / 2;
         const midY = height / 2;
-        const lines = Math.floor(density * 4);
+        const lines = Math.floor(density * 5);
 
         for (let i = 0; i < lines; i++) {
-            const angle = (Math.PI * 2 * i) / lines + Math.random() * 0.5;
-            const lenX = width * 0.3 * (0.6 + Math.random() * 0.4);
-            const lenY = height * 0.3 * (0.6 + Math.random() * 0.4);
-            const x1 = midX + Math.cos(angle) * (width * 0.1);
-            const y1 = midY + Math.sin(angle) * (height * 0.1);
+            const angle = (Math.PI * 2 * i) / lines + Math.random() * 0.6;
+            const lenX = width * 0.35 * (0.5 + Math.random() * 0.5);
+            const lenY = height * 0.35 * (0.5 + Math.random() * 0.5);
+            const x1 = midX + Math.cos(angle) * (width * 0.08);
+            const y1 = midY + Math.sin(angle) * (height * 0.08);
             const x2 = midX + Math.cos(angle) * lenX;
             const y2 = midY + Math.sin(angle) * lenY;
+            
+            // Glowing crack effect - outer glow
+            g.lineStyle(2.5, 0xff6b35, 0.2 * density / 3);
             g.moveTo(x1, y1).lineTo(x2, y2);
+            
+            // Main crack line
+            g.lineStyle(1.5, 0x000000, 0.7);
+            g.moveTo(x1, y1).lineTo(x2, y2);
+        }
+        
+        // Add some smaller spider web cracks for more detail at higher damage
+        if (density >= 2) {
+            g.lineStyle(1, 0x000000, 0.4);
+            for (let i = 0; i < density * 3; i++) {
+                const startX = midX + (Math.random() - 0.5) * width * 0.4;
+                const startY = midY + (Math.random() - 0.5) * height * 0.4;
+                const endX = startX + (Math.random() - 0.5) * width * 0.2;
+                const endY = startY + (Math.random() - 0.5) * height * 0.2;
+                g.moveTo(startX, startY).lineTo(endX, endY);
+            }
         }
     };
 
