@@ -24,11 +24,11 @@ interface TextureRenderer {
  * Procedurally generate all brick variant textures at startup.
  * Each set is baked once into Textures for efficient GPU batching.
  */
-export async function generateBrickVariants(
+export function generateBrickVariants(
     renderer: TextureRenderer,
     width: number,
     height: number
-): Promise<BrickVariantSets> {
+): BrickVariantSets {
     const sets: BrickVariantSets = {
         neon: [],
         mosaic: [],
@@ -151,7 +151,7 @@ export async function generateBrickVariants(
     /**
      * Draw casino suit pip symbols (♥ ♦ ♣ ♠) in neon colors.
      */
-    const drawPip = (g: Graphics, color: number, kind: PipKind, form: BrickForm): void => {
+    const drawPip = (g: Graphics, color: number, kind: PipKind): void => {
         g.beginFill(color, 0.9);
         const cx = width / 2;
         const cy = height / 2;
@@ -255,9 +255,9 @@ export async function generateBrickVariants(
 
                 // Pip with subtle halo
                 g.lineStyle(2, neonColor, 0.2);
-                drawPip(g, 0x000000, pipKinds[i % 4], form);
+                drawPip(g, 0x000000, pipKinds[i % 4]);
                 g.lineStyle(0);
-                drawPip(g, neonColor, pipKinds[i % 4], form);
+                drawPip(g, neonColor, pipKinds[i % 4]);
             });
             sets.neon.push({
                 texture: rt,

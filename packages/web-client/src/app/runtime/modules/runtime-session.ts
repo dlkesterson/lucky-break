@@ -137,6 +137,7 @@ export const createRuntimeSessionCoordinator = ({
         applyActiveLoadout();
         clearExtraBalls();
         foreshadowing.reset();
+        // eslint-disable-next-line @typescript-eslint/await-thenable
         await loadLevel(levelIndex);
 
         const biasCoordinator = getBiasCoordinator();
@@ -188,7 +189,7 @@ export const createRuntimeSessionCoordinator = ({
         roundMachine.setCurrentLevelIndex(0);
         roundMachine.setPendingReward(null);
         powerups.activateReward(null);
-        startLevel(roundMachine.getCurrentLevelIndex(), { resetScore: true });
+        void startLevel(roundMachine.getCurrentLevelIndex(), { resetScore: true });
         await transitionToGameplay();
         startLoop();
     };

@@ -1006,7 +1006,7 @@ export const createRuntimeFacade = async ({
         syncAutoCompleteCountdownDisplay();
     };
 
-    const loadLevel = async (levelIndex: number) => {
+    const internalLoadLevel = async (levelIndex: number) => {
         gambleRuntime?.prepareLevel();
         const result = await levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
@@ -1516,13 +1516,17 @@ export const createRuntimeFacade = async ({
             hud: hudContainer,
         },
         clearExtraBalls,
-        loadLevel,
+        loadLevel: (levelIndex) => {
+            void internalLoadLevel(levelIndex);
+        },
         getBiasCoordinator: () => roundCoordinator?.getBiasCoordinator() ?? null,
         reattachBallToPaddle,
         refreshHud,
         startLoop: startGameLoop,
         stopLoopIfRunning,
-        onLoadoutApplied: applyLoadoutBundle,
+        onLoadoutApplied: (bundle) => {
+            applyLoadoutBundle(bundle);
+        },
     });
 
     const { beginNewSession, startLevel } = runtimeSession;

@@ -70,9 +70,10 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
     // ── Animation ticker hook ───────────────────────────────────────
     // Wire into the parent stage ticker once the sprite is added to the scene.
     const onAdded = (): void => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
         const container = sprite.parent as any;
-        const ticker: Ticker | undefined =
-            container?.stage?.ticker ?? (sprite as any).ticker;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+        const ticker: Ticker | undefined = container?.stage?.ticker ?? (sprite as any).ticker;
 
         if (!ticker) return;
 

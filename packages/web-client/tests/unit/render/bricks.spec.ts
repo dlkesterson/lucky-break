@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Application, Sprite } from 'pixi.js';
 import {
     generateBrickVariants,
@@ -9,7 +9,8 @@ import {
 
 describe('Brick Generation System', () => {
     let app: Application;
-    let renderer: any; // PixiJS v8 renderer with generateTexture (not in types)
+    // PixiJS v8 renderer with generateTexture (not in types)
+    let renderer: any;
 
     beforeAll(async () => {
         app = new Application();
@@ -18,8 +19,8 @@ describe('Brick Generation System', () => {
     });
 
     describe('generateBrickVariants', () => {
-        it('should generate all three brick style sets', async () => {
-            const sets = await generateBrickVariants(renderer, 100, 40);
+        it('should generate all three brick style sets', () => {
+            const sets = generateBrickVariants(renderer, 100, 40);
 
             expect(sets).toHaveProperty('neon');
             expect(sets).toHaveProperty('mosaic');
@@ -29,8 +30,8 @@ describe('Brick Generation System', () => {
             expect(Array.isArray(sets.marble)).toBe(true);
         });
 
-        it('should generate variants for all three forms', async () => {
-            const sets = await generateBrickVariants(renderer, 100, 40);
+        it('should generate variants for all three forms', () => {
+            const sets = generateBrickVariants(renderer, 100, 40);
 
             // Each style should have 6 variants (2 per form × 3 forms)
             expect(sets.neon).toHaveLength(6);
@@ -44,8 +45,8 @@ describe('Brick Generation System', () => {
             expect(neonForms).toContain('circle');
         });
 
-        it('should create RenderTexture instances with correct dimensions', async () => {
-            const sets = await generateBrickVariants(renderer, 100, 40);
+        it('should create RenderTexture instances with correct dimensions', () => {
+            const sets = generateBrickVariants(renderer, 100, 40);
 
             for (const variant of sets.neon) {
                 expect(variant.texture).toBeDefined();
@@ -54,8 +55,8 @@ describe('Brick Generation System', () => {
             }
         });
 
-        it('should assign correct style and form metadata', async () => {
-            const sets = await generateBrickVariants(renderer, 100, 40);
+        it('should assign correct style and form metadata', () => {
+            const sets = generateBrickVariants(renderer, 100, 40);
 
             expect(sets.neon[0].style).toBe('neon');
             expect(sets.mosaic[0].style).toBe('mosaic');
@@ -67,8 +68,8 @@ describe('Brick Generation System', () => {
             }
         });
 
-        it('should mark some variants as rare', async () => {
-            const sets = await generateBrickVariants(renderer, 100, 40);
+        it('should mark some variants as rare', () => {
+            const sets = generateBrickVariants(renderer, 100, 40);
 
             // Should have some rare variants (rarity 0.05)
             const rareNeon = sets.neon.filter(v => v.rarity === 0.05);
@@ -82,8 +83,8 @@ describe('Brick Generation System', () => {
             expect(commonNeon.length).toBeGreaterThan(0);
         });
 
-        it('should support custom brick dimensions', async () => {
-            const sets = await generateBrickVariants(renderer, 120, 50);
+        it('should support custom brick dimensions', () => {
+            const sets = generateBrickVariants(renderer, 120, 50);
 
             expect(sets.neon[0].texture.width).toBe(120);
             expect(sets.neon[0].texture.height).toBe(50);
@@ -114,8 +115,8 @@ describe('Brick Generation System', () => {
     describe('placeBricks', () => {
         let sets: BrickVariantSets;
 
-        beforeAll(async () => {
-            sets = await generateBrickVariants(renderer, 100, 40);
+        beforeAll(() => {
+            sets = generateBrickVariants(renderer, 100, 40);
         });
 
         it('should create a container with correct number of bricks', () => {

@@ -6,25 +6,13 @@
 
 import { FillGradient, Graphics } from 'pixi.js';
 import type { BrickForm } from '@lucky-break/core-domain/src/util/levels';
+import { clampUnit } from '@lucky-break/core-domain/src/util/math';
 
 export interface BrickVisualOverrides {
     readonly strokeColor?: number;
     readonly fillColor?: number;
     readonly useFlatFill?: boolean;
 }
-
-export const clampUnit = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
 
 export const mixColors = (source: number, target: number, amount: number): number => {
     const t = clampUnit(amount);

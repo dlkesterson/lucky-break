@@ -219,10 +219,14 @@ export const createLevelRuntime = ({
     let brickVariants: BrickVariantSets | null = null;
     let crackTextures: Record<1 | 2 | 3, Texture> | null = null;
 
-    const initBrickVariants = async () => {
+    const initBrickVariants = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
         const renderer = stage.app.renderer as any; // PixiJS v8 has generateTexture at runtime
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (typeof renderer?.generateTexture === 'function') {
-            brickVariants = await generateBrickVariants(renderer, brickSize.width, brickSize.height);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            brickVariants = generateBrickVariants(renderer, brickSize.width, brickSize.height);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             crackTextures = generateCrackTextures(renderer, brickSize.width, brickSize.height);
         }
     };
@@ -238,8 +242,8 @@ export const createLevelRuntime = ({
     // Helper to pick a weighted random variant from a style matching the brick form
     const pickBrickVariant = (style: BrickStyle, form: BrickForm, rng: RandomSource) => {
         if (!brickVariants) return null;
-        const pool = brickVariants[style].filter(v => v.form === form);
-        if (!pool || pool.length === 0) return null;
+        const pool = brickVariants[style].filter((v) => v.form === form);
+        if (pool.length === 0) return null;
 
         const total = pool.reduce((sum, v) => sum + v.rarity, 0);
         let r = rng() * total;
@@ -503,6 +507,7 @@ export const createLevelRuntime = ({
         };
     };
 
+    // eslint-disable-next-line @typescript-eslint/require-await
     const loadLevel: LevelRuntimeHandle['loadLevel'] = async (levelIndex) => {
         resetGhostBricks();
         clearBricks();
@@ -512,7 +517,7 @@ export const createLevelRuntime = ({
 
         // Initialize brick variants on first level load
         if (!brickVariants) {
-            await initBrickVariants(); // Await to ensure variants ready before brick creation
+            initBrickVariants(); // Initialize variants for brick creation
         }
 
         let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
