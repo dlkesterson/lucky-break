@@ -154,6 +154,11 @@ export const createRuntimeThemeCoordinator = ({
         visuals?.ballSpeedRing?.setPalette({
             ringColor: currentSnapshot.ballColors.highlight,
             haloColor: currentSnapshot.ballColors.aura,
+            chromaticColors: [
+                currentSnapshot.ballColors.highlight,
+                currentSnapshot.ballColors.aura,
+                currentSnapshot.ballColors.core,
+            ],
         });
         visuals?.playfieldBackground?.setTint(currentSnapshot.backgroundAccentColor, {
             immediate: true,

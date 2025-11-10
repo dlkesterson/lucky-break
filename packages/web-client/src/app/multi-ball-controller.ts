@@ -108,9 +108,17 @@ export const createMultiBallController = ({
             maxRadius: ball.radius + 28,
             haloRadiusOffset: 14,
             ringThickness: 3,
+            enableChromaticHalo: true,
+            chromaticRotationSpeed: 2.5,
+            chromaticOffsetScale: 8,
             palette: {
                 ringColor: palette.highlight,
                 haloColor: palette.aura,
+                chromaticColors: [
+                    palette.highlight,
+                    palette.aura,
+                    palette.core,
+                ],
             },
         });
         ring.container.eventMode = 'none';
@@ -289,6 +297,11 @@ export const createMultiBallController = ({
             entry.ring.setPalette({
                 ringColor: palette.highlight,
                 haloColor: palette.aura,
+                chromaticColors: [
+                    palette.highlight,
+                    palette.aura,
+                    palette.core,
+                ],
             });
         });
     };

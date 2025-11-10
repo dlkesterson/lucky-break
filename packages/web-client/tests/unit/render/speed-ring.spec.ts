@@ -138,11 +138,14 @@ describe('createSpeedRing', () => {
         expect(container.position.y).toBe(40);
         expect(container.visible).toBe(true);
 
-        const [halo, outline] = container.children;
-        const haloCircle = extractCommands(halo).find((command) => command.type === 'circle');
+        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
+        // When chromatic is not enabled, haloSimple (index 3) and ring (index 4) are used
+        const haloSimple = container.children[3];
+        const ring = container.children[4];
+        const haloCircle = extractCommands(haloSimple).find((command) => command.type === 'circle');
         expect(haloCircle?.args[2]).toBeCloseTo(40, 3); // radius + halo offset
 
-        const stroke = extractCommands(outline).find((command) => command.type === 'stroke');
+        const stroke = extractCommands(ring).find((command) => command.type === 'stroke');
         expect(stroke?.args[0]).toMatchObject({ color: 0xff00ff });
         expect((stroke?.args[0] as { alpha?: number }).alpha ?? 0).toBeGreaterThan(0.5);
     });
@@ -158,24 +161,31 @@ describe('createSpeedRing', () => {
 
         ringHandle.setPalette({ ringColor: 0x222222, haloColor: 0xabcdef });
 
-        const [halo, outline] = (ringHandle.container as { children: unknown[] }).children;
-        const haloFill = extractCommands(halo).find((command) => command.type === 'fill');
+        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
+        // When chromatic is not enabled, haloSimple (index 3) and ring (index 4) are used
+        const haloSimple = (ringHandle.container as { children: unknown[] }).children[3];
+        const ring = (ringHandle.container as { children: unknown[] }).children[4];
+        const haloFill = extractCommands(haloSimple).find((command) => command.type === 'fill');
         expect(haloFill?.args[0]).toMatchObject({ color: 0xabcdef });
 
-        const stroke = extractCommands(outline).find((command) => command.type === 'stroke');
+        const stroke = extractCommands(ring).find((command) => command.type === 'stroke');
         expect(stroke?.args[0]).toMatchObject({ color: 0x222222 });
     });
 
     it('destroys Pixi resources and ignores further updates once disposed', () => {
         const ringHandle = createSpeedRing();
         const container = ringHandle.container as unknown as { destroyed: boolean; children: unknown[] };
-        const [halo, outline] = container.children as { destroyed?: boolean }[];
+        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
+        const [haloRed, haloGreen, haloBlue, haloSimple, ring] = container.children as { destroyed?: boolean }[];
 
         ringHandle.destroy();
 
         expect(container.destroyed).toBe(true);
-        expect(halo.destroyed).toBe(true);
-        expect(outline.destroyed).toBe(true);
+        expect(haloRed.destroyed).toBe(true);
+        expect(haloGreen.destroyed).toBe(true);
+        expect(haloBlue.destroyed).toBe(true);
+        expect(haloSimple.destroyed).toBe(true);
+        expect(ring.destroyed).toBe(true);
 
         expect(() => ringHandle.update({ position: { x: 0, y: 0 }, speed: 10, baseSpeed: 10, maxSpeed: 20, deltaSeconds: 0.016 })).not.toThrow();
         expect(() => ringHandle.reset()).not.toThrow();

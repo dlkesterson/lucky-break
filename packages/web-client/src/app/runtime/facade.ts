@@ -1642,6 +1642,11 @@ export const createRuntimeFacade = async ({
             getPowerUpChanceMultiplier: () => roundMachine.getPowerUpChanceMultiplier(),
             getDoublePointsMultiplier: () => powerups.getDoublePointsMultiplier(),
             getActiveReward: () => powerups.getActiveReward(),
+            getChromaticColors: () => [
+                themeBallColors.highlight,
+                themeBallColors.aura,
+                themeBallColors.core,
+            ] as const,
             incrementLevelBricksBroken: () => {
                 roundMachine.incrementLevelBricksBroken();
             },

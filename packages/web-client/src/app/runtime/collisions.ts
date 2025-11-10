@@ -271,6 +271,21 @@ const handleBallBrickCollision = (
                 startRadius: Math.max(0.012, normalizedRadius * 1.4),
                 endRadius: Math.min(0.45, normalizedRadius * 1.3 + 0.15 + rippleIntensity * 0.2),
             });
+
+            // Emit smaller chromatic particles for brick hits; fall back to theme palette if the brick visual state is missing.
+            const visualState = brickVisualState.get(brick);
+            const chromaticPalette = fx.getChromaticColors();
+            const fallbackColor = visualState?.baseColor ?? chromaticPalette[0];
+            const hitParticleIntensity = Math.max(0.35, Math.min(0.75, hitComboIntensity * 0.5 + hitSpeedIntensity * 0.6));
+            fx.emitBrickParticles({
+                brick,
+                position: { x: brick.position.x, y: brick.position.y },
+                baseColor: fallbackColor,
+                intensity: hitParticleIntensity,
+                impactSpeed: impactVelocity,
+                chromaticColors: chromaticPalette,
+                isBreak: false,
+            });
         });
         return;
     }
@@ -395,16 +410,17 @@ const handleBallBrickCollision = (
 
     fx.scheduleVisualEffect(scheduledTime, () => {
         const visualState = brickVisualState.get(brick);
-        if (!visualState) {
-            return;
-        }
+        const chromaticPalette = fx.getChromaticColors();
+        const fallbackColor = visualState?.baseColor ?? chromaticPalette[0];
         const burstStrength = Math.max(0.3, Math.min(1, comboIntensity * 0.5 + speedIntensity * 0.7));
         fx.emitBrickParticles({
             brick,
             position: { x: brick.position.x, y: brick.position.y },
-            baseColor: visualState.baseColor,
+            baseColor: fallbackColor,
             intensity: burstStrength,
             impactSpeed: impactVelocity,
+            chromaticColors: chromaticPalette,
+            isBreak: true,
         });
     });
 

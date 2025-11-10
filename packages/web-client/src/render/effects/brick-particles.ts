@@ -1,13 +1,14 @@
 import { Container, Sprite, Texture } from 'pixi.js';
 import { clampUnit, lerp } from 'util/math';
 
-const DEFAULT_BURST_COUNT = 12;
-const DEFAULT_MAX_PARTICLES = 24;
+const DEFAULT_BURST_COUNT = 36;
+const DEFAULT_MAX_PARTICLES = 96;
 const DEFAULT_GRAVITY = 1100;
 const DEFAULT_LIFETIME = { min: 0.28, max: 0.55 } as const;
 const DEFAULT_SPEED = { min: 190, max: 420 } as const;
-const DEFAULT_SCALE = { min: 0.55, max: 1.25 } as const;
+const DEFAULT_SCALE = { min: 0.8, max: 1.85 } as const;
 const DEFAULT_SPIN = { min: -8, max: 8 } as const;
+const CHROMATIC_OFFSET_SCALE = 6; // Pixel offset for chromatic separation
 
 interface Particle {
     sprite: Sprite;
@@ -20,6 +21,8 @@ interface Particle {
     endScale: number;
     startAlpha: number;
     endAlpha: number;
+    chromaticChannel?: 'red' | 'green' | 'blue';
+    chromaticOffsetAngle?: number;
 }
 
 export interface BrickBurstEmitPayload {
@@ -27,6 +30,8 @@ export interface BrickBurstEmitPayload {
     readonly baseColor: number;
     readonly intensity?: number;
     readonly impactSpeed?: number;
+    readonly chromaticColors?: readonly [number, number, number]; // [red, green, blue] for chromatic effect
+    readonly isBreak?: boolean; // true for brick destruction, false/undefined for hits
 }
 
 export interface BrickParticleSystemOptions {
@@ -78,6 +83,7 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
         sprite.eventMode = 'none';
         sprite.visible = false;
         sprite.alpha = 0;
+        sprite.blendMode = 'normal';
         root.addChild(sprite);
         return {
             sprite,
@@ -100,7 +106,7 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
         pool.push(particle);
     };
 
-    const emit: BrickParticleSystem['emit'] = ({ position, baseColor, intensity = 0.5, impactSpeed }) => {
+    const emit: BrickParticleSystem['emit'] = ({ position, baseColor, intensity = 0.5, impactSpeed, chromaticColors, isBreak = false }) => {
         const normalizedIntensity = clampUnit(intensity);
         const energyFactor = clampUnit((impactSpeed ?? 0) / 18);
         const totalIntensity = clampUnit(normalizedIntensity * 0.75 + energyFactor * 0.6);
@@ -109,19 +115,45 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
             return;
         }
 
-        const burstCount = Math.max(2, Math.min(available, Math.round(baseBurstCount + totalIntensity * 9)));
+        // Increase particle count for brick breaks vs hits
+        const burstMultiplier = isBreak ? 2.2 : 1.2;
+        const burstCount = Math.max(2, Math.min(available, Math.round(baseBurstCount * burstMultiplier + totalIntensity * 9)));
+
+        // Enable chromatic separation if colors are provided
+        const useChromaticEffect = chromaticColors !== undefined && chromaticColors.length === 3;
+        const channels: Array<'red' | 'green' | 'blue'> = ['red', 'green', 'blue'];
 
         for (let index = 0; index < burstCount; index += 1) {
             const particle = acquireParticle();
             const angle = pick(0, Math.PI * 2, random);
-            const speed = pick(DEFAULT_SPEED.min, DEFAULT_SPEED.max, random) * (0.45 + totalIntensity * 0.9);
-            const scale = pick(DEFAULT_SCALE.min, DEFAULT_SCALE.max, random);
+            const speedMultiplier = isBreak ? 1.35 : 1.0; // Keep hits energetic with larger bursts
+            const speed = pick(DEFAULT_SPEED.min, DEFAULT_SPEED.max, random) * (0.45 + totalIntensity * 0.9) * speedMultiplier;
+            const scaleMultiplier = isBreak ? 1.7 : 1.35; // Larger sprites across both hit and break effects
+            const scale = pick(DEFAULT_SCALE.min, DEFAULT_SCALE.max, random) * scaleMultiplier;
             const shrink = pick(0.2, 0.55, random);
             const spin = pick(DEFAULT_SPIN.min, DEFAULT_SPIN.max, random);
-            const lifetime = pick(DEFAULT_LIFETIME.min, DEFAULT_LIFETIME.max, random);
+            const lifetimeMultiplier = isBreak ? 1.3 : 0.85; // Shorter-lived particles for hits
+            const lifetime = pick(DEFAULT_LIFETIME.min, DEFAULT_LIFETIME.max, random) * lifetimeMultiplier;
+
+            // Assign chromatic channel if using chromatic effect
+            let particleColor = baseColor;
+            let chromaticOffsetAngle: number | undefined;
+            let chromaticChannel: 'red' | 'green' | 'blue' | undefined;
+
+            if (useChromaticEffect && chromaticColors) {
+                // Distribute particles across RGB channels
+                const channelIndex = index % 3;
+                chromaticChannel = channels[channelIndex];
+                particleColor = chromaticColors[channelIndex];
+                // Rotating offset angle for chromatic separation (varies per particle for visual diversity)
+                chromaticOffsetAngle = angle + (channelIndex * Math.PI * 0.666);
+                particle.sprite.blendMode = 'add'; // Additive blending for chromatic effect
+            } else {
+                particle.sprite.blendMode = 'normal';
+            }
 
             particle.sprite.position.set(position.x, position.y);
-            particle.sprite.tint = baseColor;
+            particle.sprite.tint = particleColor;
             particle.sprite.scale.set(scale);
             particle.sprite.rotation = pick(0, Math.PI * 2, random);
             particle.sprite.visible = true;
@@ -132,9 +164,11 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
             particle.lifetime = lifetime;
             particle.startScale = scale;
             particle.endScale = Math.max(0.1, scale * shrink * 0.6);
-            particle.startAlpha = 0.85 + totalIntensity * 0.1;
+            particle.startAlpha = useChromaticEffect ? 0.7 + totalIntensity * 0.15 : 0.85 + totalIntensity * 0.1;
             particle.endAlpha = 0;
             particle.age = 0;
+            particle.chromaticChannel = chromaticChannel;
+            particle.chromaticOffsetAngle = chromaticOffsetAngle;
 
             active.push(particle);
         }
@@ -164,8 +198,21 @@ export const createBrickParticleSystem = (options: BrickParticleSystemOptions = 
 
             const eased = progress ** 1.45;
             const sprite = particle.sprite;
-            sprite.x += particle.vx * safeDelta;
-            sprite.y += particle.vy * safeDelta;
+
+            // Apply chromatic offset if this particle has chromatic data
+            let offsetX = 0;
+            let offsetY = 0;
+            if (particle.chromaticChannel !== undefined && particle.chromaticOffsetAngle !== undefined) {
+                // Chromatic offset decreases as particle ages (separation effect diminishes)
+                const offsetMagnitude = CHROMATIC_OFFSET_SCALE * (1 - progress * 0.7) * particle.startScale;
+                const channelOffset = particle.chromaticChannel === 'red' ? 0 : particle.chromaticChannel === 'green' ? 0.5 : 1.0;
+                const offsetAngle = particle.chromaticOffsetAngle + channelOffset * Math.PI * 0.25;
+                offsetX = Math.cos(offsetAngle) * offsetMagnitude;
+                offsetY = Math.sin(offsetAngle) * offsetMagnitude;
+            }
+
+            sprite.x += particle.vx * safeDelta + offsetX;
+            sprite.y += particle.vy * safeDelta + offsetY;
             particle.vy += gravity * safeDelta;
             sprite.rotation += particle.angularVelocity * safeDelta;
             const nextScale = lerp(particle.startScale, particle.endScale, eased);

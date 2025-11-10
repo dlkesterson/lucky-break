@@ -276,9 +276,17 @@ export const createRuntimeVisuals = ({
         maxRadius: ball.radius + 28,
         haloRadiusOffset: 14,
         ringThickness: 3,
+        enableChromaticHalo: true,
+        chromaticRotationSpeed: 2.5,
+        chromaticOffsetScale: 8,
         palette: {
             ringColor: themeBallColors.highlight,
             haloColor: themeBallColors.aura,
+            chromaticColors: [
+                themeBallColors.highlight,
+                themeBallColors.aura,
+                themeBallColors.core,
+            ],
         },
     });
     ballSpeedRingSetup.container.zIndex = 49;

@@ -603,14 +603,11 @@ export const createLevelRuntime = ({
 
                 const waveSprite = new Sprite(Texture.WHITE);
                 waveSprite.anchor.set(0.5);
-                waveSprite.position.set(centerX, centerY);
+                waveSprite.position.set(0, 0);
                 waveSprite.width = radius * 2;
                 waveSprite.height = radius * 2;
-                waveSprite.zIndex = 4;
                 waveSprite.alpha = 1;
                 waveSprite.eventMode = 'none';
-                // Note: BLEND_MODES may not be available in all PixiJS versions
-                // Using 'add' blend mode string directly
                 waveSprite.blendMode = 'add';
 
                 const waveFilter = new GradientWaveFilter({
@@ -622,7 +619,22 @@ export const createLevelRuntime = ({
                     speed: 1.2,
                 });
                 waveSprite.filters = [waveFilter];
-                stage.addToLayer('effects', waveSprite);
+
+                // Create circular mask to contain the effect
+                const waveMask = new Graphics();
+                waveMask.circle(0, 0, radius);
+                waveMask.fill({ color: 0xffffff });
+
+                // Container for masked wave effect
+                const waveContainer = new Graphics();
+                waveContainer.position.set(centerX, centerY);
+                waveContainer.zIndex = 4;
+                waveContainer.eventMode = 'none';
+                waveContainer.addChild(waveSprite);
+                waveContainer.addChild(waveMask);
+                waveSprite.mask = waveMask;
+
+                stage.addToLayer('effects', waveContainer);
 
                 const ticker = stage.app.ticker;
                 const onTick = (tickerInstance: Ticker) => {
@@ -631,7 +643,7 @@ export const createLevelRuntime = ({
                 ticker.add(onTick);
 
                 const waveVisual: HazardVisualEntry = {
-                    target: waveSprite,
+                    target: waveContainer,
                     dispose: () => {
                         ticker.remove(onTick);
                         waveSprite.filters = null;

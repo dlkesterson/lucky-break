@@ -4,6 +4,7 @@ import { clamp, clampUnit } from 'util/math';
 export interface SpeedRingPalette {
     readonly ringColor: number;
     readonly haloColor?: number;
+    readonly chromaticColors?: readonly [number, number, number]; // [red, green, blue] for chromatic effect
 }
 
 export interface SpeedRingOptions {
@@ -17,6 +18,9 @@ export interface SpeedRingOptions {
     readonly radiusLerpSpeed?: number;
     readonly alphaLerpSpeed?: number;
     readonly palette?: SpeedRingPalette;
+    readonly enableChromaticHalo?: boolean;
+    readonly chromaticRotationSpeed?: number;
+    readonly chromaticOffsetScale?: number;
 }
 
 export interface SpeedRingUpdate {
@@ -44,6 +48,24 @@ const DEFAULT_MAX_ALPHA = 0.65;
 const DEFAULT_ACTIVATION_MULTIPLIER = 0.6;
 const DEFAULT_RADIUS_LERP = 10;
 const DEFAULT_ALPHA_LERP = 12;
+const DEFAULT_CHROMATIC_ROTATION_SPEED = 2.5;
+const DEFAULT_CHROMATIC_OFFSET_SCALE = 8;
+
+const mixColors = (source: number, target: number, amount: number): number => {
+    const t = clampUnit(amount);
+    const sr = (source >> 16) & 0xff;
+    const sg = (source >> 8) & 0xff;
+    const sb = source & 0xff;
+    const tr = (target >> 16) & 0xff;
+    const tg = (target >> 8) & 0xff;
+    const tb = target & 0xff;
+
+    const r = Math.round(sr + (tr - sr) * t);
+    const g = Math.round(sg + (tg - sg) * t);
+    const b = Math.round(sb + (tb - sb) * t);
+
+    return (r << 16) | (g << 8) | b;
+};
 
 export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle => {
     const minRadius = Math.max(1, options.minRadius ?? DEFAULT_MIN_RADIUS);
@@ -55,36 +77,79 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
     const activationSpeedMultiplier = clampUnit(options.activationSpeedMultiplier ?? DEFAULT_ACTIVATION_MULTIPLIER);
     const radiusLerpSpeed = Math.max(0.1, options.radiusLerpSpeed ?? DEFAULT_RADIUS_LERP);
     const alphaLerpSpeed = Math.max(0.1, options.alphaLerpSpeed ?? DEFAULT_ALPHA_LERP);
+    const enableChromaticHalo = options.enableChromaticHalo ?? false;
+    const chromaticRotationSpeed = Math.max(0, options.chromaticRotationSpeed ?? DEFAULT_CHROMATIC_ROTATION_SPEED);
+    const chromaticOffsetScale = Math.max(0, options.chromaticOffsetScale ?? DEFAULT_CHROMATIC_OFFSET_SCALE);
 
     const root = new Container();
     root.eventMode = 'none';
     root.visible = false;
 
-    const halo = new Graphics();
-    halo.eventMode = 'none';
-    halo.blendMode = 'add';
+    // Create separate halo layers for chromatic effect
+    const haloRed = new Graphics();
+    haloRed.eventMode = 'none';
+    haloRed.blendMode = 'add';
+
+    const haloGreen = new Graphics();
+    haloGreen.eventMode = 'none';
+    haloGreen.blendMode = 'add';
+
+    const haloBlue = new Graphics();
+    haloBlue.eventMode = 'none';
+    haloBlue.blendMode = 'add';
+
+    const haloSimple = new Graphics();
+    haloSimple.eventMode = 'none';
+    haloSimple.blendMode = 'add';
 
     const ring = new Graphics();
     ring.eventMode = 'none';
 
-    root.addChild(halo);
+    root.addChild(haloRed);
+    root.addChild(haloGreen);
+    root.addChild(haloBlue);
+    root.addChild(haloSimple);
     root.addChild(ring);
+
+    const resolveChromaticColors = (
+        ringColor: number,
+        haloColor: number,
+        fallback?: readonly [number, number, number],
+    ): readonly [number, number, number] => {
+        if (fallback) {
+            return [fallback[0], fallback[1], fallback[2]] as const;
+        }
+        const warmShift = mixColors(ringColor, 0xfff0f0, 0.18);
+        const coolShift = mixColors(haloColor, 0x102044, 0.25);
+        return [warmShift, haloColor, coolShift] as const;
+    };
 
     let palette: SpeedRingPalette = {
         ringColor: options.palette?.ringColor ?? 0xffffff,
         haloColor: options.palette?.haloColor ?? options.palette?.ringColor ?? 0xffffff,
+        chromaticColors: options.enableChromaticHalo
+            ? resolveChromaticColors(
+                options.palette?.ringColor ?? 0xffffff,
+                options.palette?.haloColor ?? options.palette?.ringColor ?? 0xffffff,
+                options.palette?.chromaticColors,
+            )
+            : undefined,
     };
 
     let currentRadius = minRadius;
     let currentAlpha = 0;
     let lastIntensity = 0;
     let destroyed = false;
+    let elapsedTime = 0;
 
     const redraw = () => {
         if (destroyed) {
             return;
         }
-        halo.clear();
+        haloRed.clear();
+        haloGreen.clear();
+        haloBlue.clear();
+        haloSimple.clear();
         ring.clear();
 
         if (currentAlpha <= 0.001) {
@@ -95,12 +160,43 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
         const haloAlpha = clampUnit(currentAlpha * 0.55 + lastIntensity * 0.2);
         const haloRadius = currentRadius + haloRadiusOffset;
 
-        halo.circle(0, 0, haloRadius);
-        halo.fill({ color: haloBase, alpha: haloAlpha });
+        if (enableChromaticHalo && palette.chromaticColors) {
+            // Chromatic halo with rotating offset positions
+            const [redColor, greenColor, blueColor] = palette.chromaticColors;
+            const angle = elapsedTime * chromaticRotationSpeed;
+            const offsetMag = chromaticOffsetScale * lastIntensity;
 
-        const ringAlpha = clamp(currentAlpha, minAlpha, 1);
-        ring.circle(0, 0, currentRadius);
-        ring.stroke({ color: palette.ringColor, width: ringThickness, alpha: ringAlpha });
+            // Red channel - shifts along one axis
+            const redOffsetX = Math.cos(angle) * offsetMag;
+            const redOffsetY = Math.sin(angle) * offsetMag;
+            haloRed.circle(redOffsetX, redOffsetY, haloRadius);
+            haloRed.fill({ color: redColor, alpha: haloAlpha * 0.58 });
+
+            // Green channel - shifts perpendicular
+            const greenOffsetX = Math.cos(angle + Math.PI * 0.5) * offsetMag * 0.7;
+            const greenOffsetY = Math.sin(angle + Math.PI * 0.5) * offsetMag * 0.7;
+            haloGreen.circle(greenOffsetX, greenOffsetY, haloRadius);
+            haloGreen.fill({ color: greenColor, alpha: haloAlpha * 0.48 });
+
+            // Blue channel - shifts opposite direction
+            const blueOffsetX = Math.cos(angle + Math.PI) * offsetMag * 0.85;
+            const blueOffsetY = Math.sin(angle + Math.PI) * offsetMag * 0.85;
+            haloBlue.circle(blueOffsetX, blueOffsetY, haloRadius);
+            haloBlue.fill({ color: blueColor, alpha: haloAlpha * 0.52 });
+
+            // Optional: blend the ring color based on intensity
+            const mixedRingColor = mixColors(palette.ringColor, redColor, lastIntensity * 0.3);
+            ring.circle(0, 0, currentRadius);
+            ring.stroke({ color: mixedRingColor, width: ringThickness, alpha: clamp(currentAlpha, minAlpha, 1) });
+        } else {
+            // Simple single-color halo
+            haloSimple.circle(0, 0, haloRadius);
+            haloSimple.fill({ color: haloBase, alpha: haloAlpha });
+
+            const ringAlpha = clamp(currentAlpha, minAlpha, 1);
+            ring.circle(0, 0, currentRadius);
+            ring.stroke({ color: palette.ringColor, width: ringThickness, alpha: ringAlpha });
+        }
     };
 
     const reset = (): void => {
@@ -120,6 +216,7 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
         }
 
         const safeDelta = Math.max(0, Number.isFinite(deltaSeconds) ? deltaSeconds : 0);
+        elapsedTime += safeDelta;
         root.position.set(position.x, position.y);
 
         const effectiveMax = Math.max(0, Number.isFinite(maxSpeed) ? maxSpeed : 0);
@@ -151,9 +248,16 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
             return;
         }
 
+        const resolvedRingColor = nextPalette.ringColor;
+        const resolvedHalo = nextPalette.haloColor ?? resolvedRingColor;
+        const resolvedChromatic = enableChromaticHalo
+            ? resolveChromaticColors(resolvedRingColor, resolvedHalo, nextPalette.chromaticColors ?? palette.chromaticColors)
+            : undefined;
+
         palette = {
-            ringColor: nextPalette.ringColor,
-            haloColor: nextPalette.haloColor ?? nextPalette.ringColor,
+            ringColor: resolvedRingColor,
+            haloColor: resolvedHalo,
+            chromaticColors: resolvedChromatic,
         };
         redraw();
     };
@@ -163,7 +267,10 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
             return;
         }
         destroyed = true;
-        halo.destroy();
+        haloRed.destroy();
+        haloGreen.destroy();
+        haloBlue.destroy();
+        haloSimple.destroy();
         ring.destroy();
         root.destroy({ children: true });
     };

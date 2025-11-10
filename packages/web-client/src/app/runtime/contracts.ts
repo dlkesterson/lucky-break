@@ -33,6 +33,7 @@ export interface CollisionEffectHooks extends PhysicsToScoringBridge {
     getPowerUpChanceMultiplier(): number;
     getDoublePointsMultiplier(): number;
     getActiveReward(): Reward | null;
+    getChromaticColors(): readonly [number, number, number];
     refreshAchievementUpgrades(): void;
     releaseForeshadowForBall(ballId: number, actualTimeSeconds?: number): void;
     computeScheduledAudioTime(offsetMs?: number): number;
@@ -49,6 +50,8 @@ export interface CollisionEffectHooks extends PhysicsToScoringBridge {
         baseColor: number;
         intensity: number;
         impactSpeed: number;
+        chromaticColors?: readonly [number, number, number];
+        isBreak?: boolean;
     }): void;
     flashBallLight(intensity?: number): void;
     flashPaddleLight(intensity?: number): void;
