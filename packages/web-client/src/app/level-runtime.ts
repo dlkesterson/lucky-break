@@ -236,13 +236,13 @@ export const createLevelRuntime = ({
     };
 
     // Helper to pick a weighted random variant from a style matching the brick form
-    const pickBrickVariant = (style: BrickStyle, form: BrickForm) => {
+    const pickBrickVariant = (style: BrickStyle, form: BrickForm, rng: RandomSource) => {
         if (!brickVariants) return null;
         const pool = brickVariants[style].filter(v => v.form === form);
         if (!pool || pool.length === 0) return null;
 
         const total = pool.reduce((sum, v) => sum + v.rarity, 0);
-        let r = Math.random() * total;
+        let r = rng() * total;
         for (const variant of pool) {
             r -= variant.rarity;
             if (r <= 0) return variant;
@@ -594,7 +594,8 @@ export const createLevelRuntime = ({
 
             if (isBreakable && brickVariants) {
                 const style = getBrickStyle(brickSpec.x, brickSpec.y);
-                const variant = pickBrickVariant(style, brickForm);
+                const rng = layoutRandom ?? (() => Math.random());
+                const variant = pickBrickVariant(style, brickForm, rng);
                 if (variant) {
                     texture = variant.texture;
                     usesProceduralVariant = true;
@@ -640,9 +641,11 @@ export const createLevelRuntime = ({
             // Attach FX for procedural variants
             if (usesProceduralVariant && isBreakable) {
                 const style = getBrickStyle(brickSpec.x, brickSpec.y);
+                const rng = layoutRandom ?? (() => Math.random());
                 attachBrickFX(brickVisual, {
                     twinkle: style === 'mosaic',
                     sweep: style !== 'mosaic',
+                    rng,
                 });
             }
 

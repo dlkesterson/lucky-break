@@ -1,13 +1,14 @@
 import { Container, Sprite } from 'pixi.js';
 import { attachBrickFX } from './brick-fx';
 import type { BrickVariant, BrickStyle, BrickVariantSets } from './brick-variants';
+import type { RandomSource } from 'util/random';
 
 /**
  * Weighted random picker for brick variants.
  */
-function weightedPick<T extends { rarity: number }>(items: T[]): T {
+function weightedPick<T extends { rarity: number }>(items: T[], rng: RandomSource): T {
     const total = items.reduce((sum, item) => sum + item.rarity, 0);
-    let r = Math.random() * total;
+    let r = rng() * total;
     for (const item of items) {
         r -= item.rarity;
         if (r <= 0) return item;
@@ -31,14 +32,16 @@ export function placeBricks(
     gridWidth: number,
     gridHeight: number,
     brickSize: number,
-    sets: BrickVariantSets
+    sets: BrickVariantSets,
+    rng?: RandomSource
 ): Container {
     const container = new Container();
+    const random = rng ?? (() => Math.random());
 
     // Track last variant per cell for de-duplication
-    const lastByCell: Array<Array<BrickVariant | null>> = Array.from(
+    const lastByCell: (BrickVariant | null)[][] = Array.from(
         { length: gridHeight },
-        () => Array(gridWidth).fill(null)
+        () => Array<BrickVariant | null>(gridWidth).fill(null)
     );
 
     for (let y = 0; y < gridHeight; y++) {
@@ -47,7 +50,7 @@ export function placeBricks(
             const pool = sets[style];
 
             // Pick a variant with weighted probability
-            let pick = weightedPick(pool);
+            let pick = weightedPick(pool, random);
 
             // Attempt to avoid identical neighbors (simple de-dupe)
             const left = x > 0 ? lastByCell[y][x - 1] : null;
@@ -58,7 +61,7 @@ export function placeBricks(
                 tries < 3 && (pick === left || pick === up);
                 tries++
             ) {
-                pick = weightedPick(pool);
+                pick = weightedPick(pool, random);
             }
 
             lastByCell[y][x] = pick;
@@ -76,6 +79,7 @@ export function placeBricks(
             attachBrickFX(brick, {
                 twinkle: style === 'mosaic',
                 sweep: style !== 'mosaic',
+                rng: random,
             });
         }
     }

@@ -1,10 +1,13 @@
 import { Sprite, Texture, type Ticker } from 'pixi.js';
+import type { RandomSource } from 'util/random';
 
 export interface BrickFXOptions {
     /** Enable twinkle stars (for mosaic style) */
     twinkle?: boolean;
     /** Enable specular sweep (for neon/marble styles) */
     sweep?: boolean;
+    /** Optional deterministic random source for visual effects */
+    rng?: RandomSource;
 }
 
 /**
@@ -25,8 +28,10 @@ function makeGlowOverlay(base: Texture, size: number): Sprite {
  * - Twinkle stars (random flicker)
  */
 export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
+    const rng = opts.rng ?? (() => Math.random());
+
     // ── Neon breathing glow ─────────────────────────────────────────
-    const phase = Math.random() * Math.PI * 2;
+    const phase = rng() * Math.PI * 2;
     const glow = makeGlowOverlay(sprite.texture, sprite.width);
     sprite.addChild(glow);
 
@@ -52,10 +57,10 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
         for (let i = 0; i < 3; i++) {
             const star = new Sprite(Texture.WHITE);
             star.tint = 0xffffff;
-            star.width = star.height = 1 + Math.random() * 1.5;
+            star.width = star.height = 1 + rng() * 1.5;
             star.alpha = 0.0;
-            star.x = Math.random() * sprite.width;
-            star.y = Math.random() * sprite.height;
+            star.x = rng() * sprite.width;
+            star.y = rng() * sprite.height;
             star.blendMode = 'add';
             sprite.addChild(star);
             twinkles.push(star);
@@ -90,7 +95,7 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
                     // Reset sweep
                     sweep.alpha = 0.0;
                     sweep.x = -sprite.width * 0.6;
-                    sweepCooldown = 300 + Math.random() * 600; // long random cooldown
+                    sweepCooldown = 300 + rng() * 600; // long random cooldown
                 }
 
                 if (sweepCooldown < 260) {
@@ -105,8 +110,8 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
 
             // Twinkle stars
             for (const s of twinkles) {
-                if (Math.random() < 0.02) {
-                    s.alpha = 0.25 + Math.random() * 0.4;
+                if (rng() < 0.02) {
+                    s.alpha = 0.25 + rng() * 0.4;
                 }
                 s.alpha *= 0.95;
             }
