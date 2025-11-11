@@ -59,6 +59,157 @@ describe('round-machine entropy actions', () => {
     });
 });
 
+describe('round-machine autocomplete countdown', () => {
+    it('activates countdown when bricks remaining reaches trigger threshold', () => {
+        const machine = createRoundMachine({
+            autoCompleteEnabled: true,
+            autoCompleteCountdown: 5,
+            autoCompleteTrigger: 1,
+        });
+
+        // Start with several bricks
+        let result = machine.tickAutoComplete({
+            deltaSeconds: 0.5,
+            bricksRemaining: 5,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(false);
+        expect(result.stateChanged).toBe(false);
+        expect(machine.getAutoCompleteState().active).toBe(false);
+
+        // When only 1 brick remains (trigger threshold), countdown should activate
+        result = machine.tickAutoComplete({
+            deltaSeconds: 0.5,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(false);
+        expect(result.stateChanged).toBe(true);
+        expect(machine.getAutoCompleteState().active).toBe(true);
+        expect(machine.getAutoCompleteState().timer).toBe(5);
+    });
+
+    it('counts down timer and triggers when timer reaches zero', () => {
+        const machine = createRoundMachine({
+            autoCompleteEnabled: true,
+            autoCompleteCountdown: 3,
+            autoCompleteTrigger: 1,
+        });
+
+        // Activate countdown
+        machine.tickAutoComplete({
+            deltaSeconds: 0,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+
+        // Tick down but not to zero
+        let result = machine.tickAutoComplete({
+            deltaSeconds: 1,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(false);
+        expect(result.stateChanged).toBe(true);
+        expect(machine.getAutoCompleteState().timer).toBe(2);
+
+        // Tick down more
+        result = machine.tickAutoComplete({
+            deltaSeconds: 1.5,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(false);
+        expect(machine.getAutoCompleteState().timer).toBe(0.5);
+
+        // Final tick should trigger
+        result = machine.tickAutoComplete({
+            deltaSeconds: 0.6,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(true);
+        expect(result.stateChanged).toBe(true);
+        expect(machine.getAutoCompleteState().active).toBe(false);
+        expect(machine.isLevelAutoCompleted()).toBe(true);
+    });
+
+    it('resets countdown if brick count increases above trigger', () => {
+        const machine = createRoundMachine({
+            autoCompleteEnabled: true,
+            autoCompleteCountdown: 5,
+            autoCompleteTrigger: 1,
+        });
+
+        // Activate countdown
+        machine.tickAutoComplete({
+            deltaSeconds: 0,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(machine.getAutoCompleteState().active).toBe(true);
+
+        // Tick down a bit
+        machine.tickAutoComplete({
+            deltaSeconds: 2,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(machine.getAutoCompleteState().timer).toBe(3);
+
+        // If bricks increase (e.g., ghost bricks), countdown should reset
+        const result = machine.tickAutoComplete({
+            deltaSeconds: 0.5,
+            bricksRemaining: 3,
+            sessionActive: true,
+        });
+        expect(result.stateChanged).toBe(true);
+        expect(machine.getAutoCompleteState().active).toBe(false);
+    });
+
+    it('does not trigger when autocomplete is disabled', () => {
+        const machine = createRoundMachine({
+            autoCompleteEnabled: false,
+            autoCompleteCountdown: 3,
+            autoCompleteTrigger: 1,
+        });
+
+        const result = machine.tickAutoComplete({
+            deltaSeconds: 10,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(result.triggered).toBe(false);
+        expect(machine.getAutoCompleteState().active).toBe(false);
+    });
+
+    it('does not trigger when session is not active', () => {
+        const machine = createRoundMachine({
+            autoCompleteEnabled: true,
+            autoCompleteCountdown: 3,
+            autoCompleteTrigger: 1,
+        });
+
+        // Activate countdown
+        machine.tickAutoComplete({
+            deltaSeconds: 0,
+            bricksRemaining: 1,
+            sessionActive: true,
+        });
+        expect(machine.getAutoCompleteState().active).toBe(true);
+
+        // Session becomes inactive
+        const result = machine.tickAutoComplete({
+            deltaSeconds: 10,
+            bricksRemaining: 1,
+            sessionActive: false,
+        });
+        expect(result.triggered).toBe(false);
+        expect(result.stateChanged).toBe(true);
+        expect(machine.getAutoCompleteState().active).toBe(false);
+    });
+});
+
 describe('round-machine bias phase state', () => {
     const createSubject = () =>
         createRoundMachine({

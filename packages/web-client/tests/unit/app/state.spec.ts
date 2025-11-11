@@ -202,6 +202,59 @@ describe('createGameSessionManager', () => {
         expect(hud.prompts[0]).toMatchObject({ id: 'round-complete' });
     });
 
+    it('does not auto-complete round when destroying individual bricks', () => {
+        const { manager } = createSnapshot();
+
+        manager.startRound({ breakableBricks: 5, roundNumber: 1 });
+
+        // Breaking one brick should not complete the round
+        manager.recordBrickBreak({ points: 100 });
+        let snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('active');
+        expect(snapshot.brickRemaining).toBe(4);
+
+        // Breaking another brick should not complete the round
+        manager.recordBrickBreak({ points: 100 });
+        snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('active');
+        expect(snapshot.brickRemaining).toBe(3);
+
+        // Even when only one brick remains, the round should still be active
+        // (autocomplete countdown would normally handle this)
+        manager.recordBrickBreak({ points: 100 });
+        manager.recordBrickBreak({ points: 100 });
+        snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('active');
+        expect(snapshot.brickRemaining).toBe(1);
+
+        // Only explicit completeRound call should complete the round
+        manager.recordBrickBreak({ points: 100 });
+        snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('active');
+        expect(snapshot.brickRemaining).toBe(0);
+    });
+
+    it('requires explicit completeRound call even when all bricks are destroyed', () => {
+        const { manager } = createSnapshot();
+
+        manager.startRound({ breakableBricks: 3, roundNumber: 1 });
+
+        // Destroy all bricks
+        manager.recordBrickBreak({ points: 100 });
+        manager.recordBrickBreak({ points: 100 });
+        manager.recordBrickBreak({ points: 100 });
+
+        // Round should still be active until explicitly completed
+        let snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('active');
+        expect(snapshot.brickRemaining).toBe(0);
+
+        // Now complete it
+        manager.completeRound();
+        snapshot = manager.snapshot();
+        expect(snapshot.status).toBe('completed');
+    });
+
     it('applies an explicit round number when a round starts', () => {
         const { manager } = createSnapshot();
 

@@ -505,10 +505,8 @@ const handleBallBrickCollision = (
     brickMetadata.delete(brick);
     brickVisualState.delete(brick);
 
-    if (ctx.session.snapshot().brickRemaining === 0) {
-        ctx.session.completeRound();
-        fx.handleLevelComplete();
-    }
+    // Round completion is handled by the autocomplete system in gameplay-coordinator.ts
+    // which triggers when brickRemaining <= trigger threshold and countdown expires
 };
 
 const handleBallPaddleCollision = (
