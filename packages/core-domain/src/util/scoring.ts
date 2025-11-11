@@ -5,8 +5,7 @@
  * Rewards chains with multipliers and decays over time
  */
 import { gameConfig, type GameConfig } from 'config/game';
-
-const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+import { clampUnit } from './math';
 
 export interface MomentumMetrics {
     /** Running count of successive brick breaks without a combo reset */
@@ -98,10 +97,10 @@ const coerceNumber = (value: number | undefined, fallback: number): number =>
     value !== undefined && Number.isFinite(value) ? value : fallback;
 
 const resolveMomentumConfig = (override?: ScoringMomentumConfig): ResolvedMomentumConfig => {
-    const impactRetention = clamp01(
+    const impactRetention = clampUnit(
         coerceNumber(override?.speedPressureImpactRetention, DEFAULT_MOMENTUM_TUNING.speedPressureImpactRetention),
     );
-    const ambientDecay = clamp01(
+    const ambientDecay = clampUnit(
         coerceNumber(override?.speedPressureAmbientDecay, DEFAULT_MOMENTUM_TUNING.speedPressureAmbientDecay),
     );
     const decayPerSecond = Math.max(
@@ -168,22 +167,22 @@ export function awardBrickPoints(
         bricksRemaining !== undefined &&
         Number.isFinite(bricksRemaining)
     ) {
-        momentum.brickDensity = clamp01(bricksRemaining / brickTotal);
+        momentum.brickDensity = clampUnit(bricksRemaining / brickTotal);
     }
 
     const momentumConfig = resolveMomentumConfig(config.momentum);
     const speedCap = maxSpeed ?? DEFAULT_MAX_SPEED;
     if (speedCap > 0 && impactSpeed !== undefined && Number.isFinite(impactSpeed)) {
-        const normalizedSpeed = clamp01(Math.abs(impactSpeed) / speedCap);
+        const normalizedSpeed = clampUnit(Math.abs(impactSpeed) / speedCap);
         const retained = momentum.speedPressure * momentumConfig.impactRetention;
         const updated = Math.max(retained, normalizedSpeed);
-        momentum.speedPressure = clamp01(updated);
+        momentum.speedPressure = clampUnit(updated);
     } else {
         const decayed = momentum.speedPressure * momentumConfig.ambientDecay;
-        momentum.speedPressure = clamp01(decayed);
+        momentum.speedPressure = clampUnit(decayed);
     }
 
-    const comboHeat = threshold > 0 ? clamp01(state.combo / threshold) : 0;
+    const comboHeat = threshold > 0 ? clampUnit(state.combo / threshold) : 0;
     momentum.comboHeat = Math.max(momentum.comboHeat, comboHeat);
     momentum.comboTimer = state.comboTimer;
 
@@ -218,7 +217,7 @@ export function decayCombo(state: ScoreState, deltaSeconds: number, config: Scor
         momentumConfig.decayPerSecond > 0
     ) {
         const decayed = momentum.speedPressure - deltaSeconds * momentumConfig.decayPerSecond;
-        momentum.speedPressure = clamp01(Math.max(0, decayed));
+        momentum.speedPressure = clampUnit(Math.max(0, decayed));
     }
 
     momentum.comboTimer = Math.max(0, state.comboTimer);

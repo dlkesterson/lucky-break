@@ -2,6 +2,7 @@ import { Container, FillGradient, Graphics } from 'pixi.js';
 import { createSceneManager, type SceneManagerConfig, type SceneManagerHandle, type StageLayers } from './scene-manager';
 import { computeViewportFit } from './viewport';
 import { GameTheme, type GameThemeDefinition } from './theme';
+import { clampUnit } from 'util/math';
 
 export type StageConfig = SceneManagerConfig;
 
@@ -11,18 +12,8 @@ export interface ThemedStageConfig extends StageConfig {
 
 type EasingFn = (value: number) => number;
 
-const clamp01 = (value: number): number => {
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
-
 const easeInOutSine: EasingFn = (value) => {
-    const t = clamp01(value);
+    const t = clampUnit(value);
     return -(Math.cos(Math.PI * t) - 1) / 2;
 };
 
@@ -256,7 +247,7 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
             }
 
             activeTransition.elapsed += deltaSeconds;
-            const progress = clamp01(activeTransition.elapsed / activeTransition.durationOut);
+            const progress = clampUnit(activeTransition.elapsed / activeTransition.durationOut);
             const alpha = activeTransition.easingOut(progress) * activeTransition.targetAlpha;
             transitionOverlay.alpha = alpha;
             if (progress >= 1) {
@@ -272,7 +263,7 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
             }
 
             activeTransition.elapsed += deltaSeconds;
-            const progress = clamp01(activeTransition.elapsed / activeTransition.durationIn);
+            const progress = clampUnit(activeTransition.elapsed / activeTransition.durationIn);
             const alpha = (1 - activeTransition.easingIn(progress)) * activeTransition.targetAlpha;
             transitionOverlay.alpha = alpha;
             if (progress >= 1) {
@@ -328,7 +319,7 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
         const fadeInDuration = options?.fadeInDuration ?? baseDuration;
         const skipOut = options?.skipFadeOut ?? fadeOutDuration <= 0;
         const skipIn = options?.skipFadeIn ?? fadeInDuration <= 0;
-        const targetAlpha = clamp01(options?.targetAlpha ?? DEFAULT_TARGET_ALPHA);
+        const targetAlpha = clampUnit(options?.targetAlpha ?? DEFAULT_TARGET_ALPHA);
         const easingBase = options?.easing ?? easeInOutSine;
         const easingOut = options?.fadeOutEasing ?? easingBase;
         const easingIn = options?.fadeInEasing ?? easingBase;

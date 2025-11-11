@@ -1,27 +1,15 @@
 import { MembraneSynth, PolySynth, Synth, now as toneNow } from 'tone';
 import type { ToneOscillatorType } from 'tone';
 import type { LoadoutVoiceId } from 'config/loadouts';
+import { clampUnit } from 'util/math';
+import { midiToFrequency } from 'util/audio';
+
 const sanitizeOscillatorType = (value: unknown, fallback: ToneOscillatorType): ToneOscillatorType => {
     if (typeof value !== 'string') {
         return fallback;
     }
     return value as ToneOscillatorType;
 };
-
-const clamp01 = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
-
-const midiToFrequency = (note: number): number => 440 * 2 ** ((note - 69) / 12);
 
 // Multiple scale patterns for variety in combo sounds
 const DEFAULT_SCALE_PATTERNS: readonly (readonly number[])[] = [
@@ -297,7 +285,7 @@ export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine =>
             return;
         }
         const resolvedTime = resolveTime(options?.time);
-        const normalizedSpeed = clamp01(Math.abs(options?.speed ?? 0) / 80);
+        const normalizedSpeed = clampUnit(Math.abs(options?.speed ?? 0) / 80);
         const note = wallHitBase + Math.round(normalizedSpeed * 4);
         const velocity = resolveVelocity(0.3 + normalizedSpeed * 0.5, 0.25, 0.85);
         try {
@@ -315,7 +303,7 @@ export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine =>
         const resolvedTime = resolveTime(options.time);
         const comboForNote = Math.max(1, Math.floor(Number.isFinite(options.combo) ? options.combo : 1));
         const note = resolveComboNote(comboForNote, scalePatterns);
-        const normalizedIntensity = clamp01(options.intensity ?? (accent === 'break' ? 0.65 : 0.4));
+        const normalizedIntensity = clampUnit(options.intensity ?? (accent === 'break' ? 0.65 : 0.4));
         const baseVelocity = accent === 'break' ? 0.45 : 0.25;
         const velocity = resolveVelocity(
             baseVelocity + normalizedIntensity * (accent === 'break' ? 0.45 : 0.3) + comboVelocityBias * normalizedIntensity,
@@ -333,7 +321,7 @@ export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine =>
             return;
         }
         const baseTime = resolveTime(options?.time);
-        const sparkle = clamp01(options?.sparkle ?? 0.7);
+        const sparkle = clampUnit(options?.sparkle ?? 0.7);
         const noteSequence = powerUpSequence;
         const offsets = powerUpOffsets;
         const velocities = [0.45, 0.6, 0.85].map((value) => resolveVelocity(value + sparkle * 0.1));
@@ -357,7 +345,7 @@ export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine =>
             return;
         }
         const baseTime = resolveTime(options?.time);
-        const urgency = clamp01(options?.urgency ?? 0);
+        const urgency = clampUnit(options?.urgency ?? 0);
         const second = Math.max(0, Math.floor(options?.second ?? 0));
         const pitchOffset = Math.min(8, Math.round(urgency * 8) + (second <= 1 ? 2 : 0));
         const rootNote = 78 + pitchOffset;

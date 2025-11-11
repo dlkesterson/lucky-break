@@ -1,17 +1,5 @@
 import { Gain, NoiseSynth, Reverb, now as toneNow } from 'tone';
-
-const clamp01 = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
+import { clampUnit, safeFinite } from 'util/math';
 
 export interface ComboFillTriggerOptions {
     readonly intensity?: number;
@@ -68,8 +56,8 @@ export const createComboFillEngine = (): ComboFillEngine => {
             return;
         }
         const nowTime = toneNow();
-        const targetTime = Number.isFinite(options.time ?? NaN) ? options.time ?? nowTime : nowTime;
-        const intensity = clamp01(options.intensity ?? 0.7);
+        const targetTime = safeFinite(options.time ?? NaN, nowTime);
+        const intensity = clampUnit(options.intensity ?? 0.7);
         const peakGain = 0.08 + intensity * 0.22;
 
         try {

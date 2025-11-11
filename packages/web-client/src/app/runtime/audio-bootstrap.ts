@@ -3,6 +3,7 @@ import type { LoadoutVoiceId } from 'config/loadouts';
 import { mulberry32 } from 'util/random';
 import type { Logger } from 'util/log';
 import { ensureToneAudio as ensureToneAudioBase } from './audio';
+import { clampMidi } from 'util/audio';
 
 const FORESHADOW_SCALE_SALT = 0x4b1d9a85;
 const FORESHADOW_SCALE_LIBRARY: readonly (readonly number[])[] = [
@@ -242,17 +243,7 @@ export const createAudioBootstrap = (options: AudioBootstrapOptions): AudioBoots
     } satisfies AudioBootstrap;
 };
 
-export const clampMidiNote = (note: number, min = 36, max = 96): number => {
-    if (!Number.isFinite(note)) {
-        return min;
-    }
-    const clampedMin = Number.isFinite(min) ? min : 36;
-    const clampedMax = Number.isFinite(max) ? max : 96;
-    if (clampedMin >= clampedMax) {
-        return clampedMin;
-    }
-    return Math.max(clampedMin, Math.min(clampedMax, Math.round(note)));
-};
+export const clampMidiNote = clampMidi;
 
 export const deriveForeshadowScale = (seed: number): readonly number[] => {
     const normalizedSeed = (seed ^ FORESHADOW_SCALE_SALT) >>> 0;
@@ -261,7 +252,7 @@ export const deriveForeshadowScale = (seed: number): readonly number[] => {
     const baseScale = FORESHADOW_SCALE_LIBRARY[libraryIndex] ?? FORESHADOW_SCALE_LIBRARY[0];
     const octaveShift = Math.floor(rng() * 3) - 1;
     const shiftSemitones = octaveShift * 12;
-    return baseScale.map((note) => clampMidiNote(note + shiftSemitones));
+    return baseScale.map((note) => clampMidi(note + shiftSemitones));
 };
 
 export const __internalAudioBootstrapTesting = {

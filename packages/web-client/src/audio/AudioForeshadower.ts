@@ -1,5 +1,7 @@
 import { Gain, MembraneSynth, Part, PolySynth, Transport } from 'tone';
 import { mulberry32, type RandomSource } from 'util/random';
+import { clampUnit, safeFinite, clamp } from 'util/math';
+import { clampMidi, midiToFrequency } from 'util/audio';
 
 export type ForeshadowEventType = 'brickHit' | 'paddleBounce';
 
@@ -36,28 +38,6 @@ interface ScheduledForeshadow {
     disposeId: number | null;
     readonly endTime: number;
 }
-
-const clamp01 = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
-
-const clampMidi = (note: number, min = 36, max = 96): number => {
-    if (!Number.isFinite(note)) {
-        return min;
-    }
-    return Math.max(min, Math.min(max, Math.round(note)));
-};
-
-const midiToFrequency = (note: number): number => 440 * 2 ** ((note - 69) / 12);
 
 const DEFAULT_SCALE: readonly number[] = [64, 67, 69, 71, 72, 74, 76];
 
@@ -155,7 +135,7 @@ export class AudioForeshadower {
             if (this.disposed) {
                 return;
             }
-            const velocity = clamp01(payload.velocity);
+            const velocity = clampUnit(payload.velocity);
             const duration = Math.max(0.05, payload.duration);
             if (pattern.instrument === 'percussion' && instrument instanceof MembraneSynth) {
                 const note = clampMidi(payload.midi ?? 36);
@@ -244,7 +224,7 @@ export class AudioForeshadower {
         this.active.set(event.id, scheduled);
 
         const averageVelocity = pattern.events.length > 0
-            ? pattern.events.reduce((sum, entry) => sum + clamp01(entry.velocity), 0) / pattern.events.length
+            ? pattern.events.reduce((sum, entry) => sum + clampUnit(entry.velocity), 0) / pattern.events.length
             : 0;
         this.diagnostics?.onPatternScheduled?.({
             event,
@@ -371,7 +351,7 @@ export class AudioForeshadower {
     }
 
     private chooseEffect(event: PredictedEvent, rng: RandomSource): ForeshadowEffectId {
-        const intensity = clamp01(event.intensity ?? 0.45);
+        const intensity = clampUnit(event.intensity ?? 0.45);
         const bias = intensity > 0.6 ? 0.7 : intensity < 0.3 ? 0.35 : 0.5;
         return rng() < bias ? 'drum-roll' : 'scale-run';
     }
@@ -379,7 +359,7 @@ export class AudioForeshadower {
     private buildDrumRoll(event: PredictedEvent, leadInSeconds: number, rng: RandomSource): ForeshadowPattern {
         const duration = Math.min(Math.max(leadInSeconds, 0.45), Math.max(0.6, event.timeUntil - 0.1));
         const steps = Math.max(4, Math.round(duration * 7));
-        const velocityBase = 0.32 + clamp01(event.intensity ?? 0.4) * 0.4;
+        const velocityBase = 0.32 + clampUnit(event.intensity ?? 0.4) * 0.4;
         const events: ForeshadowPatternEvent[] = [];
         const stepDuration = duration / steps;
         for (let index = 0; index < steps; index += 1) {
@@ -434,7 +414,7 @@ export class AudioForeshadower {
             offset: duration,
             instrument: 'melodic',
             midi: target,
-            velocity: Math.min(1, 0.55 + clamp01(event.intensity ?? 0.4) * 0.5),
+            velocity: Math.min(1, 0.55 + clampUnit(event.intensity ?? 0.4) * 0.5),
             duration: 0.32,
         });
 

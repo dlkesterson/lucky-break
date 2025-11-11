@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Button, cn } from '@lucky-break/design-system';
 import type { NebulaSlotsSpinResult } from 'scenes/bias-phase';
 import { NEBULA_SLOT_SYMBOLS, type NebulaSlotSymbol } from 'app/runtime/casino-games';
+import { modulo } from 'util/math';
 
 const slotSymbols = [...NEBULA_SLOT_SYMBOLS];
 
@@ -44,14 +45,6 @@ const SYMBOL_INDEX_LOOKUP: Record<NebulaSlotSymbol, readonly number[]> = slotSym
   },
   {} as Record<NebulaSlotSymbol, readonly number[]>,
 );
-
-const modulo = (value: number, modulus: number): number => {
-  if (modulus === 0) {
-    return 0;
-  }
-  const remainder = value % modulus;
-  return remainder < 0 ? remainder + modulus : remainder;
-};
 
 const getReelSymbolAt = (position: number, offset = 0): NebulaSlotSymbol => {
   const index = modulo(position + offset, EXTENDED_REEL_LENGTH);

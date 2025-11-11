@@ -1,17 +1,5 @@
 import { Gain, Player, Transport, now as toneNow } from 'tone';
-
-const clamp01 = (value: number): number => {
-    if (!Number.isFinite(value)) {
-        return 0;
-    }
-    if (value <= 0) {
-        return 0;
-    }
-    if (value >= 1) {
-        return 1;
-    }
-    return value;
-};
+import { clampUnit, safeFinite } from 'util/math';
 
 const DEFAULT_CROSSFADE_SECONDS = 1.2;
 const LEVEL_EPSILON = 0.01;
@@ -222,14 +210,14 @@ const createToneMusicLayer: MusicLayerFactory = (definition, { now }) => {
     };
 
     const setImmediate = (level: number) => {
-        const clamped = clamp01(level);
+        const clamped = clampUnit(level);
         const current = now();
         gain.gain.cancelAndHoldAtTime(current);
         gain.gain.setValueAtTime(clamped, current);
     };
 
     const rampTo = (level: number, startTime: number, duration: number) => {
-        const clamped = clamp01(level);
+        const clamped = clampUnit(level);
         const start = Math.max(startTime, now());
         gain.gain.cancelAndHoldAtTime(start);
         const currentValue = gain.gain.getValueAtTime(start);
@@ -524,22 +512,22 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     };
 
     const computeMixTargets = (state: MusicState) => {
-        const speed = clamp01(Number.isFinite(state.tempoRatio ?? NaN) ? state.tempoRatio ?? 0 : 0);
-        const bricksRatio = clamp01(
+        const speed = clampUnit(Number.isFinite(state.tempoRatio ?? NaN) ? state.tempoRatio ?? 0 : 0);
+        const bricksRatio = clampUnit(
             Number.isFinite(state.bricksRemainingRatio ?? NaN) ? state.bricksRemainingRatio ?? 1 : 1,
         );
         const comboBoost = computeComboBoost(state.combo, comboBoostRate, comboBoostCap);
-        const calmMix = clamp01(1 - speed * 0.65);
-        const intenseMix = clamp01(speed * 0.75 + (1 - bricksRatio) * 0.25 + comboBoost * 0.5);
-        const melodyMix = clamp01(comboBoost * 0.6 + (1 - bricksRatio) * 0.2);
+        const calmMix = clampUnit(1 - speed * 0.65);
+        const intenseMix = clampUnit(speed * 0.75 + (1 - bricksRatio) * 0.25 + comboBoost * 0.5);
+        const melodyMix = clampUnit(comboBoost * 0.6 + (1 - bricksRatio) * 0.2);
 
         const levels: Record<MusicLayerId, number> = {
-            calm: clamp01(definitions.calm.baseLevel * calmMix),
-            intense: clamp01(definitions.intense.baseLevel * intenseMix),
-            melody: clamp01(definitions.melody.baseLevel * melodyMix),
+            calm: clampUnit(definitions.calm.baseLevel * calmMix),
+            intense: clampUnit(definitions.intense.baseLevel * intenseMix),
+            melody: clampUnit(definitions.melody.baseLevel * melodyMix),
         };
 
-        const warbleIntensity = clamp01(
+        const warbleIntensity = clampUnit(
             Number.isFinite(state.warbleIntensity ?? NaN)
                 ? state.warbleIntensity ?? 0
                 : 0,
@@ -552,7 +540,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         };
 
         const comboNormalized = comboBoostCap > 0 ? comboBoost / comboBoostCap : 0;
-        const tempoBlend = clamp01(speed + comboNormalized * 0.1);
+        const tempoBlend = clampUnit(speed + comboNormalized * 0.1);
         const tempoTarget = baseTempoBpm + (maxTempoBpm - baseTempoBpm) * tempoBlend;
 
         return { levels, playback, tempoTarget };
@@ -561,7 +549,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
     const updateDesiredLevels = (levels: Record<MusicLayerId, number>): boolean => {
         let changed = false;
         for (const id of layerOrder) {
-            const target = clamp01(levels[id] ?? 0);
+            const target = clampUnit(levels[id] ?? 0);
             if (Math.abs(desiredLevels[id] - target) > LEVEL_EPSILON) {
                 desiredLevels[id] = target;
                 changed = true;
@@ -688,13 +676,13 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         const normalizedState: MusicState = {
             lives: normalizedLives,
             combo: normalizedCombo,
-            tempoRatio: Number.isFinite(state.tempoRatio ?? NaN) ? clamp01(state.tempoRatio ?? 0) : 0,
+            tempoRatio: Number.isFinite(state.tempoRatio ?? NaN) ? clampUnit(state.tempoRatio ?? 0) : 0,
             paused: state.paused,
             warbleIntensity: Number.isFinite(state.warbleIntensity ?? NaN)
-                ? clamp01(state.warbleIntensity ?? 0)
+                ? clampUnit(state.warbleIntensity ?? 0)
                 : state.warbleIntensity,
             bricksRemainingRatio: Number.isFinite(state.bricksRemainingRatio ?? NaN)
-                ? clamp01(state.bricksRemainingRatio ?? 1)
+                ? clampUnit(state.bricksRemainingRatio ?? 1)
                 : state.bricksRemainingRatio,
         };
 
@@ -761,7 +749,7 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
         const attackSeconds = Math.max(0.02, options.attackSeconds ?? 0.12);
         const holdSeconds = Math.max(0.05, options.holdSeconds ?? 0.8);
         const releaseSeconds = Math.max(0.05, options.releaseSeconds ?? 0.6);
-        const depth = clamp01(options.depth ?? 0.45);
+        const depth = clampUnit(options.depth ?? 0.45);
         const factor = Math.max(0.2, 1 - depth);
         const targetList = options.targets && options.targets.length > 0
             ? options.targets
@@ -793,22 +781,22 @@ export const createMusicDirector = (options: MusicDirectorOptions = {}): MusicDi
             return;
         }
 
-        const urgency = clamp01(options.urgency ?? 0);
+        const urgency = clampUnit(options.urgency ?? 0);
         const attackSeconds = Math.max(0.02, 0.1 - urgency * 0.03);
         const holdSeconds = 0.08 + urgency * 0.2;
         const releaseSeconds = 0.35 + urgency * 0.45;
 
-        const intenseBoost = clamp01(definitions.intense.baseLevel * (0.85 + urgency * 0.4));
+        const intenseBoost = clampUnit(definitions.intense.baseLevel * (0.85 + urgency * 0.4));
         if (intenseBoost > desiredLevels.intense) {
             desiredLevels.intense = intenseBoost;
         }
 
-        const melodyBoost = clamp01(definitions.melody.baseLevel * (0.65 + urgency * 0.3));
+        const melodyBoost = clampUnit(definitions.melody.baseLevel * (0.65 + urgency * 0.3));
         if (melodyBoost > desiredLevels.melody) {
             desiredLevels.melody = melodyBoost;
         }
 
-        const depth = clamp01(0.28 + urgency * 0.5);
+        const depth = clampUnit(0.28 + urgency * 0.5);
         triggerComboAccent({
             depth,
             attackSeconds,

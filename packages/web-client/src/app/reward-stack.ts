@@ -1,4 +1,5 @@
 import type { MultiBallReward, SlowTimeReward } from 'game/rewards';
+import { clamp, safeFinite } from 'util/math';
 
 interface MultiBallRewardContext {
     readonly reward: MultiBallReward;
@@ -39,12 +40,7 @@ const clampExtras = (count: number): number => {
     return Math.floor(count);
 };
 
-const clampSlowTimeScale = (scale: number): number => {
-    if (!Number.isFinite(scale)) {
-        return 1;
-    }
-    return Math.min(1, Math.max(0.1, scale));
-};
+const clampSlowTimeScale = (scale: number): number => clamp(safeFinite(scale, 1), 0.1, 1);
 
 export const resolveMultiBallReward = ({
     reward,
@@ -53,7 +49,7 @@ export const resolveMultiBallReward = ({
     maxDuration,
 }: MultiBallRewardContext): MultiBallRewardResolution => {
     const safeCapacity = Math.max(0, Math.floor(capacity));
-    const safeCurrentExtras = Math.min(Math.max(0, Math.floor(currentExtraCount)), safeCapacity);
+    const safeCurrentExtras = clamp(Math.floor(safeFinite(currentExtraCount, 0)), 0, safeCapacity);
     const rewardExtras = clampExtras(reward.extraBalls);
     const desiredExtras = Math.min(safeCapacity, rewardExtras);
     const extrasToSpawn = Math.max(0, desiredExtras - safeCurrentExtras);
