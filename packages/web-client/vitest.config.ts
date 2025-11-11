@@ -36,7 +36,7 @@ export default defineConfig({
     },
     test: {
         environment: 'jsdom',
-        include: ['tests/unit/**/*.spec.ts'],
+        include: ['tests/unit/**/*.spec.ts', 'tests/integration/**/*.spec.ts'],
         setupFiles: ['tests/setup/vitest.setup.ts'],
         clearMocks: true,
         coverage: {

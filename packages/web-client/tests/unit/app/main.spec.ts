@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 
-// Mock dependencies before importing the module under test
 vi.mock('audio/soundbank', () => ({
     loadSoundbank: vi.fn(async () => ({})),
     prefetchSoundbankAssets: vi.fn(async (_sb: unknown, callback: (p: { loaded: number }) => void) => {
@@ -46,7 +45,6 @@ describe('main.ts bootstrap', () => {
     let container: HTMLElement;
 
     beforeEach(() => {
-        // Create a minimal DOM environment
         dom = new JSDOM(`<!DOCTYPE html><html><body><div id="app"></div></body></html>`, {
             url: 'http://localhost/',
         });
@@ -59,13 +57,11 @@ describe('main.ts bootstrap', () => {
         container.id = 'test-container';
         document.body.appendChild(container);
 
-        // Mock fetch for asset loading
         global.fetch = vi.fn(async () => ({
             ok: true,
             status: 200,
         })) as unknown as typeof fetch;
 
-        // Clear all mocks
         vi.clearAllMocks();
     });
 
@@ -75,7 +71,6 @@ describe('main.ts bootstrap', () => {
 
     describe('parsePrimaryFontFamily', () => {
         it('extracts the first font from a CSS font-family value', async () => {
-            // Import module to test helper indirectly
             const { bootstrapLuckyBreak } = await import('app/main');
             const handle = bootstrapLuckyBreak({ container });
 
@@ -133,7 +128,6 @@ describe('main.ts bootstrap', () => {
             const { bootstrapLuckyBreak } = await import('../../../src/app/main');
             bootstrapLuckyBreak({ container });
 
-            // Container height should be set
             expect(container.style.height).toBeTruthy();
         });
 
@@ -171,7 +165,6 @@ describe('main.ts bootstrap', () => {
             const { bootstrapLuckyBreak } = await import('../../../src/app/main');
             bootstrapLuckyBreak({ container });
 
-            // Should not crash and should have some height set
             expect(container).toBeDefined();
         });
 
@@ -298,7 +291,6 @@ describe('main.ts bootstrap', () => {
         });
 
         it('falls back to landscape dimensions when window is undefined', async () => {
-            // This test simulates SSR environment
             const originalWindow = global.window;
             // @ts-expect-error Testing undefined window
             global.window = undefined;
@@ -372,7 +364,6 @@ describe('main.ts bootstrap', () => {
             const { bootstrapLuckyBreak } = await import('../../../src/app/main');
             bootstrapLuckyBreak({ container });
 
-            // Wait for async operations
             await new Promise((resolve) => setTimeout(resolve, 100));
 
             expect(preloadFonts).toHaveBeenCalled();
@@ -413,14 +404,7 @@ describe('main.ts bootstrap', () => {
     });
 
     describe('resolveSeedFromQuery', () => {
-        it.skip('parses seed from URL query parameter', async () => {
-            // Skipped: window.location cannot be redefined in JSDOM
-            // The functionality is tested in E2E tests
-        });
-
         it('handles query parameter extraction logic', async () => {
-            // Test that bootstrapLuckyBreak can initialize without crashing
-            // when location.search exists (JSDOM provides this by default)
             const { bootstrapLuckyBreak } = await import('../../../src/app/main');
             const handle = bootstrapLuckyBreak({ container });
 

@@ -421,51 +421,6 @@ describe('scene interaction lifecycles', () => {
         });
     });
 
-    // TODO: Re-enable when level-complete scene is re-implemented
-    it.skip('toggles level-complete interaction when suspended and resumed', () => {
-        // const { context, getLastAdded, services } = createSceneHarness();
-        // const scene = createLevelCompleteScene(context, {});
-
-        // void scene.init({
-        //     level: 1,
-        //     score: 1000,
-        //     onContinue: vi.fn(),
-        //     recap: {
-        //         roundScore: 500,
-        //         totalScore: 1000,
-        //         bricksBroken: 30,
-        //         brickTotal: 30,
-        //         bestCombo: 12,
-        //         volleyLength: 18,
-        //         speedPressure: 0.6,
-        //         coinsCollected: 12,
-        //         durationMs: 90000,
-        //     },
-        // });
-
-        // const container = getLastAdded();
-        // expect(container).not.toBeNull();
-        // expect(container?.eventMode).toBe('static');
-        // expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
-        //     scene: 'level-complete',
-        //     action: 'enter',
-        // });
-
-        // void scene.suspend?.();
-        // expect(container?.eventMode).toBe('none');
-        // expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
-        //     scene: 'level-complete',
-        //     action: 'suspend',
-        // });
-
-        // void scene.resume?.();
-        // expect(container?.eventMode).toBe('static');
-        // expect(services.bus.publish).toHaveBeenCalledWith('UiSceneTransition', {
-        //     scene: 'gameplay',
-        //     action: 'resume',
-        // });
-    });
-
     it('toggles game-over interaction when suspended and resumed', () => {
         const { context, getLastAdded, services } = createSceneHarness();
         const scene = createGameOverScene(context, {

@@ -40,21 +40,16 @@ describe('Launch Trigger Detection', () => {
 
     describe('Movement-Based Launch Trigger', () => {
         it('should detect launch when paddle moves beyond threshold', () => {
-            // This test would require mocking the internal launch manager
-            // For now, test that the input manager has the expected interface
             expect(typeof inputManager.getPaddleTarget).toBe('function');
             expect(typeof inputManager.shouldLaunch).toBe('function');
             expect(typeof inputManager.resetLaunchTrigger).toBe('function');
         });
 
         it('should not trigger launch for small movements', () => {
-            // Movement detection is internal - test that no launch is triggered initially
             expect(inputManager.shouldLaunch()).toBe(false);
         });
 
         it('should reset launch trigger after processing', () => {
-            // Simulate launch trigger (this would be internal)
-            // For testing, just verify the reset functionality
             inputManager.resetLaunchTrigger();
             expect(inputManager.shouldLaunch()).toBe(false);
         });
@@ -70,7 +65,6 @@ describe('Launch Trigger Detection', () => {
 
             mockContainer.dispatchEvent(tapEvent);
 
-            // Should trigger launch
             expect(inputManager.shouldLaunch()).toBe(true);
             const intent = inputManager.consumeLaunchIntent();
             expect(intent?.trigger.type).toBe('tap');
@@ -103,17 +97,14 @@ describe('Launch Trigger Detection', () => {
         });
 
         it('should handle multiple rapid taps', () => {
-            // First tap
             const tap1 = new MouseEvent('mousedown', { clientX: 400, clientY: 350 });
             mockContainer.dispatchEvent(tap1);
             expect(inputManager.shouldLaunch()).toBe(true);
             inputManager.consumeLaunchIntent();
 
-            // Reset
             inputManager.resetLaunchTrigger();
             expect(inputManager.shouldLaunch()).toBe(false);
 
-            // Second tap
             const tap2 = new MouseEvent('mousedown', { clientX: 450, clientY: 350 });
             mockContainer.dispatchEvent(tap2);
             expect(inputManager.shouldLaunch()).toBe(true);
@@ -184,27 +175,20 @@ describe('Launch Trigger Detection', () => {
 
     describe('Launch State Management', () => {
         it('should maintain launch pending state', () => {
-            // Initially no launch pending
             expect(inputManager.shouldLaunch()).toBe(false);
 
-            // Set initial position
             inputManager.checkMovementLaunch({ x: 400, y: 350 });
 
-            // Move paddle significantly to trigger launch
-            inputManager.checkMovementLaunch({ x: 400, y: 250 }); // Move up 100 units
+            inputManager.checkMovementLaunch({ x: 400, y: 250 });
 
-            // Should be pending
             expect(inputManager.shouldLaunch()).toBe(true);
         });
 
         it('should clear launch state after reset', () => {
-            // Set launch pending
             expect(inputManager.shouldLaunch()).toBe(false);
 
-            // Reset
             inputManager.resetLaunchTrigger();
 
-            // Should be cleared
             expect(inputManager.shouldLaunch()).toBe(false);
         });
 

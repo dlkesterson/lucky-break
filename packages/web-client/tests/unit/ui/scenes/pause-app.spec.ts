@@ -243,7 +243,6 @@ describe('PauseApp', () => {
             fireEvent.click(resumeButton);
         });
 
-        // After clicking, button should be disabled (pending state)
         await vi.waitFor(() => {
             expect(resumeButton.hasAttribute('disabled')).toBe(true);
         });
@@ -268,7 +267,6 @@ describe('PauseApp', () => {
             fireEvent.click(quitButton);
         });
 
-        // After clicking, button should be disabled (pending state)
         await vi.waitFor(() => {
             expect(quitButton.hasAttribute('disabled')).toBe(true);
         });
@@ -337,14 +335,11 @@ describe('PauseApp', () => {
         const screen = within(container);
         const resumeButton = screen.getByRole('button', { name: /resume/i });
 
-        // Click multiple times rapidly
         fireEvent.click(resumeButton);
         fireEvent.click(resumeButton);
         fireEvent.click(resumeButton);
 
-        // Wait for any pending promises
         await vi.waitFor(() => {
-            // After rapid clicks, function should still have been called
             expect(mockOnResume.mock.calls.length).toBeGreaterThan(0);
         });
     });
@@ -364,14 +359,11 @@ describe('PauseApp', () => {
         const screen = within(container);
         const quitButton = screen.getByRole('button', { name: /quit/i });
 
-        // Click multiple times rapidly
         fireEvent.click(quitButton);
         fireEvent.click(quitButton);
         fireEvent.click(quitButton);
 
-        // Wait for any pending promises
         await vi.waitFor(() => {
-            // After rapid clicks, function should still have been called
             expect(mockOnQuit.mock.calls.length).toBeGreaterThan(0);
         });
     });
@@ -516,7 +508,6 @@ describe('PauseApp', () => {
             fireEvent.click(resumeButton);
         });
 
-        // Change visibility
         pauseState = {
             visible: false,
             suspended: false,
@@ -525,7 +516,6 @@ describe('PauseApp', () => {
 
         await renderPauseApp();
 
-        // Change back to visible
         pauseState = {
             visible: true,
             suspended: false,
@@ -573,7 +563,6 @@ describe('PauseApp', () => {
         await renderPauseApp();
 
         expect(container.innerHTML).not.toBe('');
-        // Should display 0% for invalid volume
     });
 
     it('clamps volume values to 0-100 range', async () => {
@@ -624,7 +613,6 @@ describe('PauseApp', () => {
             fireEvent.input(volumeSlider, { target: { value: '75' } });
         });
 
-        // Should not throw error
         expect(container.innerHTML).not.toBe('');
     });
 
@@ -657,7 +645,6 @@ describe('PauseApp', () => {
             fireEvent.click(actionButton);
         });
 
-        // Should not throw error
         expect(container.innerHTML).not.toBe('');
     });
 

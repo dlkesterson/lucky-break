@@ -43,14 +43,12 @@ describe('Paddle Ball Flow Integration', () => {
 
         inputManager.initialize(mockContainer);
 
-        // Create paddle
         paddle = paddleController.createPaddle(
             { x: 400, y: 350 },
             { width: 100, height: 20, speed: 300 }
         );
         physicsWorld.add(paddle.physicsBody);
 
-        // Create ball attached to paddle
         ball = ballController.createAttachedBall(
             paddleController.getPaddleCenter(paddle),
             { radius: 10, restitution: 0.98 }
@@ -84,14 +82,12 @@ describe('Paddle Ball Flow Integration', () => {
 
     describe('Paddle Movement', () => {
         it('should move paddle with mouse input', () => {
-            // Move mouse
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 500,
                 clientY: 350,
                 bubbles: true,
             }));
 
-            // Update paddle
             const paddleTarget = inputManager.getPaddleTarget();
             if (paddleTarget) {
                 paddleController.updatePaddle(paddle, 1 / 60, {
@@ -103,7 +99,6 @@ describe('Paddle Ball Flow Integration', () => {
                 }, PLAYFIELD_WIDTH);
             }
 
-            // Ball should follow paddle
             ballController.updateAttachment(ball, paddleController.getPaddleCenter(paddle));
 
             const paddleCenter = paddleController.getPaddleCenter(paddle);
@@ -112,9 +107,8 @@ describe('Paddle Ball Flow Integration', () => {
         });
 
         it('should constrain paddle within boundaries', () => {
-            // Try to move paddle out of bounds
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
-                clientX: 10, // Out of bounds
+                clientX: 10,
                 clientY: 350,
                 bubbles: true,
             }));
@@ -131,38 +125,34 @@ describe('Paddle Ball Flow Integration', () => {
             }
 
             const paddleCenter = paddleController.getPaddleCenter(paddle);
-            expect(paddleCenter.x).toBe(50); // Constrained to half width
+            expect(paddleCenter.x).toBe(50);
         });
     });
 
     describe('Ball Launch Triggers', () => {
         it('should launch ball on mouse click', () => {
-            // Click to launch
             mockContainer.dispatchEvent(new MouseEvent('mousedown', {
                 clientX: 400,
                 clientY: 350,
                 bubbles: true,
             }));
 
-            // Process launch
             if (inputManager.shouldLaunch()) {
                 launchController.launch(ball);
                 inputManager.resetLaunchTrigger();
             }
 
             expect(ballController.isAttached(ball)).toBe(false);
-            expect(ball.physicsBody.velocity.y).toBeLessThan(0); // Moving upward
+            expect(ball.physicsBody.velocity.y).toBeLessThan(0);
         });
 
         it('should launch ball on paddle movement', () => {
-            // Move paddle significantly
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 400,
                 clientY: 350,
                 bubbles: true,
             }));
 
-            // Simulate paddle movement detection (this would happen in the game loop)
             const hasMovement = (inputManager as any).launchManager.shouldTriggerLaunch(
                 { x: 410, y: 350 },
                 { x: 400, y: 350 },
@@ -180,15 +170,12 @@ describe('Paddle Ball Flow Integration', () => {
 
     describe('Post-Launch Behavior', () => {
         it('should allow ball to move freely after launch', () => {
-            // Launch ball
             launchController.launch(ball);
 
-            // Step physics
             physicsWorld.step(1 / 60);
 
             const initialPosition = { ...ball.physicsBody.position };
 
-            // Step more physics
             for (let i = 0; i < 10; i++) {
                 physicsWorld.step(1 / 60);
             }
@@ -205,8 +192,7 @@ describe('Paddle Ball Flow Integration', () => {
 
             launchController.launch(ball);
 
-            // Step physics multiple times
-            for (let i = 0; i < 60; i++) { // 1 second
+            for (let i = 0; i < 60; i++) {
                 physicsWorld.step(1 / 60);
             }
 
@@ -216,7 +202,7 @@ describe('Paddle Ball Flow Integration', () => {
                 Math.sqrt(initialVelocity.x ** 2 + initialVelocity.y ** 2)
             );
 
-            expect(speedChange).toBeLessThan(50); // Should maintain most velocity
+            expect(speedChange).toBeLessThan(50);
         });
     });
 
@@ -236,14 +222,12 @@ describe('Paddle Ball Flow Integration', () => {
         it('should handle multiple launch cycles', () => {
             const paddleCenter = paddleController.getPaddleCenter(paddle);
 
-            // Cycle 1
             launchController.launch(ball);
             expect(ballController.isAttached(ball)).toBe(false);
 
             ballController.resetToAttached(ball, paddleCenter);
             expect(ballController.isAttached(ball)).toBe(true);
 
-            // Cycle 2
             launchController.launch(ball, { x: 0, y: -1 });
             expect(ballController.isAttached(ball)).toBe(false);
 
@@ -286,10 +270,8 @@ describe('Paddle Ball Flow Integration', () => {
 
     describe('Integration Flow', () => {
         it('should complete full paddle-ball interaction cycle', () => {
-            // 1. Initial state
             expect(ballController.isAttached(ball)).toBe(true);
 
-            // 2. Move paddle
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 450,
                 clientY: 350,
@@ -312,7 +294,6 @@ describe('Paddle Ball Flow Integration', () => {
             expect(paddleController.getPaddleCenter(paddle).x).toBe(450);
             expect(ballController.isAttached(ball)).toBe(true);
 
-            // 3. Launch ball
             mockContainer.dispatchEvent(new MouseEvent('mousedown', {
                 clientX: 450,
                 clientY: 350,
@@ -327,7 +308,6 @@ describe('Paddle Ball Flow Integration', () => {
             expect(ballController.isAttached(ball)).toBe(false);
             expect(ball.physicsBody.velocity.y).toBeLessThan(0);
 
-            // 4. Ball moves freely
             physicsWorld.step(1 / 60);
             const postLaunchPosition = { ...ball.physicsBody.position };
 

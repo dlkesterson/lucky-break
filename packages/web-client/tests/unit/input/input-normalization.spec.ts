@@ -51,7 +51,6 @@ describe('Input Normalization', () => {
         });
 
         it('should update paddle target on mouse move', () => {
-            // First position
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 200,
                 clientY: 300,
@@ -59,7 +58,6 @@ describe('Input Normalization', () => {
             }));
             expect(inputManager.getPaddleTarget()).toEqual({ x: 200, y: 300 });
 
-            // Second position
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 600,
                 clientY: 400,
@@ -168,7 +166,6 @@ describe('Input Normalization', () => {
 
             expect(inputManager.getPaddleTarget()).toEqual({ x: 120, y: 140 });
 
-            // Synthetic mouse events emitted by touch interactions should be ignored while touch is active
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 360,
                 clientY: 180,
@@ -267,10 +264,8 @@ describe('Input Normalization', () => {
 
             currentGamepads = [createGamepad([0.75, 0, 0, 0])];
 
-            // First poll establishes baseline and sets hasReceivedInput
             inputManager.getPaddleTarget();
 
-            // Second poll applies movement with elapsed time
             const target = inputManager.getPaddleTarget();
             expect(target).not.toBeNull();
             if (!target) {
@@ -290,7 +285,6 @@ describe('Input Normalization', () => {
 
             currentGamepads = [createGamepad([0, 0, 0, 0])];
 
-            // Initial poll
             inputManager.getPaddleTarget();
 
             currentGamepads = [createGamepad([0, 0, 0, 0], [0])];
@@ -306,14 +300,12 @@ describe('Input Normalization', () => {
 
     describe('Keyboard Input', () => {
         it('should track keyboard state for arrow keys', () => {
-            // Press left arrow
             document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowLeft' }));
 
             let debugState = inputManager.getDebugState();
             expect(debugState.keyboardPressed).toContain('ArrowLeft');
             expect(debugState.primaryInput).toBe('keyboard');
 
-            // Press right arrow
             document.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowRight' }));
 
             debugState = inputManager.getDebugState();
@@ -321,7 +313,6 @@ describe('Input Normalization', () => {
             expect(debugState.keyboardPressed).toContain('ArrowRight');
             expect(debugState.primaryInput).toBe('keyboard');
 
-            // Release left arrow
             document.dispatchEvent(new KeyboardEvent('keyup', { code: 'ArrowLeft' }));
 
             debugState = inputManager.getDebugState();
@@ -331,7 +322,6 @@ describe('Input Normalization', () => {
         });
 
         it('should track keyboard state for WASD keys', () => {
-            // Press 'A' key
             document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
 
             const debugState = inputManager.getDebugState();
@@ -350,13 +340,11 @@ describe('Input Normalization', () => {
 
     describe('Input Priority', () => {
         it('should prioritize mouse over touch', () => {
-            // Touch first
             mockContainer.dispatchEvent(new TouchEvent('touchmove', {
                 touches: [new Touch({ identifier: 1, target: mockContainer, clientX: 300, clientY: 320 })],
                 bubbles: true,
             }));
 
-            // Mouse second
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 500,
                 clientY: 400,
@@ -364,7 +352,7 @@ describe('Input Normalization', () => {
             }));
 
             const target = inputManager.getPaddleTarget();
-            expect(target).toEqual({ x: 500, y: 400 }); // Mouse takes priority
+            expect(target).toEqual({ x: 500, y: 400 });
 
             const debugState = inputManager.getDebugState();
             expect(debugState.primaryInput).toBe('mouse');
@@ -378,7 +366,6 @@ describe('Input Normalization', () => {
 
     describe('Input State Debug', () => {
         it('should provide comprehensive debug information', () => {
-            // Simulate various inputs
             mockContainer.dispatchEvent(new MouseEvent('mousemove', {
                 clientX: 400,
                 clientY: 350,

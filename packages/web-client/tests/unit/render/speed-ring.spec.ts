@@ -138,8 +138,6 @@ describe('createSpeedRing', () => {
         expect(container.position.y).toBe(40);
         expect(container.visible).toBe(true);
 
-        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
-        // When chromatic is not enabled, haloSimple (index 3) and ring (index 4) are used
         const haloSimple = container.children[3];
         const ring = container.children[4];
         const haloCircle = extractCommands(haloSimple).find((command) => command.type === 'circle');
@@ -161,8 +159,6 @@ describe('createSpeedRing', () => {
 
         ringHandle.setPalette({ ringColor: 0x222222, haloColor: 0xabcdef });
 
-        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
-        // When chromatic is not enabled, haloSimple (index 3) and ring (index 4) are used
         const haloSimple = (ringHandle.container as { children: unknown[] }).children[3];
         const ring = (ringHandle.container as { children: unknown[] }).children[4];
         const haloFill = extractCommands(haloSimple).find((command) => command.type === 'fill');
@@ -175,7 +171,6 @@ describe('createSpeedRing', () => {
     it('destroys Pixi resources and ignores further updates once disposed', () => {
         const ringHandle = createSpeedRing();
         const container = ringHandle.container as unknown as { destroyed: boolean; children: unknown[] };
-        // Speed ring creates 5 children: haloRed, haloGreen, haloBlue, haloSimple, ring
         const [haloRed, haloGreen, haloBlue, haloSimple, ring] = container.children as { destroyed?: boolean }[];
 
         ringHandle.destroy();

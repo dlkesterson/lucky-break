@@ -101,6 +101,28 @@ export interface HeadlessSimulationOptions {
     readonly telemetry?: boolean;
 }
 
+export interface PhysicsBodySnapshot {
+    readonly id: number;
+    readonly label: string;
+    readonly position: { readonly x: number; readonly y: number };
+    readonly velocity: { readonly x: number; readonly y: number };
+    readonly isStatic: boolean;
+    readonly isSensor: boolean;
+}
+
+export interface PhysicsWorldSnapshot {
+    readonly bodies: readonly PhysicsBodySnapshot[];
+    readonly walls: {
+        readonly top: PhysicsBodySnapshot | null;
+        readonly right: PhysicsBodySnapshot | null;
+        readonly bottom: PhysicsBodySnapshot | null;
+        readonly left: PhysicsBodySnapshot | null;
+    };
+    readonly bricks: readonly PhysicsBodySnapshot[];
+    readonly ball: PhysicsBodySnapshot | null;
+    readonly paddle: PhysicsBodySnapshot | null;
+}
+
 export interface HeadlessSimulationResult {
     readonly sessionId: string;
     readonly seed: number;
@@ -127,6 +149,7 @@ export interface HeadlessSimulationResult {
     readonly score: number;
     readonly snapshot: ReturnType<GameSessionManager['snapshot']>;
     readonly hazards: readonly HazardDescriptor[];
+    readonly physics: PhysicsWorldSnapshot;
 }
 
 const collectEvents = (bus: LuckyBreakEventBus, enabled: boolean): (() => EventEnvelope<LuckyBreakEventName>[]) => {
@@ -821,6 +844,63 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
     const snapshot = session.snapshot();
     const events = stopCollecting();
 
+    // Capture physics world snapshot
+    const allBodies = physics.world.bodies;
+    const bodySnapshots: PhysicsBodySnapshot[] = allBodies.map((body) => ({
+        id: body.id,
+        label: body.label,
+        position: { x: body.position.x, y: body.position.y },
+        velocity: { x: body.velocity.x, y: body.velocity.y },
+        isStatic: body.isStatic,
+        isSensor: body.isSensor,
+    }));
+
+    const wallTop = allBodies.find((b) => b.label === 'wall-top');
+    const wallRight = allBodies.find((b) => b.label === 'wall-right');
+    const wallBottom = allBodies.find((b) => b.label === 'wall-bottom');
+    const wallLeft = allBodies.find((b) => b.label === 'wall-left');
+
+    const physicsSnapshot: PhysicsWorldSnapshot = {
+        bodies: bodySnapshots,
+        walls: {
+            top: wallTop ? {
+                id: wallTop.id,
+                label: wallTop.label,
+                position: { x: wallTop.position.x, y: wallTop.position.y },
+                velocity: { x: wallTop.velocity.x, y: wallTop.velocity.y },
+                isStatic: wallTop.isStatic,
+                isSensor: wallTop.isSensor,
+            } : null,
+            right: wallRight ? {
+                id: wallRight.id,
+                label: wallRight.label,
+                position: { x: wallRight.position.x, y: wallRight.position.y },
+                velocity: { x: wallRight.velocity.x, y: wallRight.velocity.y },
+                isStatic: wallRight.isStatic,
+                isSensor: wallRight.isSensor,
+            } : null,
+            bottom: wallBottom ? {
+                id: wallBottom.id,
+                label: wallBottom.label,
+                position: { x: wallBottom.position.x, y: wallBottom.position.y },
+                velocity: { x: wallBottom.velocity.x, y: wallBottom.velocity.y },
+                isStatic: wallBottom.isStatic,
+                isSensor: wallBottom.isSensor,
+            } : null,
+            left: wallLeft ? {
+                id: wallLeft.id,
+                label: wallLeft.label,
+                position: { x: wallLeft.position.x, y: wallLeft.position.y },
+                velocity: { x: wallLeft.velocity.x, y: wallLeft.velocity.y },
+                isStatic: wallLeft.isStatic,
+                isSensor: wallLeft.isSensor,
+            } : null,
+        },
+        bricks: bodySnapshots.filter((b) => b.label === 'brick'),
+        ball: bodySnapshots.find((b) => b.label === 'ball') ?? null,
+        paddle: bodySnapshots.find((b) => b.label === 'paddle') ?? null,
+    };
+
     return {
         sessionId: snapshot.sessionId,
         seed: options.seed,
@@ -851,5 +931,6 @@ export const runHeadlessEngine = (options: HeadlessSimulationOptions): HeadlessS
         score: snapshot.score,
         snapshot,
         hazards: hazardSummaries,
+        physics: physicsSnapshot,
     };
 };

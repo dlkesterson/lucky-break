@@ -24,7 +24,6 @@ describe('Ball Attachment Mechanics', () => {
             radius: 8,
         };
 
-        // Add mock ball to world
         world.add(mockBall.physicsBody);
     });
 
@@ -33,7 +32,6 @@ describe('Ball Attachment Mechanics', () => {
             const paddlePosition: Vector2 = { x: 400, y: 350 };
             const options: BallOptions = { radius: 8 };
 
-            // Create attached ball
             const ball = world.factory.ball({
                 position: { x: paddlePosition.x, y: paddlePosition.y - 10 },
                 radius: options.radius ?? 8,
@@ -48,10 +46,8 @@ describe('Ball Attachment Mechanics', () => {
         it('should track attachment state correctly', () => {
             const paddlePosition: Vector2 = { x: 400, y: 350 };
 
-            // Initially not attached
             expect(world.isBallAttached(mockBall.physicsBody)).toBe(false);
 
-            // Attach ball
             world.attachBallToPaddle(mockBall.physicsBody, world.factory.paddle({
                 position: paddlePosition,
                 size: { width: 100, height: 20 },
@@ -59,7 +55,6 @@ describe('Ball Attachment Mechanics', () => {
 
             expect(world.isBallAttached(mockBall.physicsBody)).toBe(true);
 
-            // Detach ball
             world.detachBallFromPaddle(mockBall.physicsBody);
             expect(world.isBallAttached(mockBall.physicsBody)).toBe(false);
         });
@@ -75,7 +70,6 @@ describe('Ball Attachment Mechanics', () => {
 
             world.attachBallToPaddle(mockBall.physicsBody, paddle, offset);
 
-            // Update attachment (simulate paddle movement)
             const newPaddlePosition: Vector2 = { x: 420, y: 350 };
             world.updateBallAttachment(mockBall.physicsBody, newPaddlePosition);
 
@@ -92,41 +86,33 @@ describe('Ball Attachment Mechanics', () => {
 
             world.attachBallToPaddle(mockBall.physicsBody, paddle);
 
-            // Apply force to ball (should be ignored when attached)
             mockBall.physicsBody.force.x = 10;
             mockBall.physicsBody.force.y = 5;
 
-            // Step physics
             world.step(1000 / 60);
 
-            // Ball should still be at attachment position
             const attachment = world.getBallAttachment(mockBall.physicsBody);
             expect(attachment).toBeDefined();
             expect(attachment!.isAttached).toBe(true);
 
-            // Position should be synced to paddle
             expect(mockBall.physicsBody.position.x).toBeCloseTo(paddlePosition.x + attachment!.attachmentOffset.x, 0);
             expect(mockBall.physicsBody.position.y).toBeCloseTo(paddlePosition.y + attachment!.attachmentOffset.y, 0);
         });
 
         it('should allow ball movement when detached', () => {
-            // Create a fresh ball for this test
             const testBall = world.factory.ball({ radius: 8, position: { x: 400, y: 300 } });
             world.add(testBall);
 
             const initialPosition = { ...testBall.position };
 
-            // Apply velocity
             testBall.velocity.x = 50;
             testBall.velocity.y = -30;
 
-            // Step physics
             world.step(1000 / 60);
 
-            // Ball should have moved
             const deltaX = Math.abs(testBall.position.x - initialPosition.x);
             const deltaY = Math.abs(testBall.position.y - initialPosition.y);
-            expect(deltaX + deltaY).toBeGreaterThan(0.1); // Should have moved at least a tiny bit
+            expect(deltaX + deltaY).toBeGreaterThan(0.1);
         });
 
         it('should handle attachment to moving paddle', () => {
@@ -138,11 +124,9 @@ describe('Ball Attachment Mechanics', () => {
 
             world.attachBallToPaddle(mockBall.physicsBody, paddle);
 
-            // Move paddle
             const newPaddlePosition: Vector2 = { x: 450, y: 360 };
             world.updateBallAttachment(mockBall.physicsBody, newPaddlePosition);
 
-            // Ball should follow paddle
             const attachment = world.getBallAttachment(mockBall.physicsBody);
             expect(mockBall.physicsBody.position.x).toBeCloseTo(newPaddlePosition.x + attachment!.attachmentOffset.x, 0);
             expect(mockBall.physicsBody.position.y).toBeCloseTo(newPaddlePosition.y + attachment!.attachmentOffset.y, 0);
@@ -155,17 +139,13 @@ describe('Ball Attachment Mechanics', () => {
                 size: { width: 100, height: 20 },
             });
 
-            // Ball starts detached
             world.detachBallFromPaddle(mockBall.physicsBody);
 
-            // Move ball away
             mockBall.physicsBody.position.x = 200;
             mockBall.physicsBody.position.y = 200;
 
-            // Reset to attached
             world.attachBallToPaddle(mockBall.physicsBody, paddle);
 
-            // Ball should be at attachment position
             const attachment = world.getBallAttachment(mockBall.physicsBody);
             expect(attachment!.isAttached).toBe(true);
             expect(mockBall.physicsBody.position.x).toBeCloseTo(paddlePosition.x + attachment!.attachmentOffset.x, 0);
@@ -196,7 +176,6 @@ describe('Ball Attachment Mechanics', () => {
                 size: { width: 100, height: 20 },
             });
 
-            // Cycle through attach/detach multiple times
             for (let i = 0; i < 3; i++) {
                 world.attachBallToPaddle(mockBall.physicsBody, paddle);
                 expect(world.isBallAttached(mockBall.physicsBody)).toBe(true);

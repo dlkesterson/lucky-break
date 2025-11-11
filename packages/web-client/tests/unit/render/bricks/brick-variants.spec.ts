@@ -135,19 +135,19 @@ describe('render/bricks/brick-variants', () => {
         it('generates expected number of neon variants (5 colors × 3 forms)', () => {
             const variants = generateBrickVariants(mockRenderer, testWidth, testHeight);
 
-            expect(variants.neon.length).toBe(15); // 5 colors × 3 forms
+            expect(variants.neon.length).toBe(15);
         });
 
         it('generates expected number of mosaic variants (3 types × 3 forms)', () => {
             const variants = generateBrickVariants(mockRenderer, testWidth, testHeight);
 
-            expect(variants.mosaic.length).toBe(9); // 3 types × 3 forms
+            expect(variants.mosaic.length).toBe(9);
         });
 
         it('generates expected number of marble variants (3 types × 3 forms)', () => {
             const variants = generateBrickVariants(mockRenderer, testWidth, testHeight);
 
-            expect(variants.marble.length).toBe(9); // 3 types × 3 forms
+            expect(variants.marble.length).toBe(9);
         });
 
         it('calls renderer.generateTexture for each variant', () => {
@@ -161,7 +161,6 @@ describe('render/bricks/brick-variants', () => {
             generateBrickVariants(mockRenderer, testWidth, testHeight);
 
             expect(mockRenderer.generateTexture).toHaveBeenCalled();
-            // Ensure at least one call received a Graphics instance as the first argument
             expect(mockRenderer.generateTexture).toHaveBeenCalledWith(expect.any(Graphics));
         });
 
@@ -213,7 +212,6 @@ describe('render/bricks/brick-variants', () => {
             expect(firstRun.mosaic.length).toBe(secondRun.mosaic.length);
             expect(firstRun.marble.length).toBe(secondRun.marble.length);
 
-            // Verify same rarity distribution
             for (let i = 0; i < firstRun.neon.length; i++) {
                 expect(firstRun.neon[i].rarity).toBe(secondRun.neon[i].rarity);
             }
@@ -461,7 +459,6 @@ describe('render/bricks/brick-variants', () => {
                 ...variants.marble.map((v) => v.texture),
             ];
 
-            // Each texture should have a unique id
             const ids = allTextures.map((t) => (t as unknown as { id: number }).id);
             expect(new Set(ids).size).toBe(ids.length);
         });

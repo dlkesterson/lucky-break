@@ -26,7 +26,6 @@ describe('Paddle Positioning', () => {
             position: { x: 400, y: 350 },
         };
 
-        // Add mock paddle to world
         world.add(mockPaddle.physicsBody);
     });
 
@@ -72,11 +71,9 @@ describe('Paddle Positioning', () => {
 
     describe('Position Updates', () => {
         it('should update paddle position from physics body', () => {
-            // Simulate physics body position change
             mockPaddle.physicsBody.position.x = 450;
             mockPaddle.physicsBody.position.y = 360;
 
-            // Update paddle position to match physics
             mockPaddle.position.x = mockPaddle.physicsBody.position.x;
             mockPaddle.position.y = mockPaddle.physicsBody.position.y;
 
@@ -88,7 +85,6 @@ describe('Paddle Positioning', () => {
             const originalWidth = mockPaddle.width;
             const originalHeight = mockPaddle.height;
 
-            // Update position
             mockPaddle.position.x = 500;
             mockPaddle.position.y = 370;
 
@@ -102,7 +98,6 @@ describe('Paddle Positioning', () => {
             const screenWidth = 800;
             const paddleHalfWidth = mockPaddle.width / 2;
 
-            // Test left boundary
             const leftPosition = { x: 10, y: 350 };
             const constrainedLeft = {
                 x: Math.max(paddleHalfWidth, Math.min(screenWidth - paddleHalfWidth, leftPosition.x)),
@@ -111,7 +106,6 @@ describe('Paddle Positioning', () => {
 
             expect(constrainedLeft.x).toBe(paddleHalfWidth);
 
-            // Test right boundary
             const rightPosition = { x: 850, y: 350 };
             const constrainedRight = {
                 x: Math.max(paddleHalfWidth, Math.min(screenWidth - paddleHalfWidth, rightPosition.x)),
@@ -120,7 +114,6 @@ describe('Paddle Positioning', () => {
 
             expect(constrainedRight.x).toBe(screenWidth - paddleHalfWidth);
 
-            // Test valid position
             const validPosition = { x: 400, y: 350 };
             const constrainedValid = {
                 x: Math.max(paddleHalfWidth, Math.min(screenWidth - paddleHalfWidth, validPosition.x)),
@@ -183,7 +176,7 @@ describe('Paddle Positioning', () => {
 
                 if (index > 0) {
                     const distance = Math.abs(pos.x - positions[index - 1].x);
-                    expect(distance).toBe(25); // Consistent movement
+                    expect(distance).toBe(25);
                 }
             });
         });
@@ -204,7 +197,6 @@ describe('Paddle Positioning', () => {
         it('should maintain vertical stability', () => {
             const initialY = mockPaddle.position.y;
 
-            // Move horizontally multiple times
             const horizontalMoves = [300, 350, 400, 450, 500];
             horizontalMoves.forEach(x => {
                 mockPaddle.physicsBody.position.x = x;
