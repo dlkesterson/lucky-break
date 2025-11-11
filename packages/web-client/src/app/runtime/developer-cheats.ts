@@ -5,6 +5,18 @@ import type { RuntimePowerups } from './powerups';
 import type { RoundMachine } from './round-machine';
 import type { GameSessionManager } from 'app/state';
 
+/**
+ * Cheat power-up bindings for development/debugging.
+ * Press Digit1-5 in gameplay to spawn specific power-ups.
+ */
+export const CHEAT_POWERUP_BINDINGS: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
+    { code: 'Digit1', type: 'paddle-width' },
+    { code: 'Digit2', type: 'ball-speed' },
+    { code: 'Digit3', type: 'multi-ball' },
+    { code: 'Digit4', type: 'sticky-paddle' },
+    { code: 'Digit5', type: 'laser' },
+] as const;
+
 export interface DeveloperCheatDeps {
     readonly getCurrentScene: () => string | null;
     readonly getPaddlePosition: () => { readonly x: number; readonly y: number };

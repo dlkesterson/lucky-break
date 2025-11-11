@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import type { LifeLostCause, UiSceneTransitionPayload } from 'app/events';
 import type { BiasPhaseState } from 'app/runtime/round-machine';
-import type { RuntimeModifierSnapshot } from 'app/runtime/modifiers';
+import type { RuntimeModifierSnapshot as ImportedRuntimeModifierSnapshot } from 'app/runtime/modifiers';
 import type { ReplayRecording } from 'app/replay-buffer';
 
 export interface RecordedEvent {
@@ -260,6 +260,27 @@ export const launchBall = (
     direction?: { x: number; y: number },
 ): Promise<void> => callHarness(page, 'launchBall', direction ? [direction] : []);
 
+export interface E2EBrickVariant {
+    readonly style: string;
+    readonly form: string;
+    readonly rarity: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+export interface E2EBrickData {
+    readonly variants: {
+        readonly neon: readonly E2EBrickVariant[];
+        readonly mosaic: readonly E2EBrickVariant[];
+        readonly marble: readonly E2EBrickVariant[];
+    } | null;
+    readonly crackTextures: {
+        readonly '1': { width: number; height: number };
+        readonly '2': { width: number; height: number };
+        readonly '3': { width: number; height: number };
+    } | null;
+}
+
 export interface RuntimeStateSnapshot {
     readonly currentScene: string | null;
     readonly isPaused: boolean;
@@ -285,7 +306,9 @@ export const skipBiasPhase = (page: Page): Promise<boolean> => callHarness(page,
 export const getRoundMachineSnapshot = (page: Page): Promise<RoundMachineSnapshot> =>
     callHarness(page, 'getRoundMachineSnapshot');
 
-export const getRuntimeModifiers = (page: Page): Promise<RuntimeModifierSnapshot> =>
+export const getRuntimeModifiers = (page: Page): Promise<ImportedRuntimeModifierSnapshot> =>
     callHarness(page, 'getRuntimeModifiers');
+
+export const getBrickData = (page: Page): Promise<E2EBrickData> => callHarness(page, 'getBrickData');
 
 export const getReplaySnapshot = (page: Page): Promise<ReplayRecording> => callHarness(page, 'getReplaySnapshot');

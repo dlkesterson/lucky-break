@@ -796,21 +796,26 @@ vi.mock('util/log', () => ({
     },
 }));
 
-import { createGameRuntime, __internalGameRuntimeTesting } from 'app/game-runtime';
+import { createGameRuntime } from 'app/game-runtime';
+import { deriveLayoutSeed } from 'util/levels';
+import {
+    SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS,
+    SYNC_DRIFT_WARN_THRESHOLD_MS,
+    SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
+    SYNC_DRIFT_HISTORY_SECONDS,
+} from 'app/runtime/state-store';
 import { createGameplayScene } from 'scenes/gameplay';
 import { createMainMenuScene } from 'scenes/main-menu';
-
-const internalHelpers = __internalGameRuntimeTesting;
 
 describe('runtime facade helpers', () => {
     it('derives layout seeds deterministically and remaps zero hashes', () => {
         const baseSeed = 1234;
         const levelIndex = 2;
         const expected = ((baseSeed ^ Math.imul(levelIndex + 1, 0x9e3779b1)) >>> 0) || 1;
-        expect(internalHelpers.deriveLayoutSeed(baseSeed, levelIndex)).toBe(expected);
+        expect(deriveLayoutSeed(baseSeed, levelIndex)).toBe(expected);
 
         const zeroHashSeed = Math.imul(1, 0x9e3779b1) >>> 0;
-        expect(internalHelpers.deriveLayoutSeed(zeroHashSeed, 0)).toBe(1);
+        expect(deriveLayoutSeed(zeroHashSeed, 0)).toBe(1);
     });
 });
 
@@ -1209,9 +1214,9 @@ describe('createGameRuntime', () => {
             logger!.warn.mockClear();
             logger!.info.mockClear();
 
-            const interval = internalHelpers.SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
-            const warnThreshold = internalHelpers.SYNC_DRIFT_WARN_THRESHOLD_MS;
-            const recoveryThreshold = internalHelpers.SYNC_DRIFT_RECOVERY_THRESHOLD_MS;
+            const interval = SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS;
+            const warnThreshold = SYNC_DRIFT_WARN_THRESHOLD_MS;
+            const recoveryThreshold = SYNC_DRIFT_RECOVERY_THRESHOLD_MS;
 
             const severeDriftMs = Math.max(1, warnThreshold * 2);
             const mildDriftMs = Math.max(1, recoveryThreshold * 0.25);
@@ -1235,7 +1240,7 @@ describe('createGameRuntime', () => {
             expect(debugCall).toBeDefined();
             expect(debugCall?.[1]).toMatchObject({
                 sampleCount: expect.any(Number),
-                sampleWindowSeconds: internalHelpers.SYNC_DRIFT_HISTORY_SECONDS,
+                sampleWindowSeconds: SYNC_DRIFT_HISTORY_SECONDS,
             });
 
             expect(fakePerformanceNow).toHaveBeenCalled();

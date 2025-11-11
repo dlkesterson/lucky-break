@@ -133,6 +133,14 @@ type MutableBrickSpec = {
 
 let levelPresetOffset = 0;
 
+const LAYOUT_SEED_SALT = 0x9e3779b1;
+
+export const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
+    const normalizedIndex = levelIndex + 1;
+    const hashed = (baseSeed ^ Math.imul(normalizedIndex, LAYOUT_SEED_SALT)) >>> 0;
+    return hashed === 0 ? 1 : hashed;
+};
+
 export const setLevelPresetOffset = (offset: number): void => {
     const presetCount = LEVEL_PRESETS.length;
     if (presetCount <= 0) {
@@ -671,10 +679,10 @@ export function shapeFirstLoopSpec(spec: LevelSpec, progress: number): LevelSpec
         normalized <= 0
             ? () => 1
             : (row: number) => {
-                  const base = Math.max(1, Math.round(baseResolver(row)));
-                  const eased = 1 + (base - 1) * normalized;
-                  return Math.max(1, Math.round(eased));
-              };
+                const base = Math.max(1, Math.round(baseResolver(row)));
+                const eased = 1 + (base - 1) * normalized;
+                return Math.max(1, Math.round(eased));
+            };
     const rowFactor = 0.55 + 0.45 * normalized;
     const colFactor = 0.6 + 0.4 * normalized;
     const targetRows = Math.max(1, Math.round(spec.rows * rowFactor));

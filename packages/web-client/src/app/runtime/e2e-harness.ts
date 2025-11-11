@@ -5,6 +5,7 @@ import { Vector as MatterVector } from 'physics/matter';
 import type { PhysicsWorldHandle } from 'physics/world';
 import type { GameSessionManager } from 'app/state';
 import type { ReplayBuffer, ReplayRecording } from 'app/replay-buffer';
+import type { LevelRuntimeHandle } from '../level-runtime';
 import type { RuntimeInput } from './input';
 import type { RuntimeScoringHandle } from './scoring';
 import type { RoundMachine, BiasPhaseState } from './round-machine';
@@ -25,6 +26,27 @@ interface E2ERoundMachineSnapshot {
     readonly powerUpChanceMultiplier: number;
 }
 
+interface E2EBrickVariant {
+    readonly style: string;
+    readonly form: string;
+    readonly rarity: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+interface E2EBrickData {
+    readonly variants: {
+        readonly neon: readonly E2EBrickVariant[];
+        readonly mosaic: readonly E2EBrickVariant[];
+        readonly marble: readonly E2EBrickVariant[];
+    } | null;
+    readonly crackTextures: {
+        readonly '1': { width: number; height: number };
+        readonly '2': { width: number; height: number };
+        readonly '3': { width: number; height: number };
+    } | null;
+}
+
 interface E2EHarnessControls {
     [key: string]: unknown;
     startGameplay?: () => Promise<void> | void;
@@ -42,6 +64,7 @@ interface E2EHarnessControls {
     getRuntimeModifiers?: () => RuntimeModifierSnapshot;
     getRoundMachineSnapshot?: () => E2ERoundMachineSnapshot;
     getReplaySnapshot?: () => ReplayRecording;
+    getBrickData?: () => E2EBrickData;
 }
 
 export interface RegisterE2EHarnessDeps {
@@ -73,6 +96,7 @@ export interface RegisterE2EHarnessDeps {
     >;
     readonly biasCoordinator: BiasPhaseCoordinator | null;
     readonly runtimeModifiers: RuntimeModifiers;
+    readonly levelRuntime: Pick<LevelRuntimeHandle, 'getBrickVariants' | 'getCrackTextures'>;
 }
 
 export const registerE2EHarnessControls = ({
@@ -101,6 +125,7 @@ export const registerE2EHarnessControls = ({
     roundMachine,
     biasCoordinator,
     runtimeModifiers,
+    levelRuntime,
 }: RegisterE2EHarnessDeps): void => {
     const candidate = globalThis as { __LB_E2E_HOOKS__?: Record<string, unknown> };
     const controls = (() => {
@@ -245,4 +270,38 @@ export const registerE2EHarnessControls = ({
         powerUpChanceMultiplier: roundMachine.getPowerUpChanceMultiplier(),
     } satisfies E2ERoundMachineSnapshot);
     controls.getReplaySnapshot = () => replayBuffer.snapshot();
+    controls.getBrickData = () => {
+        const variants = levelRuntime.getBrickVariants();
+        const cracks = levelRuntime.getCrackTextures();
+        return {
+            variants: variants ? {
+                neon: variants.neon.map(v => ({
+                    style: v.style,
+                    form: v.form,
+                    rarity: v.rarity,
+                    width: v.texture.width,
+                    height: v.texture.height,
+                })),
+                mosaic: variants.mosaic.map(v => ({
+                    style: v.style,
+                    form: v.form,
+                    rarity: v.rarity,
+                    width: v.texture.width,
+                    height: v.texture.height,
+                })),
+                marble: variants.marble.map(v => ({
+                    style: v.style,
+                    form: v.form,
+                    rarity: v.rarity,
+                    width: v.texture.width,
+                    height: v.texture.height,
+                })),
+            } : null,
+            crackTextures: cracks ? {
+                '1': { width: cracks[1].width, height: cracks[1].height },
+                '2': { width: cracks[2].width, height: cracks[2].height },
+                '3': { width: cracks[3].width, height: cracks[3].height },
+            } : null,
+        } satisfies E2EBrickData;
+    };
 };

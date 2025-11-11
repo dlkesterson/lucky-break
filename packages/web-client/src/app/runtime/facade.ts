@@ -6,6 +6,12 @@ import {
     onThemeChange,
     toggleTheme,
 } from 'render/theme';
+import { createVisualEffectsConfig } from './config/visual-effects-config';
+import { createEntropyActionConfig } from './config/entropy-actions';
+import { volumeToDecibels, toMusicLives } from './utils/audio-utils';
+import { sanitizeVoiceOverrides, toBallPaletteOverride } from './utils/loadout-utils';
+import { createLevelRuntimeBundle } from './factories/level-runtime-factory';
+import { GambleRuntimeManager } from './managers/gamble-runtime-manager';
 import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
@@ -39,7 +45,7 @@ import { createGameInitializer } from '../game-initializer';
 import type { MultiBallColors } from '../multi-ball-controller';
 import { createLevelRuntime } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
-import { getPresetLevelCount, setLevelPresetOffset, MAX_LEVEL_BRICK_HP } from 'util/levels';
+import { getPresetLevelCount, MAX_LEVEL_BRICK_HP, deriveLayoutSeed } from 'util/levels';
 import {
     spinWheel,
     createReward,
@@ -100,6 +106,23 @@ import { createRuntimePerformance } from './modules/runtime-performance';
 import { createRuntimeThemeCoordinator } from './modules/runtime-theme';
 import { createRuntimeRoundCoordinator, type RuntimeRoundCoordinatorHandle } from './modules/runtime-round';
 import { createRuntimeSessionCoordinator } from './modules/runtime-session';
+import { createVisualEffectsManager, type VisualEffectsManager } from './modules/visual-effects';
+import { createChromaticTrailManager, type ChromaticTrailManager } from './modules/chromatic-trail';
+import { createGameplayCoordinator, type GameplayCoordinator } from './modules/gameplay-coordinator';
+import { createCollisionContext } from './modules/collision-context-factory';
+import { createRuntimeStateHolder } from './modules/runtime-state-coordinator';
+import { createBallLifecycleManager, type BallLifecycleManager } from './modules/ball-lifecycle';
+import { createPaddleManager, type PaddleManager } from './modules/paddle-manager';
+import { createLevelTransitionCoordinator } from './modules/level-transition-coordinator';
+import {
+    updateTimingAndSync,
+    calculateSpeedTargets,
+    buildMusicState,
+    buildBallTrailSources,
+    buildChromaticSources,
+    buildHeatDistortionSources,
+} from './modules/gameplay-pipeline';
+
 import {
     createInputToPhysicsBridge,
     createRewardsWorldBridge,
@@ -123,6 +146,8 @@ import { noop } from 'util/index';
 import { hudSetters, type HudPhysicsSnapshot } from '../../ui/state/game-bridge';
 import { createNarrativeService, type NarrativeService } from '../narrative-service';
 import { normalizeBallShape, toPhysicsBallBodyShape } from './ball-shape';
+import { RuntimeConfigResolver } from './config-resolver';
+import { CHEAT_POWERUP_BINDINGS } from './developer-cheats';
 
 const runtimeLogger = rootLogger.child('game-runtime');
 
@@ -136,18 +161,6 @@ const runtimeVoiceState: {
 
 type MutableCollisionDeps = CollisionRuntimeDeps & { midiEngine: MidiEngine };
 
-const sanitizeVoiceOverrides = (
-    overrides: LoadoutVoicePaletteOverrides | undefined,
-): Partial<MidiPaletteConfig> | undefined => {
-    if (!overrides || typeof overrides !== 'object') {
-        return undefined;
-    }
-    if (Object.keys(overrides).length === 0) {
-        return undefined;
-    }
-    return { ...(overrides as Partial<MidiPaletteConfig>) };
-};
-
 const setRuntimeVoiceState = (
     voiceId: LoadoutVoiceId,
     overrides: LoadoutVoicePaletteOverrides | undefined,
@@ -158,98 +171,21 @@ const setRuntimeVoiceState = (
 
 setRuntimeVoiceState(defaultLoadoutSelection.voice, undefined);
 
-const config: GameConfig = gameConfig;
-const PLAYFIELD_DEFAULT = config.playfield;
-const BRICK_LIGHT_RADIUS = config.bricks.lighting.radius;
-const BRICK_REST_ALPHA = config.bricks.lighting.restAlpha;
-const BASE_COMBO_DECAY_WINDOW = config.scoring.comboDecayTime;
-const BALL_BASE_SPEED = config.ball.baseSpeed;
-const BALL_MAX_SPEED = config.ball.maxSpeed;
-const BALL_LAUNCH_SPEED = config.ball.launchSpeed;
-const MULTI_BALL_MULTIPLIER = config.multiBall.spawnMultiplier;
-const MULTI_BALL_CAPACITY = config.multiBall.maxExtraBalls;
-const SLOW_TIME_MAX_DURATION = config.rewards.stackLimits.slowTimeMaxDuration;
-const MULTI_BALL_MAX_DURATION = config.rewards.stackLimits.multiBallMaxDuration;
-const DEFAULT_PADDLE_WIDTH_MULTIPLIER = config.paddle.expandedWidthMultiplier;
-const MODIFIER_GRAVITY_RANGE = config.modifiers.gravity;
-const MODIFIER_RESTITUTION_RANGE = config.modifiers.restitution;
-const MODIFIER_PADDLE_WIDTH_RANGE = config.modifiers.paddleWidth;
-const MODIFIER_SPEED_GOVERNOR_RANGE = config.modifiers.speedGovernor;
-const BASE_BALL_RESTITUTION = MODIFIER_RESTITUTION_RANGE.default;
-const BASE_PADDLE_WIDTH = 100;
-const BASE_PADDLE_HEIGHT = 20;
-const BASE_PADDLE_SPEED = 300;
-const BRICK_WIDTH = config.bricks.size.width;
-const BRICK_HEIGHT = config.bricks.size.height;
-const POWER_UP_RADIUS = config.powerUp.radius;
-const POWER_UP_FALL_SPEED = config.powerUp.fallSpeed;
-const POWER_UP_DURATION = config.powerUp.rewardDuration;
-const PADDLE_SMOOTH_RESPONSIVENESS = config.paddle.control.smoothResponsiveness;
-const PADDLE_SNAP_THRESHOLD = config.paddle.control.snapThreshold;
-const COIN_RADIUS = config.coins.radius;
-const COIN_FALL_SPEED = config.coins.fallSpeed;
-const COIN_BASE_VALUE = config.coins.baseValue;
-const COIN_MIN_VALUE = config.coins.min;
-const COIN_MAX_VALUE = config.coins.max;
-const GAMBLE_TIMER_SECONDS = config.levels.gamble.timerSeconds;
-const GAMBLE_REWARD_MULTIPLIER = config.levels.gamble.rewardMultiplier;
-const GAMBLE_PRIME_RESET_HP = config.levels.gamble.primeResetHp;
-const GAMBLE_FAIL_PENALTY_HP = config.levels.gamble.failPenaltyHp;
-const GAMBLE_TINT_ARMED = config.levels.gamble.tintArmed;
-const GAMBLE_TINT_PRIMED = config.levels.gamble.tintPrimed;
-const GAMBLE_COUNTDOWN_AUDIO_THRESHOLD = Math.min(5, Math.max(1, Math.ceil(GAMBLE_TIMER_SECONDS)));
-const BASE_LIVES = 3;
-const LAYOUT_SEED_SALT = 0x9e3779b1;
-const PRESET_OFFSET_SALT = 0x1f123bb5;
+// Initialize configuration resolver to centralize all config access
+const configResolver = new RuntimeConfigResolver(gameConfig);
 
-const FORESHADOW_MIN_PREDICTION_SECONDS = 0.28;
-const FORESHADOW_MAX_PREDICTION_SECONDS = 3.6;
-const FORESHADOW_MIN_SPEED = Math.max(4, BALL_BASE_SPEED * 0.75);
-const FORESHADOW_MIN_LEAD_SECONDS = 0.35;
-const FORESHADOW_MAX_LEAD_SECONDS = 2.6;
+// Visual effect constants (extracted to visual-effects-config.ts module)
+const visualEffectsConfig = createVisualEffectsConfig(configResolver);
 
-const AUTO_COMPLETE_SETTINGS = config.levels.autoComplete;
-const AUTO_COMPLETE_ENABLED = AUTO_COMPLETE_SETTINGS.enabled;
-const AUTO_COMPLETE_COUNTDOWN = Math.max(1, AUTO_COMPLETE_SETTINGS.countdownSeconds);
-const AUTO_COMPLETE_TRIGGER = Math.max(1, AUTO_COMPLETE_SETTINGS.triggerRemainingBricks);
-
-const deriveLayoutSeed = (baseSeed: number, levelIndex: number): number => {
-    const normalizedIndex = levelIndex + 1;
-    const hashed = (baseSeed ^ Math.imul(normalizedIndex, LAYOUT_SEED_SALT)) >>> 0;
-    return hashed === 0 ? 1 : hashed;
-};
-
-const CHROMATIC_TRAIL_HISTORY_SECONDS = 2.2;
-const CHROMATIC_TRAIL_MAX_SAMPLES = 120;
-const CHROMATIC_TRAIL_MIN_SAMPLE_INTERVAL = 0.008;
-const CHROMATIC_TRAIL_FOLLOWER_DECAY = 0.18;
-const CHROMATIC_TRAIL_MIN_RADIUS_SCALE = 0.42;
-const CHROMATIC_TRAIL_SPEED_ATTENUATION = 0.16;
-
-const ENTROPY_COST_REROLL = Math.max(1, config.entropy.spend.rerollCost);
-const REWARD_LOCK_COIN_COST = Math.max(0, config.rewards.lockCoinCost);
-const ENTROPY_COST_SHIELD = Math.max(1, config.entropy.spend.shieldCost);
-const ENTROPY_COST_BAILOUT = Math.max(1, config.entropy.spend.bailoutCost);
-
-const ENTROPY_ACTION_COSTS: Record<RewardEntropyAction, number> = {
-    reroll: ENTROPY_COST_REROLL,
-    shield: ENTROPY_COST_SHIELD,
-    bailout: ENTROPY_COST_BAILOUT,
-} as const;
-
-const PRESTIGE_CONFIG = config.prestige;
-
-const ENTROPY_ACTION_BINDINGS: Record<RewardEntropyAction, { key: string; hotkey: string; label: string }> = {
-    reroll: { key: 'KeyR', hotkey: 'R', label: 'Reroll' },
-    shield: { key: 'KeyS', hotkey: 'S', label: 'Shield' },
-    bailout: { key: 'KeyB', hotkey: 'B', label: 'Bailout' },
-} as const;
-
-const ENTROPY_ACTION_SEQUENCE: readonly RewardEntropyAction[] = ['reroll', 'shield', 'bailout'];
+// Entropy action configuration (extracted to entropy-actions.ts module)
+const entropyActionConfig = createEntropyActionConfig(configResolver);
+const ENTROPY_ACTION_COSTS = entropyActionConfig.costs;
+const ENTROPY_ACTION_BINDINGS = entropyActionConfig.bindings;
+const ENTROPY_ACTION_SEQUENCE = entropyActionConfig.sequence;
 
 const metaProgression = createMetaProgressionService({
-    baseComboDecayWindow: BASE_COMBO_DECAY_WINDOW,
-    baseLives: BASE_LIVES,
+    baseComboDecayWindow: configResolver.baseComboDecayWindow,
+    baseLives: configResolver.baseLives,
 });
 
 const {
@@ -266,7 +202,7 @@ const {
 
 const resolveComboDecayWindow = (): number => {
     const window = getMetaComboDecayWindow();
-    return Number.isFinite(window) && window > 0 ? window : BASE_COMBO_DECAY_WINDOW;
+    return Number.isFinite(window) && window > 0 ? window : configResolver.baseComboDecayWindow;
 };
 
 refreshMetaLoadout();
@@ -313,7 +249,7 @@ export interface RuntimeFacade {
 
 export const createRuntimeFacade = async ({
     container,
-    playfieldDimensions = PLAYFIELD_DEFAULT,
+    playfieldDimensions = configResolver.playfieldDefault,
     layoutOrientation,
     random,
     replayBuffer,
@@ -384,9 +320,8 @@ export const createRuntimeFacade = async ({
     });
     let unsubscribeMeta: (() => void) | null = null;
 
-    const gambleTintArmed = toColorNumber(GAMBLE_TINT_ARMED);
-    const gambleTintPrimed = toColorNumber(GAMBLE_TINT_PRIMED);
-    let gambleRuntime: ReturnType<typeof createGambleRuntime> | null = null;
+    const gambleTintArmed = toColorNumber(configResolver.gambleTintArmed);
+    const gambleTintPrimed = toColorNumber(configResolver.gambleTintPrimed);
 
     const visualFactory = createVisualFactory({
         ball: initialThemeSnapshot.ballDefaults,
@@ -401,24 +336,7 @@ export const createRuntimeFacade = async ({
         runtimeThemeHandle?.setBallPaletteOverride(override);
     };
 
-    const toBallPaletteOverride = (overrides: LoadoutBallVisualOverrides | undefined): Partial<BallVisualPalette> | null => {
-        if (!overrides) {
-            return null;
-        }
-        const palette: Partial<BallVisualPalette> = {
-            ...(overrides.baseColor !== undefined ? { baseColor: overrides.baseColor } : {}),
-            ...(overrides.baseAlpha !== undefined ? { baseAlpha: overrides.baseAlpha } : {}),
-            ...(overrides.innerColor !== undefined ? { innerColor: overrides.innerColor } : {}),
-            ...(overrides.innerAlpha !== undefined ? { innerAlpha: overrides.innerAlpha } : {}),
-            ...(overrides.innerScale !== undefined ? { innerScale: overrides.innerScale } : {}),
-            ...(overrides.rimColor !== undefined ? { rimColor: overrides.rimColor } : {}),
-            ...(overrides.rimAlpha !== undefined ? { rimAlpha: overrides.rimAlpha } : {}),
-            ...(overrides.shape !== undefined ? { shape: overrides.shape } : {}),
-        };
-        return Object.keys(palette).length > 0 ? palette : null;
-    };
-
-    let ballHueShift = 0;
+    const ballHueShift = 0;
     let runtimeDebug: RuntimeDebug | null = null;
 
     const flashBallLight = (intensity: number) => {
@@ -486,29 +404,29 @@ export const createRuntimeFacade = async ({
         themeBallColors,
         themeAccents,
         runtimeDefaults: {
-            baseBallSpeed: BALL_BASE_SPEED,
-            maxBallSpeed: BALL_MAX_SPEED,
-            launchBallSpeed: BALL_LAUNCH_SPEED,
-            gravity: MODIFIER_GRAVITY_RANGE.default,
-            ballRestitution: BASE_BALL_RESTITUTION,
-            paddleBaseWidth: BASE_PADDLE_WIDTH,
-            paddleWidthMultiplier: MODIFIER_PADDLE_WIDTH_RANGE.default,
-            speedGovernorMultiplier: MODIFIER_SPEED_GOVERNOR_RANGE.default,
+            baseBallSpeed: configResolver.baseSpeed,
+            maxBallSpeed: configResolver.maxSpeed,
+            launchBallSpeed: configResolver.launchSpeed,
+            gravity: configResolver.modifierGravityRange.default,
+            ballRestitution: configResolver.baseBallRestitution,
+            paddleBaseWidth: configResolver.paddleBaseWidth,
+            paddleWidthMultiplier: configResolver.modifierPaddleWidthRange.default,
+            speedGovernorMultiplier: configResolver.modifierSpeedGovernorRange.default,
         },
         paddle: {
-            width: BASE_PADDLE_WIDTH,
-            height: BASE_PADDLE_HEIGHT,
-            speed: BASE_PADDLE_SPEED,
-            spawnOffsetFromBottom: 70,
+            width: configResolver.paddleBaseWidth,
+            height: configResolver.paddleBaseHeight,
+            speed: configResolver.paddleBaseSpeed,
+            spawnOffsetFromBottom: configResolver.paddleSpawnOffsetFromBottom,
         },
         paddleSmoothing: {
-            responsiveness: PADDLE_SMOOTH_RESPONSIVENESS,
-            snapThreshold: PADDLE_SNAP_THRESHOLD,
+            responsiveness: configResolver.paddleSmoothResponsiveness,
+            snapThreshold: configResolver.paddleSnapThreshold,
         },
-        ball: { radius: 10 },
+        ball: { radius: configResolver.ballRadius },
         multiBall: {
-            multiplier: MULTI_BALL_MULTIPLIER,
-            maxExtraBalls: MULTI_BALL_CAPACITY,
+            multiplier: configResolver.multiBallSpawnMultiplier,
+            maxExtraBalls: configResolver.multiBallMaxCapacity,
         },
     });
 
@@ -531,133 +449,26 @@ export const createRuntimeFacade = async ({
         visualBodies,
     } = runtimePhysics;
 
-    interface ChromaticTrailSample {
-        time: number;
-        x: number;
-        y: number;
-    }
-    const chromaticTrailHistory = new Map<number, ChromaticTrailSample[]>();
+    const chromaticTrailManager = createChromaticTrailManager(
+        visualEffectsConfig.chromaticTrail,
+    );
 
-    const getOrCreateHistory = (id: number): ChromaticTrailSample[] => {
-        let history = chromaticTrailHistory.get(id);
-        if (!history) {
-            history = [];
-            chromaticTrailHistory.set(id, history);
-        }
-        return history;
-    };
-
-    const recordChromaticSample = (id: number, time: number, position: { readonly x: number; readonly y: number }) => {
-        const history = getOrCreateHistory(id);
-        const last = history[history.length - 1];
-        if (last) {
-            const dt = time - last.time;
-            const dx = position.x - last.x;
-            const dy = position.y - last.y;
-            if (dt < CHROMATIC_TRAIL_MIN_SAMPLE_INTERVAL && dx * dx + dy * dy < 0.25) {
-                return;
-            }
-        }
-        history.push({ time, x: position.x, y: position.y });
-        while (history.length > CHROMATIC_TRAIL_MAX_SAMPLES) {
-            history.shift();
-        }
-        const cutoff = time - CHROMATIC_TRAIL_HISTORY_SECONDS;
-        while (history.length > 0 && history[0].time < cutoff) {
-            history.shift();
-        }
-    };
-
-    const sampleChromaticPosition = (
-        history: ChromaticTrailSample[] | undefined,
-        targetTime: number,
-    ): { x: number; y: number } | null => {
-        if (!history || history.length === 0) {
-            return null;
-        }
-        const first = history[0];
-        const last = history[history.length - 1];
-        if (!first || !last) {
-            return null;
-        }
-        if (targetTime <= first.time) {
-            return { x: first.x, y: first.y };
-        }
-        if (targetTime >= last.time) {
-            return { x: last.x, y: last.y };
-        }
-        for (let index = history.length - 2; index >= 0; index -= 1) {
-            const current = history[index];
-            const next = history[index + 1];
-            if (!current || !next) {
-                continue;
-            }
-            if (current.time <= targetTime && next.time >= targetTime) {
-                const span = Math.max(1e-5, next.time - current.time);
-                const alpha = clampUnit((targetTime - current.time) / span);
-                return {
-                    x: current.x + (next.x - current.x) * alpha,
-                    y: current.y + (next.y - current.y) * alpha,
-                };
-            }
-        }
-        return { x: first.x, y: first.y };
-    };
-
-    const sampleChromaticSpeed = (
-        history: ChromaticTrailSample[] | undefined,
-        targetTime: number,
-        fallback: number,
-    ): number => {
-        if (!history || history.length === 0) {
-            return fallback;
-        }
-        const lookback = 0.02;
-        const previous = sampleChromaticPosition(history, targetTime - lookback);
-        const current = sampleChromaticPosition(history, targetTime);
-        if (!previous || !current) {
-            return fallback;
-        }
-        const distance = Math.hypot(current.x - previous.x, current.y - previous.y);
-        const speed = distance / Math.max(lookback, 0.005);
-        if (!Number.isFinite(speed)) {
-            return fallback;
-        }
-        return clampUnit(speed / Math.max(1, runtimeState.currentMaxSpeed));
-    };
-
-    const pruneChromaticHistory = (activeIds: Set<number>, referenceTime: number) => {
-        const cutoff = referenceTime - CHROMATIC_TRAIL_HISTORY_SECONDS - 0.1;
-        for (const [id, history] of chromaticTrailHistory) {
-            if (!activeIds.has(id)) {
-                chromaticTrailHistory.delete(id);
-                continue;
-            }
-            while (history.length > 0 && history[0].time < cutoff) {
-                history.shift();
-            }
-            if (history.length === 0) {
-                chromaticTrailHistory.delete(id);
-            }
-        }
-    };
-
-    const resolveChromaticFollowerCount = (comboCount: number, comboEnergy: number): number => {
-        if (comboCount < 3 || comboEnergy <= 0.05) {
-            return 0;
-        }
-        const normalizedCombo = clampUnit((comboCount - 3) / 9);
-        const energyBoost = clampUnit((comboEnergy - 0.25) / 0.8);
-        const blend = clampUnit(normalizedCombo * 0.7 + energyBoost * 0.3);
-        if (blend <= 0) {
-            return 0;
-        }
-        return Math.min(4, Math.ceil(blend * 4));
-    };
-
-    const resolveChromaticFollowerLag = (comboEnergy: number): number => {
-        return 0.24 + Math.min(0.26, comboEnergy * 0.24);
-    };
+    const visualEffectsManager = createVisualEffectsManager({
+        visuals: createdVisuals,
+        ballBody: ball.physicsBody,
+        ballRadius: ball.radius,
+        ballHueFilter,
+        ballGlowFilter,
+        multiBallController,
+        themeBallColors,
+        themeAccents,
+        backgroundAccentColor,
+        bloomAccentColor,
+        playfieldWidth: PLAYFIELD_WIDTH,
+        playfieldHeight: PLAYFIELD_HEIGHT,
+        getCurrentBaseSpeed: () => runtimeState.currentBaseSpeed,
+        getCurrentMaxSpeed: () => runtimeState.currentMaxSpeed,
+    });
 
     const runtimeAudio = createRuntimeAudio({
         audioBootstrap,
@@ -678,14 +489,6 @@ export const createRuntimeFacade = async ({
         runtimeAudio.pushMusicState(state);
     };
     const resolveMidiEngine = () => runtimeAudio.getMidiEngine();
-
-    const volumeToDecibels = (value: number): number => {
-        if (!Number.isFinite(value) || value <= 0) {
-            return -60;
-        }
-        const clamped = Math.max(1e-3, Math.min(1, value));
-        return Math.max(-60, 20 * Math.log10(clamped));
-    };
 
     const applyAudioPreferences = (preferences: PlayerPreferences) => {
         const volume = Math.max(0, Math.min(1, preferences.masterVolume));
@@ -724,16 +527,6 @@ export const createRuntimeFacade = async ({
                 muted: savedAudioPreferences.muted,
             },
         });
-    };
-
-    const toMusicLives = (lives: number): 1 | 2 | 3 => {
-        if (lives >= 3) {
-            return 3;
-        }
-        if (lives <= 1) {
-            return 1;
-        }
-        return 2;
     };
 
     const inputToPhysics: InputToPhysicsBridge = createInputToPhysicsBridge(runtimeInput);
@@ -777,7 +570,7 @@ export const createRuntimeFacade = async ({
     };
     const scoring = createRuntimeScoring({
         bus,
-        scoringConfig: config.scoring,
+        scoringConfig: gameConfig.scoring,
     });
     const scoringState = scoring.state;
     const syncMomentum = () => {
@@ -792,9 +585,9 @@ export const createRuntimeFacade = async ({
         warbleIntensity: 0,
     });
     const roundMachine = createRoundMachine({
-        autoCompleteEnabled: AUTO_COMPLETE_ENABLED,
-        autoCompleteCountdown: AUTO_COMPLETE_COUNTDOWN,
-        autoCompleteTrigger: AUTO_COMPLETE_TRIGGER,
+        autoCompleteEnabled: configResolver.autoCompleteEnabled,
+        autoCompleteCountdown: configResolver.autoCompleteCountdown,
+        autoCompleteTrigger: configResolver.autoCompleteTrigger,
     });
 
     const syncAutoCompleteCountdownDisplay = () => {
@@ -810,37 +603,33 @@ export const createRuntimeFacade = async ({
         display.show(timer, countdown);
     };
 
-    let loop: ReturnType<typeof createGameLoop> | null = null;
-    let hudMetricsInterval: ReturnType<typeof setInterval> | null = null;
-    let startHudMetricsBridge: () => void = noop;
-    let stopHudMetricsBridge: () => void = noop;
+    // Phase 3: Consolidated lifecycle state
+    const lifecycleState = createRuntimeStateHolder();
+
     const startGameLoop = () => {
-        loop?.start();
-        startHudMetricsBridge();
+        lifecycleState.loop?.start();
+        lifecycleState.startHudMetricsBridge();
     };
     const stopGameLoop = () => {
-        loop?.stop();
-        stopHudMetricsBridge();
+        lifecycleState.loop?.stop();
+        lifecycleState.stopHudMetricsBridge();
     };
     const stopLoopIfRunning = () => {
-        if (loop?.isRunning()) {
-            loop.stop();
-            stopHudMetricsBridge();
+        if (lifecycleState.loop?.isRunning()) {
+            lifecycleState.loop.stop();
+            lifecycleState.stopHudMetricsBridge();
         }
     };
-    let collisionRuntime: CollisionRuntime | null = null;
-    let collisionDeps: CollisionRuntimeDeps | null = null;
-    let laserController: LaserController | null = null;
-    let isPaused = false;
+
     const setPaused = (paused: boolean) => {
-        isPaused = paused;
+        lifecycleState.isPaused = paused;
     };
-    const getIsPaused = () => isPaused;
+    const getIsPaused = () => lifecycleState.isPaused;
 
     const rebuildMidiEngine = () => {
         const engine = runtimeAudio.rebuildMidiEngine();
-        if (collisionDeps) {
-            (collisionDeps as MutableCollisionDeps).midiEngine = engine;
+        if (lifecycleState.collisionDeps) {
+            (lifecycleState.collisionDeps as MutableCollisionDeps).midiEngine = engine;
         }
     };
 
@@ -864,7 +653,7 @@ export const createRuntimeFacade = async ({
         if (!visual) {
             return;
         }
-        gambleRuntime?.handleBrickRemoved(body, visual);
+        getGambleRuntime()?.handleBrickRemoved(body, visual);
 
         if (visual.parent) {
             visual.parent.removeChild(visual);
@@ -878,59 +667,31 @@ export const createRuntimeFacade = async ({
         brickVisualState.delete(body);
     };
 
-    const presetCount = getPresetLevelCount();
-    if (presetCount > 0) {
-        const offsetSource = mulberry32((random.seed() ^ PRESET_OFFSET_SALT) >>> 0);
-        const offset = Math.floor(offsetSource() * presetCount);
-        setLevelPresetOffset(offset);
-    } else {
-        setLevelPresetOffset(0);
-    }
-
-    const levelRuntime = createLevelRuntime({
+    const { levelRuntime, brickHealth, brickMetadata, brickVisualState } = createLevelRuntimeBundle({
         physics,
         stage,
         visualBodies,
         removeBodyVisual,
         playfieldWidth: PLAYFIELD_WIDTH,
-        brickSize: { width: BRICK_WIDTH, height: BRICK_HEIGHT },
-        brickLighting: { radius: BRICK_LIGHT_RADIUS, restAlpha: BRICK_REST_ALPHA },
+        configResolver,
         rowColors,
-        powerUp: { radius: POWER_UP_RADIUS, fallSpeed: POWER_UP_FALL_SPEED },
-        coin: { radius: COIN_RADIUS, fallSpeed: COIN_FALL_SPEED },
-        layoutOrientation: sessionOrientation,
-        getLayoutRandom: (levelIndex) => mulberry32(deriveLayoutSeed(random.seed(), levelIndex)),
-        decorateBrick: layoutDecorator,
+        sessionOrientation,
+        random,
+        layoutDecorator,
     });
-
-    const brickHealth = levelRuntime.brickHealth;
-    const brickMetadata = levelRuntime.brickMetadata;
-    const brickVisualState = levelRuntime.brickVisualState;
 
     const foreshadowing = createForeshadowingRuntime({
         randomSeed: random.seed(),
         runtimeState,
         multiBallController,
         levelRuntime,
-        config: {
-            minPredictionSeconds: FORESHADOW_MIN_PREDICTION_SECONDS,
-            maxPredictionSeconds: FORESHADOW_MAX_PREDICTION_SECONDS,
-            minSpeed: FORESHADOW_MIN_SPEED,
-            minLeadSeconds: FORESHADOW_MIN_LEAD_SECONDS,
-            maxLeadSeconds: FORESHADOW_MAX_LEAD_SECONDS,
-        },
+        config: visualEffectsConfig.foreshadow,
     });
 
-    gambleRuntime = createGambleRuntime({
-        managerOptions: {
-            timerSeconds: GAMBLE_TIMER_SECONDS,
-            rewardMultiplier: Math.max(1, GAMBLE_REWARD_MULTIPLIER),
-            primeResetHp: Math.max(1, GAMBLE_PRIME_RESET_HP),
-            failPenaltyHp: Math.max(1, GAMBLE_FAIL_PENALTY_HP),
-        },
-        countdownAudioThreshold: GAMBLE_COUNTDOWN_AUDIO_THRESHOLD,
-        tintArmed: gambleTintArmed,
-        tintPrimed: gambleTintPrimed,
+    const gambleRuntimeManager = new GambleRuntimeManager({
+        configResolver,
+        gambleTintArmed,
+        gambleTintPrimed,
         visualBodies,
         brickMetadata,
         brickHealth,
@@ -942,7 +703,10 @@ export const createRuntimeFacade = async ({
         getMidiEngine: () => resolveMidiEngine(),
         musicDirector,
     });
-    const { manager: gambleManager } = gambleRuntime;
+
+    // Convenience accessors for gamble runtime
+    const getGambleRuntime = () => gambleRuntimeManager;
+    const gambleManager = gambleRuntimeManager.manager;
 
     const echoTrailManager = createEchoTrailManager({
         durationSeconds: 4,
@@ -961,40 +725,28 @@ export const createRuntimeFacade = async ({
     });
 
     const applyGambleAppearance = (body: Body): void => {
-        gambleRuntime?.applyAppearance(body);
+        getGambleRuntime()?.applyAppearance(body);
     };
 
     const reapplyGambleAppearances = (): void => {
-        gambleRuntime?.reapplyAppearances();
+        getGambleRuntime()?.reapplyAppearances();
     };
 
     const registerGambleBricks = (): void => {
-        gambleRuntime?.registerBricks();
+        getGambleRuntime()?.registerBricks();
     };
 
-    const updateBrickLighting = (
-        ...args: Parameters<typeof levelRuntime.updateBrickLighting>
-    ) => levelRuntime.updateBrickLighting(...args);
-
-    const spawnCoin = (
-        ...args: Parameters<typeof levelRuntime.spawnCoin>
-    ) => levelRuntime.spawnCoin(...args);
-    const clearGhostEffect = (
-        ...args: Parameters<typeof levelRuntime.clearGhostEffect>
-    ) => levelRuntime.clearGhostEffect(...args);
-    const resetGhostBricks = (
-        ...args: Parameters<typeof levelRuntime.resetGhostBricks>
-    ) => levelRuntime.resetGhostBricks(...args);
-    const applyGhostBrickReward = (
-        ...args: Parameters<typeof levelRuntime.applyGhostBrickReward>
-    ) => levelRuntime.applyGhostBrickReward(...args);
-    const updateGhostBricks = (
-        ...args: Parameters<typeof levelRuntime.updateGhostBricks>
-    ) => levelRuntime.updateGhostBricks(...args);
-    const getGhostBrickRemainingDuration = (
-        ...args: Parameters<typeof levelRuntime.getGhostBrickRemainingDuration>
-    ) => levelRuntime.getGhostBrickRemainingDuration(...args);
-    const forceClearBreakableBricks = () => levelRuntime.forceClearBreakableBricks();
+    // Direct destructuring of levelRuntime methods (no delegation wrappers needed)
+    const {
+        updateBrickLighting,
+        spawnCoin,
+        clearGhostEffect,
+        resetGhostBricks,
+        applyGhostBrickReward,
+        updateGhostBricks,
+        getGhostBrickRemainingDuration,
+        forceClearBreakableBricks,
+    } = levelRuntime;
     const clearActivePowerUps = () => {
         powerups.reset();
         levelRuntime.clearActivePowerUps();
@@ -1007,7 +759,7 @@ export const createRuntimeFacade = async ({
     };
 
     const internalLoadLevel = async (levelIndex: number) => {
-        gambleRuntime?.prepareLevel();
+        getGambleRuntime()?.prepareLevel();
         const result = await levelRuntime.loadLevel(levelIndex);
         roundMachine.setPowerUpChanceMultiplier(result.powerUpChanceMultiplier);
         roundMachine.setLevelDifficultyMultiplier(result.difficultyMultiplier);
@@ -1045,154 +797,40 @@ export const createRuntimeFacade = async ({
 
     syncAutoCompleteCountdownDisplay();
 
-    const setPaddleWidth = (() => {
-        let lastWidth = paddle.width;
-        return (requestedWidth: number): void => {
-            const clampedWidth = Number.isFinite(requestedWidth) ? Math.max(24, requestedWidth) : lastWidth;
-            if (Math.abs(clampedWidth - lastWidth) <= 1e-3) {
-                paddle.width = clampedWidth;
-                return;
-            }
-            const currentPosition = {
-                x: paddle.physicsBody.position.x,
-                y: paddle.physicsBody.position.y,
-            };
-            const scaleX = clampedWidth / lastWidth;
-            if (Number.isFinite(scaleX) && scaleX > 0) {
-                MatterBody.scale(paddle.physicsBody, scaleX, 1);
-                MatterBody.setPosition(paddle.physicsBody, currentPosition);
-            }
-            lastWidth = clampedWidth;
-            paddle.width = clampedWidth;
-            paddle.position.x = currentPosition.x;
-            paddle.position.y = currentPosition.y;
-        };
-    })();
+    const paddleManager = createPaddleManager({ paddle });
+    const { setPaddleWidth } = paddleManager;
 
     runtimeState.previousPaddlePosition = { x: paddle.position.x, y: paddle.position.y };
     runtimeState.lastRecordedInputTarget = null;
-    runtimeState.currentBaseSpeed = BALL_BASE_SPEED * loadoutPhysicsMultipliers.baseSpeed;
-    runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
-    runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
-    const reattachBallToPaddle = (): void => {
-        const attachmentOffset = { x: 0, y: -ball.radius - paddle.height / 2 };
-        foreshadowing.cancelForBall(ball.physicsBody.id);
-        physics.attachBallToPaddle(ball.physicsBody, paddle.physicsBody, attachmentOffset);
-        ball.isAttached = true;
-        ball.attachmentOffset = attachmentOffset;
-        MatterBody.setVelocity(ball.physicsBody, { x: 0, y: 0 });
-        MatterBody.setAngularVelocity(ball.physicsBody, 0);
-        inputToPhysics.resetLaunchTrigger();
-        const center = paddleController.getPaddleCenter(paddle);
-        runtimeState.previousPaddlePosition = { x: center.x, y: center.y };
-        inputToPhysics.syncPaddlePosition(center);
-        visuals?.ballSpeedRing?.reset();
-    };
+    runtimeState.currentBaseSpeed = configResolver.baseSpeed * loadoutPhysicsMultipliers.baseSpeed;
+    runtimeState.currentMaxSpeed = configResolver.maxSpeed * loadoutPhysicsMultipliers.maxSpeed;
+    runtimeState.currentLaunchSpeed = configResolver.launchSpeed * loadoutPhysicsMultipliers.launchSpeed;
 
-    const promoteExtraBallToPrimary = (expiredBody: Body): boolean => {
-        if (multiBallController.promoteExtraBallToPrimary(expiredBody)) {
-            return true;
-        }
-        return false;
-    };
+    const ballLifecycle = createBallLifecycleManager({
+        ball,
+        paddle,
+        ballGraphics,
+        physics,
+        foreshadowing,
+        ballController,
+        paddleController,
+        multiBallController,
+        inputToPhysics,
+        visualBodies,
+        runtimeState,
+        visuals,
+    });
 
-    const removeExtraBallByBody = (body: Body) => {
-        foreshadowing.cancelForBall(body.id);
-        multiBallController.removeExtraBallByBody(body);
-    };
-
-    const clearExtraBalls = () => {
-        foreshadowing
-            .getActiveBallIds()
-            .filter((ballId) => ballId !== ball.physicsBody.id)
-            .forEach((ballId) => {
-                foreshadowing.cancelForBall(ballId);
-            });
-        multiBallController.clear();
-    };
-
-    const resetForeshadowing = () => {
-        foreshadowing.reset();
-    };
-
-    const spawnExtraBalls = (requestedCount?: number) => {
-        multiBallController.spawnExtraBalls({ currentLaunchSpeed: runtimeState.currentLaunchSpeed, requestedCount });
-    };
-
-    const applyBallRestitution = (value: number) => {
-        const normalized = Number.isFinite(value) ? value : runtimeState.ballRestitution;
-        ball.physicsBody.restitution = normalized;
-        multiBallController.setRestitution(normalized);
-    };
-
-    const applyBallShape = (shape: LoadoutBallShape): void => {
-        const normalized = normalizeBallShape(shape);
-        multiBallController.setShape(normalized);
-        if (normalized === activeBallShape) {
-            return;
-        }
-
-        const previousBody = ball.physicsBody;
-        const previousVisual = visualBodies.get(previousBody) ?? null;
-        const wasAttached = physics.isBallAttached(previousBody);
-        const attachment = physics.getBallAttachment(previousBody);
-        const previousVelocity = {
-            x: previousBody.velocity.x,
-            y: previousBody.velocity.y,
-        } satisfies { x: number; y: number };
-        const previousPosition = {
-            x: previousBody.position.x,
-            y: previousBody.position.y,
-        } satisfies { x: number; y: number };
-        const previousAngle = previousBody.angle;
-        const previousAngularVelocity = previousBody.angularVelocity;
-        const previousRestitution = previousBody.restitution;
-        const previousLabel = previousBody.label;
-
-        foreshadowing.cancelForBall(previousBody.id);
-        physics.detachBallFromPaddle(previousBody);
-        physics.remove(previousBody);
-        visualBodies.delete(previousBody);
-
-        const newBody = physics.factory.ball({
-            radius: ball.radius,
-            position: previousPosition,
-            restitution: previousRestitution,
-            velocity: previousVelocity,
-            label: previousLabel,
-            shape: toPhysicsBallBodyShape(normalized),
-        });
-        MatterBody.setAngle(newBody, previousAngle);
-        MatterBody.setAngularVelocity(newBody, previousAngularVelocity);
-        physics.add(newBody);
-
-        if (previousVisual) {
-            visualBodies.set(newBody, previousVisual);
-        } else {
-            visualBodies.set(newBody, ballGraphics);
-        }
-        ball.physicsBody = newBody;
-
-        if (wasAttached && attachment) {
-            physics.attachBallToPaddle(newBody, paddle.physicsBody, attachment.attachmentOffset);
-            ball.isAttached = true;
-            ball.attachmentOffset = attachment.attachmentOffset;
-        } else {
-            ball.isAttached = false;
-            if (attachment?.attachmentOffset) {
-                ball.attachmentOffset = attachment.attachmentOffset;
-            }
-        }
-
-        ballGraphics.x = newBody.position.x;
-        ballGraphics.y = newBody.position.y;
-        ballGraphics.rotation = newBody.angle;
-
-        activeBallShape = normalized;
-
-        clearExtraBalls();
-        applyBallRestitution(previousRestitution);
-    };
+    const {
+        reattachBallToPaddle,
+        promoteExtraBallToPrimary,
+        removeExtraBallByBody,
+        clearExtraBalls,
+        resetForeshadowing,
+        spawnExtraBalls,
+        applyBallRestitution,
+        applyBallShape,
+    } = ballLifecycle;
 
     const {
         powerups,
@@ -1201,14 +839,14 @@ export const createRuntimeFacade = async ({
         bindLaserController,
     } = createModifierPowerupServices({
         logger: runtimeLogger,
-        modifierConfig: config.modifiers,
+        modifierConfig: gameConfig.modifiers,
         runtimeState,
-        basePaddleWidth: BASE_PADDLE_WIDTH,
+        basePaddleWidth: configResolver.paddleBaseWidth,
         defaults: {
-            paddleWidthMultiplier: DEFAULT_PADDLE_WIDTH_MULTIPLIER,
-            multiBallCapacity: MULTI_BALL_CAPACITY,
-            multiBallMaxDuration: MULTI_BALL_MAX_DURATION,
-            slowTimeMaxDuration: SLOW_TIME_MAX_DURATION,
+            paddleWidthMultiplier: configResolver.paddleExpandedWidthMultiplier,
+            multiBallCapacity: configResolver.multiBallMaxCapacity,
+            multiBallMaxDuration: configResolver.multiBallMaxDuration,
+            slowTimeMaxDuration: configResolver.slowTimeMaxDuration,
         },
         multiBallController,
         flashBallLight,
@@ -1255,28 +893,14 @@ export const createRuntimeFacade = async ({
         runtimeHudCoordinator?.refresh();
     };
 
-    startHudMetricsBridge = () => {
-        if (hudMetricsInterval !== null) {
-            return;
-        }
-        if (typeof setInterval !== 'function') {
-            return;
-        }
+    // Reactive HUD updates - refresh happens in runGameplayUpdate, not via polling
+    lifecycleState.startHudMetricsBridge = () => {
         hudSetters.setVisibility(true);
-        refreshHud();
-        hudMetricsInterval = setInterval(() => {
-            refreshHud();
-        }, 500);
+        refreshHud(); // Initial refresh on start
     };
 
-    stopHudMetricsBridge = () => {
-        if (hudMetricsInterval === null) {
-            return;
-        }
-        if (typeof clearInterval === 'function') {
-            clearInterval(hudMetricsInterval);
-        }
-        hudMetricsInterval = null;
+    lifecycleState.stopHudMetricsBridge = () => {
+        hudSetters.setVisibility(false);
     };
 
     const applyLoadoutBundle = (bundle: LoadoutEffectsBundle): void => {
@@ -1304,9 +928,9 @@ export const createRuntimeFacade = async ({
         powerups.setBaselineDoublePointsMultiplier(ruleEffects.doublePointsMultiplier);
         levelRuntime.setHazardIntensityMultiplier(ruleEffects.hazardIntensityMultiplier);
 
-        const gravityTarget = MODIFIER_GRAVITY_RANGE.default + physicsEffects.gravityOffset;
+        const gravityTarget = configResolver.modifierGravityRange.default + physicsEffects.gravityOffset;
         runtimeModifiers.setGravity(gravityTarget);
-        runtimeModifiers.setRestitution(BASE_BALL_RESTITUTION * physicsEffects.restitutionMultiplier);
+        runtimeModifiers.setRestitution(configResolver.baseBallRestitution * physicsEffects.restitutionMultiplier);
         runtimeModifiers.setPaddleWidthMultiplier(physicsEffects.paddleWidthMultiplier);
         runtimeModifiers.setSpeedGovernorMultiplier(physicsEffects.speedGovernorMultiplier);
 
@@ -1321,9 +945,9 @@ export const createRuntimeFacade = async ({
         phantomBrickManager.clear();
         vortexFieldManager.clear();
 
-        runtimeState.currentBaseSpeed = BALL_BASE_SPEED * loadoutPhysicsMultipliers.baseSpeed;
-        runtimeState.currentMaxSpeed = BALL_MAX_SPEED * loadoutPhysicsMultipliers.maxSpeed;
-        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED * loadoutPhysicsMultipliers.launchSpeed;
+        runtimeState.currentBaseSpeed = configResolver.baseSpeed * loadoutPhysicsMultipliers.baseSpeed;
+        runtimeState.currentMaxSpeed = configResolver.maxSpeed * loadoutPhysicsMultipliers.maxSpeed;
+        runtimeState.currentLaunchSpeed = configResolver.launchSpeed * loadoutPhysicsMultipliers.launchSpeed;
 
         rebuildMidiEngine();
         refreshHud();
@@ -1435,11 +1059,11 @@ export const createRuntimeFacade = async ({
             session.spendStoredEntropy(options),
         spendCoins: (amount: Parameters<GameSessionManager['spendCoins']>[0]) => session.spendCoins(amount),
         eventBus: bus,
-        wheelSegments: config.rewards.wheelSegments,
+        wheelSegments: configResolver.rewardWheelSegments,
         entropyCosts: ENTROPY_ACTION_COSTS,
         entropyBindings: ENTROPY_ACTION_BINDINGS,
         entropyOrder: ENTROPY_ACTION_SEQUENCE,
-        lockCoinCost: REWARD_LOCK_COIN_COST,
+        lockCoinCost: configResolver.rewardLockCoinCost,
         spinReward: (rng) => spinWheel(rng),
         setRewardOverride,
         createReward,
@@ -1540,7 +1164,7 @@ export const createRuntimeFacade = async ({
         random,
         roundMachine,
         runtimeModifiers,
-        modifierConfig: config.modifiers,
+        modifierConfig: gameConfig.modifiers,
         stage,
         startLoop: startGameLoop,
         stopLoop: stopGameLoop,
@@ -1561,7 +1185,7 @@ export const createRuntimeFacade = async ({
         setPaused,
         spinReward: (rng) => spinWheel(rng),
         entropyCosts: {
-            reroll: ENTROPY_COST_REROLL,
+            reroll: configResolver.entropyRerollCost,
         },
         metaUpgrades,
         powerupsReset: () => {
@@ -1571,7 +1195,7 @@ export const createRuntimeFacade = async ({
             runtimeAudio.disableMusic();
         },
         bus,
-        computePrestigeDust: (input) => computePrestigeDust(input, PRESTIGE_CONFIG),
+        computePrestigeDust: (input) => computePrestigeDust(input, configResolver.prestigeConfig),
         recordHighScore,
         hudContainer,
     });
@@ -1605,26 +1229,15 @@ export const createRuntimeFacade = async ({
 
     scoring.setHudUpdater(refreshHud);
 
-    const handleLevelComplete = (): void => {
-        if (!roundCoordinator) {
-            runtimeLogger.warn('Runtime round coordinator not ready; ignoring level complete');
-            return;
-        }
-        roundCoordinator.handleLevelComplete();
-    };
+    const levelTransitions = createLevelTransitionCoordinator({
+        roundCoordinator,
+        logger: runtimeLogger,
+    });
+    const { handleLevelComplete, handleGameOver } = levelTransitions;
 
-    const handleGameOver = (): void => {
-        if (!roundCoordinator) {
-            runtimeLogger.warn('Runtime round coordinator not ready; ignoring game over');
-            return;
-        }
-        roundCoordinator.handleGameOver();
-    };
-
-    const collisionContext: CollisionContext = {
-        get session() {
-            return session;
-        },
+    // Build collision context using factory (extracted to reduce facade complexity)
+    const collisionContext = createCollisionContext({
+        session,
         scoring,
         gambleManager,
         echoTrailManager,
@@ -1638,108 +1251,54 @@ export const createRuntimeFacade = async ({
         multiBallController,
         ball,
         paddle,
-        physics: {
-            attachBallToPaddle: physics.attachBallToPaddle,
-            remove: physics.remove,
-            isBallAttached: physics.isBallAttached,
-        },
+        physics,
         inputManager,
         roundMachine,
-        dimensions: {
-            brickWidth: BRICK_WIDTH,
-            brickHeight: BRICK_HEIGHT,
-            playfieldWidth: PLAYFIELD_WIDTH,
-            playfieldHeight: PLAYFIELD_HEIGHT,
-            playfieldSizeMax: PLAYFIELD_SIZE_MAX,
-        },
-        thresholds: {
-            multiplier: config.scoring.multiplierThreshold,
-            powerUpDuration: POWER_UP_DURATION,
-            maxLevelBrickHp: MAX_LEVEL_BRICK_HP,
-        },
-        coins: {
-            baseValue: COIN_BASE_VALUE,
-            minValue: COIN_MIN_VALUE,
-            maxValue: COIN_MAX_VALUE,
-        },
-        getGravity: () => runtimeState.gravity,
-        getRuleEffects: () => activeLoadoutBundle.combined.runtime.rules,
-        functions: {
-            getSessionElapsedSeconds: () => runtimeState.sessionElapsedSeconds,
-            getFrameTimestampMs: () => runtimeState.frameTimestampMs,
-            getComboDecayWindow: () => resolveComboDecayWindow(),
-            getCurrentBaseSpeed: () => runtimeState.currentBaseSpeed,
-            getCurrentMaxSpeed: () => runtimeState.currentMaxSpeed,
-            getPowerUpChanceMultiplier: () => roundMachine.getPowerUpChanceMultiplier(),
-            getDoublePointsMultiplier: () => powerups.getDoublePointsMultiplier(),
-            getActiveReward: () => powerups.getActiveReward(),
-            getChromaticColors: () => [
-                themeBallColors.highlight,
-                themeBallColors.aura,
-                themeBallColors.core,
-            ] as const,
-            incrementLevelBricksBroken: () => {
-                roundMachine.incrementLevelBricksBroken();
-            },
-            updateHighestCombos: (combo: number) => {
-                roundMachine.updateHighestCombos(combo);
-            },
-            refreshAchievementUpgrades: () => {
-                refreshAchievementUpgrades();
-            },
-            recordBrickBreakAchievements: (combo: number) => achievements.recordBrickBreak({ combo }),
-            queueAchievementUnlocks: (unlocks: readonly AchievementUnlock[]) => {
-                roundMachine.enqueueAchievementUnlocks(unlocks);
-            },
-            syncMomentum,
-            releaseForeshadowForBall: (ballId, actualTimeSeconds) => {
-                foreshadowing.releaseForBall(ballId, actualTimeSeconds);
-            },
-            computeScheduledAudioTime,
-            scheduleVisualEffect,
-            spawnHeatRipple: (options) => {
-                visuals?.heatRippleEffect?.spawnRipple(options);
-            },
-            emitBrickParticles: (options) => {
-                visuals?.brickParticles?.emit(options);
-            },
-            flashBallLight: (intensity?: number) => {
-                flashBallLight(intensity ?? 0.35);
-            },
-            flashPaddleLight: (intensity?: number) => {
-                flashPaddleLight(intensity ?? 0.3);
-            },
-            hudPulseCombo: (intensity: number) => {
-                hudSetters.pulseCombo(intensity);
-            },
-            applyGambleAppearance,
-            clearGhostEffect,
-            removeBodyVisual,
-            clearExtraBalls,
-            reattachBallToPaddle,
-            removeExtraBallByBody,
-            promoteExtraBallToPrimary,
-            handleLevelComplete,
-            handleGameOver,
-            handlePowerUpActivation: (type: PowerUpType) => {
-                powerups.handlePowerUpActivation(type);
-            },
-            spawnCoin,
-        },
-    } satisfies CollisionContext;
+        configResolver,
+        gameConfig,
+        powerups,
+        achievements,
+        foreshadowing,
+        visuals,
+        hudSetters,
+        PLAYFIELD_WIDTH,
+        PLAYFIELD_HEIGHT,
+        PLAYFIELD_SIZE_MAX,
+        MAX_LEVEL_BRICK_HP,
+        themeBallColors,
+        getRuntimeState: () => runtimeState,
+        getActiveLoadoutBundle: () => activeLoadoutBundle,
+        resolveComboDecayWindow,
+        refreshAchievementUpgrades,
+        computeScheduledAudioTime,
+        scheduleVisualEffect,
+        flashBallLight: (intensity?: number) => flashBallLight(intensity ?? 0.35),
+        flashPaddleLight: (intensity?: number) => flashPaddleLight(intensity ?? 0.3),
+        applyGambleAppearance,
+        clearGhostEffect,
+        removeBodyVisual,
+        clearExtraBalls,
+        reattachBallToPaddle,
+        removeExtraBallByBody,
+        promoteExtraBallToPrimary,
+        handleLevelComplete,
+        handleGameOver,
+        spawnCoin,
+        syncMomentum,
+    });
 
-    collisionDeps = {
+    lifecycleState.collisionDeps = {
         engine: physics.engine,
         bus,
         midiEngine: resolveMidiEngine(),
         random,
         context: collisionContext,
     };
-    collisionRuntime = createCollisionRuntime(collisionDeps);
-    collisionRuntime.wire();
+    lifecycleState.collisionRuntime = createCollisionRuntime(lifecycleState.collisionDeps);
+    lifecycleState.collisionRuntime.wire();
 
-    laserController = createLaserController({
-        collisionRuntime,
+    lifecycleState.laserController = createLaserController({
+        collisionRuntime: lifecycleState.collisionRuntime,
         visuals,
         levelRuntime,
         bus,
@@ -1753,33 +1312,22 @@ export const createRuntimeFacade = async ({
             height: paddle.height,
         }),
     });
-    bindLaserController(laserController);
+    bindLaserController(lifecycleState.laserController);
 
     const runGameplayUpdate = (deltaSeconds: number): void => {
-        const audioTimeSeconds = scheduler.now();
-        const nextElapsedSeconds = runtimeState.sessionElapsedSeconds + deltaSeconds;
-        if (hasPerformanceNow) {
-            const wallClockSeconds = performance.now() / 1000;
-            runtimeState.audioVisualSkewSeconds = wallClockSeconds - audioTimeSeconds;
-            runtimeState.syncDriftMs = runtimeState.audioVisualSkewSeconds * 1000;
-            updateSyncDriftMetrics(runtimeState, runtimeState.syncDriftMs, nextElapsedSeconds);
-        } else {
-            runtimeState.audioVisualSkewSeconds = 0;
-            runtimeState.syncDriftMs = 0;
-            runtimeState.syncDriftAverageMs = 0;
-            runtimeState.syncDriftPeakMs = 0;
-            runtimeState.syncDriftPeakRecordedAt = nextElapsedSeconds;
-            runtimeState.syncDriftHistory.length = 0;
-            syncDriftTelemetry.reset();
-        }
-
-        runtimeState.sessionElapsedSeconds = nextElapsedSeconds;
-        syncDriftTelemetry.emit(runtimeState.sessionElapsedSeconds, runtimeState);
-        replayBuffer.markTime(runtimeState.sessionElapsedSeconds);
-        runtimeState.frameTimestampMs = sessionNow();
+        // Update timing and synchronization metrics
+        updateTimingAndSync({
+            deltaSeconds,
+            scheduler,
+            runtimeState,
+            replayBuffer,
+            sessionNow,
+            hasPerformanceNow,
+            syncDriftTelemetry,
+        });
 
         powerups.tick(deltaSeconds);
-        laserController?.update(deltaSeconds);
+        lifecycleState.laserController?.update(deltaSeconds);
 
         for (const binding of runtimeRewards.getActionBindings()) {
             if (inputToPhysics.consumeKeyPress(binding.key)) {
@@ -1806,7 +1354,7 @@ export const createRuntimeFacade = async ({
             syncAutoCompleteCountdownDisplay();
         }
         if (autoResult.triggered) {
-            gambleRuntime?.clearAll();
+            getGambleRuntime()?.clearAll();
             forceClearBreakableBricks();
             clearActivePowerUps();
             clearActiveCoins();
@@ -1815,30 +1363,18 @@ export const createRuntimeFacade = async ({
             return;
         }
 
-        const speedMultiplier = calculateBallSpeedScale(powerUpManager.getEffect('ball-speed'));
-        const difficultyScale = roundMachine.getLevelDifficultyMultiplier();
-        const governor = runtimeState.speedGovernorMultiplier;
-        const baseTargetSpeed = BALL_BASE_SPEED
-            * loadoutPhysicsMultipliers.baseSpeed
-            * speedMultiplier
-            * difficultyScale
-            * governor;
-        const maxSpeedTarget = BALL_MAX_SPEED
-            * loadoutPhysicsMultipliers.maxSpeed
-            * speedMultiplier
-            * difficultyScale
-            * governor;
-        runtimeState.currentMaxSpeed = Math.max(1, maxSpeedTarget);
-        runtimeState.currentBaseSpeed = getAdaptiveBaseSpeed(
-            baseTargetSpeed,
-            runtimeState.currentMaxSpeed,
-            scoringState.combo,
-        );
-        runtimeState.currentLaunchSpeed = BALL_LAUNCH_SPEED
-            * loadoutPhysicsMultipliers.launchSpeed
-            * speedMultiplier
-            * difficultyScale
-            * governor;
+        // Calculate current speed targets based on powerups and difficulty
+        const speedTargets = calculateSpeedTargets({
+            runtimeState,
+            scoringState,
+            powerUpManager,
+            roundMachine,
+            configResolver,
+            loadoutPhysicsMultipliers,
+        });
+        runtimeState.currentBaseSpeed = speedTargets.currentBaseSpeed;
+        runtimeState.currentMaxSpeed = speedTargets.currentMaxSpeed;
+        runtimeState.currentLaunchSpeed = speedTargets.currentLaunchSpeed;
 
         audioState$.next({
             combo: scoringState.combo,
@@ -1847,7 +1383,7 @@ export const createRuntimeFacade = async ({
         });
 
         updateGhostBricks(deltaSeconds);
-        gambleRuntime?.tick(deltaSeconds);
+        getGambleRuntime()?.tick(deltaSeconds);
         echoTrailManager.tick(deltaSeconds);
         vortexFieldManager.tick(deltaSeconds);
 
@@ -1965,23 +1501,17 @@ export const createRuntimeFacade = async ({
             }
             : null;
 
-        const speedRange = Math.max(1, runtimeState.currentMaxSpeed - runtimeState.currentBaseSpeed);
-        const normalizedSpeed = speedRange <= 1
-            ? clampUnit(speedAfterRegulation / Math.max(1, runtimeState.currentMaxSpeed))
-            : clampUnit((speedAfterRegulation - runtimeState.currentBaseSpeed) / speedRange);
-        const bricksRatio = bricksTotal > 0 ? clampUnit(bricksRemaining / bricksTotal) : 1;
-        const lowLives = sessionSnapshot.livesRemaining <= 1;
-        const midLives = sessionSnapshot.livesRemaining === 2;
-        const baseWarble = lowLives ? 0.55 : midLives ? 0.25 : 0;
-        const warbleIntensity = clampUnit(baseWarble + normalizedSpeed * 0.35 + (1 - bricksRatio) * (lowLives ? 0.35 : 0.2));
-
-        pushMusicState({
-            lives: toMusicLives(sessionSnapshot.livesRemaining),
-            combo: scoringState.combo,
-            tempoRatio: normalizedSpeed,
-            bricksRemainingRatio: bricksRatio,
-            warbleIntensity,
-        });
+        // Build and push music state from gameplay metrics
+        const musicState = buildMusicState(
+            speedAfterRegulation,
+            runtimeState.currentBaseSpeed,
+            runtimeState.currentMaxSpeed,
+            bricksRemaining,
+            bricksTotal,
+            sessionSnapshot.livesRemaining,
+            scoringState.combo,
+        );
+        pushMusicState(musicState);
 
         const physicsOverlayState: PhysicsDebugOverlayState = {
             currentSpeed: speedAfterRegulation,
@@ -1992,7 +1522,7 @@ export const createRuntimeFacade = async ({
             slowTimeRemaining,
             regulation: regulationInfo,
             extraBalls: multiBallController.count(),
-            extraBallCapacity: MULTI_BALL_CAPACITY,
+            extraBallCapacity: configResolver.multiBallMaxCapacity,
             syncDriftMs: runtimeState.syncDriftMs,
             syncDriftAverageMs: runtimeState.syncDriftAverageMs,
             syncDriftPeakMs: runtimeState.syncDriftPeakMs,
@@ -2034,8 +1564,6 @@ export const createRuntimeFacade = async ({
             deltaSeconds: movementDelta,
         });
 
-        visuals?.brickParticles?.update(deltaSeconds);
-
         const comboActive = scoringState.combo >= 2 && scoringState.comboTimer > 0;
         const comboIntensity = comboActive ? clampUnit(scoringState.combo / 14) : 0;
         const decayWindow = resolveComboDecayWindow();
@@ -2044,251 +1572,77 @@ export const createRuntimeFacade = async ({
             1.15,
             runtimeState.comboRingPulse * 0.85 + comboIntensity * 0.6 + comboTimerFactor * 0.45,
         );
-        if (comboEnergy > 0) {
-            const comboPhaseSpeed = 2.4 + comboIntensity * 3 + runtimeState.comboRingPulse * 2.5;
-            const nextPhase = (runtimeState.comboRingPhase + movementDelta * comboPhaseSpeed) % (Math.PI * 2);
-            runtimeState.comboRingPhase = nextPhase;
-        }
 
-        const shouldDisplayComboRing = comboEnergy > 0.02;
-        if (comboRing) {
-            if (shouldDisplayComboRing) {
-                const ringPos = ball.physicsBody.position;
-                const baseRadius = ball.radius * (2 + comboIntensity * 0.55);
-                const wobble = Math.sin(runtimeState.comboRingPhase * 2) * 0.18;
-                const radius = baseRadius * (1 + wobble) + comboEnergy * ball.radius * 0.4;
-
-                const outerColor = mixColors(
-                    themeBallColors.highlight,
-                    themeAccents.combo,
-                    Math.min(1, comboEnergy * 0.7),
-                );
-                const innerColor = mixColors(
-                    themeAccents.combo,
-                    themeBallColors.aura,
-                    0.3 + comboEnergy * 0.4,
-                );
-                const outerAlpha = Math.min(1, 0.35 + comboEnergy * 0.4);
-                const innerAlpha = Math.min(1, 0.28 + comboEnergy * 0.32);
-                const fillAlpha = Math.min(1, 0.05 + comboEnergy * 0.12);
-                const overallAlpha = Math.min(1, 0.25 + comboEnergy * 0.45);
-
-                comboRing.update({
-                    position: ringPos,
-                    radius,
-                    outerColor,
-                    outerAlpha,
-                    innerColor,
-                    innerAlpha,
-                    fillAlpha,
-                    overallAlpha,
-                });
-            } else {
-                comboRing.hide();
-            }
-        }
-
-        const ballPulse = Math.min(1, comboEnergy * 0.5 + runtimeState.ballGlowPulse);
-        const ballHueSpeed = 24 + comboEnergy * 120 + ballPulse * 90;
-        ballHueShift = (ballHueShift + movementDelta * ballHueSpeed) % 360;
-        ballHueFilter.reset();
-        ballHueFilter.hue(ballHueShift, false);
-        if (comboEnergy > 0.01) {
-            ballHueFilter.saturate(1 + comboEnergy * 0.35, true);
-        }
-
-        const glowColor = mixColors(themeBallColors.highlight, themeAccents.combo, Math.min(1, comboEnergy * 0.75));
-        ballGlowFilter.color = glowColor;
-        ballGlowFilter.outerStrength = Math.min(5, 1.4 + comboEnergy * 0.8 + ballPulse * 2.6);
-
-        const bloomEnergy = clampUnit(comboEnergy);
-        visuals?.comboBloomEffect?.update({
-            comboEnergy: bloomEnergy,
-            deltaSeconds,
-            accentColor: bloomAccentColor,
-        });
-
-        const backgroundLayer = visuals?.playfieldBackground;
-        if (backgroundLayer) {
-            const comboTint = mixColors(backgroundAccentColor, themeBallColors.aura, Math.min(0.45, comboEnergy * 0.35));
-            const accentMix = clampUnit(0.2 + comboEnergy * 0.5);
-            backgroundLayer.setTint(comboTint, { accentMix });
-
-            const normalizedBallX = PLAYFIELD_WIDTH > 0
-                ? clampUnit(ball.physicsBody.position.x / PLAYFIELD_WIDTH)
-                : 0.5;
-            const normalizedBallY = PLAYFIELD_HEIGHT > 0
-                ? clampUnit(ball.physicsBody.position.y / PLAYFIELD_HEIGHT)
-                : 0.5;
-            const parallaxIntensity = clampUnit(0.3 + comboEnergy * 0.5);
-            backgroundLayer.setParallaxTarget(
-                { x: normalizedBallX, y: normalizedBallY },
-                { intensity: parallaxIntensity },
-            );
-            backgroundLayer.update(deltaSeconds);
-        }
-
+        // Build visual effects sources from active balls
         const ballTrailSources = visuals?.ballTrailSources;
         if (ballTrailSources) {
             ballTrailSources.length = 0;
-            multiBallController.visitActiveBalls(({ body, isPrimary }) => {
-                const normalizedSpeed = clampUnit(
-                    MatterVector.magnitude(body.velocity) / Math.max(1, runtimeState.currentMaxSpeed),
-                );
-                ballTrailSources.push({
-                    id: body.id,
-                    position: { x: body.position.x, y: body.position.y },
-                    radius: ball.radius,
-                    normalizedSpeed,
-                    isPrimary,
-                });
-            });
+            const sources = buildBallTrailSources(
+                multiBallController,
+                ball.radius,
+                runtimeState.currentMaxSpeed,
+            );
+            ballTrailSources.push(...sources);
         }
 
-        const ballTrailsEffect = visuals?.ballTrailsEffect;
-        if (ballTrailsEffect && ballTrailSources) {
-            ballTrailsEffect.update({
-                deltaSeconds,
-                comboEnergy,
-                sources: ballTrailSources,
-            });
-        }
+        const chromaticActiveBalls = buildChromaticSources(
+            multiBallController,
+            runtimeState.currentMaxSpeed,
+        );
 
-        const chromaticTrailEffect = visuals?.chromaticTrailEffect;
-        const chromaticTrailSources = visuals?.chromaticTrailSources;
-        if (chromaticTrailEffect) {
-            if (chromaticTrailSources) {
-                chromaticTrailSources.length = 0;
-                const activeBallIds = new Set<number>();
-                const sampleTime = runtimeState.sessionElapsedSeconds + deltaSeconds;
-                const followerCount = resolveChromaticFollowerCount(scoringState.combo, comboEnergy);
-                const baseLag = resolveChromaticFollowerLag(comboEnergy);
-                multiBallController.visitActiveBalls(({ body, isPrimary }) => {
-                    activeBallIds.add(body.id);
-                    const normalizedSpeed = clampUnit(
-                        MatterVector.magnitude(body.velocity) / Math.max(1, runtimeState.currentMaxSpeed),
-                    );
-                    const history = getOrCreateHistory(body.id);
-                    recordChromaticSample(body.id, sampleTime, { x: body.position.x, y: body.position.y });
-                    chromaticTrailSources.push({
-                        id: (body.id << 3) | 0,
-                        position: { x: body.position.x, y: body.position.y },
-                        radius: ball.radius,
-                        normalizedSpeed,
-                        isPrimary,
-                    });
+        const chromaticTrailSources = chromaticTrailManager.buildSources({
+            ballRadius: ball.radius,
+            comboScore: scoringState.combo,
+            comboEnergy,
+            sessionTime: runtimeState.sessionElapsedSeconds,
+            deltaSeconds,
+            activeBalls: chromaticActiveBalls,
+        });
 
-                    if (followerCount <= 0) {
-                        return;
-                    }
+        const heatDistortionSources = buildHeatDistortionSources(
+            multiBallController,
+            runtimeState.currentMaxSpeed,
+            PLAYFIELD_WIDTH,
+            PLAYFIELD_HEIGHT,
+        );
 
-                    for (let followerIndex = 1; followerIndex <= followerCount; followerIndex += 1) {
-                        const lagSeconds = baseLag * followerIndex;
-                        const followerTime = sampleTime - lagSeconds;
-                        const followerPosition = sampleChromaticPosition(history, followerTime);
-                        if (!followerPosition) {
-                            continue;
-                        }
-                        const historySpeed = sampleChromaticSpeed(history, followerTime, normalizedSpeed);
-                        const radiusScale = Math.max(
-                            CHROMATIC_TRAIL_MIN_RADIUS_SCALE,
-                            1 - CHROMATIC_TRAIL_FOLLOWER_DECAY * followerIndex,
-                        );
-                        const attenuatedSpeed = Math.max(
-                            0.2,
-                            Math.min(1, historySpeed * (1 - CHROMATIC_TRAIL_SPEED_ATTENUATION * followerIndex)),
-                        );
-                        chromaticTrailSources.push({
-                            id: (body.id << 3) | followerIndex,
-                            position: followerPosition,
-                            radius: ball.radius * radiusScale,
-                            normalizedSpeed: attenuatedSpeed,
-                            isPrimary: false,
-                        });
-                    }
-                });
+        const echoTrails: import('game/echo-trails').EchoTrailSnapshot[] = [];
+        echoTrailManager.forEach((_ball: any, snapshot: any) => {
+            echoTrails.push(snapshot);
+        });
 
-                pruneChromaticHistory(activeBallIds, sampleTime);
+        const vortexFields: import('physics/field-effects').VortexInstance[] = [];
+        vortexFieldManager.forEach((vortex: any) => {
+            vortexFields.push(vortex);
+        });
 
-                chromaticTrailEffect.update({
-                    deltaSeconds,
-                    comboEnergy,
-                    sources: chromaticTrailSources,
-                });
-            } else {
-                chromaticTrailEffect.update({
-                    deltaSeconds,
-                    comboEnergy,
-                    sources: [],
-                });
-            }
-        }
+        visualEffectsManager.state.lastPhysicsDebugState = runtimeState.lastPhysicsDebugState;
 
-        const heatDistortionEffect = visuals?.heatDistortionEffect;
-        const heatDistortionSources = visuals?.heatDistortionSources;
-        if (heatDistortionEffect && heatDistortionSources) {
-            heatDistortionSources.length = 0;
-            multiBallController.visitActiveBalls(({ body }) => {
-                const normalizedX = clampUnit(body.position.x / PLAYFIELD_WIDTH);
-                const normalizedY = clampUnit(body.position.y / PLAYFIELD_HEIGHT);
-                const speed = MatterVector.magnitude(body.velocity);
-                const normalizedSpeed = clampUnit(speed / Math.max(1, runtimeState.currentMaxSpeed));
-                const swirl = 6 + normalizedSpeed * 18;
-                heatDistortionSources.push({
-                    position: { x: normalizedX, y: normalizedY },
-                    intensity: normalizedSpeed,
-                    swirl,
-                });
-            });
+        visualEffectsManager.update({
+            deltaSeconds: movementDelta,
+            comboScore: scoringState.combo,
+            comboTimer: scoringState.comboTimer,
+            comboDecayWindow: decayWindow,
+            comboEnergy,
+            currentBaseSpeed: runtimeState.currentBaseSpeed,
+            currentMaxSpeed: runtimeState.currentMaxSpeed,
+            ballTrailSources,
+            chromaticTrailSources,
+            heatDistortionSources,
+            echoTrails,
+            vortexFields,
+        });
 
-            heatDistortionEffect.update({
-                deltaSeconds,
-                comboEnergy,
-                sources: heatDistortionSources,
-            });
-        }
+        runtimeState.ballGlowPulse = visualEffectsManager.state.ballGlowPulse;
+        runtimeState.paddleGlowPulse = visualEffectsManager.state.paddleGlowPulse;
+        runtimeState.comboRingPulse = visualEffectsManager.state.comboRingPulse;
+        runtimeState.comboRingPhase = visualEffectsManager.state.comboRingPhase;
 
-        visuals?.heatRippleEffect?.update(deltaSeconds);
-
-        const echoTrailEffect = visuals?.echoTrailEffect;
-        if (echoTrailEffect) {
-            const echoes: import('game/echo-trails').EchoTrailSnapshot[] = [];
-            echoTrailManager.forEach((_ball, snapshot) => {
-                echoes.push(snapshot);
-            });
-            echoTrailEffect.update({
-                deltaSeconds,
-                echoes,
-            });
-        }
-
-        const vortexFieldEffect = visuals?.vortexFieldEffect;
-        if (vortexFieldEffect) {
-            const vortices: import('physics/field-effects').VortexInstance[] = [];
-            vortexFieldManager.forEach((vortex) => {
-                vortices.push(vortex);
-            });
-            vortexFieldEffect.update({
-                deltaSeconds,
-                vortices,
-            });
-        }
-
-        runtimeState.ballGlowPulse = Math.max(0, runtimeState.ballGlowPulse - deltaSeconds * 1.6);
-        runtimeState.paddleGlowPulse = Math.max(0, runtimeState.paddleGlowPulse - deltaSeconds * 1.3);
-        runtimeState.comboRingPulse = Math.max(0, runtimeState.comboRingPulse - deltaSeconds * 1.05);
-
-        const inputOverlay = visuals?.inputDebugOverlay;
-        if (inputOverlay?.isVisible()) {
-            inputOverlay.update();
-        }
-        const physicsOverlay = visuals?.physicsDebugOverlay;
-        if (physicsOverlay?.isVisible() && runtimeState.lastPhysicsDebugState) {
-            physicsOverlay.update(runtimeState.lastPhysicsDebugState);
-        }
+        // Reactive HUD update - refresh after each gameplay frame
+        refreshHud();
     };
 
-    loop = createGameLoop(
+    lifecycleState.loop = createGameLoop(
         (deltaSeconds) => {
             stage.update(deltaSeconds);
         },
@@ -2303,7 +1657,7 @@ export const createRuntimeFacade = async ({
 
     const { pauseGame, resumeFromPause, quitToMenu } = await registerRuntimeScenes({
         stage,
-        getLoop: () => loop,
+        getLoop: () => lifecycleState.loop,
         renderStageSoon,
         provideSceneServices,
         beginNewSession,
@@ -2317,14 +1671,14 @@ export const createRuntimeFacade = async ({
             setPaused(paused);
         },
         getActiveLoadoutSelection,
-        onLoopStarted: startHudMetricsBridge,
-        onLoopStopped: stopHudMetricsBridge,
+        onLoopStarted: lifecycleState.startHudMetricsBridge,
+        onLoopStopped: lifecycleState.stopHudMetricsBridge,
         logger: runtimeLogger,
     });
 
     const { runtimeDebug: createdRuntimeDebug } = setupDebugHarnessIntegrations({
         logger: runtimeLogger,
-        cheatPowerUpBindings,
+        cheatPowerUpBindings: CHEAT_POWERUP_BINDINGS,
         toggleTheme,
         pauseGame,
         resumeGame: () => {
@@ -2332,8 +1686,8 @@ export const createRuntimeFacade = async ({
         },
         quitToMenu,
         renderStageSoon,
-        isPaused: () => isPaused,
-        isLoopRunning: () => Boolean(loop?.isRunning()),
+        isPaused: () => lifecycleState.isPaused,
+        isLoopRunning: () => Boolean(lifecycleState.loop?.isRunning()),
         getPhysicsDebugState: () => runtimeState.lastPhysicsDebugState,
         developerCheatDeps: {
             getCurrentScene: () => stage.getCurrentScene(),
@@ -2344,7 +1698,7 @@ export const createRuntimeFacade = async ({
             spawnPowerUp: (type: PowerUpType, position: { x: number; y: number }) => {
                 levelRuntime.spawnPowerUp(type, position);
             },
-            powerUpRadius: POWER_UP_RADIUS,
+            powerUpRadius: configResolver.powerUpRadius,
             renderStageSoon,
             runtimeLogger,
             roundMachine,
@@ -2357,8 +1711,8 @@ export const createRuntimeFacade = async ({
         harnessDeps: {
             beginNewSession,
             getCurrentScene: () => stage.getCurrentScene(),
-            isLoopRunning: () => Boolean(loop?.isRunning()),
-            getIsPaused: () => isPaused,
+            isLoopRunning: () => Boolean(lifecycleState.loop?.isRunning()),
+            getIsPaused: () => lifecycleState.isPaused,
             pauseGame,
             resumeGameplay: () => {
                 resumeFromPause();
@@ -2381,6 +1735,7 @@ export const createRuntimeFacade = async ({
             roundMachine,
             biasCoordinator: roundCoordinator?.getBiasCoordinator() ?? null,
             runtimeModifiers,
+            levelRuntime,
         },
         overlays: {
             input: visuals?.inputDebugOverlay ?? null,
@@ -2393,7 +1748,7 @@ export const createRuntimeFacade = async ({
 
     const cleanupVisuals = () => {
         runtimeAudio.clearScheduledVisualEffects();
-        gambleRuntime?.dispose();
+        getGambleRuntime()?.dispose();
         unsubscribeMeta?.();
         unsubscribeMeta = null;
         unsubscribeThemeChange?.();
@@ -2414,7 +1769,6 @@ export const createRuntimeFacade = async ({
         runtimeState.syncDriftPeakMs = 0;
         runtimeState.syncDriftPeakRecordedAt = runtimeState.sessionElapsedSeconds;
         syncDriftTelemetry.reset();
-        chromaticTrailHistory.clear();
     };
 
     const { lifecycle, idleResumeSummary } = initializeRuntimeLifecycle({
@@ -2441,7 +1795,7 @@ export const createRuntimeFacade = async ({
                 runtimePerformance.dispose();
             },
             () => {
-                stopHudMetricsBridge();
+                lifecycleState.stopHudMetricsBridge();
             },
             () => {
                 hudSetters.setEntropyActionHandler(undefined);
@@ -2457,14 +1811,14 @@ export const createRuntimeFacade = async ({
                 runtimeDebug = null;
             },
             () => {
-                collisionRuntime?.unwire();
-                collisionRuntime = null;
-                collisionDeps = null;
+                lifecycleState.collisionRuntime?.unwire();
+                lifecycleState.collisionRuntime = null;
+                lifecycleState.collisionDeps = null;
             },
             () => {
                 bindLaserController(null);
-                laserController?.dispose();
-                laserController = null;
+                lifecycleState.laserController?.dispose();
+                lifecycleState.laserController = null;
             },
         ],
     });
@@ -2489,7 +1843,7 @@ export const createRuntimeFacade = async ({
             input: runtimeInput,
             debug: runtimeDebug,
             visuals,
-            collisions: collisionRuntime,
+            collisions: lifecycleState.collisionRuntime,
             scoring,
             rewards: runtimeRewards,
             powerups,
@@ -2504,20 +1858,4 @@ export const createGameRuntime = async (options: GameRuntimeOptions): Promise<Ga
     return runtime.handle;
 };
 
-export const __internalGameRuntimeTesting = {
-    isPromiseLike,
-    waitForPromise,
-    isAutoplayBlockedError,
-    resolveToneTransport,
-    ensureToneAudio: audioBootstrap.ensureToneAudio,
-    resolveBallRadius,
-    intersectRayWithExpandedAabb,
-    deriveLayoutSeed,
-    clampMidiNote,
-    updateSyncDriftMetrics,
-    SYNC_DRIFT_HISTORY_SECONDS,
-    SYNC_DRIFT_HISTORY_MAX_SAMPLES,
-    SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS,
-    SYNC_DRIFT_WARN_THRESHOLD_MS,
-    SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
-};
+

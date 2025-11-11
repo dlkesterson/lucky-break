@@ -1,4 +1,4 @@
-export { createGameRuntime, createRuntimeFacade, __internalGameRuntimeTesting } from './runtime/facade';
+export { createGameRuntime, createRuntimeFacade } from './runtime/facade';
 export type {
     GameRuntimeOptions,
     GameRuntimeHandle,

@@ -163,6 +163,8 @@ export interface LevelRuntimeHandle {
     clearActiveHazards(): void;
     getActiveHazards(): readonly LevelHazardDescriptor[];
     findHazard(body: Body): LevelHazardDescriptor | null;
+    getBrickVariants(): BrickVariantSets | null;
+    getCrackTextures(): Record<1 | 2 | 3, Texture> | null;
 }
 
 export const createLevelRuntime = ({
@@ -1256,5 +1258,7 @@ export const createLevelRuntime = ({
         updateGhostBricks,
         getGhostBrickRemainingDuration,
         forceClearBreakableBricks,
+        getBrickVariants: () => brickVariants,
+        getCrackTextures: () => crackTextures,
     } satisfies LevelRuntimeHandle;
 };
