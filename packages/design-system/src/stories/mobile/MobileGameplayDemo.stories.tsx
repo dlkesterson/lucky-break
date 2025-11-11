@@ -20,7 +20,6 @@ interface GameplayDemoProps {
 
 const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
   const setupGameplay = async (stage: StageHandle) => {
-    // Import real game rendering utilities
     const { createVisualFactory } = await import(
       '@lucky-break/web-client/src/render/visual-factory'
     );
@@ -33,7 +32,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
     const playfieldLayer = stage.layers.playfield;
     const hudLayer = stage.layers.hud;
 
-    // Background gradient matching actual game
     const background = new Graphics();
     const bgGradient = new FillGradient(0, 0, 0, stage.designSize.height);
     bgGradient.addColorStop(0, toColorNumber('#0c172f'));
@@ -43,7 +41,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
     background.zIndex = -100;
     playfieldLayer.addChild(background);
 
-    // Create real visual factory with game theme
     const visualFactory = createVisualFactory({
       ball: {
         baseColor: toColorNumber(GameTheme.ball.core),
@@ -56,7 +53,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
       },
     });
 
-    // Playfield setup - centered horizontally, positioned similar to actual game
     const playfieldWidth = Math.min(stage.designSize.width * 0.92, 520);
     const playfieldHeight = stage.designSize.height * 0.62;
     const playfieldX = (stage.designSize.width - playfieldWidth) / 2;
@@ -66,13 +62,11 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
     playfield.position.set(playfieldX, playfieldY);
     playfieldLayer.addChild(playfield);
 
-    // Border using game colors with subtle glow
     const border = new Graphics();
     border.rect(0, 0, playfieldWidth, playfieldHeight);
     border.stroke({ width: 2, color: toColorNumber(GameTheme.hud.panelLine), alpha: 0.6 });
     playfield.addChild(border);
 
-    // Real bricks with game theme colors - positioned at top of playfield
     const brickCols = 6;
     const brickRows = 4;
     const brickWidth = Math.floor((playfieldWidth - (brickCols + 1) * 8) / brickCols);
@@ -96,7 +90,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
       }
     }
 
-    // Real paddle using visual factory - positioned at bottom
     const paddleWidth = playfieldWidth * 0.24;
     const paddleHeight = 16;
     const paddle = visualFactory.paddle.create({
@@ -106,13 +99,11 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
     paddle.position.set((playfieldWidth - paddleWidth) / 2, playfieldHeight - 55);
     playfield.addChild(paddle);
 
-    // Real ball using visual factory - positioned above paddle
     const ballRadius = 10;
     const ball = visualFactory.ball.create({ radius: ballRadius });
     ball.position.set(playfieldWidth / 2, playfieldHeight - 85);
     playfield.addChild(ball);
 
-    // HUD using game fonts - matching actual game layout
     if (showHud) {
       const hudColor = toColorNumber(GameTheme.hud.textPrimary);
       const hudSecondary = toColorNumber(GameTheme.hud.textSecondary);
@@ -139,7 +130,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
         return label;
       };
 
-      // Top bar - Round and Score on same line
       const topY = 20;
       const roundStatus = createLabel('ROUND 1 — ACTIVE', 24, topY, 14, hudSecondary);
       hudLayer.addChild(roundStatus);
@@ -158,7 +148,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
       bricksLabel.anchor.set(1, 0);
       hudLayer.addChild(bricksLabel);
 
-      // Bottom bar - Speed and Lives
       const bottomY = stage.designSize.height - 80;
       const speedLabel = createLabel(
         'SPEED',
@@ -191,7 +180,6 @@ const GameplayDemo = ({ viewport, showHud }: GameplayDemoProps) => {
       speedUnits.anchor.set(0.5, 0);
       hudLayer.addChild(speedUnits);
 
-      // Lives indicator bottom left
       const livesIcon = createLabel(
         '❤',
         42,

@@ -122,7 +122,8 @@ export const createRuntimeScoring = ({ bus, scoringConfig }: RuntimeScoringOptio
             }
         }
 
-        state.updateHUD?.();
+        // Note: HUD refresh is handled by the collision handler after session state updates
+        // Removed state.updateHUD?.() call to prevent premature refresh with stale session data
 
         const milestone = publishComboMilestoneIfNeeded({
             bus,

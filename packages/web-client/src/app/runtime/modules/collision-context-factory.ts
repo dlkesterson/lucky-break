@@ -107,6 +107,7 @@ export const createCollisionContext = (options: {
     readonly handleGameOver: () => void;
     readonly spawnCoin: (options: SpawnCoinOptions) => void;
     readonly syncMomentum: () => void;
+    readonly refreshHud: () => void;
 }): CollisionContext => {
     return {
         get session() {
@@ -177,6 +178,7 @@ export const createCollisionContext = (options: {
                 options.roundMachine.enqueueAchievementUnlocks(unlocks);
             },
             syncMomentum: options.syncMomentum,
+            refreshHud: options.refreshHud,
             releaseForeshadowForBall: (ballId, actualTimeSeconds) => {
                 options.foreshadowing.releaseForBall(ballId, actualTimeSeconds);
             },

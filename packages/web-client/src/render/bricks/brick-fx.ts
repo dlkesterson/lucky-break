@@ -30,12 +30,10 @@ function makeGlowOverlay(base: Texture, size: number): Sprite {
 export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
     const rng = opts.rng ?? (() => Math.random());
 
-    // ── Neon breathing glow ─────────────────────────────────────────
     const phase = rng() * Math.PI * 2;
     const glow = makeGlowOverlay(sprite.texture, sprite.width);
     sprite.addChild(glow);
 
-    // ── Optional specular sweep ─────────────────────────────────────
     let sweep: Sprite | null = null;
     if (opts.sweep) {
         const grad = Texture.WHITE;
@@ -51,7 +49,6 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
         sprite.addChild(sweep);
     }
 
-    // ── Optional twinkles ───────────────────────────────────────────
     const twinkles: Sprite[] = [];
     if (opts.twinkle) {
         for (let i = 0; i < 3; i++) {
@@ -67,8 +64,6 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
         }
     }
 
-    // ── Animation ticker hook ───────────────────────────────────────
-    // Wire into the parent stage ticker once the sprite is added to the scene.
     const onAdded = (): void => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
         const container = sprite.parent as any;
@@ -81,35 +76,29 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
         let sweepCooldown = 0;
 
         const updateFX = (tickerInstance: Ticker): void => {
-            const deltaTime = tickerInstance.deltaMS / 16.67; // normalize to ~60fps
+            const deltaTime = tickerInstance.deltaMS / 16.67;
             const dt = deltaTime / 60;
             t += dt;
 
-            // Breathing glow
             glow.alpha = 0.85 + 0.05 * Math.sin(t + phase);
 
-            // Specular sweep
             if (sweep) {
                 sweepCooldown -= deltaTime;
 
                 if (sweepCooldown <= 0) {
-                    // Reset sweep
                     sweep.alpha = 0.0;
                     sweep.x = -sprite.width * 0.6;
-                    sweepCooldown = 300 + rng() * 600; // long random cooldown
+                    sweepCooldown = 300 + rng() * 600;
                 }
 
                 if (sweepCooldown < 260) {
-                    // Fade in and slide
                     sweep.alpha = Math.min(0.25, sweep.alpha + 0.02 * deltaTime);
                     sweep.x += 1.8 * deltaTime;
                 } else if (sweep.alpha > 0) {
-                    // Fade out
                     sweep.alpha = Math.max(0, sweep.alpha - 0.02 * deltaTime);
                 }
             }
 
-            // Twinkle stars
             for (const s of twinkles) {
                 if (rng() < 0.02) {
                     s.alpha = 0.25 + rng() * 0.4;
@@ -120,7 +109,6 @@ export function attachBrickFX(sprite: Sprite, opts: BrickFXOptions = {}): void {
 
         ticker.add(updateFX);
 
-        // Clean up ticker on sprite destroy
         sprite.once('destroyed', () => {
             ticker.remove(updateFX);
         });
@@ -151,6 +139,5 @@ export function applyDamageOverlay(
         brick.addChild(overlay);
     }
 
-    // Modulate alpha by severity
     overlay.alpha = 0.3 + 0.2 * severity;
 }

@@ -11,10 +11,6 @@ import type { Reward } from 'game/rewards';
 export type { SpawnCoinOptions } from '../../level-runtime';
 import type { AchievementUnlock } from '../../achievements';
 
-// ============================================================================
-// Core Services
-// ============================================================================
-
 export interface TimeService {
     markTime(): void;
     tick(delta: number): void;
@@ -54,10 +50,6 @@ export interface InputService {
     syncPaddlePosition(position: { x: number; y: number } | null): void;
 }
 
-// ============================================================================
-// Power-Up & Effects
-// ============================================================================
-
 export interface PowerUpService {
     getEffect(): PowerUpEffect | null;
     getSlowTimeScale(): number;
@@ -70,10 +62,6 @@ export interface PowerUpService {
 export interface LaserControllerService {
     isActive(): boolean;
 }
-
-// ============================================================================
-// Collision & Physics
-// ============================================================================
 
 export interface BallAttachmentController {
     attachBallToPaddle(ball: Body, paddle: Body): void;
@@ -89,10 +77,6 @@ export interface BrickGridService {
     readonly brickWidth: number;
     readonly brickHeight: number;
 }
-
-// ============================================================================
-// Scoring & Progression
-// ============================================================================
 
 export interface ScoringService {
     readonly scoring: {
@@ -123,10 +107,6 @@ export interface ComboService {
     releaseForeshadowForBall(ballId: number): void;
 }
 
-// ============================================================================
-// Visual Effects
-// ============================================================================
-
 export interface VisualEffectsService {
     heatRippleEffect(options: {
         position: { x: number; y: number };
@@ -146,10 +126,6 @@ export interface VisualEffectsService {
     pulseCombo(intensity: number): void;
     handlePowerUpActivation(type: PowerUpType): void;
 }
-
-// ============================================================================
-// Session & State
-// ============================================================================
 
 export interface SessionService {
     snapshot(): {
@@ -176,10 +152,6 @@ export interface EntropyService {
     recordEntropyEvent(event: unknown): void;
 }
 
-// ============================================================================
-// Audio & Music
-// ============================================================================
-
 export interface AudioSchedulerService {
     tick(delta: number): void;
 }
@@ -194,10 +166,6 @@ export interface AudioStateObservable {
         readonly primaryLayerActive: boolean;
     };
 }
-
-// ============================================================================
-// Replay & Time
-// ============================================================================
 
 export interface ReplayBufferService {
     recordPaddleTarget(target: { x: number; y: number }, timestamp: number): void;
@@ -215,10 +183,6 @@ export interface FrameTimeService {
     now(): number;
 }
 
-// ============================================================================
-// Collision Context Dependencies
-// ============================================================================
-
 export interface CollisionContextDeps {
     readonly ballAttachment: BallAttachmentController;
     readonly launchController: LaunchController;
@@ -232,10 +196,6 @@ export interface CollisionContextDeps {
     readonly roundMachine: RoundMachineService;
     readonly entropy: EntropyService;
 }
-
-// ============================================================================
-// Gameplay Pipeline Dependencies
-// ============================================================================
 
 export interface GameplayPipelineDeps {
     readonly time: TimeService;
@@ -251,10 +211,6 @@ export interface GameplayPipelineDeps {
     readonly replayBuffer: ReplayBufferService;
     readonly frameTime: FrameTimeService;
 }
-
-// ============================================================================
-// Visual Effects Dependencies
-// ============================================================================
 
 export interface ColorFilter {
     reset(): void;
@@ -278,10 +234,6 @@ export interface VisualEffectsFilterDeps {
         }): void;
     };
 }
-
-// ============================================================================
-// Runtime State Dependencies  
-// ============================================================================
 
 export interface RuntimeStateConfig {
     readonly sessionElapsedSeconds: number;

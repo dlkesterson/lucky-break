@@ -119,7 +119,6 @@ export function getPowerUpIntensity(effect: PowerUpEffect): number {
 
     const fadeThreshold = effect.duration * 0.25;
     if (effect.remainingTime <= fadeThreshold) {
-        // Fade from 1 to 0 during last 25%
         return effect.remainingTime / fadeThreshold;
     }
 
@@ -145,7 +144,6 @@ export function calculatePaddleWidthScale(effect: PowerUpEffect | null, config: 
     const maxMultiplier = config.paddleWidthMultiplier ?? DEFAULT_PADDLE_WIDTH_MULTIPLIER;
     const intensity = getPowerUpIntensity(activeEffect);
 
-    // Lerp from 1.0 to maxMultiplier based on intensity
     return 1.0 + (maxMultiplier - 1.0) * intensity;
 }
 

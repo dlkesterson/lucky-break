@@ -124,15 +124,16 @@ export const hudSetters = {
         useHud.setState((previous) => (previous.visible === visible ? previous : { ...previous, visible }));
     },
     updateFromRuntime: (payload: RuntimeHudPayload): void => {
+        console.log('[game-bridge] updateFromRuntime called with score:', payload.score, 'brickRemaining:', payload.brickRemaining);
         const nextSettings = cloneSettings(payload.settings);
         lastSettings = nextSettings;
-        useHud.setState((previous) => ({
-            ...previous,
+        useHud.setState({
             score: payload.score,
             lives: payload.lives,
             coins: payload.coins,
             combo: payload.combo,
-            comboPulse: previous.comboPulse,
+            comboPulse: useHud.getState().comboPulse,
+            fps: useHud.getState().fps,
             difficultyMultiplier: payload.difficultyMultiplier,
             comboTimer: payload.comboTimer,
             brickRemaining: payload.brickRemaining,
@@ -143,9 +144,13 @@ export const hudSetters = {
             entropyActions: payload.entropyActions,
             momentum: payload.momentum,
             prompts: payload.prompts,
+            visible: useHud.getState().visible,
+            attemptEntropyAction: useHud.getState().attemptEntropyAction,
             settings: nextSettings,
+            updateSettings: useHud.getState().updateSettings,
+            flavor: useHud.getState().flavor,
             physics: payload.physics ?? null,
-        }));
+        }, true);
     },
     pulseCombo: (intensity: number): void => {
         const bounded = Number.isFinite(intensity) ? Math.max(0, Math.min(intensity, 1.6)) : 0;

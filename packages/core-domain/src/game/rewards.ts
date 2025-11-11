@@ -5,7 +5,7 @@ export type RewardType = RewardKey;
 
 interface BaseReward {
     readonly type: RewardType;
-    readonly duration: number; // seconds
+    readonly duration: number;
 }
 
 export interface StickyPaddleReward extends BaseReward {

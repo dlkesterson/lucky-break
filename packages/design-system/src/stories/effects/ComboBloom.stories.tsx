@@ -101,7 +101,6 @@ const ComboBloomPreview = ({
 
       const center = CANVAS_SIZE / 2;
 
-      // Create ball visual
       const ball = new Graphics();
       ball.eventMode = 'none';
       ball.position.set(center, center);
@@ -123,7 +122,6 @@ const ComboBloomPreview = ({
         baseColor: ballColorNum,
       });
 
-      // Create combo bloom effect
       const baseColorNum = toColorNumber(propsRef.current.baseColor);
       const comboBloom = createComboBloomEffect({
         baseColor: baseColorNum,
@@ -144,15 +142,13 @@ const ComboBloomPreview = ({
       };
       stateRef.current = previewState;
 
-      // Animation ticker - simulate oscillating combo energy
       let elapsedTime = 0;
       const tick = (ticker: { deltaMS: number }) => {
         const deltaSeconds = Math.max(0.0001, ticker.deltaMS / 1000);
         elapsedTime += deltaSeconds;
 
-        // Create smooth oscillating combo energy using sine wave
         const cycle = elapsedTime * propsRef.current.comboSpeed * 0.5;
-        const comboEnergy = (Math.sin(cycle) + 1) * 0.5; // 0 to 1
+        const comboEnergy = (Math.sin(cycle) + 1) * 0.5;
 
         const accentColorNum = propsRef.current.useAccentColor
           ? toColorNumber(propsRef.current.accentColor)
@@ -188,18 +184,15 @@ const ComboBloomPreview = ({
     };
   }, []);
 
-  // Update visual properties when controls change
   useEffect(() => {
     const state = stateRef.current;
     if (!state) {
       return;
     }
 
-    // Apply new theme color
     const baseColorNum = toColorNumber(propsRef.current.baseColor);
     state.comboBloom.applyTheme(baseColorNum);
 
-    // Redraw ball with new color
     const ballColorNum = toColorNumber(propsRef.current.ballColor);
     const ballDefaults: BallVisualDefaults = {
       baseColor: ballColorNum,

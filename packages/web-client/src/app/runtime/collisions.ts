@@ -35,7 +35,6 @@ export interface LaserStrikeOptions {
     readonly impactVelocity?: number;
 }
 
-type SessionSnapshot = ReturnType<GameSessionManager['snapshot']>;
 type BrickMetadataMap = LevelRuntimeHandle['brickMetadata'];
 type BrickVisualStateMap = LevelRuntimeHandle['brickVisualState'];
 
@@ -94,7 +93,6 @@ const WALL_LABEL_TO_SIDE: Record<string, 'left' | 'right' | 'top' | 'bottom'> = 
     'wall-bottom': 'bottom',
 };
 
-// Small gravity nudges (loadouts, bias tables) shouldn't invert the death wall; require a stronger upward pull.
 const GRAVITY_DEATH_WALL_INVERSION_THRESHOLD = 0.2;
 
 const isBall = (body: Body): boolean => body.label === 'ball';
@@ -161,12 +159,12 @@ const toHazardBallPair = (bodyA: Body, bodyB: Body): { hazardBody: Body; ballBod
 const handleBallBrickCollision = (
     deps: CollisionRuntimeDeps,
     ctx: CollisionContext,
-    sessionSnapshot: SessionSnapshot,
     frameTimestampMs: number,
     sessionId: string,
     brick: Body,
     ballBody: Body,
 ): void => {
+    console.log('[collisions] handleBallBrickCollision called');
     const {
         scoring,
         brickHealth,
@@ -226,6 +224,50 @@ const handleBallBrickCollision = (
     }
 
     if (nextHp > 0) {
+        const gambleHitResult = gambleManager.onHit(brick);
+        if (gambleHitResult.type === 'prime') {
+            const resetHp = Math.max(1, Math.round(gambleHitResult.resetHp));
+            const clampedReset = Math.min(thresholds.maxLevelBrickHp, resetHp);
+            brickHealth.set(brick, clampedReset);
+            const visualState = brickVisualState.get(brick);
+            if (visualState) {
+                const nextMax = visualState.isBreakable
+                    ? Math.min(thresholds.maxLevelBrickHp, Math.max(visualState.maxHp, clampedReset))
+                    : Math.max(visualState.maxHp, clampedReset);
+                visualState.maxHp = nextMax;
+                visualState.hasHpLabel = visualState.isBreakable && visualState.maxHp > 1;
+            }
+            levelRuntime.updateBrickDamage(brick, clampedReset);
+            fx.applyGambleAppearance(brick);
+
+            const scheduledTime = fx.computeScheduledAudioTime();
+            deps.bus.publish('BrickHit', {
+                sessionId,
+                row,
+                col,
+                impactVelocity,
+                brickType: 'gamble',
+                comboHeat: scoringState.combo,
+                previousHp: currentHp,
+                remainingHp: clampedReset,
+                scheduledTime,
+            }, frameTimestampMs);
+
+            ctx.session.recordEntropyEvent({
+                type: 'brick-hit',
+                comboHeat: scoringState.combo,
+                impactVelocity,
+                speed: impactVelocity,
+            });
+            deps.midiEngine.triggerBrickAccent({
+                combo: Math.max(1, scoringState.combo),
+                intensity: impactStrength,
+                time: scheduledTime,
+                accent: 'hit',
+            });
+            return;
+        }
+
         brickHealth.set(brick, nextHp);
         levelRuntime.updateBrickDamage(brick, nextHp);
         fx.applyGambleAppearance(brick);
@@ -280,7 +322,6 @@ const handleBallBrickCollision = (
                 endRadius: Math.min(0.45, normalizedRadius * 1.3 + 0.15 + rippleIntensity * 0.2),
             });
 
-            // Emit smaller chromatic particles for brick hits; fall back to theme palette if the brick visual state is missing.
             const visualState = brickVisualState.get(brick);
             const chromaticPalette = fx.getChromaticColors();
             const fallbackColor = visualState?.baseColor ?? chromaticPalette[0];
@@ -299,49 +340,6 @@ const handleBallBrickCollision = (
     }
 
     const gambleHitResult = gambleManager.onHit(brick);
-    if (gambleHitResult.type === 'prime') {
-        const resetHp = Math.max(1, Math.round(gambleHitResult.resetHp));
-        const clampedReset = Math.min(thresholds.maxLevelBrickHp, resetHp);
-        brickHealth.set(brick, clampedReset);
-        const visualState = brickVisualState.get(brick);
-        if (visualState) {
-            const nextMax = visualState.isBreakable
-                ? Math.min(thresholds.maxLevelBrickHp, Math.max(visualState.maxHp, clampedReset))
-                : Math.max(visualState.maxHp, clampedReset);
-            visualState.maxHp = nextMax;
-            visualState.hasHpLabel = visualState.isBreakable && visualState.maxHp > 1;
-        }
-        levelRuntime.updateBrickDamage(brick, clampedReset);
-        fx.applyGambleAppearance(brick);
-
-        const scheduledTime = fx.computeScheduledAudioTime();
-        deps.bus.publish('BrickHit', {
-            sessionId,
-            row,
-            col,
-            impactVelocity,
-            brickType: 'gamble',
-            comboHeat: scoringState.combo,
-            previousHp: currentHp,
-            remainingHp: clampedReset,
-            scheduledTime,
-        }, frameTimestampMs);
-
-        ctx.session.recordEntropyEvent({
-            type: 'brick-hit',
-            comboHeat: scoringState.combo,
-            impactVelocity,
-            speed: impactVelocity,
-        });
-        deps.midiEngine.triggerBrickAccent({
-            combo: Math.max(1, scoringState.combo),
-            intensity: impactStrength,
-            time: scheduledTime,
-            accent: 'hit',
-        });
-        return;
-    }
-
     const gambleSuccess = gambleHitResult.type === 'success';
     const brickBreakType = gambleSuccess
         ? ('gamble' as const)
@@ -351,6 +349,7 @@ const handleBallBrickCollision = (
 
     const scheduledTime = fx.computeScheduledAudioTime();
 
+    const sessionSnapshot = ctx.session.snapshot();
     const bricksRemainingBefore = sessionSnapshot.brickRemaining;
     const bricksTotal = sessionSnapshot.brickTotal;
     const bricksRemainingAfter = Math.max(0, bricksRemainingBefore - 1);
@@ -380,6 +379,8 @@ const handleBallBrickCollision = (
         },
     });
 
+    console.log('[collisions] Points awarded:', points, 'for brick at', row, col);
+
     fx.incrementLevelBricksBroken();
     fx.updateHighestCombos(scoringState.combo);
 
@@ -405,6 +406,11 @@ const handleBallBrickCollision = (
         },
         momentum: getMomentumMetrics(scoringState),
     });
+
+    console.log('[collisions] BEFORE refreshHud - snapshot score:', ctx.session.snapshot().hud.score, 'brickRemaining:', ctx.session.snapshot().hud.brickRemaining);
+    // Refresh HUD after session state updates to show current brick count
+    fx.refreshHud();
+    console.log('[collisions] AFTER refreshHud');
 
     const speedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
     const comboIntensity = clampUnit(scoringState.combo / Math.max(1, thresholds.multiplier * 2));
@@ -505,8 +511,13 @@ const handleBallBrickCollision = (
     brickMetadata.delete(brick);
     brickVisualState.delete(brick);
 
-    // Round completion is handled by the autocomplete system in gameplay-coordinator.ts
-    // which triggers when brickRemaining <= trigger threshold and countdown expires
+    // Check if all breakable bricks have been cleared
+    const updatedSnapshot = ctx.session.snapshot();
+    if (updatedSnapshot.brickRemaining === 0 && updatedSnapshot.status === 'active') {
+        console.log('[collisions] All bricks cleared! Completing round...');
+        ctx.session.completeRound();
+        fx.handleLevelComplete();
+    }
 };
 
 const handleBallPaddleCollision = (
@@ -570,7 +581,6 @@ const handleBallWallCollision = (
     ballBody: Body,
     wallBody: Body,
 ): void => {
-    // Ignore wall collisions for attached balls
     if (ctx.physics.isBallAttached(ballBody)) {
         return;
     }
@@ -580,14 +590,12 @@ const handleBallWallCollision = (
         return;
     }
 
-    // Flip the death wall only when gravity is strongly upward so gentle offsets still behave normally.
     const gravity = ctx.getGravity();
     const hasStrongUpwardGravity = gravity <= -GRAVITY_DEATH_WALL_INVERSION_THRESHOLD;
     const deathWallSide: 'top' | 'bottom' = hasStrongUpwardGravity ? 'top' : 'bottom';
     const isDeathWall = side === deathWallSide;
 
     if (isDeathWall) {
-        // Treat as ball drop
         handleBallBottomCollision(deps, ctx, ballBody);
         return;
     }
@@ -821,10 +829,12 @@ const handleHazardBallCollision = (
 };
 
 export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRuntime => {
+    console.log('[collisions.ts] createCollisionRuntime called - module loaded');
     const { engine, context: ctx } = deps;
     const portalCooldowns = new Map<string, Map<number, number>>();
 
     const handleCollisionStart = (event: IEventCollision<Engine>) => {
+        console.log('[collisions] handleCollisionStart - pairs:', event.pairs.length);
         event.pairs.forEach((pair) => {
             const { bodyA, bodyB } = pair;
             const sessionSnapshot = ctx.session.snapshot();
@@ -832,8 +842,9 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
             const sessionId = sessionSnapshot.sessionId;
 
             const ballBrick = toBallBrickPair(bodyA, bodyB);
+            console.log('[collisions] ballBrick pair?', !!ballBrick, 'bodyA.label:', bodyA.label, 'bodyB.label:', bodyB.label);
             if (ballBrick) {
-                handleBallBrickCollision(deps, ctx, sessionSnapshot, frameTimestampMs, sessionId, ballBrick.brickBody, ballBrick.ballBody);
+                handleBallBrickCollision(deps, ctx, frameTimestampMs, sessionId, ballBrick.brickBody, ballBrick.ballBody);
                 return;
             }
 
@@ -891,7 +902,7 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
         });
         const velocity = Math.max(0, impactVelocity ?? ctx.functions.getCurrentMaxSpeed());
         MatterBody.setVelocity(syntheticBall, { x: 0, y: -velocity });
-        handleBallBrickCollision(deps, ctx, sessionSnapshot, frameTimestampMs, sessionId, brick, syntheticBall);
+        handleBallBrickCollision(deps, ctx, frameTimestampMs, sessionId, brick, syntheticBall);
     };
 
     return {

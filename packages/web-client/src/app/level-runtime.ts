@@ -516,9 +516,8 @@ export const createLevelRuntime = ({
         clearActiveCoins();
         clearActiveHazards();
 
-        // Initialize brick variants on first level load
         if (!brickVariants) {
-            initBrickVariants(); // Initialize variants for brick creation
+            initBrickVariants();
         }
 
         let baseSpec = toOrientationSpec(getLevelSpec(levelIndex));
@@ -593,7 +592,6 @@ export const createLevelRuntime = ({
             const maxHp = isBreakable ? Math.min(MAX_LEVEL_BRICK_HP, rawHp) : rawHp;
             const baseColor = isBreakable ? paletteColor : WALL_BRICK_COLOR;
 
-            // Use procedural brick variants for breakable bricks if available
             let texture: Texture;
             let usesProceduralVariant = false;
             let textureOverride: BrickTextureOverrides | undefined;
@@ -606,7 +604,6 @@ export const createLevelRuntime = ({
                     texture = variant.texture;
                     usesProceduralVariant = true;
                 } else {
-                    // Fallback to texture cache
                     texture = brickTextures.get({
                         baseColor,
                         maxHp,
@@ -617,7 +614,6 @@ export const createLevelRuntime = ({
                     });
                 }
             } else {
-                // Non-breakable bricks use traditional texture cache
                 textureOverride = isBreakable
                     ? undefined
                     : {
@@ -644,7 +640,6 @@ export const createLevelRuntime = ({
             brickVisual.alpha = isBreakable ? brickLighting.restAlpha : Math.min(brickLighting.restAlpha, 0.7);
             brickVisual.eventMode = 'none';
 
-            // Attach FX for procedural variants
             if (usesProceduralVariant && isBreakable) {
                 const style = getBrickStyle(brickSpec.x, brickSpec.y);
                 const rng = layoutRandom ?? (() => Math.random());
@@ -732,12 +727,10 @@ export const createLevelRuntime = ({
                 });
                 waveSprite.filters = [waveFilter];
 
-                // Create circular mask to contain the effect
                 const waveMask = new Graphics();
                 waveMask.circle(0, 0, radius);
                 waveMask.fill({ color: 0xffffff });
 
-                // Container for masked wave effect
                 const waveContainer = new Graphics();
                 waveContainer.position.set(centerX, centerY);
                 waveContainer.zIndex = 4;
@@ -1038,23 +1031,18 @@ export const createLevelRuntime = ({
 
         const visual = new Graphics();
 
-        // Draw shiny gold coin with depth
         const radius = coin.radius;
 
-        // Outer rim shadow
         visual.circle(0, 0, radius);
         visual.fill({ color: 0xb8860b, alpha: 0.95 });
 
-        // Main coin face
         const faceRadius = radius * 0.88;
         visual.circle(0, 0, faceRadius);
         visual.fill({ color: 0xffd700, alpha: 0.98 });
 
-        // Top highlight
         visual.circle(0, -radius * 0.25, faceRadius * 0.7);
         visual.fill({ color: 0xffeb3b, alpha: 0.45 });
 
-        // Edge highlight for 3D effect
         visual.circle(0, 0, radius);
         visual.stroke({ color: 0xffeb3b, width: 2, alpha: 0.6 });
 

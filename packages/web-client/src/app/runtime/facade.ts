@@ -1256,6 +1256,7 @@ export const createRuntimeFacade = async ({
         handleGameOver,
         spawnCoin,
         syncMomentum,
+        refreshHud,
     });
 
     lifecycleState.collisionDeps = {
@@ -1326,7 +1327,43 @@ export const createRuntimeFacade = async ({
         }
         if (autoResult.triggered) {
             getGambleRuntime()?.clearAll();
+
+            // Award points for all remaining bricks before force-clearing
+            const sessionSnapshot = session.snapshot();
+            const bricksToAward = sessionSnapshot.brickRemaining;
+            for (let i = 0; i < bricksToAward; i++) {
+                const bricksRemainingAfter = sessionSnapshot.brickRemaining - (i + 1);
+                const { pointsAwarded } = scoring.awardBrick({
+                    sessionId: sessionSnapshot.sessionId,
+                    row: 0,
+                    col: 0,
+                    impactVelocity: 0,
+                    brickType: 'standard',
+                    initialHp: 1,
+                    bricksRemainingAfter,
+                    brickTotal: sessionSnapshot.brickTotal,
+                    comboDecayWindow: configResolver.baseComboDecayWindow,
+                    maxSpeed: runtimeState.currentMaxSpeed,
+                    frameTimestampMs: Date.now(),
+                    scheduledTime: scheduler.now(),
+                });
+
+                session.recordBrickBreak({
+                    points: pointsAwarded,
+                    event: {
+                        row: 0,
+                        col: 0,
+                        impactVelocity: 0,
+                        brickType: 'standard',
+                        initialHp: 1,
+                        comboHeat: scoringState.combo,
+                    },
+                    momentum: getMomentumMetrics(scoringState),
+                });
+            }
+
             forceClearBreakableBricks();
+            refreshHud(); // Refresh HUD after awarding points
             clearActivePowerUps();
             clearActiveCoins();
             session.completeRound();

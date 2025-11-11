@@ -93,7 +93,6 @@ export const createLevelRuntimeBundle = (
         layoutDecorator,
     } = options;
 
-    // Configure preset level offset for variety
     const presetCount = getPresetLevelCount();
     if (presetCount > 0) {
         const offsetSource = mulberry32((random.seed() ^ configResolver.presetOffsetSalt) >>> 0);
@@ -103,7 +102,6 @@ export const createLevelRuntimeBundle = (
         setLevelPresetOffset(0);
     }
 
-    // Create level runtime with all dependencies
     const levelRuntime = createLevelRuntime({
         physics,
         stage,

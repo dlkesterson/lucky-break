@@ -67,7 +67,8 @@ describe('createRuntimeScoring', () => {
         expect(firstAward.milestone).toBe(false);
         expect(scoring.state.score).toBe(300);
         expect(scoring.state.combo).toBe(1);
-        expect(hudUpdater).toHaveBeenCalledTimes(2);
+        // HUD updater is now called only by the base scoring function, not by the wrapper
+        expect(hudUpdater).toHaveBeenCalledTimes(1);
 
         expect(publishCalls).toHaveLength(1);
         const [eventType, eventPayload, eventTimestamp] = publishCalls[0];
@@ -108,7 +109,8 @@ describe('createRuntimeScoring', () => {
         expect(secondAward.milestone).toBe(true);
         expect(scoring.state.score).toBe(400);
         expect(scoring.state.combo).toBe(2);
-        expect(hudUpdater).toHaveBeenCalledTimes(4);
+        // HUD updater is now called only by the base scoring function (once per award)
+        expect(hudUpdater).toHaveBeenCalledTimes(2);
 
         expect(publishCalls).toHaveLength(3);
         const milestoneCall = publishCalls.at(-1);

@@ -55,7 +55,6 @@ export class PaddleBodyController implements PaddleController {
     ): void {
         let targetX = paddle.position.x;
 
-        // Handle keyboard input
         if (inputState.leftPressed) {
             targetX -= paddle.speed * deltaTime;
         }
@@ -63,18 +62,15 @@ export class PaddleBodyController implements PaddleController {
             targetX += paddle.speed * deltaTime;
         }
 
-        // Handle mouse/touch input (takes precedence)
         if (inputState.mouseX !== undefined) {
             targetX = inputState.mouseX;
         } else if (inputState.touchX !== undefined) {
             targetX = inputState.touchX;
         }
 
-        // Constrain to screen bounds (1280px width to match physics world)
         const halfWidth = paddle.width / 2;
         targetX = Math.max(halfWidth, Math.min(playfieldWidth - halfWidth, targetX));
 
-        // Update physics body position; y stays constant so only adjust x
         PaddleBodyController.applyPosition(paddle, targetX, paddle.position.y);
     }
 
@@ -82,7 +78,6 @@ export class PaddleBodyController implements PaddleController {
      * Set paddle position directly (for initialization or reset)
      */
     setPaddlePosition(paddle: Paddle, position: Vector2, playfieldWidth: number): void {
-        // Constrain to screen bounds using playfield width for consistency with input conversion
         const halfWidth = paddle.width / 2;
         const constrainedX = Math.max(halfWidth, Math.min(playfieldWidth - halfWidth, position.x));
 
@@ -132,14 +127,14 @@ export class PaddleBodyController implements PaddleController {
     getDebugInfo(paddle: Paddle): PaddleDebugInfo {
         return {
             position: { ...paddle.position },
-            velocity: { x: 0, y: 0 }, // Paddle is kinematic, no velocity
+            velocity: { x: 0, y: 0 },
             bounds: this.getPaddleBounds(paddle),
             physicsBodyId: paddle.physicsBody.id,
             inputState: {
                 leftPressed: false,
                 rightPressed: false,
                 launchRequested: false,
-            }, // This would need to be passed in from actual input state
+            },
         };
     }
 }

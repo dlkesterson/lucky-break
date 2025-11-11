@@ -49,7 +49,7 @@ export interface BallLaunchDebugInfo {
 }
 
 export class PhysicsBallLaunchController implements BallLaunchController {
-    private readonly defaultLaunchSpeed = 8; // Consistent speed for Breakout-style game
+    private readonly defaultLaunchSpeed = 8;
     private lastLaunchDirection: Vector2 | null = null;
 
     launch(ball: Ball, direction: Vector2 = { x: 0, y: -1 }, speed = this.defaultLaunchSpeed): void {
@@ -57,13 +57,10 @@ export class PhysicsBallLaunchController implements BallLaunchController {
             return;
         }
 
-        // Detach ball from paddle if attached
         if (ball.isAttached) {
-            // Detach will be handled by physics world in main.ts
             ball.isAttached = false;
         }
 
-        // Calculate and apply launch velocity using setVelocity for consistent speed
         const normalized = Vector.normalise(direction as MatterVector);
         const velocity = Vector.mult(normalized, speed);
         Body.setVelocity(ball.physicsBody, velocity);
@@ -72,16 +69,13 @@ export class PhysicsBallLaunchController implements BallLaunchController {
     }
 
     canLaunch(ball: Ball): boolean {
-        // Ball can be launched if it's attached to paddle
         return ball.isAttached;
     }
 
     calculateLaunchVelocity(direction: Vector2, speed: number): Vector2 {
-        // Normalize direction vector
         const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
 
         if (length === 0) {
-            // Default to upward if zero vector provided
             return { x: 0, y: -speed };
         }
 

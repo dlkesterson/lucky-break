@@ -18,7 +18,7 @@ export class BallAttachmentController implements BallController {
      */
     createAttachedBall(paddlePosition: Vector2, options: BallOptions = {}): Ball {
         const radius = options.radius ?? 10;
-        const attachmentOffset = { x: 0, y: -radius - 10 }; // Position ball above paddle
+        const attachmentOffset = { x: 0, y: -radius - 10 };
 
         const physicsBody = this.physicsWorld.factory.ball({
             position: {
@@ -29,13 +29,11 @@ export class BallAttachmentController implements BallController {
             restitution: options.restitution ?? 0.98,
         });
 
-        // Create a temporary paddle body for attachment
         const tempPaddleBody = this.physicsWorld.factory.paddle({
             position: paddlePosition,
             size: { width: 100, height: 20 },
         });
 
-        // Attach the ball to the temporary paddle
         this.physicsWorld.attachBallToPaddle(physicsBody, tempPaddleBody, attachmentOffset);
 
         return {
@@ -71,8 +69,7 @@ export class BallAttachmentController implements BallController {
             ball.isAttached = false;
         }
 
-        // Normalize direction and apply velocity
-        const speed = 300; // Launch speed
+        const speed = 300;
         const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
         const normalizedDirection = length > 0 ? {
             x: direction.x / length,

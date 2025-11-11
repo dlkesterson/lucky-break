@@ -92,7 +92,6 @@ const GravityWellPreview = ({
       const center = CANVAS_SIZE / 2;
       const currentRadius = propsRef.current.radius;
 
-      // Create the wave sprite with gradient wave filter
       const waveSprite = new Sprite(Texture.WHITE);
       waveSprite.anchor.set(0.5);
       waveSprite.position.set(0, 0);
@@ -112,12 +111,10 @@ const GravityWellPreview = ({
       });
       waveSprite.filters = [waveFilter];
 
-      // Create a circular mask
       const maskGraphic = new Graphics();
       maskGraphic.circle(0, 0, currentRadius);
       maskGraphic.fill({ color: 0xffffff });
 
-      // Create a container for the masked effect
       const waveContainer = new Graphics();
       waveContainer.position.set(center, center);
       waveContainer.zIndex = 1;
@@ -128,7 +125,6 @@ const GravityWellPreview = ({
 
       app.stage.addChild(waveContainer);
 
-      // Create the rim
       const rim = new Graphics();
       rim.circle(0, 0, currentRadius);
       rim.stroke({
@@ -151,7 +147,6 @@ const GravityWellPreview = ({
       };
       stateRef.current = previewState;
 
-      // Animation ticker
       const tick = (ticker: { deltaMS: number }) => {
         const deltaSeconds = Math.max(0.0001, ticker.deltaMS / 1000);
         waveFilter.update(deltaSeconds);
@@ -183,7 +178,6 @@ const GravityWellPreview = ({
     };
   }, []);
 
-  // Update visual properties when controls change
   useEffect(() => {
     const state = stateRef.current;
     if (!state) {
@@ -192,19 +186,15 @@ const GravityWellPreview = ({
 
     const currentRadius = propsRef.current.radius;
 
-    // Update wave sprite size
     state.waveSprite.width = currentRadius * 2;
     state.waveSprite.height = currentRadius * 2;
 
-    // Update mask to match new radius
     state.maskGraphic.clear();
     state.maskGraphic.circle(0, 0, currentRadius);
     state.maskGraphic.fill({ color: 0xffffff });
 
-    // Update filter opacity
     state.waveFilter.setOpacity(propsRef.current.opacity);
 
-    // Update rim
     state.rim.clear();
     state.rim.circle(0, 0, currentRadius);
     state.rim.stroke({

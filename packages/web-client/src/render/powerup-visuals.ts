@@ -32,39 +32,31 @@ const RUBY_LIGHT = 0xff8a80;
 const drawGoldCoin = (graphics: Graphics, radius: number): void => {
     graphics.clear();
 
-    // Outer rim with depth
     graphics.circle(0, 0, radius);
     graphics.fill({ color: GOLD_DARK, alpha: 0.95 });
 
-    // Main coin face with radial gradient effect
     const faceRadius = radius * 0.88;
     graphics.circle(0, 0, faceRadius);
     graphics.fill({ color: GOLD, alpha: 0.98 });
 
-    // Top highlight arc
     graphics.circle(0, -radius * 0.25, faceRadius * 0.7);
     graphics.fill({ color: GOLD_LIGHT, alpha: 0.45 });
 
-    // Edge highlights for 3D effect
     graphics.circle(0, 0, radius);
     graphics.stroke({ color: GOLD_LIGHT, width: 2.5, alpha: 0.6 });
 
     graphics.circle(0, 0, faceRadius);
     graphics.stroke({ color: GOLD_DARK, width: 1.8, alpha: 0.5 });
 
-    // Draw $ symbol
     const symbolScale = radius * 0.55;
     const symbolWidth = symbolScale * 0.15;
 
-    // $ vertical line
     graphics.rect(-symbolWidth / 2, -symbolScale * 0.6, symbolWidth, symbolScale * 1.2);
     graphics.fill({ color: GOLD_DARK, alpha: 0.9 });
 
-    // Top S curve
     graphics.arc(0, -symbolScale * 0.25, symbolScale * 0.25, Math.PI, Math.PI * 2, false);
     graphics.stroke({ color: GOLD_DARK, width: symbolWidth * 1.5, alpha: 0.9 });
 
-    // Bottom S curve
     graphics.arc(0, symbolScale * 0.25, symbolScale * 0.25, 0, Math.PI, false);
     graphics.stroke({ color: GOLD_DARK, width: symbolWidth * 1.5, alpha: 0.9 });
 
@@ -77,20 +69,16 @@ const drawGoldCoin = (graphics: Graphics, radius: number): void => {
 const drawLightningBall = (graphics: Graphics, radius: number): void => {
     graphics.clear();
 
-    // Outer glow
     graphics.circle(0, 0, radius * 1.15);
     graphics.fill({ color: ELECTRIC_BLUE, alpha: 0.25 });
 
-    // Main sphere
     graphics.circle(0, 0, radius);
     graphics.fill({ color: ELECTRIC_BLUE, alpha: 0.85 });
     graphics.stroke({ color: ELECTRIC_WHITE, width: 2, alpha: 0.7 });
 
-    // Inner bright core
     graphics.circle(0, -radius * 0.2, radius * 0.5);
     graphics.fill({ color: ELECTRIC_WHITE, alpha: 0.6 });
 
-    // Lightning bolts
     const boltCount = 3;
     const boltWidth = 2.5;
     for (let index = 0; index < boltCount; index += 1) {
@@ -102,13 +90,11 @@ const drawLightningBall = (graphics: Graphics, radius: number): void => {
         const midX = (startX + endX) / 2 + Math.cos(angle + Math.PI / 2) * radius * 0.2;
         const midY = (startY + endY) / 2 + Math.sin(angle + Math.PI / 2) * radius * 0.2;
 
-        // Main bolt
         graphics.moveTo(startX, startY);
         graphics.lineTo(midX, midY);
         graphics.lineTo(endX, endY);
         graphics.stroke({ color: 0xffff00, width: boltWidth, alpha: 0.95 });
 
-        // Bright highlight
         graphics.moveTo(startX, startY);
         graphics.lineTo(midX, midY);
         graphics.lineTo(endX, endY);
@@ -124,34 +110,27 @@ const drawLightningBall = (graphics: Graphics, radius: number): void => {
 const drawInfinitySymbol = (graphics: Graphics, radius: number): void => {
     graphics.clear();
 
-    // Outer glow
     graphics.circle(0, 0, radius * 1.2);
     graphics.fill({ color: INFINITY_PURPLE, alpha: 0.2 });
 
-    // Background circle
     graphics.circle(0, 0, radius);
     graphics.fill({ color: INFINITY_PURPLE, alpha: 0.75 });
     graphics.stroke({ color: INFINITY_PINK, width: 2.5, alpha: 0.8 });
 
-    // Draw infinity symbol ∞
     const loopRadius = radius * 0.35;
     const separation = radius * 0.3;
 
-    // Left loop
     graphics.circle(-separation, 0, loopRadius);
     graphics.fill({ color: INFINITY_PINK, alpha: 0.95 });
     graphics.stroke({ color: CHIP_WHITE, width: 2, alpha: 0.7 });
 
-    // Right loop
     graphics.circle(separation, 0, loopRadius);
     graphics.fill({ color: INFINITY_PINK, alpha: 0.95 });
     graphics.stroke({ color: CHIP_WHITE, width: 2, alpha: 0.7 });
 
-    // Connecting bridge in the middle
     graphics.rect(-separation * 0.5, -loopRadius * 0.3, separation, loopRadius * 0.6);
     graphics.fill({ color: INFINITY_PINK, alpha: 0.95 });
 
-    // Inner highlights for sparkle
     graphics.circle(-separation, -loopRadius * 0.35, loopRadius * 0.35);
     graphics.fill({ color: CHIP_WHITE, alpha: 0.55 });
 
@@ -167,16 +146,13 @@ const drawInfinitySymbol = (graphics: Graphics, radius: number): void => {
 const drawPokerChip = (graphics: Graphics, radius: number): void => {
     graphics.clear();
 
-    // Outer ring
     graphics.circle(0, 0, radius);
     graphics.fill({ color: CHIP_WHITE, alpha: 0.95 });
 
-    // Main chip face
     const faceRadius = radius * 0.8;
     graphics.circle(0, 0, faceRadius);
     graphics.fill({ color: CHIP_RED, alpha: 0.95 });
 
-    // Edge details - alternating white segments
     const segmentCount = 12;
     for (let index = 0; index < segmentCount; index += 2) {
         const startAngle = (index * Math.PI * 2) / segmentCount;
@@ -184,7 +160,6 @@ const drawPokerChip = (graphics: Graphics, radius: number): void => {
         const outerRadius = radius;
         const innerRadius = faceRadius;
 
-        // Draw pie segment
         graphics.moveTo(0, 0);
         graphics.arc(0, 0, outerRadius, startAngle, endAngle, false);
         graphics.lineTo(
@@ -196,12 +171,10 @@ const drawPokerChip = (graphics: Graphics, radius: number): void => {
         graphics.fill({ color: CHIP_WHITE, alpha: 0.95 });
     }
 
-    // Center circle for $ or value
     const centerRadius = faceRadius * 0.5;
     graphics.circle(0, 0, centerRadius);
     graphics.fill({ color: CHIP_WHITE, alpha: 0.98 });
 
-    // Draw $ in center
     const symbolScale = centerRadius * 0.7;
     const symbolWidth = symbolScale * 0.15;
 
@@ -223,11 +196,9 @@ const drawPokerChip = (graphics: Graphics, radius: number): void => {
 const drawRubyGem = (graphics: Graphics, radius: number): void => {
     graphics.clear();
 
-    // Outer glow
     graphics.circle(0, 0, radius * 1.15);
     graphics.fill({ color: RUBY_RED, alpha: 0.3 });
 
-    // Main gem outline (octagon shape)
     const sides = 8;
     const points: number[] = [];
     const rotation = Math.PI / 8;
@@ -244,7 +215,6 @@ const drawRubyGem = (graphics: Graphics, radius: number): void => {
     graphics.fill({ color: RUBY_RED, alpha: 0.95 });
     graphics.stroke({ color: RUBY_DARK, width: 2.5, alpha: 0.8 });
 
-    // Inner facets for gem sparkle
     const innerRadius = radius * 0.6;
     const innerPoints: number[] = [];
     for (let index = 0; index < sides; index += 1) {
@@ -259,14 +229,12 @@ const drawRubyGem = (graphics: Graphics, radius: number): void => {
     graphics.closePath();
     graphics.fill({ color: mixColors(RUBY_RED, RUBY_LIGHT, 0.4), alpha: 0.85 });
 
-    // Top highlight facet
     graphics.moveTo(0, -radius * 0.7);
     graphics.lineTo(-radius * 0.3, -radius * 0.3);
     graphics.lineTo(radius * 0.3, -radius * 0.3);
     graphics.closePath();
     graphics.fill({ color: RUBY_LIGHT, alpha: 0.75 });
 
-    // Edge highlights on some facets
     for (let index = 0; index < sides; index += 2) {
         const angle = rotation + (index * Math.PI * 2) / sides;
         const nextAngle = rotation + ((index + 1) * Math.PI * 2) / sides;
@@ -307,7 +275,6 @@ export const drawPowerUpVisual = (
             drawRubyGem(graphics, radius);
             break;
         default:
-            // Fallback to simple circle
             graphics.clear();
             graphics.circle(0, 0, radius);
             graphics.fill({ color: 0xffffff, alpha: 0.9 });

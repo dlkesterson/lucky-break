@@ -8,14 +8,12 @@ import type { GameConfig } from 'config/game';
 export class RuntimeConfigResolver {
     constructor(private readonly config: GameConfig) { }
 
-    // Playfield dimensions
     get playfieldDefault() {
         return this.config.playfield;
     }
 
-    // Ball configuration
     get initialLives(): number {
-        return 3; // Currently hardcoded in facade
+        return 3;
     }
 
     get minSpeed(): number {
@@ -35,23 +33,22 @@ export class RuntimeConfigResolver {
     }
 
     get ballGravity(): number {
-        return 0; // Matter default
+        return 0;
     }
 
     readonly wallDeadzone: number = 0.5;
 
     /* eslint-enable @typescript-eslint/class-literal-property-style */
 
-    readonly ballRadius = 10; // Currently hardcoded in facade, could move to config
+    readonly ballRadius = 10;
 
-    // Paddle configuration
-    readonly paddleBaseWidth = 100; // Currently hardcoded
+    readonly paddleBaseWidth = 100;
 
-    readonly paddleBaseHeight = 20; // Currently hardcoded
+    readonly paddleBaseHeight = 20;
 
-    readonly paddleBaseSpeed = 300; // Currently hardcoded
+    readonly paddleBaseSpeed = 300;
 
-    readonly paddleSpawnOffsetFromBottom = 70; // Currently hardcoded
+    readonly paddleSpawnOffsetFromBottom = 70;
 
     get paddleExpandedWidthMultiplier() {
         return this.config.paddle.expandedWidthMultiplier;
@@ -65,7 +62,6 @@ export class RuntimeConfigResolver {
         return this.config.paddle.control.snapThreshold;
     }
 
-    // Brick configuration
     get brickWidth() {
         return this.config.bricks.size.width;
     }
@@ -82,7 +78,6 @@ export class RuntimeConfigResolver {
         return this.config.bricks.lighting.restAlpha;
     }
 
-    // Scoring configuration
     get baseComboDecayWindow() {
         return this.config.scoring.comboDecayTime;
     }
@@ -91,7 +86,6 @@ export class RuntimeConfigResolver {
         return this.config.scoring.multiplierThreshold;
     }
 
-    // Multi-ball configuration
     get multiBallSpawnMultiplier() {
         return this.config.multiBall.spawnMultiplier;
     }
@@ -104,7 +98,6 @@ export class RuntimeConfigResolver {
         return this.config.rewards.stackLimits.multiBallMaxDuration;
     }
 
-    // Power-up configuration
     get powerUpRadius() {
         return this.config.powerUp.radius;
     }
@@ -117,7 +110,6 @@ export class RuntimeConfigResolver {
         return this.config.powerUp.rewardDuration;
     }
 
-    // Coin configuration
     get coinRadius() {
         return this.config.coins.radius;
     }
@@ -138,7 +130,6 @@ export class RuntimeConfigResolver {
         return this.config.coins.max;
     }
 
-    // Modifier ranges
     get modifierGravityRange(): GameConfig['modifiers']['gravity'] {
         return this.config.modifiers.gravity;
     }
@@ -189,7 +180,6 @@ export class RuntimeConfigResolver {
         return Math.min(5, Math.max(1, Math.ceil(this.gambleTimerSeconds)));
     }
 
-    // Auto-complete configuration
     get autoCompleteEnabled() {
         return this.config.levels.autoComplete.enabled;
     }
@@ -202,7 +192,6 @@ export class RuntimeConfigResolver {
         return Math.max(1, this.config.levels.autoComplete.triggerRemainingBricks);
     }
 
-    // Entropy costs
     get entropyRerollCost() {
         return Math.max(1, this.config.entropy.spend.rerollCost);
     }
@@ -215,7 +204,6 @@ export class RuntimeConfigResolver {
         return Math.max(1, this.config.entropy.spend.bailoutCost);
     }
 
-    // Reward configuration
     get rewardLockCoinCost() {
         return Math.max(0, this.config.rewards.lockCoinCost);
     }
@@ -228,12 +216,10 @@ export class RuntimeConfigResolver {
         return this.config.rewards.stackLimits.slowTimeMaxDuration;
     }
 
-    // Prestige configuration
     get prestigeConfig(): GameConfig['prestige'] {
         return this.config.prestige;
     }
 
-    // Gameplay constants (not in config, but collected here for consistency)
     readonly baseLives = 3;
 
     readonly presetOffsetSalt = 0x1f123bb5;

@@ -22,6 +22,7 @@ export interface PhysicsToScoringBridge {
     recordBrickBreakAchievements(combo: number): readonly AchievementUnlock[];
     queueAchievementUnlocks(unlocks: readonly AchievementUnlock[]): void;
     syncMomentum(): void;
+    refreshHud(): void;
 }
 
 export interface CollisionEffectHooks extends PhysicsToScoringBridge {

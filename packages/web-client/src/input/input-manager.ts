@@ -92,10 +92,8 @@ export class GameInputManager implements InputManager {
         this.teardownEventListeners();
 
         this.container = container;
-        // Find the canvas element within the container
         this.canvas = container.querySelector('canvas') ?? null;
 
-        // Clear any stale positions from before initialization
         this.mousePosition = null;
         this.touchPosition = null;
         this.resetTouchGestureState();
@@ -134,14 +132,12 @@ export class GameInputManager implements InputManager {
             mouseTarget.addEventListener('contextmenu', this.contextMenuListener);
         }
 
-        // Touch events - attach to canvas only to avoid blocking UI
         const touchTarget = this.canvas ?? this.container;
         touchTarget.addEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
         touchTarget.addEventListener('touchmove', this.touchMoveListener, this.nonPassiveTouchOptions);
         touchTarget.addEventListener('touchend', this.touchEndListener);
         touchTarget.addEventListener('touchcancel', this.touchCancelListener);
 
-        // Keyboard events
         document.addEventListener('keydown', this.keyDownListener);
         document.addEventListener('keyup', this.keyUpListener);
 
@@ -159,7 +155,6 @@ export class GameInputManager implements InputManager {
             this.mouseEventTarget.removeEventListener('contextmenu', this.contextMenuListener);
         }
 
-        // Remove touch events from canvas or container
         const touchTarget = this.canvas ?? this.container;
         if (touchTarget) {
             touchTarget.removeEventListener('touchstart', this.touchStartListener, this.nonPassiveTouchOptions);
@@ -194,7 +189,6 @@ export class GameInputManager implements InputManager {
             const normalized = normalizeMouseEvent(event, this.canvas);
             this.mousePosition = { x: normalized.x, y: normalized.y };
         } else {
-            // Fallback: use raw client coordinates
             this.mousePosition = { x: event.clientX, y: event.clientY };
         }
 
@@ -206,20 +200,18 @@ export class GameInputManager implements InputManager {
             return;
         }
         this.markPrimaryInput('mouse');
-        this.hasReceivedInput = true; // User has moved mouse
+        this.hasReceivedInput = true;
 
         if (this.canvas) {
             const normalized = normalizeMouseEvent(event, this.canvas);
             this.mousePosition = { x: normalized.x, y: normalized.y };
         } else {
-            // Fallback: use raw client coordinates
             this.mousePosition = { x: event.clientX, y: event.clientY };
         }
     }
 
     private handleMouseUp(event: MouseEvent): void {
         void event;
-        // Mouse up doesn't remove from active inputs as mouse is still available
     }
 
     private handleTouchStart(event: TouchEvent): void {
@@ -227,7 +219,7 @@ export class GameInputManager implements InputManager {
             event.preventDefault();
         }
         this.markPrimaryInput('touch');
-        this.hasReceivedInput = true; // User has touched
+        this.hasReceivedInput = true;
         this.suppressMouseInput = true;
         this.mousePosition = null;
 
@@ -252,7 +244,7 @@ export class GameInputManager implements InputManager {
             event.preventDefault();
         }
         this.markPrimaryInput('touch');
-        this.hasReceivedInput = true; // User has moved touch
+        this.hasReceivedInput = true;
 
         const activeTouch = this.getActiveTouch(event.touches);
         if (activeTouch) {
@@ -333,12 +325,10 @@ export class GameInputManager implements InputManager {
     getPaddleTarget(): Vector2 | null {
         this.updateGamepadState();
 
-        // Don't return mouse/touch position until user has actually moved after initialization
         if (!this.hasReceivedInput) {
             return null;
         }
 
-        // Priority: mouse > touch > keyboard
         if (this.mousePosition) {
             return { ...this.mousePosition };
         }
@@ -352,14 +342,10 @@ export class GameInputManager implements InputManager {
             return { ...gamepadTarget };
         }
 
-        // Keyboard control - simulate left/right movement from arrow keys
         const leftPressed = Boolean(this.keyboardState.get('ArrowLeft')) || Boolean(this.keyboardState.get('KeyA'));
         const rightPressed = Boolean(this.keyboardState.get('ArrowRight')) || Boolean(this.keyboardState.get('KeyD'));
 
         if (leftPressed || rightPressed) {
-            // For keyboard, we need the current paddle position to move relative to it
-            // This would be passed in from the game loop
-            // For now, return null - keyboard movement is handled in the paddle controller
             return null;
         }
 
@@ -412,7 +398,7 @@ export class GameInputManager implements InputManager {
         const shouldLaunch = this.launchManager.shouldTriggerLaunch(
             currentPaddlePosition,
             this.previousPaddlePosition,
-            5 // movement threshold
+            5
         );
 
         this.previousPaddlePosition = { ...currentPaddlePosition };

@@ -16,8 +16,8 @@ export interface MomentumMetrics {
     readonly speedPressure: number;
     readonly brickDensity: number;
     readonly comboHeat: number;
-    readonly comboTimer: number; // Time remaining before combo resets (in seconds)
-    readonly mirageStacks: number; // Shadow Mirage combo multiplier stacks
+    readonly comboTimer: number;
+    readonly mirageStacks: number;
     readonly updatedAt: number;
 }
 
@@ -758,7 +758,7 @@ export const createGameSessionManager = (options: GameSessionOptions = {}): Game
         });
 
         emitEntropyEvent({ type: 'round-complete' });
-    }; // Round outcome stored for HUD summary
+    };
 
     const collectCoins: GameSessionManager['collectCoins'] = (amount) => {
         if (!Number.isFinite(amount)) {

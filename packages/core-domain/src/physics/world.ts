@@ -74,7 +74,6 @@ export interface PhysicsWorldHandle {
     readonly dispose: () => void;
     readonly setGravity: (value: number) => void;
     readonly getGravity: () => number;
-    // Ball attachment tracking
     readonly attachBallToPaddle: (ball: PhysicsBody, paddle: PhysicsBody, offset?: Vector2) => void;
     readonly detachBallFromPaddle: (ball: PhysicsBody) => void;
     readonly updateBallAttachment: (ball: PhysicsBody, paddlePosition: Vector2) => void;
@@ -113,9 +112,9 @@ const createFactories = (_world: PhysicsWorld, dimensions: PhysicsWorldDimension
             ? { type: 'regular-polygon', sides: Math.max(3, Math.floor(options.shape.sides)) }
             : { type: 'circle' } as const;
         const baseOptions = {
-            restitution: options.restitution ?? 1, // Perfect energy-preserving bounces
+            restitution: options.restitution ?? 1,
             friction: 0,
-            frictionAir: 0,  // Remove air resistance for consistent ball speed
+            frictionAir: 0,
             label: options.label ?? 'ball',
         } as const;
 
@@ -235,7 +234,7 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
         enableSleeping: config.enableSleeping ?? false,
         constraintIterations: 4,
         velocityIterations: 8,
-        positionIterations: 8, // Increased for better collision accuracy and prevent tunneling
+        positionIterations: 8,
     });
     const initialGravity =
         typeof config.gravity === 'number' && Number.isFinite(config.gravity)
@@ -245,13 +244,11 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
     configureGravity(engine, initialGravity);
     const timeStep = config.timeStepMs ?? DEFAULT_TIMESTEP_MS;
 
-    // Set world bounds to prevent tunneling
     engine.world.bounds = {
         min: { x: 0, y: 0 },
         max: { x: dimensions.width, y: dimensions.height },
     };
 
-    // Ball attachment tracking
     const ballAttachments = new Map<number, BallAttachment>();
     const orphanedAttachmentWarnings = new Set<number>();
     const hazards = new Map<string, PhysicsHazard>();
@@ -266,7 +263,6 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
             paddlePosition: { x: paddle.position.x, y: paddle.position.y },
         });
 
-        // Set ball velocity to zero and position it relative to paddle
         Body.setVelocity(ball, { x: 0, y: 0 });
         Body.setPosition(ball, {
             x: paddle.position.x + offset.x,
@@ -313,7 +309,6 @@ export const createPhysicsWorld = (config: PhysicsWorldConfig = {}): PhysicsWorl
     };
 
     const step: PhysicsWorldHandle['step'] = (deltaMs = timeStep) => {
-        // Update ball attachments before stepping physics
         const orphanedBallIds: number[] = [];
 
         ballAttachments.forEach((attachment, ballId) => {

@@ -59,91 +59,86 @@ export function generateBrickVariants(
         switch (form) {
             case 'rectangle':
                 // Rounded rectangle brick with enhanced depth
-                g.beginFill(baseColor).drawRoundedRect(0, 0, width, height, Math.min(4, height / 3)).endFill();
+                g.roundRect(0, 0, width, height, Math.min(4, height / 3));
+                g.fill({ color: baseColor });
 
                 // Brighter edge definition
-                g.lineStyle(1.5, 0x000000, 0.5).drawRoundedRect(0.5, 0.5, width - 1, height - 1, Math.min(4, height / 3));
+                g.roundRect(0.5, 0.5, width - 1, height - 1, Math.min(4, height / 3));
+                g.stroke({ color: 0x000000, width: 1.5, alpha: 0.5 });
 
                 // Enhanced inner bevel with stronger highlight
-                g.lineStyle(0)
-                    .beginFill(0xffffff, 0.12)
-                    .drawRoundedRect(2, 2, width - 4, height / 2.5, Math.min(3, height / 4))
-                    .endFill();
-                g.beginFill(0x000000, 0.1)
-                    .drawRoundedRect(2, height / 1.8, width - 4, height / 2.5, Math.min(3, height / 4))
-                    .endFill();
+                g.roundRect(2, 2, width - 4, height / 2.5, Math.min(3, height / 4));
+                g.fill({ color: 0xffffff, alpha: 0.12 });
+
+                g.roundRect(2, height / 1.8, width - 4, height / 2.5, Math.min(3, height / 4));
+                g.fill({ color: 0x000000, alpha: 0.1 });
 
                 // Subtle inner rim highlight for 3D effect
-                g.lineStyle(1, 0xffffff, 0.08);
-                g.drawRoundedRect(1.5, 1.5, width - 3, height - 3, Math.min(3.5, height / 3.5));
+                g.roundRect(1.5, 1.5, width - 3, height - 3, Math.min(3.5, height / 3.5));
+                g.stroke({ color: 0xffffff, width: 1, alpha: 0.08 });
                 break;
 
             case 'diamond':
                 // Diamond shape (rotated square) with faceted appearance
-                g.beginFill(baseColor);
                 g.moveTo(cx, 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, height - 2)
                     .lineTo(2, cy)
                     .closePath();
-                g.endFill();
+                g.fill({ color: baseColor });
 
                 // Stronger edge
-                g.lineStyle(1.5, 0x000000, 0.5);
                 g.moveTo(cx, 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, height - 2)
                     .lineTo(2, cy)
                     .closePath();
+                g.stroke({ color: 0x000000, width: 1.5, alpha: 0.5 });
 
                 // Enhanced facet highlights for gem-like appearance
-                g.lineStyle(0).beginFill(0xffffff, 0.15);
                 g.moveTo(cx, 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, cy)
                     .closePath();
-                g.endFill();
+                g.fill({ color: 0xffffff, alpha: 0.15 });
 
                 // Left facet highlight
-                g.beginFill(0xffffff, 0.08);
                 g.moveTo(2, cy)
                     .lineTo(cx, 2)
                     .lineTo(cx, cy)
                     .closePath();
-                g.endFill();
+                g.fill({ color: 0xffffff, alpha: 0.08 });
 
                 // Bottom facet shadow
-                g.beginFill(0x000000, 0.12);
                 g.moveTo(cx, height - 2)
                     .lineTo(width - 2, cy)
                     .lineTo(cx, cy)
                     .closePath();
-                g.endFill();
+                g.fill({ color: 0x000000, alpha: 0.12 });
                 break;
 
             case 'circle':
                 // Circle/ball shape using ellipse with enhanced specular
                 const radiusX = width / 2 - 2;
                 const radiusY = height / 2 - 2;
-                g.beginFill(baseColor).drawEllipse(cx, cy, radiusX, radiusY).endFill();
+                g.ellipse(cx, cy, radiusX, radiusY);
+                g.fill({ color: baseColor });
 
                 // Stronger edge
-                g.lineStyle(1.5, 0x000000, 0.5).drawEllipse(cx, cy, radiusX, radiusY);
+                g.ellipse(cx, cy, radiusX, radiusY);
+                g.stroke({ color: 0x000000, width: 1.5, alpha: 0.5 });
 
                 // Enhanced specular highlight for sphere effect
-                g.lineStyle(0).beginFill(0xffffff, 0.18);
-                g.drawEllipse(cx - radiusX * 0.25, cy - radiusY * 0.25, radiusX * 0.35, radiusY * 0.35);
-                g.endFill();
+                g.ellipse(cx - radiusX * 0.25, cy - radiusY * 0.25, radiusX * 0.35, radiusY * 0.35);
+                g.fill({ color: 0xffffff, alpha: 0.18 });
 
                 // Subtle secondary highlight
-                g.beginFill(0xffffff, 0.06);
-                g.drawEllipse(cx - radiusX * 0.4, cy - radiusY * 0.4, radiusX * 0.2, radiusY * 0.2);
-                g.endFill();
+                g.ellipse(cx - radiusX * 0.4, cy - radiusY * 0.4, radiusX * 0.2, radiusY * 0.2);
+                g.fill({ color: 0xffffff, alpha: 0.06 });
 
                 // Bottom shadow for depth
-                g.beginFill(0x000000, 0.08);
-                g.drawEllipse(cx + radiusX * 0.2, cy + radiusY * 0.3, radiusX * 0.4, radiusY * 0.3);
-                g.endFill();
+                g.ellipse(cx + radiusX * 0.2, cy + radiusY * 0.3, radiusX * 0.4, radiusY * 0.3);
+                g.fill({ color: 0x000000, alpha: 0.08 });
                 break;
         }
     };
@@ -152,7 +147,6 @@ export function generateBrickVariants(
      * Draw casino suit pip symbols (♥ ♦ ♣ ♠) in neon colors.
      */
     const drawPip = (g: Graphics, color: number, kind: PipKind): void => {
-        g.beginFill(color, 0.9);
         const cx = width / 2;
         const cy = height / 2;
         // Scale pip size based on brick dimensions
@@ -166,6 +160,7 @@ export function generateBrickVariants(
                     .lineTo(cx, cy + r * 1.3)
                     .lineTo(cx - r * 1.1, cy)
                     .closePath();
+                g.fill({ color, alpha: 0.9 });
                 break;
             case 'heart':
                 g.moveTo(cx, cy + r * 1.2);
@@ -185,6 +180,7 @@ export function generateBrickVariants(
                     cx,
                     cy + r * 1.2
                 );
+                g.fill({ color, alpha: 0.9 });
                 break;
             case 'spade':
                 g.moveTo(cx, cy - r * 1.2);
@@ -204,17 +200,18 @@ export function generateBrickVariants(
                     cx,
                     cy - r * 1.2
                 );
-                g.drawRect(cx - r * 0.25, cy + r * 0.4, r * 0.5, r * 0.9);
+                g.rect(cx - r * 0.25, cy + r * 0.4, r * 0.5, r * 0.9);
+                g.fill({ color, alpha: 0.9 });
                 break;
             case 'club':
                 const t = r * 0.85;
-                g.drawCircle(cx - t * 0.6, cy, t * 0.65);
-                g.drawCircle(cx + t * 0.6, cy, t * 0.65);
-                g.drawCircle(cx, cy - t * 0.7, t * 0.75);
-                g.drawRect(cx - t * 0.2, cy + t * 0.2, t * 0.4, t * 0.9);
+                g.circle(cx - t * 0.6, cy, t * 0.65);
+                g.circle(cx + t * 0.6, cy, t * 0.65);
+                g.circle(cx, cy - t * 0.7, t * 0.75);
+                g.rect(cx - t * 0.2, cy + t * 0.2, t * 0.4, t * 0.9);
+                g.fill({ color, alpha: 0.9 });
                 break;
         }
-        g.endFill();
     };
 
     // Cosmic casino color palette - vibrant neons and rich jewel tones
@@ -240,23 +237,74 @@ export function generateBrickVariants(
                 const cy = height / 2;
 
                 // Outer glow for visibility - draw as filled shape with alpha
-                g.lineStyle(0);
-                g.beginFill(neonColor, 0.12);
                 if (form === 'rectangle') {
-                    g.drawRoundedRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
+                    g.roundRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
                 } else if (form === 'diamond') {
                     g.moveTo(cx, 0).lineTo(width, cy).lineTo(cx, height).lineTo(0, cy).closePath();
                 } else {
-                    g.drawEllipse(cx, cy, width / 2, height / 2);
+                    g.ellipse(cx, cy, width / 2, height / 2);
                 }
-                g.endFill();
+                g.fill({ color: neonColor, alpha: 0.12 });
 
                 drawBrickBase(g, baseColor, form);
 
-                // Pip with subtle halo
-                g.lineStyle(2, neonColor, 0.2);
+                // Pip with subtle halo - draw stroke outline first
+                const pipCx = width / 2;
+                const pipCy = height / 2;
+                const scale = Math.min(width, height) * 0.18;
+                const r = scale;
+
+                switch (pipKinds[i % 4]) {
+                    case 'diamond':
+                        g.moveTo(pipCx, pipCy - r * 1.3)
+                            .lineTo(pipCx + r * 1.1, pipCy)
+                            .lineTo(pipCx, pipCy + r * 1.3)
+                            .lineTo(pipCx - r * 1.1, pipCy)
+                            .closePath();
+                        g.stroke({ color: neonColor, width: 2, alpha: 0.2 });
+                        break;
+                    case 'heart':
+                        g.moveTo(pipCx, pipCy + r * 1.2);
+                        g.bezierCurveTo(
+                            pipCx + r * 1.3, pipCy + r * 0.2,
+                            pipCx + r * 0.9, pipCy - r * 0.9,
+                            pipCx, pipCy - r * 0.4
+                        );
+                        g.bezierCurveTo(
+                            pipCx - r * 0.9, pipCy - r * 0.9,
+                            pipCx - r * 1.3, pipCy + r * 0.2,
+                            pipCx, pipCy + r * 1.2
+                        );
+                        g.stroke({ color: neonColor, width: 2, alpha: 0.2 });
+                        break;
+                    case 'spade':
+                        g.moveTo(pipCx, pipCy - r * 1.2);
+                        g.bezierCurveTo(
+                            pipCx + r * 1.2, pipCy - r * 0.1,
+                            pipCx + r * 0.9, pipCy + r * 0.9,
+                            pipCx, pipCy + r * 0.4
+                        );
+                        g.bezierCurveTo(
+                            pipCx - r * 0.9, pipCy + r * 0.9,
+                            pipCx - r * 1.2, pipCy - r * 0.1,
+                            pipCx, pipCy - r * 1.2
+                        );
+                        g.rect(pipCx - r * 0.25, pipCy + r * 0.4, r * 0.5, r * 0.9);
+                        g.stroke({ color: neonColor, width: 2, alpha: 0.2 });
+                        break;
+                    case 'club':
+                        const t = r * 0.85;
+                        g.circle(pipCx - t * 0.6, pipCy, t * 0.65);
+                        g.circle(pipCx + t * 0.6, pipCy, t * 0.65);
+                        g.circle(pipCx, pipCy - t * 0.7, t * 0.75);
+                        g.rect(pipCx - t * 0.2, pipCy + t * 0.2, t * 0.4, t * 0.9);
+                        g.stroke({ color: neonColor, width: 2, alpha: 0.2 });
+                        break;
+                }
+
+                // Draw black shadow pip first
                 drawPip(g, 0x000000, pipKinds[i % 4]);
-                g.lineStyle(0);
+                // Draw neon pip on top
                 drawPip(g, neonColor, pipKinds[i % 4]);
             });
             sets.neon.push({
@@ -282,43 +330,38 @@ export function generateBrickVariants(
                 const cy = height / 2;
 
                 // Subtle cosmic glow
-                g.lineStyle(0);
-                g.beginFill(0x6b8cff, 0.15);
                 if (form === 'rectangle') {
-                    g.drawRoundedRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
+                    g.roundRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
                 } else if (form === 'diamond') {
                     g.moveTo(cx, 0).lineTo(width, cy).lineTo(cx, height).lineTo(0, cy).closePath();
                 } else {
-                    g.drawEllipse(cx, cy, width / 2, height / 2);
+                    g.ellipse(cx, cy, width / 2, height / 2);
                 }
-                g.endFill();
+                g.fill({ color: 0x6b8cff, alpha: 0.15 });
 
                 drawBrickBase(g, baseColor, form);
 
                 // Brighter stardust field with variety
                 const starCount = 16 + i * 4;
                 const seed = i * 1337; // Use deterministic seed offset
-                g.lineStyle(0);
-                g.beginFill(starColor, i === 2 ? 0.3 : 0.22);
                 for (let s = 0; s < starCount; s++) {
                     // Deterministic pseudo-random positioning
                     const px = ((seed + s * 73) % 97) / 97 * width;
                     const py = ((seed + s * 131) % 89) / 89 * height;
                     const size = ((s * 37) % 11) / 11 * 1.5 + 0.3;
-                    g.drawCircle(px, py, size);
+                    g.circle(px, py, size);
+                    g.fill({ color: starColor, alpha: i === 2 ? 0.3 : 0.22 });
                 }
-                g.endFill();
 
                 // Enhanced gold constellation lines
-                g.lineStyle(0);
                 if (i === 2) {
-                    g.lineStyle(1.5, 0xe9c46a, 0.5);
                     g.moveTo(cx - width * 0.25, cy - height * 0.2);
                     g.lineTo(cx, cy);
                     g.lineTo(cx + width * 0.25, cy + height * 0.2);
+                    g.stroke({ color: 0xe9c46a, width: 1.5, alpha: 0.5 });
                 } else if (form === 'rectangle') {
-                    g.lineStyle(1, 0x6b8cff, 0.4);
                     g.moveTo(6, height - 6).lineTo(width - 6, 6);
+                    g.stroke({ color: 0x6b8cff, width: 1, alpha: 0.4 });
                 }
             });
             sets.mosaic.push({ texture: rt, style: 'mosaic', form, rarity: i === 2 ? 0.1 : 1 });
@@ -340,52 +383,47 @@ export function generateBrickVariants(
                 const cy = height / 2;
 
                 // Pearlescent rim glow
-                g.lineStyle(0);
-                g.beginFill(veinColor, 0.12);
                 if (form === 'rectangle') {
-                    g.drawRoundedRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
+                    g.roundRect(-1, -1, width + 2, height + 2, Math.min(5, height / 3));
                 } else if (form === 'diamond') {
                     g.moveTo(cx, 0).lineTo(width, cy).lineTo(cx, height).lineTo(0, cy).closePath();
                 } else {
-                    g.drawEllipse(cx, cy, width / 2, height / 2);
+                    g.ellipse(cx, cy, width / 2, height / 2);
                 }
-                g.endFill();
+                g.fill({ color: veinColor, alpha: 0.12 });
 
                 drawBrickBase(g, baseColor, form);
 
                 // Enhanced marble veining with deterministic pattern
                 const seed = i * 2003;
-                g.lineStyle(1.5, veinColor, veinAlpha);
                 let x = width * 0.2 + ((seed % 47) / 47) * width * 0.3;
                 for (let y = 6; y < height - 6; y += 3) {
                     g.moveTo(x, y);
                     x += ((((seed + y * 17) % 101) / 101) - 0.5) * 8;
                     g.lineTo(Math.max(4, Math.min(width - 4, x)), y + 3);
                 }
+                g.stroke({ color: veinColor, width: 1.5, alpha: veinAlpha });
 
                 // Add a second vein for complexity
-                g.lineStyle(1, veinColor, veinAlpha * 0.6);
                 x = width * 0.6 + ((seed % 31) / 31) * width * 0.2;
                 for (let y = 8; y < height - 8; y += 4) {
                     g.moveTo(x, y);
                     x += ((((seed + y * 23) % 97) / 97) - 0.5) * 6;
                     g.lineTo(Math.max(6, Math.min(width - 6, x)), y + 4);
                 }
+                g.stroke({ color: veinColor, width: 1, alpha: veinAlpha * 0.6 });
 
                 // Gold accent studs for premium variants
-                g.lineStyle(0);
                 if (i === 2) {
                     // Subtle stud glow
-                    g.beginFill(0xd4af37, 0.15);
-                    g.drawCircle(width - 7, 7, 5);
-                    g.drawCircle(7, height - 7, 5);
-                    g.endFill();
+                    g.circle(width - 7, 7, 5);
+                    g.circle(7, height - 7, 5);
+                    g.fill({ color: 0xd4af37, alpha: 0.15 });
 
                     // Solid stud
-                    g.beginFill(0xd4af37, 0.9);
-                    g.drawCircle(width - 7, 7, 2.5);
-                    g.drawCircle(7, height - 7, 2.5);
-                    g.endFill();
+                    g.circle(width - 7, 7, 2.5);
+                    g.circle(7, height - 7, 2.5);
+                    g.fill({ color: 0xd4af37, alpha: 0.9 });
                 }
             });
             sets.marble.push({
@@ -437,17 +475,16 @@ export function generateCrackTextures(
             const y2 = midY + Math.sin(angle) * lenY;
 
             // Glowing crack effect - outer glow
-            g.lineStyle(2.5, 0xff6b35, 0.2 * density / 3);
             g.moveTo(x1, y1).lineTo(x2, y2);
+            g.stroke({ color: 0xff6b35, width: 2.5, alpha: 0.2 * density / 3 });
 
             // Main crack line
-            g.lineStyle(1.5, 0x000000, 0.7);
             g.moveTo(x1, y1).lineTo(x2, y2);
+            g.stroke({ color: 0x000000, width: 1.5, alpha: 0.7 });
         }
 
         // Add some smaller spider web cracks for more detail at higher damage
         if (density >= 2) {
-            g.lineStyle(1, 0x000000, 0.4);
             const spiderCount = Math.floor(density * 3);
             for (let i = 0; i < spiderCount; i++) {
                 // Deterministic positioning
@@ -457,6 +494,7 @@ export function generateCrackTextures(
                 const endY = startY + (((seed + i * 127) % 200) / 200 - 0.5) * height * 0.2;
                 g.moveTo(startX, startY).lineTo(endX, endY);
             }
+            g.stroke({ color: 0x000000, width: 1, alpha: 0.4 });
         }
     };
 

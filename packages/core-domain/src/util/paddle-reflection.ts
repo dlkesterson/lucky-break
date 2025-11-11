@@ -28,23 +28,18 @@ const DEFAULT_MAX_ANGLE = Math.PI * 0.42; // ~75 degrees
  * @param config - Reflection configuration
  */
 export function reflectOffPaddle(ball: MatterBody, paddle: MatterBody, config: PaddleReflectionConfig): void {
-    // Calculate hit offset from paddle center (-1 = left edge, +1 = right edge)
     const hitOffset = (ball.position.x - paddle.position.x) / (config.paddleWidth * 0.5);
     const clamped = Math.max(-1, Math.min(1, hitOffset));
 
-    // Convert offset to angle (center = 0°, edges = ±maxAngle)
     const maxAngle = config.maxAngle ?? DEFAULT_MAX_ANGLE;
     const angle = clamped * maxAngle;
 
-    // Calculate current speed (or use minimum)
     const currentSpeed = Vector.magnitude(ball.velocity);
     const speed = Math.max(currentSpeed, config.minSpeed);
 
-    // Create new velocity vector with calculated angle
-    // Positive y goes down, so we want negative y for upward bounce
     const newVelocity: Vec = {
         x: Math.sin(angle) * speed,
-        y: -Math.abs(Math.cos(angle)) * speed, // Always upward
+        y: -Math.abs(Math.cos(angle)) * speed,
     };
 
     Body.setVelocity(ball, newVelocity);

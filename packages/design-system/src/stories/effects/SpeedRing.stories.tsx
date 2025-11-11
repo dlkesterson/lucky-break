@@ -139,7 +139,6 @@ const SpeedRingPreview = ({
 
       const center = CANVAS_SIZE / 2;
 
-      // Create speed ring effect
       const speedRingHandle = createSpeedRing({
         minRadius: propsRef.current.minRadius,
         maxRadius: propsRef.current.maxRadius,
@@ -170,7 +169,6 @@ const SpeedRingPreview = ({
       speedRingHandle.container.zIndex = 1;
       app.stage.addChild(speedRingHandle.container);
 
-      // Create ball visual
       const ball = new Graphics();
       ball.eventMode = 'none';
       ball.position.set(center, center);
@@ -201,15 +199,13 @@ const SpeedRingPreview = ({
       };
       stateRef.current = previewState;
 
-      // Animation ticker - simulate oscillating speed
       let elapsedTime = 0;
       const tick = (ticker: { deltaMS: number }) => {
         const deltaSeconds = Math.max(0.0001, ticker.deltaMS / 1000);
         elapsedTime += deltaSeconds;
 
-        // Create smooth oscillating speed using sine wave
         const cycle = elapsedTime * propsRef.current.speedMultiplier * 0.5;
-        const speedFactor = (Math.sin(cycle) + 1) * 0.5; // 0 to 1
+        const speedFactor = (Math.sin(cycle) + 1) * 0.5;
         const currentSpeed = BASE_SPEED + (MAX_SPEED - BASE_SPEED) * speedFactor;
 
         speedRingHandle.update({
@@ -243,20 +239,17 @@ const SpeedRingPreview = ({
     };
   }, []);
 
-  // Update visual properties when controls change
   useEffect(() => {
     const state = stateRef.current;
     if (!state) {
       return;
     }
 
-    // Update speed ring palette
     state.speedRingHandle.setPalette({
       ringColor: toColorNumber(propsRef.current.ringColor),
       haloColor: toColorNumber(propsRef.current.haloColor),
     });
 
-    // Redraw ball with new color
     const ballColorNum = toColorNumber(propsRef.current.ballColor);
     const ballDefaults: BallVisualDefaults = {
       baseColor: ballColorNum,
