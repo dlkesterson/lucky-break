@@ -312,3 +312,62 @@ export const getRuntimeModifiers = (page: Page): Promise<ImportedRuntimeModifier
 export const getBrickData = (page: Page): Promise<E2EBrickData> => callHarness(page, 'getBrickData');
 
 export const getReplaySnapshot = (page: Page): Promise<ReplayRecording> => callHarness(page, 'getReplaySnapshot');
+
+export interface PowerUpState {
+    readonly type: string;
+    readonly remainingTime: number;
+    readonly duration: number;
+}
+
+export interface ActiveReward {
+    readonly type: string;
+    readonly duration: number;
+    readonly [key: string]: unknown;
+}
+
+export interface PowerUpSnapshot {
+    readonly activePowerUps: readonly PowerUpState[];
+    readonly activeReward: ActiveReward | null;
+    readonly doublePointsMultiplier: number;
+    readonly slowTimeScale: number;
+    readonly paddleWidthScale: number;
+}
+
+export const activatePowerUp = (page: Page, type: string): Promise<void> =>
+    callHarness(page, 'activatePowerUp', [type]);
+
+export const activateReward = (page: Page, rewardType: string): Promise<void> =>
+    callHarness(page, 'activateReward', [rewardType]);
+
+export const getPowerUpState = (page: Page): Promise<PowerUpSnapshot> =>
+    callHarness(page, 'getPowerUpState');
+
+export const forceReward = (page: Page, rewardType: string | null): Promise<void> =>
+    callHarness(page, 'forceReward', [rewardType]);
+
+export interface GambleBrickSnapshot {
+    readonly armedCount: number;
+    readonly primedCount: number;
+    readonly nextExpirationSeconds: number | null;
+}
+
+export const getGambleBrickState = (page: Page): Promise<GambleBrickSnapshot> =>
+    callHarness(page, 'getGambleBrickState');
+
+export interface MultiBallSnapshot {
+    readonly totalBalls: number;
+    readonly extraBalls: number;
+    readonly attachedBalls: number;
+}
+
+export const getMultiBallState = (page: Page): Promise<MultiBallSnapshot> =>
+    callHarness(page, 'getMultiBallState');
+
+export interface ComboSnapshot {
+    readonly currentCombo: number;
+    readonly scoreMultiplier: number;
+    readonly comboTimeRemaining: number;
+}
+
+export const getComboState = (page: Page): Promise<ComboSnapshot> =>
+    callHarness(page, 'getComboState');
