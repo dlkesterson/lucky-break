@@ -1,4 +1,4 @@
-import { clampUnit } from 'render/playfield-visuals';
+import { clamp, clampUnit } from 'util/math';
 
 export interface ChromaticTrailSample {
     time: number;
@@ -70,7 +70,7 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
 
     const recordSample = (id: number, time: number, position: { readonly x: number; readonly y: number }): void => {
         const samples = getOrCreateHistory(id);
-        const lastSample = samples[samples.length - 1];
+        const lastSample = samples.at(-1);
         if (lastSample && time - lastSample.time < finalConfig.minSampleInterval) {
             return;
         }
@@ -86,14 +86,16 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
 
     const getPosition = (id: number, targetTime: number): { x: number; y: number } | null => {
         const samples = history.get(id);
-        if (!samples || samples.length === 0) {
+        if (!samples?.length) {
             return null;
         }
-        if (targetTime <= samples[0].time) {
-            return { x: samples[0].x, y: samples[0].y };
+        const first = samples[0];
+        const last = samples.at(-1)!;
+
+        if (targetTime <= first.time) {
+            return { x: first.x, y: first.y };
         }
-        if (targetTime >= samples[samples.length - 1].time) {
-            const last = samples[samples.length - 1];
+        if (targetTime >= last.time) {
             return { x: last.x, y: last.y };
         }
         for (let i = 1; i < samples.length; i += 1) {
@@ -128,7 +130,7 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
         if (beforeIndex < 0) {
             beforeIndex = samples.length - 2;
         }
-        beforeIndex = Math.max(0, Math.min(beforeIndex, samples.length - 2));
+        beforeIndex = clamp(beforeIndex, 0, samples.length - 2);
         const prev = samples[beforeIndex];
         const next = samples[beforeIndex + 1];
         const dx = next.x - prev.x;
@@ -158,7 +160,7 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
         const baseFollowers = Math.floor(comboCount / 3);
         const energyBoost = comboEnergy > 0.6 ? 1 : 0;
         const highComboBoost = comboCount >= 10 ? 1 : 0;
-        return Math.max(0, Math.min(6, baseFollowers + energyBoost + highComboBoost));
+        return clamp(baseFollowers + energyBoost + highComboBoost, 0, 6);
     };
 
     const resolveFollowerLag = (comboEnergy: number): number => {
@@ -188,7 +190,7 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
         for (const ballData of params.activeBalls) {
             activeBallIds.add(ballData.id);
             const normalizedSpeed = clampUnit(ballData.speed / Math.max(1, ballData.maxSpeed));
-            const samples = getOrCreateHistory(ballData.id);
+
             recordSample(ballData.id, sampleTime, ballData.position);
 
             sources.push({
@@ -215,9 +217,10 @@ export const createChromaticTrailManager = (config: Partial<ChromaticTrailConfig
                     finalConfig.minRadiusScale,
                     1 - finalConfig.followerDecay * followerIndex,
                 );
-                const attenuatedSpeed = Math.max(
+                const attenuatedSpeed = clamp(
+                    historySpeed * (1 - finalConfig.speedAttenuation * followerIndex),
                     0.2,
-                    Math.min(1, historySpeed * (1 - finalConfig.speedAttenuation * followerIndex)),
+                    1,
                 );
                 sources.push({
                     id: (ballData.id << 3) | followerIndex,

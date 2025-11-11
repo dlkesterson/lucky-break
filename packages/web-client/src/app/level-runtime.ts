@@ -34,6 +34,7 @@ import {
 } from 'render/bricks';
 import type { PowerUpType } from 'util/power-ups';
 import { distance } from 'util/geometry';
+import { clampUnit } from 'util/math';
 import {
     createGravityWellHazard,
     createMovingBumperHazard,
@@ -478,8 +479,6 @@ export const createLevelRuntime = ({
     };
 
     const orientation = layoutOrientation ?? 'landscape';
-
-    const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
 
     const resolveLoopProgress = (levelIndex: number): number => {
         if (presetLevelCount <= 1) {

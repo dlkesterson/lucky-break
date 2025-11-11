@@ -1,5 +1,6 @@
 import type { RewardEntropyAction } from 'app/events';
 import type { GameSessionSnapshot, HudPromptSeverity } from 'app/state';
+import { clampUnit } from 'util/math';
 
 export interface HudScoreboardEntry {
     readonly id: 'score' | 'coins' | 'gamble' | 'lives' | 'bricks' | 'entropy' | 'entropy-actions' | 'momentum' | 'audio';
@@ -72,8 +73,6 @@ const formatBrickProgress = (remaining: number, total: number): string => {
     const percent = Math.round((cleared / total) * 100);
     return `${remaining} / ${total} (${percent}%)`;
 };
-
-const clampUnit = (value: number): number => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 
 const formatPercent = (value: number): string => `${Math.round(clampUnit(value) * 100)}%`;
 

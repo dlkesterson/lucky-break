@@ -1,4 +1,5 @@
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { clampUnit } from 'util/math';
 
 interface TextureRenderer {
     readonly generateTexture: (displayObject: Graphics) => Texture;
@@ -103,21 +104,21 @@ export const createComboRing = (renderer: TextureRenderer): ComboRingHandle => {
         }
 
         const scale = radius > 0 ? radius / BASE_RADIUS : 0;
-        const alpha = Math.max(0, Math.min(1, overallAlpha));
+        const alpha = clampUnit(overallAlpha);
 
         container.visible = alpha > 0;
         container.alpha = alpha;
         container.position.set(position.x, position.y);
 
-        fillSprite.alpha = Math.max(0, Math.min(1, fillAlpha));
+        fillSprite.alpha = clampUnit(fillAlpha);
         fillSprite.scale.set(scale);
 
         outerSprite.tint = outerColor;
-        outerSprite.alpha = Math.max(0, Math.min(1, outerAlpha));
+        outerSprite.alpha = clampUnit(outerAlpha);
         outerSprite.scale.set(scale);
 
         innerSprite.tint = innerColor;
-        innerSprite.alpha = Math.max(0, Math.min(1, innerAlpha));
+        innerSprite.alpha = clampUnit(innerAlpha);
         innerSprite.scale.set(scale);
     };
 

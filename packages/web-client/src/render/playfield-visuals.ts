@@ -1,6 +1,6 @@
 import { Container, FillGradient, Graphics, Texture, TilingSprite } from 'pixi.js';
 import type { BrickForm } from 'util/levels';
-import { clampUnit } from 'util/math';
+import { clamp, clampUnit } from 'util/math';
 
 export const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
@@ -322,8 +322,8 @@ export const createPlayfieldBackgroundLayer = (
     let beatPulse = 0;
     let driftPhase = 0;
 
-    const maxParallaxX = Math.max(12, Math.min(42, dimensions.width * 0.075));
-    const maxParallaxY = Math.max(16, Math.min(56, dimensions.height * 0.085));
+    const maxParallaxX = clamp(dimensions.width * 0.075, 12, 42);
+    const maxParallaxY = clamp(dimensions.height * 0.085, 16, 56);
     const parallax = { x: 0, y: 0 };
     let parallaxTarget = { x: 0, y: 0 };
     let parallaxIntensity = 0.4;

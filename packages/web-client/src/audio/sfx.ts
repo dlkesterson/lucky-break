@@ -9,6 +9,7 @@ import type {
     LaserHitPayload,
 } from 'app/events';
 import type { ScheduledEventHandle, ToneScheduler } from './scheduler';
+import { clamp } from 'util/math';
 
 type BrickBreakSource = { readonly event: 'BrickBreak' } & BrickBreakPayload;
 type BrickHitSource = { readonly event: 'BrickHit' } & BrickHitPayload;
@@ -50,8 +51,6 @@ export interface SfxRouterOptions {
 export interface SfxRouter {
     readonly dispose: () => void;
 }
-
-const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;

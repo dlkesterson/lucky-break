@@ -9,6 +9,7 @@
 import type { InputManager, InputDebugState, InputType, LaunchIntent, Vector2 } from './contracts';
 import { PaddleLaunchManager } from './launch-manager';
 import { normalizeMouseEvent } from 'util/input-helpers';
+import { clamp } from 'util/math';
 
 const DEFAULT_DIRECTION: Vector2 = { x: 0, y: -1 };
 const LONG_PRESS_THRESHOLD_MS = 350;
@@ -23,7 +24,6 @@ const GAMEPAD_PRIMARY_AXIS_INDEX = 0;
 const GAMEPAD_LAUNCH_BUTTONS: readonly number[] = [0, 1, 6, 7];
 
 const cloneVector = (value: Vector2): Vector2 => ({ x: value.x, y: value.y });
-const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 export class GameInputManager implements InputManager {
     private container: HTMLElement | null = null;
