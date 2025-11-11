@@ -2,7 +2,7 @@ import { Events, Vector as MatterVector, Body as MatterBody, Bodies } from 'phys
 import type { IEventCollision, MatterEngine as Engine, MatterBody as Body } from 'physics/matter';
 import { calculateReflectionData, reflectOffPaddle } from 'util/paddle-reflection';
 import { getMomentumMetrics } from 'util/scoring';
-import { clampUnit } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 import { shouldSpawnPowerUp, selectRandomPowerUpType, type PowerUpManager } from 'util/power-ups';
 import type { GameSessionManager } from 'app/state';
 import type { LuckyBreakEventBus } from 'app/events';

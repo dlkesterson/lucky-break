@@ -7,6 +7,7 @@
  */
 
 import type { LaunchTriggerDetail, LaunchTriggerType, Vector2 } from './contracts';
+import { cloneVector2 } from 'util/geometry';
 
 interface LaunchTriggerExtras {
     aimDirection?: Vector2;
@@ -151,11 +152,11 @@ export class PaddleLaunchManager implements LaunchManager {
     private recordTrigger(type: LaunchTriggerType, position: Vector2, extras: LaunchTriggerExtras): void {
         const trigger: LaunchTriggerDetail = {
             type,
-            position: { ...position },
+            position: cloneVector2(position),
             timestamp: Date.now(),
-            ...(extras.aimDirection ? { aimDirection: { ...extras.aimDirection } } : undefined),
-            ...(typeof extras.durationMs === 'number' ? { durationMs: extras.durationMs } : undefined),
-            ...(typeof extras.swipeDistance === 'number' ? { swipeDistance: extras.swipeDistance } : undefined),
+            ...(extras.aimDirection && { aimDirection: cloneVector2(extras.aimDirection) }),
+            ...(typeof extras.durationMs === 'number' && { durationMs: extras.durationMs }),
+            ...(typeof extras.swipeDistance === 'number' && { swipeDistance: extras.swipeDistance }),
         };
 
         this.launchPending = true;
@@ -165,11 +166,11 @@ export class PaddleLaunchManager implements LaunchManager {
     private cloneTrigger(trigger: LaunchTriggerDetail): LaunchTriggerDetail {
         return {
             type: trigger.type,
-            position: { ...trigger.position },
+            position: cloneVector2(trigger.position),
             timestamp: trigger.timestamp,
-            ...(trigger.aimDirection ? { aimDirection: { ...trigger.aimDirection } } : undefined),
-            ...(typeof trigger.durationMs === 'number' ? { durationMs: trigger.durationMs } : undefined),
-            ...(typeof trigger.swipeDistance === 'number' ? { swipeDistance: trigger.swipeDistance } : undefined),
+            ...(trigger.aimDirection && { aimDirection: cloneVector2(trigger.aimDirection) }),
+            ...(typeof trigger.durationMs === 'number' && { durationMs: trigger.durationMs }),
+            ...(typeof trigger.swipeDistance === 'number' && { swipeDistance: trigger.swipeDistance }),
         };
     }
 }

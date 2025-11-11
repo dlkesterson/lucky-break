@@ -7,6 +7,7 @@
 
 import { gameConfig } from 'config/game';
 import type { RandomSource } from 'util/random';
+import { clampUnit } from 'util/math';
 
 const config = gameConfig;
 const DEFAULT_BRICK_WIDTH = config.bricks.size.width;
@@ -249,8 +250,6 @@ export function generateLevelLayout(
         wallDensity = 1,
         decorateBrick,
     } = options;
-
-    const clampUnit = (value: number) => Math.max(0, Math.min(1, value));
 
     const pickFromList = (list: number[], rng: RandomSource | undefined): number | null => {
         if (list.length === 0) {

@@ -2,7 +2,7 @@ import { Container, FillGradient, Graphics } from 'pixi.js';
 import { createSceneManager, type SceneManagerConfig, type SceneManagerHandle, type StageLayers } from './scene-manager';
 import { computeViewportFit } from './viewport';
 import { GameTheme, type GameThemeDefinition } from './theme';
-import { clampUnit } from 'util/math';
+import { clampUnit, safeFinite, clampMin } from 'util/math';
 
 export type StageConfig = SceneManagerConfig;
 
@@ -375,8 +375,8 @@ export const createStage = async (config: ThemedStageConfig = {}): Promise<Stage
     const baseDestroy = baseHandle.destroy.bind(baseHandle);
 
     const applyViewportFit = (size: { readonly width: number; readonly height: number }) => {
-        const width = Number.isFinite(size.width) ? Math.max(0, size.width) : 0;
-        const height = Number.isFinite(size.height) ? Math.max(0, size.height) : 0;
+        const width = clampMin(safeFinite(size.width, 0), 0);
+        const height = clampMin(safeFinite(size.height, 0), 0);
 
         const fit = computeViewportFit({
             containerWidth: width,

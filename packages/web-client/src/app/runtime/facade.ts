@@ -25,11 +25,11 @@ import { calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
 import { computePrestigeDust } from 'util/prestige';
 import {
     toColorNumber,
-    clampUnit,
     mixColors,
     type PaddleVisualDefaults,
     type BallVisualPalette,
 } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 import { createVisualFactory } from 'render/visual-factory';
 import { Sprite } from 'pixi.js';
 import type { Container } from 'pixi.js';
@@ -491,7 +491,7 @@ export const createRuntimeFacade = async ({
     const resolveMidiEngine = () => runtimeAudio.getMidiEngine();
 
     const applyAudioPreferences = (preferences: PlayerPreferences) => {
-        const volume = Math.max(0, Math.min(1, preferences.masterVolume));
+        const volume = clampUnit(preferences.masterVolume);
         const shouldMute = preferences.muted || volume <= 1e-3;
 
         try {

@@ -1,5 +1,7 @@
 import { rootLogger, type Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
+import { isString, isRecord, sanitizeArray } from 'util';
+import { clampMin, safeFinite } from 'util/math';
 import idleNarrativeTemplates from '../../assets/narrative/idle/fate-ledger-templates.json';
 
 const STORAGE_KEY = 'lucky-break::fate-ledger::v1';
@@ -87,16 +89,10 @@ const DEFAULT_IDLE_TEMPLATES: FateLedgerTemplateManifest = {
     ],
 };
 
-const isString = (value: unknown): value is string => typeof value === 'string';
-
 const sanitizeTemplateLines = (value: unknown, fallback: readonly string[]): readonly string[] => {
-    if (!Array.isArray(value)) {
-        return [...fallback];
-    }
-    const sanitized = value
-        .map((entry) => (isString(entry) ? entry.trim() : ''))
-        .filter((entry) => entry.length > 0);
-    return sanitized.length > 0 ? sanitized : [...fallback];
+    return sanitizeArray(value, fallback, (entry: unknown) =>
+        isString(entry) && entry.trim().length > 0 ? entry.trim() : null
+    );
 };
 
 const idleTemplateManifest: FateLedgerTemplateManifest = (() => {
@@ -119,12 +115,11 @@ const selectTemplate = (random: RandomManager, entries: readonly string[]): stri
         return '';
     }
     const index = Math.floor(random.next() * entries.length);
-    return entries[Math.max(0, Math.min(entries.length - 1, index))] ?? entries[0];
+    return entries[clampMin(index, 0)] ?? entries[0];
 };
 
 const formatNumber = (value: number, options: Intl.NumberFormatOptions): string => {
-    const safe = Number.isFinite(value) ? value : 0;
-    return safe.toLocaleString(undefined, options);
+    return safeFinite(value, 0).toLocaleString(undefined, options);
 };
 
 export interface FateLedgerIdleNarrativeContext {
@@ -138,12 +133,12 @@ export const generateFateLedgerIdleNarrative = (
     random: RandomManager,
     context: FateLedgerIdleNarrativeContext,
 ): string => {
-    const entropyLabel = formatNumber(Math.max(0, context.entropyEarned), { maximumFractionDigits: 0 });
-    const dustLabel = formatNumber(Math.max(0, context.certaintyDustEarned), {
+    const entropyLabel = formatNumber(clampMin(context.entropyEarned, 0), { maximumFractionDigits: 0 });
+    const dustLabel = formatNumber(clampMin(context.certaintyDustEarned, 0), {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
     });
-    const bricksLabel = formatNumber(Math.max(0, context.bricksBroken ?? 0), { maximumFractionDigits: 0 });
+    const bricksLabel = formatNumber(clampMin(context.bricksBroken ?? 0, 0), { maximumFractionDigits: 0 });
 
     const replacements: Record<string, string> = {
         entropy: entropyLabel,
@@ -166,9 +161,6 @@ export const generateFateLedgerIdleNarrative = (
     return segments.join(' ');
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null;
-
 const resolveStorage = (explicit?: Storage | null): Storage | null => {
     if (explicit !== undefined) {
         return explicit;
@@ -188,12 +180,9 @@ const sanitizeNumber = (value: unknown, fallback: number, options?: { readonly m
         return fallback;
     }
 
-    const minimum = options?.min ?? undefined;
-    const normalized = minimum === undefined ? value : Math.max(minimum, value);
-    if (!Number.isFinite(normalized)) {
-        return fallback;
-    }
-    return normalized;
+    const minimum = options?.min;
+    const normalized = minimum !== undefined ? clampMin(value, minimum) : value;
+    return safeFinite(normalized, fallback);
 };
 
 const sanitizeInteger = (value: unknown, fallback: number, options?: { readonly min?: number }): number => {
@@ -362,7 +351,7 @@ export const createFateLedger = (options: FateLedgerOptions = {}): FateLedger =>
     const logger = options.logger ?? rootLogger.child('fate-ledger');
     const now = options.now ?? Date.now;
     const storage = resolveStorage(options.storage);
-    const maxEntries = Math.max(1, Math.floor(options.maxEntries ?? DEFAULT_MAX_ENTRIES));
+    const maxEntries = clampMin(Math.floor(options.maxEntries ?? DEFAULT_MAX_ENTRIES), 1);
 
     const state = readState(storage, logger);
     const entries: Mutable<FateLedgerEntry[]> = [...sanitizeEntries(state.entries)];

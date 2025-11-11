@@ -1,4 +1,4 @@
-import { clampUnit } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 import type { ToneScheduler } from 'audio/scheduler';
 import type {
     MusicDirector,

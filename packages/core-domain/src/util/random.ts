@@ -1,5 +1,7 @@
 export type RandomSource = () => number;
 
+import { clampUnit } from './math';
+
 const UINT32_MAX = 0xffffffff;
 const DEFAULT_SEED = 1;
 
@@ -69,8 +71,7 @@ export const createRandomManager = (seed?: number | null): RandomManager => {
     };
 
     const boolean = (threshold = 0.5): boolean => {
-        const clamped = Math.max(0, Math.min(1, threshold));
-        return next() < clamped;
+        return next() < clampUnit(threshold);
     };
 
     return {

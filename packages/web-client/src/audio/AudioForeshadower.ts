@@ -1,6 +1,6 @@
 import { Gain, MembraneSynth, Part, PolySynth, Transport } from 'tone';
 import { mulberry32, type RandomSource } from 'util/random';
-import { clampUnit, safeFinite, clamp } from 'util/math';
+import { clampUnit } from 'util/math';
 import { clampMidi, midiToFrequency } from 'util/audio';
 
 export type ForeshadowEventType = 'brickHit' | 'paddleBounce';

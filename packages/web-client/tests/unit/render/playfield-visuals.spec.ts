@@ -125,7 +125,6 @@ vi.mock('pixi.js', () => {
 });
 
 import {
-    clampUnit,
     computeBrickFillColor,
     createPlayfieldBackgroundLayer,
     drawBallVisual,
@@ -134,6 +133,7 @@ import {
     paintBrickVisual,
     toColorNumber,
 } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 
 import { Graphics, FillGradient, TilingSprite, Texture } from 'pixi.js';
 

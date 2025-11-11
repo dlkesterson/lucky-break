@@ -1,5 +1,5 @@
 import { Gain, Player, Transport, now as toneNow } from 'tone';
-import { clampUnit, safeFinite } from 'util/math';
+import { clampUnit } from 'util/math';
 
 const DEFAULT_CROSSFADE_SECONDS = 1.2;
 const LEVEL_EPSILON = 0.01;

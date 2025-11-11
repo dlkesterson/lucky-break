@@ -1,4 +1,5 @@
 import type { BiasPhaseSessionSummary } from 'scenes/bias-phase';
+import { clampUnit } from 'util/math';
 
 const trimTrailingZeros = (value: string): string =>
     value.replace(/\.0+$/, '').replace(/(\.\d*?[1-9])0+$/, '$1');
@@ -33,8 +34,7 @@ export const formatPercentage = (value: number): string => {
         return '0%';
     }
 
-    const clamped = Math.max(0, Math.min(1, value));
-    return `${Math.round(clamped * 100)}%`;
+    return `${Math.round(clampUnit(value) * 100)}%`;
 };
 
 export const formatGravityBias = (session: BiasPhaseSessionSummary): string => {

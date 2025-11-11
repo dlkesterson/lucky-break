@@ -1,6 +1,8 @@
 import type { MatterBody } from 'physics/matter';
 import { Vector as MatterVector } from 'physics/matter';
-import { clampUnit, mixColors } from 'render/playfield-visuals';
+import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
+import { clampUnit, clampMin, clampMax } from 'util/math';
+import { mixColors } from 'render/playfield-visuals';
 import type { RuntimeVisuals } from '../physics-assembly';
 import type { MultiBallColors } from '../../multi-ball-controller';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
@@ -109,17 +111,17 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
             const outerColor = mixColors(
                 themeBallColors.highlight,
                 themeAccents.combo,
-                Math.min(1, comboEnergy * 0.7),
+                clampMax(comboEnergy * 0.7, 1),
             );
             const innerColor = mixColors(
                 themeAccents.combo,
                 themeBallColors.aura,
                 0.3 + comboEnergy * 0.4,
             );
-            const outerAlpha = Math.min(1, 0.35 + comboEnergy * 0.4);
-            const innerAlpha = Math.min(1, 0.28 + comboEnergy * 0.32);
-            const fillAlpha = Math.min(1, 0.05 + comboEnergy * 0.12);
-            const overallAlpha = Math.min(1, 0.25 + comboEnergy * 0.45);
+            const outerAlpha = clampMax(0.35 + comboEnergy * 0.4, 1);
+            const innerAlpha = clampMax(0.28 + comboEnergy * 0.32, 1);
+            const fillAlpha = clampMax(0.05 + comboEnergy * 0.12, 1);
+            const overallAlpha = clampMax(0.25 + comboEnergy * 0.45, 1);
 
             comboRing.update({
                 position: ringPos,
@@ -143,7 +145,7 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
         const currentBaseSpeed = getCurrentBaseSpeed();
         const currentMaxSpeed = getCurrentMaxSpeed();
 
-        const ballPulse = Math.min(1, comboEnergy * 0.5 + state.ballGlowPulse);
+        const ballPulse = clampMax(comboEnergy * 0.5 + state.ballGlowPulse, 1);
         const ballHueSpeed = 24 + comboEnergy * 120 + ballPulse * 90;
         ballHueShift = (ballHueShift + movementDelta * ballHueSpeed) % 360;
 
@@ -153,9 +155,9 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
             context.ballHueFilter.saturate(1 + comboEnergy * 0.35, true);
         }
 
-        const glowColor = mixColors(themeBallColors.highlight, themeAccents.combo, Math.min(1, comboEnergy * 0.75));
+        const glowColor = mixColors(themeBallColors.highlight, themeAccents.combo, clampMax(comboEnergy * 0.75, 1));
         context.ballGlowFilter.color = glowColor;
-        context.ballGlowFilter.outerStrength = Math.min(5, 1.4 + comboEnergy * 0.8 + ballPulse * 2.6);
+        context.ballGlowFilter.outerStrength = clampMax(1.4 + comboEnergy * 0.8 + ballPulse * 2.6, 5);
 
         visuals?.ballLight?.update({
             position: { x: ballBody.position.x, y: ballBody.position.y },
@@ -192,7 +194,7 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
         const backgroundLayer = visuals?.playfieldBackground;
         if (!backgroundLayer) return;
 
-        const comboTint = mixColors(backgroundAccentColor, themeBallColors.aura, Math.min(0.45, comboEnergy * 0.35));
+        const comboTint = mixColors(backgroundAccentColor, themeBallColors.aura, clampMax(comboEnergy * 0.35, 0.45));
         const accentMix = clampUnit(0.2 + comboEnergy * 0.5);
         backgroundLayer.setTint(comboTint, { accentMix });
 
@@ -285,9 +287,9 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
     };
 
     const decayPulses = (deltaSeconds: number): void => {
-        state.ballGlowPulse = Math.max(0, state.ballGlowPulse - deltaSeconds * 1.6);
-        state.paddleGlowPulse = Math.max(0, state.paddleGlowPulse - deltaSeconds * 1.3);
-        state.comboRingPulse = Math.max(0, state.comboRingPulse - deltaSeconds * 1.05);
+        state.ballGlowPulse = clampMin(state.ballGlowPulse - deltaSeconds * 1.6, 0);
+        state.paddleGlowPulse = clampMin(state.paddleGlowPulse - deltaSeconds * 1.3, 0);
+        state.comboRingPulse = clampMin(state.comboRingPulse - deltaSeconds * 1.05, 0);
     };
 
     const update = (params: VisualEffectsUpdateParams): void => {

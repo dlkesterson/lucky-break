@@ -8,7 +8,7 @@
 
 import { Vector as MatterVector } from 'physics/matter';
 import type { GameplayRuntimeState } from '../types';
-import { clampUnit } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 import { updateSyncDriftMetrics } from '../state-store';
 import { calculateBallSpeedScale } from 'util/power-ups';
 import { getAdaptiveBaseSpeed } from 'util/speed-regulation';

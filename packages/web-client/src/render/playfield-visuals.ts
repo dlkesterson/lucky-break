@@ -4,8 +4,6 @@ import { clamp, clampUnit } from 'util/math';
 
 export const toColorNumber = (value: string): number => Number.parseInt(value.replace('#', ''), 16);
 
-export { clampUnit };
-
 export type BallShape = 'sphere' | 'd20' | 'octagon';
 
 export interface BallVisualPalette {
@@ -219,7 +217,7 @@ export const drawPaddleVisual = (
     const motionGlow = clampUnit(palette.motionGlow ?? 0);
     const accentBase = palette.accentColor ?? defaults.accentColor;
     const accentColor = motionGlow > 0 ? mixColors(accentBase, 0xffffff, 0.35 * motionGlow) : accentBase;
-    const pulseStrength = Math.max(0, Math.min(1, palette.pulseStrength ?? 0));
+    const pulseStrength = clampUnit(palette.pulseStrength ?? 0);
 
     const brighten = (color: number) => (motionGlow > 0 ? mixColors(color, 0xffffff, 0.45 * motionGlow) : color);
     const startColor = brighten(gradientStops[0] ?? defaults.gradient[0]);

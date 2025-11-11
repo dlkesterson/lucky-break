@@ -1,5 +1,5 @@
-import { Container, Graphics } from 'pixi.js';
-import { clamp, clampUnit } from 'util/math';
+import { Container, Graphics, type ColorSource } from 'pixi.js';
+import { clamp, clampUnit, safeFinite, clampMin } from 'util/math';
 
 export interface SpeedRingPalette {
     readonly ringColor: number;
@@ -215,15 +215,15 @@ export const createSpeedRing = (options: SpeedRingOptions = {}): SpeedRingHandle
             return;
         }
 
-        const safeDelta = Math.max(0, Number.isFinite(deltaSeconds) ? deltaSeconds : 0);
+        const safeDelta = clampMin(safeFinite(deltaSeconds, 0), 0);
         elapsedTime += safeDelta;
         root.position.set(position.x, position.y);
 
-        const effectiveMax = Math.max(0, Number.isFinite(maxSpeed) ? maxSpeed : 0);
-        const effectiveBase = clamp(Math.max(0, Number.isFinite(baseSpeed) ? baseSpeed : 0), 0, effectiveMax);
+        const effectiveMax = clampMin(safeFinite(maxSpeed, 0), 0);
+        const effectiveBase = clamp(clampMin(safeFinite(baseSpeed, 0), 0), 0, effectiveMax);
         const activationThreshold = clamp(effectiveBase * activationSpeedMultiplier, 0, effectiveMax);
         const range = Math.max(0.01, effectiveMax - activationThreshold);
-        const clampedSpeed = Math.max(0, Number.isFinite(speed) ? speed : 0);
+        const clampedSpeed = clampMin(safeFinite(speed, 0), 0);
         const normalized = clampUnit((clampedSpeed - activationThreshold) / range);
         lastIntensity = normalized;
 

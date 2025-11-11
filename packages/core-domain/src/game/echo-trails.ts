@@ -1,5 +1,6 @@
 import type { MatterBody as Body } from 'physics/matter';
 import type { Vector2 } from 'physics/contracts';
+import { cloneVector2 } from 'util/geometry';
 
 export interface EchoTrailOptions {
     readonly durationSeconds: number;
@@ -36,8 +37,8 @@ export const createEchoTrailManager = (options: EchoTrailOptions): EchoTrailMana
 
     const register: EchoTrailManager['register'] = (ball, position, velocity) => {
         trails.set(ball, {
-            position: { x: position.x, y: position.y },
-            velocity: { x: velocity.x, y: velocity.y },
+            position: cloneVector2(position),
+            velocity: cloneVector2(velocity),
             remainingSeconds: durationSeconds,
             hasPhased: false,
         });
@@ -81,8 +82,8 @@ export const createEchoTrailManager = (options: EchoTrailOptions): EchoTrailMana
     const forEach: EchoTrailManager['forEach'] = (callback) => {
         trails.forEach((state, ball) => {
             callback(ball, {
-                position: { x: state.position.x, y: state.position.y },
-                velocity: { x: state.velocity.x, y: state.velocity.y },
+                position: cloneVector2(state.position),
+                velocity: cloneVector2(state.velocity),
                 remainingSeconds: state.remainingSeconds,
                 hasPhased: state.hasPhased,
             });
@@ -95,8 +96,8 @@ export const createEchoTrailManager = (options: EchoTrailOptions): EchoTrailMana
             return null;
         }
         return {
-            position: { x: state.position.x, y: state.position.y },
-            velocity: { x: state.velocity.x, y: state.velocity.y },
+            position: cloneVector2(state.position),
+            velocity: cloneVector2(state.velocity),
             remainingSeconds: state.remainingSeconds,
             hasPhased: state.hasPhased,
         };

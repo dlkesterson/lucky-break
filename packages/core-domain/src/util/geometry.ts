@@ -16,6 +16,13 @@ export function createVector2(x = 0, y = 0): Vector2 {
 }
 
 /**
+ * Clone a Vector2
+ */
+export function cloneVector2(vector: Vector2): Vector2 {
+    return { x: vector.x, y: vector.y };
+}
+
+/**
  * Add two vectors
  */
 export function addVectors(a: Vector2, b: Vector2): Vector2 {
@@ -96,20 +103,6 @@ export function rectanglesIntersect(a: Rectangle, b: Rectangle): boolean {
         b.x + b.width <= a.x ||
         a.y + a.height <= b.y ||
         b.y + b.height <= a.y);
-}
-
-/**
- * Clamp a value between min and max
- */
-export function clamp(value: number, min: number, max: number): number {
-    return Math.min(Math.max(value, min), max);
-}
-
-/**
- * Linear interpolation between two values
- */
-export function lerp(a: number, b: number, t: number): number {
-    return a + (b - a) * t;
 }
 
 /**

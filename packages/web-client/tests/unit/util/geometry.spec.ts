@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
     addVectors,
-    clamp,
     createRectangle,
     createVector2,
     degreesToRadians,
     distance,
     dotProduct,
-    lerp,
     multiplyVector,
     normalizeVector,
     pointInRectangle,
@@ -16,6 +14,7 @@ import {
     rectanglesIntersect,
     subtractVectors,
 } from 'util/geometry';
+import { clamp, lerp } from 'util/math';
 
 describe('geometry utilities', () => {
     it('creates vectors with default zero values', () => {

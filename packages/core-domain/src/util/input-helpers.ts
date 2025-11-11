@@ -7,6 +7,7 @@
  */
 
 import type { Vector2, InputState, InputType } from 'types/input';
+import { clamp, clampMin, allFinite } from './math';
 
 /**
  * Mouse event data
@@ -160,7 +161,7 @@ export function getPaddleTarget(inputState: InputState, screenWidth: number, pad
     // Mouse/touch input
     const inputX = inputState.mouseX ?? inputState.touchX;
     if (inputX !== undefined) {
-        return { x: Math.max(paddleWidth / 2, Math.min(screenWidth - paddleWidth / 2, inputX)), y: 0 };
+        return { x: clamp(inputX, paddleWidth / 2, screenWidth - paddleWidth / 2), y: 0 };
     }
 
     return null;
@@ -183,10 +184,10 @@ export function smoothTowards(
     deltaSeconds: number,
     options: SmoothTowardsOptions = {},
 ): number {
-    const responsiveness = Math.max(0, options.responsiveness ?? DEFAULT_SMOOTH_RESPONSIVENESS);
+    const responsiveness = clampMin(options.responsiveness ?? DEFAULT_SMOOTH_RESPONSIVENESS, 0);
     const snapThreshold = options.snapThreshold ?? DEFAULT_SNAP_THRESHOLD;
 
-    if (!Number.isFinite(current) || !Number.isFinite(target)) {
+    if (!allFinite(current, target)) {
         return target;
     }
 

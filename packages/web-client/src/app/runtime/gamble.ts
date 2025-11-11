@@ -1,7 +1,7 @@
 import { Sprite, type Container } from 'pixi.js';
 import type { MatterBody as Body } from 'physics/matter';
 import type { BrickSpec } from 'util/levels';
-import { clampUnit } from 'render/playfield-visuals';
+import { clampUnit } from 'util/math';
 import { createGambleHighlightEffect, type GambleHighlightEffect } from 'render/effects';
 import { createGambleBrickManager, type GambleBrickManager } from 'game/gamble-brick-manager';
 import type { MidiEngine } from 'audio/midi-engine';

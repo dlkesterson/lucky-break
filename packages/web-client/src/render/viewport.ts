@@ -1,3 +1,5 @@
+import { safeFinite, clampMin } from 'util/math';
+
 export interface ViewportFit {
     readonly scale: number;
     readonly offsetX: number;
@@ -62,8 +64,8 @@ export const resolveViewportSize = ({
     fallbackWidth,
     fallbackHeight,
 }: ResolveViewportSizeOptions): { width: number; height: number } => {
-    const safeFallbackWidth = Number.isFinite(fallbackWidth) ? Math.max(0, fallbackWidth) : 0;
-    const safeFallbackHeight = Number.isFinite(fallbackHeight) ? Math.max(0, fallbackHeight) : 0;
+    const safeFallbackWidth = clampMin(safeFinite(fallbackWidth, 0), 0);
+    const safeFallbackHeight = clampMin(safeFinite(fallbackHeight, 0), 0);
 
     if (!container) {
         return {
