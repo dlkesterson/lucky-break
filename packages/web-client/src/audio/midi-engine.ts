@@ -303,7 +303,8 @@ export const createMidiEngine = (options: MidiEngineOptions = {}): MidiEngine =>
         const resolvedTime = resolveTime(options.time);
         const comboForNote = Math.max(1, Math.floor(Number.isFinite(options.combo) ? options.combo : 1));
         const note = resolveComboNote(comboForNote, scalePatterns);
-        const normalizedIntensity = clampUnit(options.intensity ?? (accent === 'break' ? 0.65 : 0.4));
+        const intensityValue = options.intensity ?? (accent === 'break' ? 0.65 : 0.4);
+        const normalizedIntensity = Number.isFinite(intensityValue) ? clampUnit(intensityValue) : 0;
         const baseVelocity = accent === 'break' ? 0.45 : 0.25;
         const velocity = resolveVelocity(
             baseVelocity + normalizedIntensity * (accent === 'break' ? 0.45 : 0.3) + comboVelocityBias * normalizedIntensity,

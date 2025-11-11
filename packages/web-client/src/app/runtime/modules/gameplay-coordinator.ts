@@ -1,5 +1,5 @@
-import type { MatterBody, MatterVector } from 'physics/matter';
 import { Body as MatterBody_Class, Vector as MatterVector_Class } from 'physics/matter';
+import type { MatterBody as Body } from 'physics/matter';
 import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { calculateBallSpeedScale } from 'util/power-ups';
 import { clampUnit } from 'util/math';
@@ -11,7 +11,98 @@ import type { RuntimeScoringHandle } from '../scoring';
 import type { VisualEffectsManager } from './visual-effects';
 import type { ChromaticTrailManager } from './chromatic-trail';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
-import type { MultiBallColors } from '../../multi-ball-controller';
+import type { MultiBallColors, MultiBallController } from '../../multi-ball-controller';
+import type { RuntimePowerups } from '../powerups';
+import type { LaserController } from '../laser';
+import type { GambleRuntimeManager } from '../managers/gamble-runtime-manager';
+import type { EchoTrailManager } from 'game/echo-trails';
+import type { VortexFieldManager } from 'physics/field-effects';
+import type { PhysicsWorldHandle } from 'physics/world';
+import type { Ball } from 'physics/contracts';
+import type { Paddle } from 'render/contracts';
+import type { GameSessionManager } from 'app/state';
+import type { LuckyBreakEventBus } from 'app/events';
+import type { ReplayBuffer } from 'app/replay-buffer';
+import type { PaddleVisualDefaults, PaddleVisualPalette } from 'render/playfield-visuals';
+import type { Container } from 'pixi.js';
+import type { PowerUpEffect, PowerUpType } from 'util/power-ups';
+
+type PaddleTarget = { x: number; y: number } | null;
+
+interface BallEntity {
+    physicsBody: Body;
+    isAttached: boolean;
+}
+
+interface BallController {
+    updateAttachment: (ball: BallEntity, center: { x: number; y: number }) => void;
+}
+
+interface PaddleController {
+    getPaddleCenter: () => { x: number; y: number };
+}
+
+interface LaunchController {
+    launch: (ball: Body, direction: { x: number; y: number }, speed: number) => void;
+}
+
+interface InputToPhysics {
+    resolveTarget: () => { screen: PaddleTarget; playfield: PaddleTarget };
+    computeNextX: (params: {
+        deltaSeconds: number;
+        currentX: number;
+        paddleWidth: number;
+        target: PaddleTarget;
+    }) => number;
+    syncPaddlePosition: (center: { x: number; y: number }) => void;
+    shouldLaunch: () => boolean;
+    consumeLaunchIntent: () => { direction: { x: number; y: number } } | null;
+    resetLaunchTrigger: () => void;
+}
+
+interface AudioScheduler {
+    now(): number;
+    readonly lookAheadMs: number;
+}
+
+interface AudioStateObservable {
+    snapshot(): {
+        scene: string;
+        primaryLayerActive: boolean;
+    };
+    next(state: {
+        combo: number;
+        activePowerUps: { type: PowerUpType }[];
+        lookAheadMs: number;
+    }): void;
+}
+
+interface ForeshadowingService {
+    updatePredictions(balls: {
+        id: number;
+        x: number;
+        y: number;
+        rotation: number;
+    }[]): void;
+}
+
+interface PowerUpsManager extends RuntimePowerups {
+    getEffect(type: 'ball-speed'): PowerUpEffect | null;
+    getActiveEffects(): { type: PowerUpType }[];
+    isActive(type: PowerUpType): boolean;
+}
+
+interface MultiBallControllerExtended extends MultiBallController {
+    getCapacity(): number;
+}
+
+interface MusicState {
+    lives: 1 | 2 | 3;
+    combo: number;
+    tempoRatio: number;
+    bricksRemainingRatio: number;
+    warbleIntensity: number;
+}
 
 export interface GameplayCoordinatorDeps {
     readonly runtimeState: GameplayRuntimeState;
@@ -19,31 +110,31 @@ export interface GameplayCoordinatorDeps {
     readonly scoring: RuntimeScoringHandle;
     readonly visualEffects: VisualEffectsManager;
     readonly chromaticTrailManager: ChromaticTrailManager;
-    readonly powerUpsManager: any;
-    readonly laserController: any;
-    readonly multiBallController: any;
-    readonly gambleRuntime: any;
-    readonly echoTrailManager: any;
-    readonly vortexFieldManager: any;
-    readonly physics: any;
-    readonly foreshadowing: any;
-    readonly visualBodies: Map<any, any>;
-    readonly ball: any;
-    readonly paddle: any;
-    readonly ballController: any;
-    readonly paddleController: any;
-    readonly launchController: any;
-    readonly inputToPhysics: any;
+    readonly powerUpsManager: PowerUpsManager;
+    readonly laserController: LaserController | null;
+    readonly multiBallController: MultiBallControllerExtended;
+    readonly gambleRuntime: GambleRuntimeManager | null;
+    readonly echoTrailManager: EchoTrailManager;
+    readonly vortexFieldManager: VortexFieldManager;
+    readonly physics: PhysicsWorldHandle;
+    readonly foreshadowing: ForeshadowingService;
+    readonly visualBodies: Map<Body, Container>;
+    readonly ball: Ball;
+    readonly paddle: Paddle;
+    readonly ballController: BallController;
+    readonly paddleController: PaddleController;
+    readonly launchController: LaunchController;
+    readonly inputToPhysics: InputToPhysics;
     readonly visuals: RuntimeVisuals | null;
-    readonly session: any;
-    readonly bus: any;
-    readonly scheduler: any;
-    readonly audioState$: any;
-    readonly replayBuffer: any;
+    readonly session: GameSessionManager;
+    readonly bus: LuckyBreakEventBus;
+    readonly scheduler: AudioScheduler;
+    readonly audioState$: AudioStateObservable;
+    readonly replayBuffer: ReplayBuffer;
     readonly updateBrickLighting: (position: { x: number; y: number }) => void;
     readonly resolveComboDecayWindow: () => number;
     readonly toMusicLives: (lives: number) => 1 | 2 | 3;
-    readonly pushMusicState: (state: any) => void;
+    readonly pushMusicState: (state: MusicState) => void;
     readonly syncMomentum: () => void;
     readonly syncAutoCompleteCountdownDisplay: () => void;
     readonly handleLevelComplete: () => void;
@@ -52,9 +143,13 @@ export interface GameplayCoordinatorDeps {
     readonly clearActiveCoins: () => void;
     readonly themeBallColors: MultiBallColors;
     readonly themeAccents: { combo: number; powerUp: number };
-    readonly paddleVisualDefaults: any;
-    readonly visualFactory: any;
-    readonly paddleGraphics: any;
+    readonly paddleVisualDefaults: PaddleVisualDefaults;
+    readonly visualFactory: {
+        paddle: {
+            draw(graphics: Container, width: number, height: number, defaults: PaddleVisualDefaults, palette?: PaddleVisualPalette): void;
+        };
+    };
+    readonly paddleGraphics: Container;
     readonly loadoutPhysicsMultipliers: {
         baseSpeed: number;
         maxSpeed: number;
@@ -123,7 +218,6 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
     const scoringState = scoring.state;
 
     const update = (deltaSeconds: number): void => {
-        const audioTimeSeconds = scheduler.now();
         const nextElapsedSeconds = runtimeState.sessionElapsedSeconds + deltaSeconds;
 
         runtimeState.sessionElapsedSeconds = nextElapsedSeconds;
@@ -193,7 +287,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
 
         audioState$.next({
             combo: scoringState.combo,
-            activePowerUps: powerUpsManager.getActiveEffects().map((effect: any) => ({ type: effect.type })),
+            activePowerUps: powerUpsManager.getActiveEffects().map((effect) => ({ type: effect.type })),
             lookAheadMs: scheduler.lookAheadMs,
         });
 
@@ -235,7 +329,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
 
         paddle.position.y = paddle.physicsBody.position.y;
 
-        const paddleCenter = paddleController.getPaddleCenter(paddle);
+        const paddleCenter = paddleController.getPaddleCenter();
         const paddleDelta = Math.hypot(
             paddleCenter.x - runtimeState.previousPaddlePosition.x,
             paddleCenter.y - runtimeState.previousPaddlePosition.y,
@@ -261,7 +355,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
                 ? mixColors(themeBallColors.aura, themeAccents.powerUp, paddlePulseInfluence)
                 : undefined;
 
-        visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height, {
+        visualFactory.paddle.draw(paddleGraphics, paddle.width, paddle.height, paddleVisualDefaults, {
             accentColor: paddleAccentColor ?? paddleVisualDefaults.accentColor,
             pulseStrength: paddlePulseLevel,
             motionGlow: paddleMotionGlow,
@@ -280,7 +374,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
         if (ball.isAttached && launchIntent) {
             replayBuffer.recordLaunch(runtimeState.sessionElapsedSeconds);
             physics.detachBallFromPaddle(ball.physicsBody);
-            launchController.launch(ball, launchIntent.direction, runtimeState.currentLaunchSpeed);
+            launchController.launch(ball.physicsBody, launchIntent.direction, runtimeState.currentLaunchSpeed);
             inputToPhysics.resetLaunchTrigger();
             bus.publish('BallLaunched', {
                 sessionId: sessionSnapshot.sessionId,
@@ -353,9 +447,16 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
             physics.step(movementDelta * 1000);
         }
 
-        foreshadowing.updatePredictions();
+        foreshadowing.updatePredictions([
+            {
+                id: 0,
+                x: ball.physicsBody.position.x,
+                y: ball.physicsBody.position.y,
+                rotation: ball.physicsBody.angle,
+            },
+        ]);
 
-        visualBodies.forEach((visual: any, body: any) => {
+        visualBodies.forEach((visual: Container, body: Body) => {
             visual.x = body.position.x;
             visual.y = body.position.y;
             visual.rotation = body.angle;
@@ -375,7 +476,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
         const ballTrailSources = visuals?.ballTrailSources;
         if (ballTrailSources) {
             ballTrailSources.length = 0;
-            multiBallController.visitActiveBalls(({ body, isPrimary }: any) => {
+            multiBallController.visitActiveBalls(({ body, isPrimary }: { readonly body: Body; readonly isPrimary: boolean }) => {
                 const normalizedSpeed = clampUnit(
                     MatterVector_Class.magnitude(body.velocity) / Math.max(1, runtimeState.currentMaxSpeed),
                 );
@@ -396,7 +497,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
             maxSpeed: number;
             isPrimary: boolean;
         }[] = [];
-        multiBallController.visitActiveBalls(({ body, isPrimary }: any) => {
+        multiBallController.visitActiveBalls(({ body, isPrimary }: { readonly body: Body; readonly isPrimary: boolean }) => {
             chromaticActiveBalls.push({
                 id: body.id,
                 position: { x: body.position.x, y: body.position.y },
@@ -421,7 +522,7 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
             swirl: number;
         }[] = [];
 
-        multiBallController.visitActiveBalls(({ body }: any) => {
+        multiBallController.visitActiveBalls(({ body }: { readonly body: Body; readonly isPrimary: boolean }) => {
             const normalizedX = clampUnit(body.position.x / config.PLAYFIELD_WIDTH);
             const normalizedY = clampUnit(body.position.y / config.PLAYFIELD_HEIGHT);
             const speed = MatterVector_Class.magnitude(body.velocity);
@@ -435,12 +536,12 @@ export const createGameplayCoordinator = (deps: GameplayCoordinatorDeps): Gamepl
         });
 
         const echoTrails: import('game/echo-trails').EchoTrailSnapshot[] = [];
-        echoTrailManager.forEach((_ball: any, snapshot: any) => {
+        echoTrailManager.forEach((_ball: Body, snapshot: import('game/echo-trails').EchoTrailSnapshot) => {
             echoTrails.push(snapshot);
         });
 
         const vortexFields: import('physics/field-effects').VortexInstance[] = [];
-        vortexFieldManager.forEach((vortex: any) => {
+        vortexFieldManager.forEach((vortex: import('physics/field-effects').VortexInstance) => {
             vortexFields.push(vortex);
         });
 

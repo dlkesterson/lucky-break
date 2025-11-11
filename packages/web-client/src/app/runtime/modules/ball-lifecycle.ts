@@ -6,7 +6,6 @@ import type { Paddle } from 'render/contracts';
 import { BallAttachmentController } from 'physics/ball-attachment';
 import { PaddleBodyController } from 'render/paddle-body';
 import type { MultiBallController } from '../../multi-ball-controller';
-import type { RuntimeInput } from '../input';
 import type { LoadoutBallShape } from 'config/loadouts';
 import type { Container as PixiContainer } from 'pixi.js';
 import { normalizeBallShape, toPhysicsBallBodyShape } from '../ball-shape';
@@ -53,7 +52,6 @@ export const createBallLifecycleManager = (context: BallLifecycleContext): BallL
         ballGraphics,
         physics,
         foreshadowing,
-        ballController,
         paddleController,
         multiBallController,
         inputToPhysics,

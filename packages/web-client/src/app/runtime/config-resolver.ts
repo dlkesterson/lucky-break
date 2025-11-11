@@ -38,31 +38,20 @@ export class RuntimeConfigResolver {
         return 0; // Matter default
     }
 
-    get wallDeadzone(): number {
-        return 0.5;
-    }
+    readonly wallDeadzone: number = 0.5;
+
     /* eslint-enable @typescript-eslint/class-literal-property-style */
 
-    get ballRadius() {
-        return 10; // Currently hardcoded in facade, could move to config
-    }
+    readonly ballRadius = 10; // Currently hardcoded in facade, could move to config
 
     // Paddle configuration
-    get paddleBaseWidth() {
-        return 100; // Currently hardcoded
-    }
+    readonly paddleBaseWidth = 100; // Currently hardcoded
 
-    get paddleBaseHeight() {
-        return 20; // Currently hardcoded
-    }
+    readonly paddleBaseHeight = 20; // Currently hardcoded
 
-    get paddleBaseSpeed() {
-        return 300; // Currently hardcoded
-    }
+    readonly paddleBaseSpeed = 300; // Currently hardcoded
 
-    get paddleSpawnOffsetFromBottom() {
-        return 70; // Currently hardcoded
-    }
+    readonly paddleSpawnOffsetFromBottom = 70; // Currently hardcoded
 
     get paddleExpandedWidthMultiplier() {
         return this.config.paddle.expandedWidthMultiplier;
@@ -245,11 +234,7 @@ export class RuntimeConfigResolver {
     }
 
     // Gameplay constants (not in config, but collected here for consistency)
-    get baseLives() {
-        return 3;
-    }
+    readonly baseLives = 3;
 
-    get presetOffsetSalt() {
-        return 0x1f123bb5;
-    }
+    readonly presetOffsetSalt = 0x1f123bb5;
 }

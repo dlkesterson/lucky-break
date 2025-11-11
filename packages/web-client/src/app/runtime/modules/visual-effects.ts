@@ -1,11 +1,11 @@
 import type { MatterBody } from 'physics/matter';
 import { Vector as MatterVector } from 'physics/matter';
-import { deriveChromaticTrailPalette } from 'render/effects/chromatic-trail-palette';
 import { clampUnit, clampMin, clampMax } from 'util/math';
 import { mixColors } from 'render/playfield-visuals';
 import type { RuntimeVisuals } from '../physics-assembly';
 import type { MultiBallColors } from '../../multi-ball-controller';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
+import type { ColorFilter, GlowFilter } from '../types/runtime-deps';
 
 export interface VisualEffectsState {
     ballGlowPulse: number;
@@ -19,9 +19,15 @@ export interface VisualEffectsContext {
     readonly visuals: RuntimeVisuals | null;
     readonly ballBody: MatterBody;
     readonly ballRadius: number;
-    readonly ballHueFilter: any;
-    readonly ballGlowFilter: any;
-    readonly multiBallController: any;
+    readonly ballHueFilter: ColorFilter;
+    readonly ballGlowFilter: GlowFilter;
+    readonly multiBallController: {
+        updateSpeedIndicators(params: {
+            baseSpeed: number;
+            maxSpeed: number;
+            deltaSeconds: number;
+        }): void;
+    };
     readonly themeBallColors: MultiBallColors;
     readonly themeAccents: { combo: number; powerUp: number };
     readonly backgroundAccentColor: number;
@@ -87,7 +93,7 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
 
     const updateComboRing = (params: VisualEffectsUpdateParams, movementDelta: number): void => {
         const { visuals, ballBody, ballRadius, themeBallColors, themeAccents } = context;
-        const { comboScore, comboTimer, comboDecayWindow, comboEnergy } = params;
+        const { comboScore, comboTimer, comboEnergy } = params;
 
         const comboRing = visuals?.comboRing ?? null;
         if (!comboRing) return;
@@ -139,7 +145,7 @@ export const createVisualEffectsManager = (context: VisualEffectsContext): Visua
     };
 
     const updateBallEffects = (params: VisualEffectsUpdateParams, movementDelta: number): void => {
-        const { visuals, ballBody, ballRadius, themeBallColors, themeAccents, getCurrentBaseSpeed, getCurrentMaxSpeed } = context;
+        const { visuals, ballBody, themeBallColors, themeAccents, getCurrentBaseSpeed, getCurrentMaxSpeed } = context;
         const { comboEnergy } = params;
 
         const currentBaseSpeed = getCurrentBaseSpeed();

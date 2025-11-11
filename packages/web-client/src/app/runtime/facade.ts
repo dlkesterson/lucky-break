@@ -1,4 +1,4 @@
-import { createAudioBootstrap, clampMidiNote } from './audio-bootstrap';
+import { createAudioBootstrap } from './audio-bootstrap';
 import type { MidiEngine, MidiPaletteConfig } from 'audio/midi-engine';
 
 import {
@@ -16,12 +16,10 @@ import { createGameLoop } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
 import { getAudioPreferences, persistAudioPreferences } from 'util/audio-preferences';
-import type { RewardEntropyAction } from 'app/events';
-import type { AchievementUnlock } from '../achievements';
-import { gameConfig, type GameConfig } from 'config/game';
-import { regulateSpeed, getAdaptiveBaseSpeed } from 'util/speed-regulation';
+import { gameConfig } from 'config/game';
+import { regulateSpeed } from 'util/speed-regulation';
 import { getMomentumMetrics } from 'util/scoring';
-import { calculateBallSpeedScale, type PowerUpType } from 'util/power-ups';
+import { type PowerUpType } from 'util/power-ups';
 import { computePrestigeDust } from 'util/prestige';
 import {
     toColorNumber,
@@ -39,13 +37,13 @@ import {
 } from 'physics/matter';
 import type { MatterBody as Body } from 'physics/matter';
 import type { MusicBeatEvent, MusicMeasureEvent } from 'audio/music-director';
-import { mulberry32, type RandomManager } from 'util/random';
+import { type RandomManager } from 'util/random';
 import type { ReplayBuffer } from 'app/replay-buffer';
 import { createGameInitializer } from '../game-initializer';
 import type { MultiBallColors } from '../multi-ball-controller';
-import { createLevelRuntime } from '../level-runtime';
+import type { SpawnCoinOptions } from '../level-runtime';
 import { createBrickDecorator } from '../brick-layout-decorator';
-import { getPresetLevelCount, MAX_LEVEL_BRICK_HP, deriveLayoutSeed } from 'util/levels';
+import { MAX_LEVEL_BRICK_HP } from 'util/levels';
 import {
     spinWheel,
     createReward,
@@ -56,7 +54,6 @@ import { rootLogger } from 'util/log';
 import { recordHighScore } from 'util/high-scores';
 import type { GameSceneServices } from '../scene-services';
 import type { PhysicsDebugOverlayState } from 'render/debug-overlay';
-import { createGambleRuntime } from './gamble';
 import { createEchoTrailManager } from 'game/echo-trails';
 import { createPhantomBrickManager } from 'game/phantom-bricks';
 import { createVortexFieldManager } from 'physics/field-effects';
@@ -67,32 +64,21 @@ import type { RuntimeInput } from './input';
 import type { RuntimeDebug } from './debug';
 import type { RuntimeLifecycle } from './lifecycle';
 import { getSettings, subscribeSettings } from 'util/settings';
-import { createLaserController, type LaserController } from './laser';
+import { createLaserController } from './laser';
 import type { RuntimeModifiers } from './modifiers';
 import { createMetaProgressionService } from './meta-progress-service';
 import { createVisualThemeDefaults, type VisualThemeSnapshot } from './visual-theme-defaults';
 import {
     createSyncDriftTelemetry,
-    SYNC_DRIFT_HISTORY_SECONDS,
-    SYNC_DRIFT_HISTORY_MAX_SAMPLES,
-    SYNC_DRIFT_TELEMETRY_INTERVAL_SECONDS,
-    SYNC_DRIFT_WARN_THRESHOLD_MS,
-    SYNC_DRIFT_RECOVERY_THRESHOLD_MS,
-    updateSyncDriftMetrics,
 } from './state-store';
 import {
     isAutoplayBlockedError,
-    resolveToneTransport,
-    isPromiseLike,
-    waitForPromise,
 } from './audio';
 import { Destination } from 'tone';
-import { createCollisionRuntime, type CollisionRuntime, type CollisionContext, type CollisionRuntimeDeps } from './collisions';
+import { createCollisionRuntime, type CollisionRuntime, type CollisionRuntimeDeps } from './collisions';
 import type { RuntimeVisuals } from './physics-assembly';
 import {
     createForeshadowingRuntime,
-    resolveBallRadius,
-    intersectRayWithExpandedAabb,
 } from './foreshadowing';
 import { registerRuntimeScenes } from './scene-registration';
 import { createModifierPowerupServices } from './modifier-powerup-services';
@@ -106,13 +92,12 @@ import { createRuntimePerformance } from './modules/runtime-performance';
 import { createRuntimeThemeCoordinator } from './modules/runtime-theme';
 import { createRuntimeRoundCoordinator, type RuntimeRoundCoordinatorHandle } from './modules/runtime-round';
 import { createRuntimeSessionCoordinator } from './modules/runtime-session';
-import { createVisualEffectsManager, type VisualEffectsManager } from './modules/visual-effects';
-import { createChromaticTrailManager, type ChromaticTrailManager } from './modules/chromatic-trail';
-import { createGameplayCoordinator, type GameplayCoordinator } from './modules/gameplay-coordinator';
+import { createVisualEffectsManager } from './modules/visual-effects';
+import { createChromaticTrailManager } from './modules/chromatic-trail';
 import { createCollisionContext } from './modules/collision-context-factory';
 import { createRuntimeStateHolder } from './modules/runtime-state-coordinator';
-import { createBallLifecycleManager, type BallLifecycleManager } from './modules/ball-lifecycle';
-import { createPaddleManager, type PaddleManager } from './modules/paddle-manager';
+import { createBallLifecycleManager } from './modules/ball-lifecycle';
+import { createPaddleManager } from './modules/paddle-manager';
 import { createLevelTransitionCoordinator } from './modules/level-transition-coordinator';
 import {
     updateTimingAndSync,
@@ -137,15 +122,12 @@ import {
 import {
     defaultLoadoutSelection,
     type LoadoutSelection,
-    type LoadoutBallVisualOverrides,
-    type LoadoutBallShape,
     type LoadoutVoiceId,
     type LoadoutVoicePaletteOverrides,
 } from 'config/loadouts';
-import { noop } from 'util/index';
 import { hudSetters, type HudPhysicsSnapshot } from '../../ui/state/game-bridge';
 import { createNarrativeService, type NarrativeService } from '../narrative-service';
-import { normalizeBallShape, toPhysicsBallBodyShape } from './ball-shape';
+import { normalizeBallShape } from './ball-shape';
 import { RuntimeConfigResolver } from './config-resolver';
 import { CHEAT_POWERUP_BINDINGS } from './developer-cheats';
 
@@ -336,7 +318,6 @@ export const createRuntimeFacade = async ({
         runtimeThemeHandle?.setBallPaletteOverride(override);
     };
 
-    const ballHueShift = 0;
     let runtimeDebug: RuntimeDebug | null = null;
 
     const flashBallLight = (intensity: number) => {
@@ -347,13 +328,6 @@ export const createRuntimeFacade = async ({
         visuals?.paddleLight?.flash(intensity);
     };
 
-    const cheatPowerUpBindings: readonly { code: KeyboardEvent['code']; type: PowerUpType }[] = [
-        { code: 'Digit1', type: 'paddle-width' },
-        { code: 'Digit2', type: 'ball-speed' },
-        { code: 'Digit3', type: 'multi-ball' },
-        { code: 'Digit4', type: 'sticky-paddle' },
-        { code: 'Digit5', type: 'laser' },
-    ];
     let unsubscribeThemeChange: (() => void) | null = null;
     let unsubscribeThemeSnapshot: (() => void) | null = null;
 
@@ -549,7 +523,6 @@ export const createRuntimeFacade = async ({
         maxSpeed: number;
         launchSpeed: number;
     };
-    let activeBallShape: LoadoutBallShape = normalizeBallShape(activeLoadoutBundle.combined.visuals.ball?.shape);
     const getSession = () => session;
     const replaceSession = (nextSession: GameSessionManager) => {
         session = nextSession;
@@ -736,17 +709,16 @@ export const createRuntimeFacade = async ({
         getGambleRuntime()?.registerBricks();
     };
 
-    // Direct destructuring of levelRuntime methods (no delegation wrappers needed)
-    const {
-        updateBrickLighting,
-        spawnCoin,
-        clearGhostEffect,
-        resetGhostBricks,
-        applyGhostBrickReward,
-        updateGhostBricks,
-        getGhostBrickRemainingDuration,
-        forceClearBreakableBricks,
-    } = levelRuntime;
+    // Wrap levelRuntime methods to preserve `this` binding
+    const updateBrickLighting = (position: { x: number; y: number }) => levelRuntime.updateBrickLighting(position);
+    const spawnCoin = (options: SpawnCoinOptions) => levelRuntime.spawnCoin(options);
+    const clearGhostEffect = (brick: Body) => levelRuntime.clearGhostEffect(brick);
+    const resetGhostBricks = () => levelRuntime.resetGhostBricks();
+    const applyGhostBrickReward = (duration: number, count: number) => levelRuntime.applyGhostBrickReward(duration, count);
+    const updateGhostBricks = (dt: number) => levelRuntime.updateGhostBricks(dt);
+    const getGhostBrickRemainingDuration = () => levelRuntime.getGhostBrickRemainingDuration();
+    const forceClearBreakableBricks = () => levelRuntime.forceClearBreakableBricks();
+
     const clearActivePowerUps = () => {
         powerups.reset();
         levelRuntime.clearActivePowerUps();
@@ -787,7 +759,6 @@ export const createRuntimeFacade = async ({
         createdVisuals.playfieldBackground?.setTint(backgroundAccentColor, { immediate: true, accentMix: 0.2 });
     }
 
-    const comboRing = createdVisuals?.comboRing ?? null;
     const inputDebugOverlay = createdVisuals?.inputDebugOverlay ?? null;
     const physicsDebugOverlay = createdVisuals?.physicsDebugOverlay ?? null;
 
@@ -1607,12 +1578,12 @@ export const createRuntimeFacade = async ({
         );
 
         const echoTrails: import('game/echo-trails').EchoTrailSnapshot[] = [];
-        echoTrailManager.forEach((_ball: any, snapshot: any) => {
+        echoTrailManager.forEach((_ball: Body, snapshot: import('game/echo-trails').EchoTrailSnapshot) => {
             echoTrails.push(snapshot);
         });
 
         const vortexFields: import('physics/field-effects').VortexInstance[] = [];
-        vortexFieldManager.forEach((vortex: any) => {
+        vortexFieldManager.forEach((vortex: import('physics/field-effects').VortexInstance) => {
             vortexFields.push(vortex);
         });
 

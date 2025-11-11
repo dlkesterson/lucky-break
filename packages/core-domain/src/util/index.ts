@@ -17,7 +17,7 @@ export const sanitizeArray = <T>(
     if (!Array.isArray(value)) {
         return [...fallback];
     }
-    const sanitized = value.map(sanitizer).filter((v): v is T => v !== null);
+    const sanitized = (value as unknown[]).map(sanitizer).filter((v): v is T => v !== null);
     return sanitized.length > 0 ? sanitized : [...fallback];
 };
 

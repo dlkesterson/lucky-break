@@ -1,8 +1,27 @@
 import { rootLogger, type Logger } from 'util/log';
 import type { RandomManager } from 'util/random';
-import { isString, isRecord, sanitizeArray } from 'util';
+import { isString, isRecord } from 'util/type-guards';
 import { clampMin, safeFinite } from 'util/math';
 import idleNarrativeTemplates from '../../assets/narrative/idle/fate-ledger-templates.json';
+
+/**
+ * Sanitize an array of unknown values using a sanitizer function
+ * @param value - Unknown value that might be an array
+ * @param fallback - Fallback array to use if value is not an array or all items are invalid
+ * @param sanitizer - Function to sanitize each item (return null to filter out)
+ * @returns Sanitized array or fallback
+ */
+const sanitizeArray = <T>(
+    value: unknown,
+    fallback: readonly T[],
+    sanitizer: (item: unknown) => T | null,
+): readonly T[] => {
+    if (!Array.isArray(value)) {
+        return [...fallback];
+    }
+    const sanitized = (value as unknown[]).map(sanitizer).filter((v): v is T => v !== null);
+    return sanitized.length > 0 ? sanitized : [...fallback];
+};
 
 const STORAGE_KEY = 'lucky-break::fate-ledger::v1';
 const STATE_VERSION = 1;
@@ -169,8 +188,8 @@ const resolveStorage = (explicit?: Storage | null): Storage | null => {
         if (typeof window !== 'undefined' && window.localStorage) {
             return window.localStorage;
         }
-    } catch (error) {
-        void error;
+    } catch {
+        // Ignore storage access errors
     }
     return null;
 };
@@ -273,13 +292,13 @@ const readState = (storage: Storage | null, logger: Logger): PersistedFateLedger
             return { version: STATE_VERSION, entries: [] } satisfies PersistedFateLedgerState;
         }
         const version = sanitizeInteger(parsed.version, STATE_VERSION, { min: 1 });
-        const entries = sanitizeEntries((parsed as PersistedFateLedgerState).entries);
+        const entries = sanitizeEntries((parsed).entries);
         return {
             version,
             entries,
         } satisfies PersistedFateLedgerState;
-    } catch (error) {
-        logger.warn('Failed to read fate ledger; using defaults', { error });
+    } catch (err: unknown) {
+        logger.warn('Failed to read fate ledger; using defaults', { error: err });
         return { version: STATE_VERSION, entries: [] } satisfies PersistedFateLedgerState;
     }
 };
@@ -297,8 +316,8 @@ const writeState = (storage: Storage | null, state: PersistedFateLedgerState, lo
                 entries: state.entries,
             }),
         );
-    } catch (error) {
-        logger.warn('Failed to persist fate ledger', { error });
+    } catch (err: unknown) {
+        logger.warn('Failed to persist fate ledger', { error: err });
     }
 };
 
@@ -363,8 +382,8 @@ export const createFateLedger = (options: FateLedgerOptions = {}): FateLedger =>
         for (const listener of listeners) {
             try {
                 listener(snapshot);
-            } catch (error) {
-                logger.warn('Fate ledger listener failed', { error });
+            } catch (err: unknown) {
+                logger.warn('Fate ledger listener failed', { error: err });
             }
         }
     };
@@ -421,8 +440,8 @@ export const createFateLedger = (options: FateLedgerOptions = {}): FateLedger =>
         listeners.add(listener);
         try {
             listener(buildSnapshot(entries));
-        } catch (error) {
-            logger.warn('Fate ledger listener failed during subscription', { error });
+        } catch (err: unknown) {
+            logger.warn('Fate ledger listener failed during subscription', { error: err });
         }
         return () => {
             listeners.delete(listener);

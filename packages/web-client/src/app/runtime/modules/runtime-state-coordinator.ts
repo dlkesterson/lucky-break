@@ -1,13 +1,9 @@
-import type { GameSessionManager } from 'app/state';
-import type { MultiBallColors } from '../../multi-ball-controller';
-import type { PaddleVisualDefaults, BallVisualPalette } from 'render/playfield-visuals';
-import type { RuntimeVisuals } from '../physics-assembly';
 import type { RuntimeDebug } from '../debug';
 import type { RuntimeHudCoordinator } from './runtime-hud-coordinator';
 import type { RuntimeRoundCoordinatorHandle } from './runtime-round';
-import type { LoadoutBallShape } from 'config/loadouts';
-import type { LoadoutEffectsBundle } from '../loadouts';
 import type { createGameLoop } from '../../loop';
+import type { CollisionRuntime, CollisionRuntimeDeps } from '../collisions';
+import type { LaserController } from '../laser';
 
 /**
  * Simplified state holder for runtime lifecycle variables.
@@ -18,17 +14,21 @@ export function createRuntimeStateHolder() {
     return {
         // Lifecycle State
         loop: null as ReturnType<typeof createGameLoop> | null,
-        collisionRuntime: null as any,
-        collisionDeps: null as any,
-        laserController: null as any,
+        collisionRuntime: null as CollisionRuntime | null,
+        collisionDeps: null as CollisionRuntimeDeps | null,
+        laserController: null as LaserController | null,
         isPaused: false,
         runtimeHudCoordinator: null as RuntimeHudCoordinator | null,
         roundCoordinator: null as RuntimeRoundCoordinatorHandle | null,
         runtimeDebug: null as RuntimeDebug | null,
 
         // HUD Bridge State
-        startHudMetricsBridge: (() => { }) as () => void,
-        stopHudMetricsBridge: (() => { }) as () => void,
+        startHudMetricsBridge: (() => {
+            // Noop placeholder
+        }) as () => void,
+        stopHudMetricsBridge: (() => {
+            // Noop placeholder
+        }) as () => void,
         hudVisible: false,
 
         // Subscription State

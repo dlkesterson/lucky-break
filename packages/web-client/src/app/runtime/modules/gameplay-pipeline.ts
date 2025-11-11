@@ -7,18 +7,49 @@
  */
 
 import { Vector as MatterVector } from 'physics/matter';
+import type { MatterBody as Body } from 'physics/matter';
 import type { GameplayRuntimeState } from '../types';
 import { clampUnit } from 'util/math';
 import { updateSyncDriftMetrics } from '../state-store';
 import { calculateBallSpeedScale } from 'util/power-ups';
 import { getAdaptiveBaseSpeed } from 'util/speed-regulation';
 import { toMusicLives } from '../utils/audio-utils';
+import type { PowerUpEffect } from 'util/power-ups';
+
+interface AudioScheduler {
+    now(): number;
+}
+
+interface ReplayBuffer {
+    markTime(timestamp: number): void;
+}
+
+interface ScoringState {
+    readonly combo: number;
+}
+
+interface PowerUpManager {
+    getEffect(type: 'ball-speed'): PowerUpEffect | null;
+}
+
+interface RoundMachine {
+    getLevelDifficultyMultiplier(): number;
+}
+
+interface BallWithMeta {
+    body: Body;
+    isPrimary: boolean;
+}
+
+interface MultiBallController {
+    visitActiveBalls(callback: (ball: BallWithMeta) => void): void;
+}
 
 export interface TimingSyncContext {
     deltaSeconds: number;
-    scheduler: any;
+    scheduler: AudioScheduler;
     runtimeState: GameplayRuntimeState;
-    replayBuffer: any;
+    replayBuffer: ReplayBuffer;
     sessionNow: () => number;
     hasPerformanceNow: boolean;
     syncDriftTelemetry: {
@@ -29,9 +60,9 @@ export interface TimingSyncContext {
 
 export interface SpeedCalculationContext {
     runtimeState: GameplayRuntimeState;
-    scoringState: any;
-    powerUpManager: any;
-    roundMachine: any;
+    scoringState: ScoringState;
+    powerUpManager: PowerUpManager;
+    roundMachine: RoundMachine;
     configResolver: {
         baseSpeed: number;
         maxSpeed: number;
@@ -165,25 +196,25 @@ export function buildMusicState(
  * Builds ball trail sources for visual effects
  */
 export function buildBallTrailSources(
-    multiBallController: any,
+    multiBallController: MultiBallController,
     ballRadius: number,
     currentMaxSpeed: number,
-): Array<{
+): {
     id: number;
     position: { x: number; y: number };
     radius: number;
     normalizedSpeed: number;
     isPrimary: boolean;
-}> {
-    const sources: Array<{
+}[] {
+    const sources: {
         id: number;
         position: { x: number; y: number };
         radius: number;
         normalizedSpeed: number;
         isPrimary: boolean;
-    }> = [];
+    }[] = [];
 
-    multiBallController.visitActiveBalls(({ body, isPrimary }: any) => {
+    multiBallController.visitActiveBalls(({ body, isPrimary }: BallWithMeta) => {
         const normalizedSpeed = clampUnit(
             MatterVector.magnitude(body.velocity) / Math.max(1, currentMaxSpeed),
         );
@@ -203,24 +234,24 @@ export function buildBallTrailSources(
  * Builds chromatic trail sources for advanced visual effects
  */
 export function buildChromaticSources(
-    multiBallController: any,
+    multiBallController: MultiBallController,
     currentMaxSpeed: number,
-): Array<{
+): {
     id: number;
     position: { x: number; y: number };
     speed: number;
     maxSpeed: number;
     isPrimary: boolean;
-}> {
-    const sources: Array<{
+}[] {
+    const sources: {
         id: number;
         position: { x: number; y: number };
         speed: number;
         maxSpeed: number;
         isPrimary: boolean;
-    }> = [];
+    }[] = [];
 
-    multiBallController.visitActiveBalls(({ body, isPrimary }: any) => {
+    multiBallController.visitActiveBalls(({ body, isPrimary }: BallWithMeta) => {
         sources.push({
             id: body.id,
             position: { x: body.position.x, y: body.position.y },
@@ -237,22 +268,22 @@ export function buildChromaticSources(
  * Builds heat distortion sources from active balls
  */
 export function buildHeatDistortionSources(
-    multiBallController: any,
+    multiBallController: MultiBallController,
     currentMaxSpeed: number,
     playfieldWidth: number,
     playfieldHeight: number,
-): Array<{
+): {
     position: { x: number; y: number };
     intensity: number;
     swirl: number;
-}> {
-    const sources: Array<{
+}[] {
+    const sources: {
         position: { x: number; y: number };
         intensity: number;
         swirl: number;
-    }> = [];
+    }[] = [];
 
-    multiBallController.visitActiveBalls(({ body }: any) => {
+    multiBallController.visitActiveBalls(({ body }: BallWithMeta) => {
         const normalizedX = clampUnit(body.position.x / playfieldWidth);
         const normalizedY = clampUnit(body.position.y / playfieldHeight);
         const speed = MatterVector.magnitude(body.velocity);

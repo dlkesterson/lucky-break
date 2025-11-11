@@ -1,4 +1,4 @@
-import { Container, Graphics, type ColorSource } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import { clamp, clampUnit, safeFinite, clampMin } from 'util/math';
 
 export interface SpeedRingPalette {

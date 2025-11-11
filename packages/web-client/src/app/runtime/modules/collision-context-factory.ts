@@ -1,66 +1,111 @@
 import type { CollisionContext } from '../collisions';
+import type { GameSessionManager } from 'app/state';
+import type { RuntimeScoringHandle } from '../scoring';
+import type { GambleBrickManager } from 'game/gamble-brick-manager';
+import type { EchoTrailManager } from 'game/echo-trails';
+import type { PhantomBrickManager } from 'game/phantom-bricks';
+import type { VortexFieldManager } from 'physics/field-effects';
+import type { LevelRuntimeHandle, SpawnCoinOptions } from '../../level-runtime';
+import type { MatterBody as Body } from 'physics/matter';
+import type { PowerUpManager, PowerUpType } from 'util/power-ups';
+import type { MultiBallController } from '../../multi-ball-controller';
+import type { Ball } from 'physics/contracts';
+import type { Paddle } from 'render/contracts';
+import type { PhysicsWorldHandle } from 'physics/world';
+import type { GameInputManager } from 'input/input-manager';
+import type { RoundMachine } from '../round-machine';
+import type { RuntimePowerups } from '../powerups';
+import type { AchievementUnlock } from '../../achievements';
+import type { RuntimeVisuals } from '../physics-assembly';
+import type { LoadoutEffectsBundle } from '../loadouts';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+interface HudSetters {
+    pulseCombo(intensity: number): void;
+}
+
+interface ConfigResolver {
+    readonly brickWidth: number;
+    readonly brickHeight: number;
+    readonly powerUpDuration: number;
+    readonly coinBaseValue: number;
+    readonly coinMinValue: number;
+    readonly coinMaxValue: number;
+}
+
+interface GameConfig {
+    readonly scoring: {
+        readonly multiplierThreshold: number;
+    };
+}
+
+interface RuntimeState {
+    readonly gravity: number;
+    readonly sessionElapsedSeconds: number;
+    readonly frameTimestampMs: number;
+    readonly currentBaseSpeed: number;
+    readonly currentMaxSpeed: number;
+}
+
+interface ForeshadowingService {
+    releaseForBall(ballId: number, actualTimeSeconds?: number): void;
+}
+
+interface AchievementsService {
+    recordBrickBreak(params: { combo: number }): readonly AchievementUnlock[];
+}
 
 /**
  * Factory to build the large CollisionContext object.
  * Extracted from facade.ts to reduce complexity and improve testability.
- * Uses any types for dependencies to avoid complex import chains.
  */
 export const createCollisionContext = (options: {
-    readonly session: any;
-    readonly scoring: any;
-    readonly gambleManager: any;
-    readonly echoTrailManager: any;
-    readonly phantomBrickManager: any;
-    readonly vortexFieldManager: any;
-    readonly levelRuntime: any;
-    readonly brickHealth: any;
-    readonly brickMetadata: any;
-    readonly brickVisualState: any;
-    readonly powerUpManager: any;
-    readonly multiBallController: any;
-    readonly ball: any;
-    readonly paddle: any;
-    readonly physics: any;
-    readonly inputManager: any;
-    readonly roundMachine: any;
-    readonly configResolver: any;
-    readonly gameConfig: any;
-    readonly powerups: any;
-    readonly achievements: any;
-    readonly foreshadowing: any;
-    readonly visuals: any;
-    readonly hudSetters: any;
+    readonly session: GameSessionManager;
+    readonly scoring: RuntimeScoringHandle;
+    readonly gambleManager: GambleBrickManager;
+    readonly echoTrailManager: EchoTrailManager;
+    readonly phantomBrickManager: PhantomBrickManager;
+    readonly vortexFieldManager: VortexFieldManager;
+    readonly levelRuntime: LevelRuntimeHandle;
+    readonly brickHealth: Map<Body, number>;
+    readonly brickMetadata: LevelRuntimeHandle['brickMetadata'];
+    readonly brickVisualState: LevelRuntimeHandle['brickVisualState'];
+    readonly powerUpManager: PowerUpManager;
+    readonly multiBallController: MultiBallController;
+    readonly ball: Ball;
+    readonly paddle: Paddle;
+    readonly physics: PhysicsWorldHandle;
+    readonly inputManager: GameInputManager;
+    readonly roundMachine: RoundMachine;
+    readonly configResolver: ConfigResolver;
+    readonly gameConfig: GameConfig;
+    readonly powerups: RuntimePowerups;
+    readonly achievements: AchievementsService;
+    readonly foreshadowing: ForeshadowingService;
+    readonly visuals: RuntimeVisuals | null;
+    readonly hudSetters: HudSetters;
     readonly PLAYFIELD_WIDTH: number;
     readonly PLAYFIELD_HEIGHT: number;
     readonly PLAYFIELD_SIZE_MAX: number;
     readonly MAX_LEVEL_BRICK_HP: number;
     readonly themeBallColors: { highlight: number; aura: number; core: number };
-    readonly getRuntimeState: () => {
-        gravity: number;
-        sessionElapsedSeconds: number;
-        frameTimestampMs: number;
-        currentBaseSpeed: number;
-        currentMaxSpeed: number;
-    };
-    readonly getActiveLoadoutBundle: () => any;
+    readonly getRuntimeState: () => RuntimeState;
+    readonly getActiveLoadoutBundle: () => LoadoutEffectsBundle;
     readonly resolveComboDecayWindow: () => number;
     readonly refreshAchievementUpgrades: () => void;
     readonly computeScheduledAudioTime: (offsetSeconds: number) => number;
     readonly scheduleVisualEffect: (scheduledTime: number | undefined, effect: () => void) => void;
     readonly flashBallLight: (intensity?: number) => void;
     readonly flashPaddleLight: (intensity?: number) => void;
-    readonly applyGambleAppearance: (body: any) => void;
-    readonly clearGhostEffect: (...args: any[]) => void;
-    readonly removeBodyVisual: (body: any) => void;
+    readonly applyGambleAppearance: (body: Body) => void;
+    readonly clearGhostEffect: (brick: Body) => void;
+    readonly removeBodyVisual: (body: Body) => void;
     readonly clearExtraBalls: () => void;
     readonly reattachBallToPaddle: () => void;
-    readonly removeExtraBallByBody: (body: any) => void;
-    readonly promoteExtraBallToPrimary: (body: any) => boolean;
+    readonly removeExtraBallByBody: (body: Body) => void;
+    readonly promoteExtraBallToPrimary: (body: Body) => boolean;
     readonly handleLevelComplete: () => void;
     readonly handleGameOver: () => void;
-    readonly spawnCoin: (...args: any[]) => void;
+    readonly spawnCoin: (options: SpawnCoinOptions) => void;
     readonly syncMomentum: () => void;
 }): CollisionContext => {
     return {
@@ -128,7 +173,7 @@ export const createCollisionContext = (options: {
             },
             refreshAchievementUpgrades: options.refreshAchievementUpgrades,
             recordBrickBreakAchievements: (combo: number) => options.achievements.recordBrickBreak({ combo }),
-            queueAchievementUnlocks: (unlocks: readonly any[]) => {
+            queueAchievementUnlocks: (unlocks: readonly AchievementUnlock[]) => {
                 options.roundMachine.enqueueAchievementUnlocks(unlocks);
             },
             syncMomentum: options.syncMomentum,
@@ -161,7 +206,7 @@ export const createCollisionContext = (options: {
             promoteExtraBallToPrimary: options.promoteExtraBallToPrimary,
             handleLevelComplete: options.handleLevelComplete,
             handleGameOver: options.handleGameOver,
-            handlePowerUpActivation: (type: any) => {
+            handlePowerUpActivation: (type: PowerUpType) => {
                 options.powerups.handlePowerUpActivation(type);
             },
             spawnCoin: options.spawnCoin,
