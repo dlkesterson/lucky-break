@@ -46,14 +46,14 @@ test('player can pause, resume, and quit to the main menu', async ({ page }) => 
     await Promise.all([pauseEnterPromise, suspendPromise]);
 
     const pauseOverlay = page.locator('.pause-overlay');
-    const pauseState = await page.evaluate(async () => {
-        // @ts-expect-error dynamic import uses Vite alias in browser context
-        const module = await import('ui/state/pause-bridge.ts');
-        return module.usePauseUi.getState();
+    const pauseState = await page.evaluate(() => {
+        const hooks = (window as unknown as { __LB_E2E_HOOKS__?: Record<string, unknown> }).__LB_E2E_HOOKS__;
+        return (hooks?.getPauseState as (() => { visible: boolean; suspended: boolean; snapshot: unknown }) | undefined)?.();
     });
-    expect(pauseState.visible).toBe(true);
-    expect(pauseState.suspended).toBe(false);
-    expect(pauseState.snapshot).not.toBeNull();
+    expect(pauseState).toBeDefined();
+    expect(pauseState?.visible).toBe(true);
+    expect(pauseState?.suspended).toBe(false);
+    expect(pauseState?.snapshot).not.toBeNull();
     const stageBlocked = await page.evaluate(() =>
         document.getElementById('stage-wrap')?.classList.contains('ui-stage-blocked') ?? false,
     );

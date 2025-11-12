@@ -7,6 +7,7 @@ import {
     installEventHarness,
     skipLevel,
     startGameplay,
+    waitForEvent,
     waitForSceneTransition,
     getBiasPhaseState,
     commitBiasSelection,
@@ -38,12 +39,15 @@ const enterFirstBiasPhase = async (page: Page) => {
     await waitForSceneTransition(page, 'gameplay', 'enter');
 
     await drainEvents(page);
+    const roundCompletedPromise = waitForEvent(page, 'RoundCompleted', { includeExisting: false });
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });
     await skipLevel(page);
+
+    await roundCompletedPromise;
     await biasEnter;
 
     // Click continue button in casino hub to proceed
-    const continueButton = page.getByRole('button', { name: /Continue to Next Round/i });
+    const continueButton = page.getByLabel('Level complete summary').getByRole('button', { name: /Next Round/i });
     await expect(continueButton).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
 
     await drainEvents(page);
@@ -51,15 +55,16 @@ const enterFirstBiasPhase = async (page: Page) => {
 
 const advanceToNextBiasPhase = async (page: Page) => {
     await drainEvents(page);
+    const roundCompletedPromise = waitForEvent(page, 'RoundCompleted', { includeExisting: false });
     const biasEnter = waitForSceneTransition(page, 'bias-phase', 'enter', { includeExisting: false });
     await skipLevel(page);
+
+    await roundCompletedPromise;
     await biasEnter;
 
     // Click continue button in casino hub to proceed
-    const continueButton = page.getByRole('button', { name: /Continue to Next Round/i });
-    await expect(continueButton).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
-
-    await drainEvents(page);
+    const continueButton = page.getByLabel('Level complete summary').getByRole('button', { name: /Next Round/i });
+    await continueButton.click();
 };
 
 const commitBiasOption = async (page: Page, optionId: string) => {

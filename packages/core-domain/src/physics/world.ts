@@ -195,23 +195,23 @@ const createFactories = (_world: PhysicsWorld, dimensions: PhysicsWorldDimension
         const top = Bodies.rectangle(halfWidth, -wallThickness / 2, horizontalWidth, wallThickness, {
             label: 'wall-top',
             isStatic: true,
-            restitution: 1,
         });
+        top.restitution = 1;
         const right = Bodies.rectangle(dimensions.width + wallThickness / 2, halfHeight, wallThickness, verticalHeight, {
             label: 'wall-right',
             isStatic: true,
-            restitution: 1,
         });
+        right.restitution = 1;
         const bottom = Bodies.rectangle(halfWidth, dimensions.height + wallThickness / 2, horizontalWidth, wallThickness, {
             label: 'wall-bottom',
             isStatic: true,
-            restitution: 1,
         });
+        bottom.restitution = 1;
         const left = Bodies.rectangle(-wallThickness / 2, halfHeight, wallThickness, verticalHeight, {
             label: 'wall-left',
             isStatic: true,
-            restitution: 1,
         });
+        left.restitution = 1;
 
         return [top, right, bottom, left];
     };

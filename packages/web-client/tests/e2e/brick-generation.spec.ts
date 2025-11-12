@@ -225,7 +225,7 @@ test.describe('Brick Generation System', () => {
             }
 
             const wall = runtime.gameplayScene.brickWall;
-            const bricks = wall.children || [];
+            const bricks = wall.children ?? [];
 
             const samples = bricks.slice(0, 6).map((brick: any) => ({
                 x: brick.x,
@@ -243,7 +243,7 @@ test.describe('Brick Generation System', () => {
         expect(brickWallData).not.toBeNull();
         expect(brickWallData?.totalBricks).toBeGreaterThan(0);
 
-        const samples = brickWallData?.samples || [];
+        const samples = brickWallData?.samples ?? [];
         if (samples.length >= 2) {
             expect(samples[0].x).toBe(0);
             expect(samples[0].y).toBe(0);
@@ -273,7 +273,7 @@ test.describe('Brick Generation System', () => {
             }
 
             const wall = runtime.gameplayScene.brickWall;
-            const bricks = wall.children || [];
+            const bricks = wall.children ?? [];
 
             const uniqueTextures = new Set();
             bricks.forEach((brick: any) => {
@@ -315,7 +315,7 @@ test.describe('Brick Generation System', () => {
             }
 
             const wall = runtime.gameplayScene.brickWall;
-            const bricks = wall.children || [];
+            const bricks = wall.children ?? [];
 
             const bricksWithChildren = bricks.filter((brick: any) => {
                 return brick.children && brick.children.length > 0;

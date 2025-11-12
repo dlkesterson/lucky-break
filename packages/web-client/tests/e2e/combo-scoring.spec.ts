@@ -9,7 +9,6 @@ import {
     waitForSceneTransition,
     getComboState,
     readEvents,
-    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {
@@ -33,7 +32,8 @@ test('combo counter increases with consecutive brick hits', async ({ page }) => 
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
-    await waitForEvent(page, 'BrickHit', { timeout: 30_000 });
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
     await page.waitForTimeout(500);
 
     const comboState = await getComboState(page);
@@ -103,7 +103,8 @@ test('combo time remaining decreases over time', async ({ page }) => {
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
-    await waitForEvent(page, 'BrickHit', { timeout: 30_000 });
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
     await page.waitForTimeout(200);
 
     const firstCheck = await getComboState(page);
@@ -136,7 +137,8 @@ test('combo resets when decay time expires', async ({ page }) => {
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
-    await waitForEvent(page, 'BrickHit', { timeout: 30_000 });
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
     await page.waitForTimeout(200);
 
     const beforeDecay = await getComboState(page);
@@ -205,7 +207,8 @@ test('combo overlay displays in HUD during active combo', async ({ page }) => {
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
-    await waitForEvent(page, 'BrickHit', { timeout: 30_000 });
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
     await page.waitForTimeout(500);
 
     const comboState = await getComboState(page);
@@ -234,12 +237,12 @@ test('paddle hit events track velocity and position', async ({ page }) => {
     const paddleHitEvent = await waitForEvent(page, 'PaddleHit', { timeout: 10_000 }).catch(() => null);
 
     if (paddleHitEvent) {
-        const payload = paddleHitEvent.payload as { velocity?: { x: number; y: number }; position?: { x: number; y: number } };
+        const payload = paddleHitEvent.payload as { angle?: number; speed?: number; impactOffset?: number };
 
         expect(payload).toBeDefined();
-        expect(payload.velocity).toBeDefined();
-        expect(typeof payload.velocity?.x).toBe('number');
-        expect(typeof payload.velocity?.y).toBe('number');
+        expect(typeof payload.angle).toBe('number');
+        expect(typeof payload.speed).toBe('number');
+        expect(typeof payload.impactOffset).toBe('number');
     }
 });
 

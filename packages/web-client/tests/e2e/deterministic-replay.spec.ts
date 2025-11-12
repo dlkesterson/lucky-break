@@ -8,8 +8,6 @@ import {
     waitForEvent,
     waitForSceneTransition,
     getReplaySnapshot,
-    readEvents,
-    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {

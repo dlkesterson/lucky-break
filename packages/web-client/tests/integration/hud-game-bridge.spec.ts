@@ -6,7 +6,6 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { hudSetters, useHud, type RuntimeHudPayload } from 'ui/state/game-bridge';
-import type { GameSessionSnapshot } from 'app/state';
 
 describe('HUD Game Bridge Integration', () => {
     beforeEach(() => {

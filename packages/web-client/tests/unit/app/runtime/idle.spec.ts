@@ -156,6 +156,18 @@ describe('createIdleSimulation', () => {
                 score: 0,
                 snapshot: session.snapshot(),
                 hazards: [],
+                physics: {
+                    bodies: [],
+                    walls: {
+                        top: null,
+                        right: null,
+                        bottom: null,
+                        left: null,
+                    },
+                    bricks: [],
+                    ball: null,
+                    paddle: null,
+                },
             } satisfies HeadlessSimulationResult;
         });
 

@@ -10,7 +10,6 @@ import {
     waitForSceneTransition,
     getMultiBallState,
     activateReward,
-    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {

@@ -74,21 +74,6 @@ export const createRuntimeScoring = ({ bus, scoringConfig }: RuntimeScoringOptio
     }) => {
         const previousCombo = state.combo;
 
-        bus.publish(
-            'BrickBreak',
-            {
-                sessionId,
-                row,
-                col,
-                impactVelocity,
-                brickType,
-                initialHp,
-                comboHeat: previousCombo,
-                scheduledTime,
-            },
-            frameTimestampMs,
-        );
-
         const scoringOverrides: ScoringConfig = {
             ...(scoringConfig ?? {}),
             comboDecayTime: comboDecayWindow,
@@ -121,6 +106,23 @@ export const createRuntimeScoring = ({ bus, scoringConfig }: RuntimeScoringOptio
                 state.score += bonus;
             }
         }
+
+        // Publish BrickBreak event with score awarded
+        bus.publish(
+            'BrickBreak',
+            {
+                sessionId,
+                row,
+                col,
+                impactVelocity,
+                brickType,
+                initialHp,
+                comboHeat: previousCombo,
+                scoreAwarded: pointsAwarded,
+                scheduledTime,
+            },
+            frameTimestampMs,
+        );
 
         // Note: HUD refresh is handled by the collision handler after session state updates
         // Removed state.updateHUD?.() call to prevent premature refresh with stale session data

@@ -362,9 +362,9 @@ describe('HudApp', () => {
 
             await renderHud();
 
-            const comboElement = container.querySelector('.hud-combo') as HTMLElement;
+            const comboElement = container.querySelector<HTMLElement>('.hud-combo')!;
             expect(comboElement).not.toBeNull();
-            expect(comboElement?.style.getPropertyValue('--combo-pulse')).toBe('1.2');
+            expect(comboElement.style.getPropertyValue('--combo-pulse')).toBe('1.2');
         });
 
         it('clamps combo pulse to maximum of 1.6', async () => {
@@ -383,8 +383,8 @@ describe('HudApp', () => {
 
             await renderHud();
 
-            const comboElement = container.querySelector('.hud-combo') as HTMLElement;
-            const pulseValue = parseFloat(comboElement?.style.getPropertyValue('--combo-pulse') || '0');
+            const comboElement = container.querySelector<HTMLElement>('.hud-combo')!;
+            const pulseValue = parseFloat(comboElement.style.getPropertyValue('--combo-pulse') || '0');
             expect(pulseValue).toBeLessThanOrEqual(1.6);
         });
 
@@ -526,7 +526,6 @@ describe('HudApp', () => {
 
             await renderHud();
 
-            const gravityLabel = container.querySelector('.hud-stat-label');
             const gravityElements = Array.from(container.querySelectorAll('.hud-stat-label'))
                 .filter((el) => el.textContent?.includes('Gravity'));
             expect(gravityElements.length).toBe(0);

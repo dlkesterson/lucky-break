@@ -16,6 +16,7 @@ export interface BrickBreakPayload {
     readonly brickType: BrickType;
     readonly comboHeat: number;
     readonly initialHp: number;
+    readonly scoreAwarded?: number;
     readonly scheduledTime?: number;
 }
 

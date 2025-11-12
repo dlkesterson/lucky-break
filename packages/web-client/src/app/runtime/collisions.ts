@@ -164,7 +164,6 @@ const handleBallBrickCollision = (
     brick: Body,
     ballBody: Body,
 ): void => {
-    console.log('[collisions] handleBallBrickCollision called');
     const {
         scoring,
         brickHealth,
@@ -379,8 +378,6 @@ const handleBallBrickCollision = (
         },
     });
 
-    console.log('[collisions] Points awarded:', points, 'for brick at', row, col);
-
     fx.incrementLevelBricksBroken();
     fx.updateHighestCombos(scoringState.combo);
 
@@ -407,10 +404,8 @@ const handleBallBrickCollision = (
         momentum: getMomentumMetrics(scoringState),
     });
 
-    console.log('[collisions] BEFORE refreshHud - snapshot score:', ctx.session.snapshot().hud.score, 'brickRemaining:', ctx.session.snapshot().hud.brickRemaining);
     // Refresh HUD after session state updates to show current brick count
     fx.refreshHud();
-    console.log('[collisions] AFTER refreshHud');
 
     const speedIntensity = clampUnit((impactVelocity ?? 0) / Math.max(1, currentMaxSpeed));
     const comboIntensity = clampUnit(scoringState.combo / Math.max(1, thresholds.multiplier * 2));
@@ -514,7 +509,6 @@ const handleBallBrickCollision = (
     // Check if all breakable bricks have been cleared
     const updatedSnapshot = ctx.session.snapshot();
     if (updatedSnapshot.brickRemaining === 0 && updatedSnapshot.status === 'active') {
-        console.log('[collisions] All bricks cleared! Completing round...');
         ctx.session.completeRound();
         fx.handleLevelComplete();
     }
@@ -829,12 +823,10 @@ const handleHazardBallCollision = (
 };
 
 export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRuntime => {
-    console.log('[collisions.ts] createCollisionRuntime called - module loaded');
     const { engine, context: ctx } = deps;
     const portalCooldowns = new Map<string, Map<number, number>>();
 
     const handleCollisionStart = (event: IEventCollision<Engine>) => {
-        console.log('[collisions] handleCollisionStart - pairs:', event.pairs.length);
         event.pairs.forEach((pair) => {
             const { bodyA, bodyB } = pair;
             const sessionSnapshot = ctx.session.snapshot();
@@ -842,7 +834,6 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
             const sessionId = sessionSnapshot.sessionId;
 
             const ballBrick = toBallBrickPair(bodyA, bodyB);
-            console.log('[collisions] ballBrick pair?', !!ballBrick, 'bodyA.label:', bodyA.label, 'bodyB.label:', bodyB.label);
             if (ballBrick) {
                 handleBallBrickCollision(deps, ctx, frameTimestampMs, sessionId, ballBrick.brickBody, ballBrick.ballBody);
                 return;

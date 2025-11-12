@@ -9,7 +9,6 @@ import {
     getBiasPhaseState,
     commitBiasSelection,
     skipBiasPhase,
-    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {

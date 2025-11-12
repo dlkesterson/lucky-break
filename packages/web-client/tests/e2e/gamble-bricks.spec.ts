@@ -9,7 +9,6 @@ import {
     waitForSceneTransition,
     getGambleBrickState,
     readEvents,
-    e2eTimeouts,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {
@@ -52,16 +51,24 @@ test('gamble brick transitions from armed to primed on first hit', async ({ page
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
+
     let foundGambleTransition = false;
+    await canvas.click();
+    await launchBall(page);
+    await waitForEvent(page, 'BallLaunched');
+
+    let foundGambleSuccess = false;
     const maxAttempts = 50;
 
-    for (let i = 0; i < maxAttempts && !foundGambleTransition; i++) {
+    for (let i = 0; i < maxAttempts && !foundGambleSuccess; i++) {
         await page.waitForTimeout(500);
 
         const events = await readEvents(page);
-        const brickHits = events.filter((e) => e.type === 'BrickHit');
+        const brickEvents = events.filter((e) => e.type === 'BrickHit' || e.type === 'BrickBreak');
 
-        for (const hit of brickHits) {
+        for (const hit of brickEvents) {
             const payload = hit.payload as { brickType?: string; gambleResult?: { type: string } };
             if (payload?.brickType === 'gamble' && payload?.gambleResult?.type === 'prime') {
                 foundGambleTransition = true;
@@ -135,9 +142,11 @@ test('gamble brick success grants reward multiplier', async ({ page }) => {
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
 
-    let foundGambleSuccess = false;
-    const maxAttempts = 100;
+    // Wait for BrickBreak instead of BrickHit (1-HP bricks skip BrickHit)
+    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
 
+    let foundGambleSuccess = false;
+    const maxAttempts = 50;
     for (let i = 0; i < maxAttempts && !foundGambleSuccess; i++) {
         await page.waitForTimeout(500);
 

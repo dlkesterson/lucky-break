@@ -4,7 +4,7 @@
  * Tests the interaction between scoring → session state → HUD updates
  * This guards against regressions where HUD doesn't update after game events
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { createGameSessionManager, type GameSessionManager } from 'app/state';
 import { createScoring, awardBrickPoints, getMomentumMetrics, type ScoreState } from 'util/scoring';
 import { hudSetters, useHud } from 'ui/state/game-bridge';

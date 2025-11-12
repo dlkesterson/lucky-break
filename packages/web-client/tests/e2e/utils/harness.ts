@@ -87,9 +87,10 @@ export const installEventHarness = async (page: Page, options: HarnessInstallOpt
                 typeof existingConfig === 'object' && existingConfig !== null
                     ? existingConfig
                     : ({} as { rafIntervalMs?: number });
-            if (!Number.isFinite(config.rafIntervalMs ?? NaN) || (config.rafIntervalMs ?? 0) <= 0) {
-                config.rafIntervalMs = 80;
-            }
+            // Disable custom RAF for now - use native browser RAF
+            // if (!Number.isFinite(config.rafIntervalMs ?? NaN) || (config.rafIntervalMs ?? 0) <= 0) {
+            //     config.rafIntervalMs = 16; // ~60 FPS for smoother physics
+            // }
             globalObject.__LB_E2E_CONFIG__ = config;
 
             if (shouldEnable) {
@@ -313,6 +314,9 @@ export const getBrickData = (page: Page): Promise<E2EBrickData> => callHarness(p
 
 export const getReplaySnapshot = (page: Page): Promise<ReplayRecording> => callHarness(page, 'getReplaySnapshot');
 
+export const getBrickPositions = (page: Page): Promise<Array<{ x: number; y: number }>> =>
+    callHarness(page, 'getBrickPositions');
+
 export interface PowerUpState {
     readonly type: string;
     readonly remainingTime: number;
@@ -371,3 +375,18 @@ export interface ComboSnapshot {
 
 export const getComboState = (page: Page): Promise<ComboSnapshot> =>
     callHarness(page, 'getComboState');
+
+export interface PhysicsState {
+    readonly ballPosition: { x: number; y: number };
+    readonly ballVelocity: { x: number; y: number };
+    readonly ballSpeed: number;
+    readonly ballAttached: boolean;
+    readonly paddlePosition: { x: number; y: number };
+    readonly brickCount: number;
+    readonly timeScale: number;
+    readonly loopRunning: boolean;
+    readonly isPaused: boolean;
+}
+
+export const getPhysicsState = (page: Page): Promise<PhysicsState> =>
+    callHarness(page, 'getPhysicsState');

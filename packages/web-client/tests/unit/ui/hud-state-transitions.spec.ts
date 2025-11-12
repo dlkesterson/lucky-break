@@ -4,7 +4,7 @@
  * Tests hudSetters.updateFromRuntime and related HUD state management
  * This guards against regressions where HUD state doesn't update correctly
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { hudSetters, useHud } from 'ui/state/game-bridge';
 import { createScoring, awardBrickPoints, type ScoreState } from 'util/scoring';
 import { gameConfig } from 'config/game';

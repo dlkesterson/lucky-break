@@ -12,7 +12,7 @@ import { volumeToDecibels, toMusicLives } from './utils/audio-utils';
 import { sanitizeVoiceOverrides, toBallPaletteOverride } from './utils/loadout-utils';
 import { createLevelRuntimeBundle } from './factories/level-runtime-factory';
 import { GambleRuntimeManager } from './managers/gamble-runtime-manager';
-import { createGameLoop } from '../loop';
+import { createGameLoop, type LoopOptions } from '../loop';
 import { createGameSessionManager } from 'app/state';
 import type { GameSessionManager, PlayerPreferences } from 'app/state';
 import { getAudioPreferences, persistAudioPreferences } from 'util/audio-preferences';
@@ -77,6 +77,7 @@ import {
 import { Destination } from 'tone';
 import { createCollisionRuntime, type CollisionRuntime, type CollisionRuntimeDeps } from './collisions';
 import type { RuntimeVisuals } from './physics-assembly';
+import { usePauseUi } from 'ui/state/pause-bridge';
 import {
     createForeshadowingRuntime,
 } from './foreshadowing';
@@ -1650,6 +1651,40 @@ export const createRuntimeFacade = async ({
         refreshHud();
     };
 
+    // Check for E2E configuration to support deterministic testing
+    const e2eConfig = (globalThis as unknown as { __LB_E2E_CONFIG__?: { rafIntervalMs?: number } }).__LB_E2E_CONFIG__;
+    const rafIntervalMs = e2eConfig?.rafIntervalMs;
+    let loopOptions: LoopOptions;
+
+    // If E2E mode with custom RAF interval, use setInterval-based RAF for determinism
+    if (rafIntervalMs !== undefined && rafIntervalMs > 0) {
+        const rafTimers = new Map<number, ReturnType<typeof setInterval>>();
+        let rafHandle = 1;
+
+        loopOptions = {
+            onFrameMetrics: handleFrameMetrics,
+            raf: (callback: FrameRequestCallback): number => {
+                const handle = rafHandle++;
+                const timer = setTimeout(function tick() {
+                    callback(typeof performance !== 'undefined' ? performance.now() : Date.now());
+                }, rafIntervalMs);
+                rafTimers.set(handle, timer);
+                return handle;
+            },
+            cancelRaf: (handle: number): void => {
+                const timer = rafTimers.get(handle);
+                if (timer !== undefined) {
+                    clearTimeout(timer);
+                    rafTimers.delete(handle);
+                }
+            },
+        };
+    } else {
+        loopOptions = {
+            onFrameMetrics: handleFrameMetrics,
+        };
+    }
+
     lifecycleState.loop = createGameLoop(
         (deltaSeconds) => {
             stage.update(deltaSeconds);
@@ -1658,9 +1693,7 @@ export const createRuntimeFacade = async ({
             refreshHud();
             stage.app.render();
         },
-        {
-            onFrameMetrics: handleFrameMetrics,
-        },
+        loopOptions,
     );
 
     const { pauseGame, resumeFromPause, quitToMenu } = await registerRuntimeScenes({
@@ -1744,6 +1777,19 @@ export const createRuntimeFacade = async ({
             biasCoordinator: roundCoordinator?.getBiasCoordinator() ?? null,
             runtimeModifiers,
             levelRuntime,
+            gambleManager,
+            powerups,
+            multiBallController,
+            forceGambleReward: (rewardType: string | null) => {
+                if (rewardType === null) {
+                    setRewardOverride(null);
+                } else {
+                    setRewardOverride({ type: rewardType as RewardType, persist: true });
+                }
+            },
+            usePauseUi: () => usePauseUi.getState(),
+            paddle,
+            getSlowTimeScale: () => powerups.getSlowTimeScale(),
         },
         overlays: {
             input: visuals?.inputDebugOverlay ?? null,
