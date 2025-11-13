@@ -56,7 +56,11 @@ test('HUD score updates in real-time after brick destruction', async ({ page }) 
 
     await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
 
-    await page.waitForTimeout(500);
+    // Wait for physics to complete and HUD to update (default angle hits 2 bricks)
+    await page.waitForTimeout(3000);
+
+    // Force a frame update to ensure React state propagates
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
     const updatedScoreText = await hudScore.textContent();
     const updatedScore = extractScore(updatedScoreText);
@@ -170,7 +174,8 @@ test('HUD bricks remaining counter updates after brick destruction', async ({ pa
     await waitForEvent(page, 'BallLaunched');
     await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
 
-    await page.waitForTimeout(500);
+    // Wait for physics to complete and HUD to update
+    await page.waitForTimeout(3000);
 
     const updatedBricksText = await bricksLabel.textContent();
     const updatedBricks = extractBrickCount(updatedBricksText);

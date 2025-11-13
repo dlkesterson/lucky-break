@@ -18,6 +18,8 @@ import type { RuntimePowerups } from './powerups';
 import type { MultiBallController } from '../multi-ball-controller';
 import type { PowerUpType } from 'util/power-ups';
 import type { PauseUiSnapshot } from '../../ui/state/pause-bridge';
+import { createReward, type RewardType } from 'game/rewards';
+import type { HudState } from '../../ui/state/game-bridge';
 
 interface E2EHarnessRuntimeState {
     readonly currentScene: string | null;
@@ -133,6 +135,7 @@ interface E2EHarnessControls {
     getMultiBallState?: () => E2EMultiBallSnapshot;
     getPauseState?: () => E2EPauseState;
     getPhysicsState?: () => E2EPhysicsState;
+    getHudState?: () => unknown;
 }
 
 export interface RegisterE2EHarnessDeps {
@@ -170,6 +173,7 @@ export interface RegisterE2EHarnessDeps {
     readonly multiBallController: MultiBallController;
     readonly forceGambleReward: (type: string | null) => void;
     readonly usePauseUi: () => { visible: boolean; suspended: boolean; snapshot: PauseUiSnapshot | null };
+    readonly useHud: () => HudState;
     readonly paddle: { readonly physicsBody: Body };
     readonly getSlowTimeScale: () => number;
 }
@@ -206,6 +210,7 @@ export const registerE2EHarnessControls = ({
     multiBallController,
     forceGambleReward,
     usePauseUi,
+    useHud,
     paddle,
     getSlowTimeScale,
 }: RegisterE2EHarnessDeps): void => {
@@ -440,14 +445,28 @@ export const registerE2EHarnessControls = ({
     };
     controls.activateReward = (rewardType: string) => {
         // Activate reward through the powerups system
-        // This would need to be exposed through the powerups interface
-        // For now, we can use forceGambleReward if it's a gamble reward
+        // For gamble rewards, use forceGambleReward
+        // For regular power-ups, create a reward and activate it
         if (rewardType.includes('gamble') || rewardType.includes('casino')) {
             forceGambleReward(rewardType);
+        } else {
+            // Create and activate the reward
+            const reward = createReward(rewardType as RewardType);
+            powerups.activateReward(reward);
         }
     };
     controls.forceReward = (rewardType: string | null) => {
         forceGambleReward(rewardType);
+
+        // Also update localStorage for developer cheats to persist across refreshes
+        try {
+            const stored = window.localStorage?.getItem('lucky-break:developer-cheats');
+            const parsed = stored ? JSON.parse(stored) : { enabled: true };
+            parsed.forcedReward = rewardType;
+            window.localStorage?.setItem('lucky-break:developer-cheats', JSON.stringify(parsed));
+        } catch {
+            // ignore localStorage errors
+        }
     };
     controls.getMultiBallState = () => {
         let totalBalls = 1; // Primary ball
@@ -496,5 +515,8 @@ export const registerE2EHarnessControls = ({
             loopRunning: isLoopRunning(),
             isPaused: getIsPaused(),
         } satisfies E2EPhysicsState;
+    };
+    controls.getHudState = () => {
+        return useHud();
     };
 };

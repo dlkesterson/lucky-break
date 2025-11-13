@@ -39,7 +39,7 @@ type BrickMetadataMap = LevelRuntimeHandle['brickMetadata'];
 type BrickVisualStateMap = LevelRuntimeHandle['brickVisualState'];
 
 export interface CollisionContext {
-    readonly session: GameSessionManager;
+    readonly getSession: () => GameSessionManager;
     readonly scoring: RuntimeScoringHandle;
     readonly gambleManager: GambleBrickManager;
     readonly echoTrailManager: EchoTrailManager;
@@ -207,7 +207,7 @@ const handleBallBrickCollision = (
             scheduledTime,
         }, frameTimestampMs);
 
-        ctx.session.recordEntropyEvent({
+        ctx.getSession().recordEntropyEvent({
             type: 'wall-hit',
             comboHeat: scoringState.combo,
             impactVelocity,
@@ -252,7 +252,7 @@ const handleBallBrickCollision = (
                 scheduledTime,
             }, frameTimestampMs);
 
-            ctx.session.recordEntropyEvent({
+            ctx.getSession().recordEntropyEvent({
                 type: 'brick-hit',
                 comboHeat: scoringState.combo,
                 impactVelocity,
@@ -290,7 +290,7 @@ const handleBallBrickCollision = (
             scheduledTime,
         }, frameTimestampMs);
 
-        ctx.session.recordEntropyEvent({
+        ctx.getSession().recordEntropyEvent({
             type: 'brick-hit',
             comboHeat: scoringState.combo,
             impactVelocity,
@@ -348,7 +348,7 @@ const handleBallBrickCollision = (
 
     const scheduledTime = fx.computeScheduledAudioTime();
 
-    const sessionSnapshot = ctx.session.snapshot();
+    const sessionSnapshot = ctx.getSession().snapshot();
     const bricksRemainingBefore = sessionSnapshot.brickRemaining;
     const bricksTotal = sessionSnapshot.brickTotal;
     const bricksRemainingAfter = Math.max(0, bricksRemainingBefore - 1);
@@ -391,7 +391,7 @@ const handleBallBrickCollision = (
             scoringState.momentum.comboTimer = scoringState.comboTimer;
         }
     }
-    ctx.session.recordBrickBreak({
+    ctx.getSession().recordBrickBreak({
         points,
         event: {
             row,
@@ -455,7 +455,7 @@ const handleBallBrickCollision = (
         levelRuntime.spawnPowerUp(powerUpType, { x: brick.position.x, y: brick.position.y });
     }
 
-    const entropyState = ctx.session.getEntropyState();
+    const entropyState = ctx.getSession().getEntropyState();
     const entropyRatio = Math.max(0, Math.min(1, entropyState.charge / 100));
     const baseCoinChance = 0.18;
     const comboBonus = Math.min(0.3, scoringState.combo * 0.015);
@@ -492,12 +492,12 @@ const handleBallBrickCollision = (
 
     if (ctx.phantomBrickManager.isPhantom(brick)) {
         const entropyReward = ctx.phantomBrickManager.getEntropyReward();
-        ctx.session.grantStoredEntropy(entropyReward);
+        ctx.getSession().grantStoredEntropy(entropyReward);
         ctx.phantomBrickManager.unregister(brick);
     }
 
     if (scoringState.combo > 0) {
-        ctx.session.incrementMirageStacks();
+        ctx.getSession().incrementMirageStacks();
     }
 
     ctx.physics.remove(brick);
@@ -507,9 +507,9 @@ const handleBallBrickCollision = (
     brickVisualState.delete(brick);
 
     // Check if all breakable bricks have been cleared
-    const updatedSnapshot = ctx.session.snapshot();
+    const updatedSnapshot = ctx.getSession().snapshot();
     if (updatedSnapshot.brickRemaining === 0 && updatedSnapshot.status === 'active') {
-        ctx.session.completeRound();
+        ctx.getSession().completeRound();
         fx.handleLevelComplete();
     }
 };
@@ -560,7 +560,7 @@ const handleBallPaddleCollision = (
         scheduledTime,
     }, frameTimestampMs);
 
-    ctx.session.recordEntropyEvent({
+    ctx.getSession().recordEntropyEvent({
         type: 'paddle-hit',
         speed: impactSpeed,
         comboHeat: ctx.scoring.state.combo,
@@ -608,7 +608,7 @@ const handleBallWallCollision = (
         time: scheduledTime,
     });
 
-    ctx.session.recordEntropyEvent({
+    ctx.getSession().recordEntropyEvent({
         type: 'wall-hit',
         speed: wallSpeed,
     });
@@ -640,16 +640,16 @@ const handleBallBottomCollision = (
         fx.reattachBallToPaddle();
         fx.flashPaddleLight(0.65);
         fx.hudPulseCombo(0.55);
-        ctx.session.recordEntropyEvent({ type: 'combo-reset', comboHeat: Math.max(0, comboBeforeReset * 0.35) });
+        ctx.getSession().recordEntropyEvent({ type: 'combo-reset', comboHeat: Math.max(0, comboBeforeReset * 0.35) });
         return;
     }
 
-    ctx.session.recordLifeLost('ball-drop');
-    ctx.session.recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
+    ctx.getSession().recordLifeLost('ball-drop');
+    ctx.getSession().recordEntropyEvent({ type: 'combo-reset', comboHeat: comboBeforeReset });
     ctx.scoring.lifeLost();
     fx.syncMomentum();
 
-    if (ctx.session.snapshot().livesRemaining > 0) {
+    if (ctx.getSession().snapshot().livesRemaining > 0) {
         fx.clearExtraBalls();
         fx.reattachBallToPaddle();
     } else {
@@ -689,8 +689,8 @@ const handleCoinPaddleCollision = (
         return;
     }
 
-    ctx.session.collectCoins(entry.value);
-    ctx.session.recordEntropyEvent({
+    ctx.getSession().collectCoins(entry.value);
+    ctx.getSession().recordEntropyEvent({
         type: 'coin-collect',
         coinValue: entry.value,
         comboHeat: ctx.scoring.state.combo,
@@ -829,7 +829,7 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
     const handleCollisionStart = (event: IEventCollision<Engine>) => {
         event.pairs.forEach((pair) => {
             const { bodyA, bodyB } = pair;
-            const sessionSnapshot = ctx.session.snapshot();
+            const sessionSnapshot = ctx.getSession().snapshot();
             const frameTimestampMs = ctx.functions.getFrameTimestampMs();
             const sessionId = sessionSnapshot.sessionId;
 
@@ -883,7 +883,7 @@ export const createCollisionRuntime = (deps: CollisionRuntimeDeps): CollisionRun
     };
 
     const applyLaserStrike: CollisionRuntime['applyLaserStrike'] = ({ brick, origin, impactVelocity }) => {
-        const sessionSnapshot = ctx.session.snapshot();
+        const sessionSnapshot = ctx.getSession().snapshot();
         const frameTimestampMs = ctx.functions.getFrameTimestampMs();
         const sessionId = sessionSnapshot.sessionId;
         const radius = Math.max(4, ctx.ball.radius * 0.9);

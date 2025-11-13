@@ -124,7 +124,6 @@ export const hudSetters = {
         useHud.setState((previous) => (previous.visible === visible ? previous : { ...previous, visible }));
     },
     updateFromRuntime: (payload: RuntimeHudPayload): void => {
-        console.log('[game-bridge] updateFromRuntime called with score:', payload.score, 'brickRemaining:', payload.brickRemaining);
         const nextSettings = cloneSettings(payload.settings);
         lastSettings = nextSettings;
         useHud.setState({

@@ -122,7 +122,7 @@ test('Escape key pauses gameplay', async ({ page }) => {
     // Since keyboard doesn't work in e2e, test that pause functionality works
     // using the harness method instead of Escape key
     await pauseGameplay(page);
-    
+
     await waitForSceneTransition(page, 'pause', 'enter', { timeout: 5000 });
 
     // Verify game is paused using physics state instead of DOM element
@@ -150,7 +150,7 @@ test('P key pauses gameplay', async ({ page }) => {
     // Since keyboard doesn't work in e2e, test that pause functionality works
     // using the harness method instead of P key
     await pauseGameplay(page);
-    
+
     await waitForSceneTransition(page, 'pause', 'enter', { timeout: 5000 });
 
     // Verify game is paused using physics state instead of DOM element
@@ -201,7 +201,7 @@ test('touch interaction works on canvas', async ({ page, browserName }) => {
     await drainEvents(page);
 
     const canvas = page.locator('canvas').first();
-    
+
     // Use click instead of touch since Playwright needs hasTouch enabled in browser context
     // This still validates mouse/pointer interaction on canvas
     await canvas.click();

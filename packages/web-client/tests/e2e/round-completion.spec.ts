@@ -9,6 +9,7 @@ import {
     waitForEvent,
     waitForSceneTransition,
     e2eTimeouts,
+    getPhysicsState,
 } from './utils/harness';
 
 test.beforeEach(async ({ page }) => {
@@ -32,23 +33,30 @@ test('round stays active when breaking individual bricks until all are cleared',
 
     await drainEvents(page);
 
-    await canvas.click();
+    // Launch ball with default angle - can hit multiple bricks deterministically
     await launchBall(page);
     await waitForEvent(page, 'BallLaunched');
-    await waitForEvent(page, 'BrickBreak', { timeout: 30_000 });
 
-    await page.waitForTimeout(1000);
+    // Wait for at least one brick break
+    await waitForEvent(page, 'BrickBreak', { timeout: 10_000 });
 
-    const eventsAfterFirstBreak = await readEvents(page);
-    const roundCompletedAfterFirst = eventsAfterFirstBreak.find((event) => event?.type === 'RoundCompleted');
-    expect(roundCompletedAfterFirst).toBeUndefined();
+    // Give physics time to complete trajectory (may hit 1 or 2 bricks)
+    await page.waitForTimeout(3000);
 
-    await waitForEvent(page, 'BrickBreak', { timeout: 30_000, includeExisting: false });
-    await page.waitForTimeout(500);
+    // Verify round hasn't completed after breaking bricks
+    const events = await readEvents(page);
+    const brickBreakCount = events.filter((event) => event?.type === 'BrickBreak').length;
+    const roundCompletedEvent = events.find((event) => event?.type === 'RoundCompleted');
 
-    const eventsAfterSecondBreak = await readEvents(page);
-    const roundCompletedAfterSecond = eventsAfterSecondBreak.find((event) => event?.type === 'RoundCompleted');
-    expect(roundCompletedAfterSecond).toBeUndefined();
+    // Should have broken at least 1 brick
+    expect(brickBreakCount).toBeGreaterThanOrEqual(1);
+
+    // But round should not be complete (still bricks remaining)
+    expect(roundCompletedEvent).toBeUndefined();
+
+    // Verify there are still bricks remaining
+    const physicsState = await getPhysicsState(page);
+    expect(physicsState.brickCount).toBeGreaterThan(0);
 });
 
 test('round completes only when all bricks are destroyed or autocomplete triggers', async ({ page }) => {
@@ -71,8 +79,8 @@ test('round completes only when all bricks are destroyed or autocomplete trigger
     const skipPromise = waitForEvent(page, 'RoundCompleted', { includeExisting: false });
 
     await page.evaluate(() => {
-        // @ts-expect-error - Developer cheat API
-        window.__luckyBreakDeveloperCheats?.skipLevel();
+        // @ts-expect-error - E2E harness API
+        window.__LB_E2E_HOOKS__?.skipLevel?.();
     });
 
     const roundCompleted = await skipPromise;

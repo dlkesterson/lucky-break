@@ -261,6 +261,32 @@ export const launchBall = (
     direction?: { x: number; y: number },
 ): Promise<void> => callHarness(page, 'launchBall', direction ? [direction] : []);
 
+/**
+ * Preset launch angles optimized for different test scenarios.
+ * 
+ * **Physics is deterministic** - with seed 1337 (default), these produce consistent trajectories:
+ * 
+ * - `default` (0.15, -1): Hits 2 bricks, continues bouncing - BEST for multi-brick tests
+ * - `steep` (0.3, -1): Hits 1 brick only
+ * - `verySteep` (0.5, -1): Hits 1 brick only  
+ * - `nearVertical` (0.05, -1): Hits 1 brick + paddle bounce
+ * - `leftSteep` (-0.3, -1): Hits 1 brick + wall bounce
+ * 
+ * Use different seeds via `gotoLuckyBreak(page, seed)` for different brick layouts.
+ */
+export const launchAngles = {
+    /** Default angle (tested: 2 brick breaks with seed 1337) */
+    default: { x: 0.15, y: -1 },
+    /** Steep angle (tested: 1 brick break with seed 1337) */
+    steep: { x: 0.3, y: -1 },
+    /** Very steep (tested: 1 brick break with seed 1337) */
+    verySteep: { x: 0.5, y: -1 },
+    /** Nearly vertical (tested: 1 brick + paddle bounce with seed 1337) */
+    nearVertical: { x: 0.05, y: -1 },
+    /** Left angle (tested: 1 brick + wall hit with seed 1337) */
+    leftSteep: { x: -0.3, y: -1 },
+} as const;
+
 export interface E2EBrickVariant {
     readonly style: string;
     readonly form: string;
@@ -390,3 +416,29 @@ export interface PhysicsState {
 
 export const getPhysicsState = (page: Page): Promise<PhysicsState> =>
     callHarness(page, 'getPhysicsState');
+
+/**
+ * Fast startup helper that combines common initialization steps.
+ * This replaces the verbose pattern of:
+ * - gotoLuckyBreak
+ * - waitForSelector('.lb-preloader[data-state="loading"]')
+ * - waitForSelector('canvas', { state: 'attached' })
+ * - expect(.lb-preloader).toHaveCount(0)
+ * - waitForSceneTransition('main-menu', 'enter')
+ * - startGameplay
+ * - waitForSceneTransition('gameplay', 'enter')
+ */
+export const quickStartGameplay = async (page: Page, seed: number = 1337): Promise<void> => {
+    await gotoLuckyBreak(page, seed);
+
+    // Wait for canvas to be ready (combined preloader + canvas check)
+    await page.waitForSelector('canvas', { state: 'attached' });
+    await page.waitForSelector('.lb-preloader', { state: 'detached', timeout: 10_000 });
+
+    // Wait for main menu scene
+    await waitForSceneTransition(page, 'main-menu', 'enter');
+
+    // Start gameplay and wait for transition
+    await startGameplay(page);
+    await waitForSceneTransition(page, 'gameplay', 'enter');
+};

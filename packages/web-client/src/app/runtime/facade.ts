@@ -78,6 +78,7 @@ import { Destination } from 'tone';
 import { createCollisionRuntime, type CollisionRuntime, type CollisionRuntimeDeps } from './collisions';
 import type { RuntimeVisuals } from './physics-assembly';
 import { usePauseUi } from 'ui/state/pause-bridge';
+import { useHud } from 'ui/state/game-bridge';
 import {
     createForeshadowingRuntime,
 } from './foreshadowing';
@@ -1112,8 +1113,8 @@ export const createRuntimeFacade = async ({
             hud: hudContainer,
         },
         clearExtraBalls,
-        loadLevel: (levelIndex) => {
-            void internalLoadLevel(levelIndex);
+        loadLevel: async (levelIndex) => {
+            await internalLoadLevel(levelIndex);
         },
         getBiasCoordinator: () => roundCoordinator?.getBiasCoordinator() ?? null,
         reattachBallToPaddle,
@@ -1209,7 +1210,7 @@ export const createRuntimeFacade = async ({
 
     // Build collision context using factory (extracted to reduce facade complexity)
     const collisionContext = createCollisionContext({
-        session,
+        getSession: () => session,
         scoring,
         gambleManager,
         echoTrailManager,
@@ -1788,6 +1789,7 @@ export const createRuntimeFacade = async ({
                 }
             },
             usePauseUi: () => usePauseUi.getState(),
+            useHud: () => useHud.getState(),
             paddle,
             getSlowTimeScale: () => powerups.getSlowTimeScale(),
         },

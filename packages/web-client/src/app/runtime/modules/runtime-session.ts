@@ -189,7 +189,7 @@ export const createRuntimeSessionCoordinator = ({
         roundMachine.setCurrentLevelIndex(0);
         roundMachine.setPendingReward(null);
         powerups.activateReward(null);
-        void startLevel(roundMachine.getCurrentLevelIndex(), { resetScore: true });
+        await startLevel(roundMachine.getCurrentLevelIndex(), { resetScore: true });
         await transitionToGameplay();
         startLoop();
     };

@@ -24,7 +24,6 @@ test('loads the main menu and transitions into gameplay', async ({ page }) => {
 
     const canvas = page.locator('canvas').first();
     await expect(canvas).toBeVisible({ timeout: e2eTimeouts.sceneVisibility });
-    await canvas.click();
 
     await startGameplay(page);
     await waitForSceneTransition(page, 'gameplay', 'enter');

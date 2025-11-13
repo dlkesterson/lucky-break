@@ -78,8 +78,6 @@ export const HudApp = (): JSX.Element | null => {
     physics,
   } = useHud();
 
-  console.log('[HudApp] Render with score:', score, 'brickRemaining:', brickRemaining);
-
   const fpsLabel = useMemo(() => {
     if (typeof fps !== 'number' || !Number.isFinite(fps)) {
       return '';

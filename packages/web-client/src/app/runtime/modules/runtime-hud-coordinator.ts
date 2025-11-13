@@ -76,7 +76,6 @@ export const createRuntimeHudCoordinator = ({
 
     const refresh = () => {
         const sessionSnapshot = getSessionSnapshot();
-        console.log('[runtime-hud-coordinator] refresh() - sessionSnapshot score:', sessionSnapshot.hud.score, 'brickRemaining:', sessionSnapshot.hud.brickRemaining);
         const gambleStatus = getGambleStatus();
         const entropyActions = runtimeRewards.getHudEntropyActions(sessionSnapshot.hud.entropy.stored);
         const baseView = buildHudScoreboard(sessionSnapshot, gambleStatus, { entropyActions });

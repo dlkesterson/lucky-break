@@ -59,7 +59,7 @@ interface AchievementsService {
  * Extracted from facade.ts to reduce complexity and improve testability.
  */
 export const createCollisionContext = (options: {
-    readonly session: GameSessionManager;
+    readonly getSession: () => GameSessionManager;
     readonly scoring: RuntimeScoringHandle;
     readonly gambleManager: GambleBrickManager;
     readonly echoTrailManager: EchoTrailManager;
@@ -110,9 +110,7 @@ export const createCollisionContext = (options: {
     readonly refreshHud: () => void;
 }): CollisionContext => {
     return {
-        get session() {
-            return options.session;
-        },
+        getSession: options.getSession,
         scoring: options.scoring,
         gambleManager: options.gambleManager,
         echoTrailManager: options.echoTrailManager,
