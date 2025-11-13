@@ -35,6 +35,31 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python caches and artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.python-version
+__pypackages__/
+.ipynb_checkpoints/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/

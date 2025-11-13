@@ -1,6 +1,8 @@
+import { pathToFileURL } from 'node:url';
 import { runHeadlessSimulation, type SimulationCheatOptions } from './simulate';
 import { runTuningBot } from './tuning-bot';
 import type { RewardType } from 'game/rewards';
+import { runRLInteractiveCli } from './simulate-rl';
 
 export interface CliCommand {
     readonly execute: () => Promise<number>;
@@ -13,6 +15,12 @@ interface ParsedSimulateOptions {
     replayPath?: string;
     telemetry?: boolean;
     forceReward?: RewardType;
+}
+
+interface ParsedSimulateRlOptions {
+    seed?: number;
+    round?: number;
+    telemetry: boolean;
 }
 
 interface ParsedTuneOptions {
@@ -68,6 +76,33 @@ const parseSimulateArgs = (args: string[]): ParsedSimulateOptions => {
         }
     }
     return options;
+};
+
+const parseSimulateRlArgs = (args: string[]): ParsedSimulateRlOptions => {
+    let seed: number | undefined;
+    let round: number | undefined;
+    let telemetry = true;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--seed' && i + 1 < args.length) {
+            seed = parseInt(args[i + 1], 10);
+            i++;
+        } else if (arg === '--round' && i + 1 < args.length) {
+            round = parseInt(args[i + 1], 10);
+            i++;
+        } else if (arg === '--telemetry') {
+            telemetry = true;
+        } else if (arg === '--no-telemetry') {
+            telemetry = false;
+        }
+    }
+
+    return {
+        seed,
+        round,
+        telemetry,
+    } as ParsedSimulateRlOptions;
 };
 
 const parseTuneArgs = (args: string[]): ParsedTuneOptions => {
@@ -142,6 +177,16 @@ export function createCli(): CliCommand {
             }
         }
 
+        if (command === 'simulate-rl') {
+            const parsed = parseSimulateRlArgs(restArgs);
+            await runRLInteractiveCli({
+                seed: parsed.seed,
+                round: parsed.round,
+                telemetry: parsed.telemetry,
+            });
+            return 0;
+        }
+
         if (command === 'tune') {
             const parsed = parseTuneArgs(restArgs);
             const cheats: SimulationCheatOptions | undefined = parsed.forceReward ? { forceReward: parsed.forceReward } : undefined;
@@ -168,4 +213,31 @@ export function createCli(): CliCommand {
     return {
         execute,
     };
+}
+
+const toFileHref = (value: string | undefined): string | undefined => {
+    if (!value) {
+        return undefined;
+    }
+    try {
+        return pathToFileURL(value).href;
+    } catch {
+        return undefined;
+    }
+};
+
+const invokedDirectly = toFileHref(process.argv[1]) === import.meta.url;
+
+if (invokedDirectly) {
+    createCli()
+        .execute()
+        .then((code) => {
+            if (code !== 0) {
+                process.exitCode = code;
+            }
+        })
+        .catch((error) => {
+            console.error((error as Error).stack ?? (error as Error).message);
+            process.exitCode = 1;
+        });
 }

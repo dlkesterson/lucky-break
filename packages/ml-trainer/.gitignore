@@ -1,0 +1,7 @@
+trajectories/
+models/
+runs/
+__pycache__/
+*.py[cod]
+pip-wheel-metadata/
+*.egg-info/
