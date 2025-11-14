@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import statistics
+import subprocess
 from pathlib import Path
 from typing import Any, cast
 
@@ -9,7 +10,7 @@ import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from lucky_break_env import LuckyBreakEnv
+from lucky_break_env import LuckyBreakEnv, TRAJECTORY_DIR
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,10 +59,39 @@ def summarize(results: list[tuple[float, int, dict[str, Any]]]) -> None:
     steps_list = [steps for _, steps, _ in results]
     scores = [float(info.get("score", 0.0)) for *_, info in results]
 
-    print("Episodes:", len(results))
+    print("\n" + "=" * 80)
+    print("EVALUATION SUMMARY")
+    print("=" * 80)
+    print(f"Episodes: {len(results)}")
     print(f"Reward: mean={statistics.mean(rewards):.2f}, stdev={statistics.pstdev(rewards):.2f}")
     print(f"Steps: mean={statistics.mean(steps_list):.1f}, max={max(steps_list)}")
     print(f"Score: mean={statistics.mean(scores):.1f}, max={max(scores)}")
+    print("=" * 80)
+
+
+def analyze_latest_trajectory() -> None:
+    """Run trajectory analysis on the most recent trajectory file."""
+    trajectory_files = sorted(TRAJECTORY_DIR.glob("trajectory_*.jsonl"))
+    if not trajectory_files:
+        print("\nNo trajectory files found for analysis.")
+        return
+
+    latest = trajectory_files[-1]
+    print(f"\nAnalyzing latest trajectory: {latest.name}")
+
+    try:
+        result = subprocess.run(
+            ["python", "analyze_trajectory.py", str(latest)],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Trajectory analysis failed: {e}")
+        if e.stderr:
+            print(e.stderr)
 
 
 def main() -> None:
@@ -80,6 +110,7 @@ def main() -> None:
         env.close()
 
     summarize(results)
+    analyze_latest_trajectory()
 
 
 if __name__ == "__main__":

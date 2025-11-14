@@ -6,7 +6,8 @@
 - `packages/core-domain` contains shared physics, state, and utility modules consumed by both the web client and CLI simulator.
 - `packages/design-system` provides shared React UI components, Tailwind tokens, and Storybook documentation for HUD overlays.
 - `packages/cli-sim` wraps the domain for headless simulations; scripts supporting CI live in `scripts/`.
-- Generated assets (`dist/`, `coverage/`, `test-results/`) are disposable—do not commit them.
+- `packages/ml-trainer` provides Python-based reinforcement learning training environment, analysis scripts, and trajectory tooling (requires Python 3.11+).
+- Generated assets (`dist/`, `coverage/`, `test-results/`, `trajectories/`) are disposable—do not commit them.
 
 ## Build, Test & Development Commands
 - `pnpm install` to sync workspace dependencies.
@@ -15,6 +16,10 @@
 - `pnpm test`, `pnpm test:coverage`, and `pnpm test:e2e` run Vitest unit coverage and Playwright end-to-end suites respectively.
 - `pnpm lint`, `pnpm lint:fix`, and `pnpm typecheck` keep the TypeScript surface clean; `pnpm simulate:verify` validates CLI runs, and `pnpm ci` executes the full gate.
 - `pnpm --filter @lucky-break/design-system storybook` launches the Storybook component workbench locally.
+
+### Reinforcement Learning Commands
+- `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate-rl --seed 1337 --round 1` runs the RL-enabled interactive simulator that communicates via JSON over stdin/stdout.
+- See `packages/ml-trainer/README.md` for Python-side training, evaluation, and trajectory analysis workflows.
 
 ## Coding Style & Naming Conventions
 - Use TypeScript with four-space indentation and file-scoped `import` order enforced by ESLint.
