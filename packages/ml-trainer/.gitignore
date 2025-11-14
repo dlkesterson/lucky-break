@@ -1,6 +1,7 @@
 trajectories/
 models/
 runs/
+coverage/
 __pycache__/
 *.py[cod]
 pip-wheel-metadata/

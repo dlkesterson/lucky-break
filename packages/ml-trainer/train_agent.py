@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
@@ -19,7 +19,12 @@ DEFAULT_TENSORBOARD_DIR = Path(__file__).resolve().parent / "runs"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a PPO agent against the Lucky Break simulator")
-    parser.add_argument("--timesteps", type=int, default=DEFAULT_TIMESTEPS, help="Total timesteps to train (default: 500k)")
+    parser.add_argument(
+        "--timesteps",
+        type=int,
+        default=DEFAULT_TIMESTEPS,
+        help="Total timesteps to train (default: 500k)",
+    )
     parser.add_argument("--seed", type=int, default=1337, help="Seed passed to the simulator (default: 1337)")
     parser.add_argument("--round", type=int, default=1, help="Round number for the simulator (default: 1)")
     parser.add_argument(

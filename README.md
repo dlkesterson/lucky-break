@@ -47,6 +47,7 @@ The latest build is published via GitHub Pages: https://dlkesterson.github.io/lu
 - React 18 + Radix UI primitives via `@lucky-break/design-system` for UI components.
 - Storybook 10 for component workbench and visual documentation.
 - Vitest + Playwright for unit, integration, and automation coverage enforced in CI.
+- Python 3.11 + Gymnasium + Stable Baselines 3 for offline RL agent training via `@lucky-break/ml-trainer`.
 
 ## Getting Started
 
@@ -86,6 +87,25 @@ pnpm dev
 - `pnpm --filter @lucky-break/design-system build-storybook` – Build static Storybook bundle.
 - `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --seed 42` – Run the headless CLI without building.
 
+### Reinforcement Learning Training
+
+The `@lucky-break/ml-trainer` package provides a Python-based RL harness for training agents using Gymnasium and Stable Baselines 3:
+
+```bash
+cd packages/ml-trainer
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+
+# Train a PPO agent
+python train_agent.py --timesteps 1000000 --seed 1337
+
+# Evaluate a trained model
+python evaluate_agent.py models/ppo_lucky_break.zip --episodes 5
+```
+
+The environment wraps the existing `simulate-rl` CLI, logs frame-level trajectories to `trajectories/`, and supports TensorBoard monitoring. See `packages/ml-trainer/README.md` for details.
+
 ## Workspace Layout
 
 ```
@@ -93,6 +113,7 @@ packages/
   core-domain/   # Shared deterministic loop, physics, config, rewards, utilities
   design-system/ # Shared React UI components, Tailwind tokens, Storybook documentation
   cli-sim/       # Headless engine + deterministic regression tooling (TS + Tsx scripts)
+  ml-trainer/    # Python RL harness for training agents via Gym + Stable Baselines 3
   web-client/    # Pixi front-end, Vite build, assets, Playwright + Vitest suites
 scripts/         # Shared CI tooling (e.g., deterministic replay generator)
 ```

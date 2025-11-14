@@ -4,11 +4,11 @@ import json
 import subprocess
 from pathlib import Path
 from shutil import which
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
+from gymnasium import spaces
 from numpy.typing import NDArray
 
 RL_ACTION_COUNT = 6
@@ -20,7 +20,9 @@ CLI_PACKAGE = "@lucky-break/cli-sim"
 def _resolve_pnpm() -> str:
     candidate = which("pnpm") or which("pnpm.cmd")
     if candidate is None:
-        raise FileNotFoundError("pnpm executable not found on PATH. Install pnpm or expose it before training.")
+        raise FileNotFoundError(
+            "pnpm executable not found on PATH. Install pnpm or expose it before training."
+        )
     return candidate
 
 SIMULATOR_COMMAND = [_resolve_pnpm(), "--filter", CLI_PACKAGE, "exec", "tsx", "src/index.ts", "simulate-rl"]
@@ -44,11 +46,11 @@ class LuckyBreakEnv(gym.Env):
         self._seed = seed
         self._round = round_number
         self._telemetry = telemetry
-        self._proc: Optional[subprocess.Popen[str]] = None
+        self._proc: subprocess.Popen[str] | None = None
         self._episode_done = False
         self._episode_index = 0
-        self._latest_observation: Optional[Dict[str, Any]] = None
-        self._trajectory: List[Dict[str, Any]] = []
+        self._latest_observation: dict[str, Any] | None = None
+        self._trajectory: list[dict[str, Any]] = []
 
         self.action_space = spaces.Discrete(RL_ACTION_COUNT)
         # Observation vector layout (19 floats)
@@ -59,9 +61,9 @@ class LuckyBreakEnv(gym.Env):
     def reset(
         self,
         *,
-        seed: Optional[int] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[ObservationArray, Dict[str, Any]]:
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[ObservationArray, dict[str, Any]]:
         super().reset(seed=seed)
         if seed is not None:
             self._seed = int(seed)
@@ -81,7 +83,7 @@ class LuckyBreakEnv(gym.Env):
         observation = self._to_vector(observation_dict)
         return observation, {}
 
-    def step(self, action: int) -> Tuple[ObservationArray, float, bool, bool, Dict[str, Any]]:
+    def step(self, action: int) -> tuple[ObservationArray, float, bool, bool, dict[str, Any]]:
         if self._episode_done:
             raise RuntimeError("Episode finished. Call reset() before stepping again.")
         if not self.action_space.contains(action):
@@ -170,7 +172,7 @@ class LuckyBreakEnv(gym.Env):
         self._assert_message_type(initial, "reset")
         self._latest_observation = initial["observation"]
 
-    def _send_command(self, payload: Dict[str, Any]) -> None:
+    def _send_command(self, payload: dict[str, Any]) -> None:
         if not self._proc or not self._proc.stdin:
             raise RuntimeError('Simulator process is not running.')
         line = json.dumps(payload, separators=(",", ":"))
@@ -180,7 +182,7 @@ class LuckyBreakEnv(gym.Env):
         except BrokenPipeError as error:
             raise RuntimeError('Simulator process closed unexpectedly.') from error
 
-    def _read_message(self) -> Dict[str, Any]:
+    def _read_message(self) -> dict[str, Any]:
         if not self._proc or not self._proc.stdout:
             raise RuntimeError('Simulator process is not running.')
         line = self._proc.stdout.readline()
@@ -195,12 +197,12 @@ class LuckyBreakEnv(gym.Env):
             raise RuntimeError(f"Failed to decode simulator output: {line.strip()}") from error
 
     @staticmethod
-    def _assert_message_type(message: Dict[str, Any], expected: str) -> None:
+    def _assert_message_type(message: dict[str, Any], expected: str) -> None:
         actual = message.get('type')
         if actual != expected:
             raise RuntimeError(f"Expected message type '{expected}', received '{actual}'.")
 
-    def _to_vector(self, observation: Dict[str, Any]) -> ObservationArray:
+    def _to_vector(self, observation: dict[str, Any]) -> ObservationArray:
         ball = observation.get('ball', {})
         paddle = observation.get('paddle', {})
         session = observation.get('session', {})

@@ -9,7 +9,7 @@ Offline reinforcement learning harness built around the Lucky Break CLI simulato
    ```bash
    python -m venv .venv
    .venv\Scripts\activate
-   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
    ```
 
 2. Launch the training loop:
@@ -24,6 +24,20 @@ Offline reinforcement learning harness built around the Lucky Break CLI simulato
 
    ```bash
    python evaluate_agent.py models/ppo_lucky_break.zip --episodes 3
+   ```
+
+## Development
+
+- Lint the package with Ruff:
+
+   ```bash
+   ruff check .
+   ```
+
+- Run the unit tests with coverage:
+
+   ```bash
+      pytest --cov=lucky_break_env --cov-report=term-missing
    ```
 
 ## Files
