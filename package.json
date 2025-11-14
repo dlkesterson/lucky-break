@@ -14,7 +14,10 @@
     "lint:fix": "pnpm --filter @lucky-break/core-domain lint:fix && pnpm --filter @lucky-break/design-system lint:fix && pnpm --filter @lucky-break/cli-sim lint:fix && pnpm --filter @lucky-break/web-client lint:fix",
     "typecheck": "pnpm --filter @lucky-break/core-domain typecheck && pnpm --filter @lucky-break/design-system typecheck && pnpm --filter @lucky-break/cli-sim typecheck && pnpm --filter @lucky-break/web-client typecheck",
     "simulate:verify": "pnpm --filter @lucky-break/cli-sim simulate:verify",
-    "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify",
+    "py:lint": "cd packages/ml-trainer && python -m ruff check .",
+    "py:lint:fix": "cd packages/ml-trainer && python -m ruff check --fix .",
+    "py:test": "cd packages/ml-trainer && python -m pytest tests/test_lucky_break_env.py --cov=lucky_break_env --cov-report=term-missing",
+    "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify && pnpm py:lint && pnpm py:test",
     "storybook": "pnpm --filter @lucky-break/design-system storybook"
   },
   "devDependencies": {

@@ -110,6 +110,7 @@ packages/
 - Core domain upgraded to Matter.js 0.20 with updated typings and hazard controllers.
 - Monorepo wiring now relies on shared `tsconfig.base.json` path aliases for cross-package imports.
 - CLI simulation harness consolidated in `packages/cli-sim` with TSX entrypoints for faster iteration.
+- ML-trainer package integrated with Python-based RL training (Gymnasium + Stable Baselines 3), trajectory analysis, and E2E test integration. See the "AI & Machine Learning" section in README.md.
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

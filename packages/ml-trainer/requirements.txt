@@ -2,3 +2,6 @@ gymnasium==0.29.1
 numpy==1.26.4
 stable-baselines3==2.3.2
 tensorboard==2.17.0
+# PyTorch with CUDA support - install with: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Or for CUDA 11.8: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0

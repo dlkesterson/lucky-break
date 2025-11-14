@@ -125,7 +125,7 @@ def test_step() -> None:
             assert "info" in response, "Missing info in step response"
 
             # Validate types
-            assert isinstance(response["reward"], (int, float)), "Reward must be numeric"
+            assert isinstance(response["reward"], int | float), "Reward must be numeric"
             assert isinstance(response["done"], bool), "Done must be boolean"
 
         print(f"  ✓ All {6} actions executed successfully")
@@ -187,7 +187,7 @@ def test_invalid_command() -> None:
         # Should receive error message on stderr or handle gracefully
         # For now, we just verify the simulator doesn't crash
         try:
-            response = read_response(proc)
+            _response = read_response(proc)
             # If it responds, it should indicate error or ignore
             print("  ✓ Simulator handled invalid action gracefully")
         except Exception:

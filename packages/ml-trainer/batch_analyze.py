@@ -95,25 +95,25 @@ def print_comparative_summary(results: list[dict[str, Any]]) -> None:
 
     print(f"\nEpisodes Analyzed: {total_episodes}")
 
-    print(f"\nFinal Scores:")
+    print("\nFinal Scores:")
     print(f"  Mean: {sum(final_scores) / len(final_scores):.1f}")
     print(f"  Min: {min(final_scores):.0f}")
     print(f"  Max: {max(final_scores):.0f}")
 
-    print(f"\nMax Combos:")
+    print("\nMax Combos:")
     print(f"  Mean: {sum(max_combos) / len(max_combos):.1f}")
     print(f"  Max: {max(max_combos)}")
 
-    print(f"\nBricks Broken:")
+    print("\nBricks Broken:")
     print(f"  Mean: {sum(bricks_broken) / len(bricks_broken):.1f}")
     print(f"  Total: {sum(bricks_broken)}")
 
-    print(f"\nLives Lost:")
+    print("\nLives Lost:")
     print(f"  Mean: {sum(lives_lost) / len(lives_lost):.1f}")
     print(f"  Min: {min(lives_lost)}")
     print(f"  Max: {max(lives_lost)}")
 
-    print(f"\nSteps per Episode:")
+    print("\nSteps per Episode:")
     print(f"  Mean: {sum(total_steps) / len(total_steps):.1f}")
     print(f"  Min: {min(total_steps)}")
     print(f"  Max: {max(total_steps)}")

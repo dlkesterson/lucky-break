@@ -87,24 +87,92 @@ pnpm dev
 - `pnpm --filter @lucky-break/design-system build-storybook` – Build static Storybook bundle.
 - `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --seed 42` – Run the headless CLI without building.
 
-### Reinforcement Learning Training
+### AI & Machine Learning
 
-The `@lucky-break/ml-trainer` package provides a Python-based RL harness for training agents using Gymnasium and Stable Baselines 3:
+The `@lucky-break/ml-trainer` package enables reinforcement learning agent training and AI-assisted testing.
+
+#### Quick Start: Train an Agent
 
 ```bash
 cd packages/ml-trainer
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate  # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 
-# Train a PPO agent
+# Train a PPO agent (10-15 minutes)
 python train_agent.py --timesteps 1000000 --seed 1337
 
-# Evaluate a trained model
+# Evaluate the trained model
 python evaluate_agent.py models/ppo_lucky_break.zip --episodes 5
 ```
 
-The environment wraps the existing `simulate-rl` CLI, logs frame-level trajectories to `trajectories/`, and supports TensorBoard monitoring. See `packages/ml-trainer/README.md` for details.
+#### What You Get
+
+- **Trained Agents**: PPO/DQN models that play deterministically on seed 1337
+- **Trajectory Files**: Frame-by-frame JSONL logs in `trajectories/` directory
+- **Performance Metrics**: Combo analysis, brick breaking patterns, power-up usage
+- **Visual Replays**: Convert trajectories to replay format for visual playback
+- **E2E Test Integration**: Use trained agents to create reliable, deterministic tests
+
+#### AI-Assisted E2E Testing
+
+Load trained agent trajectories in Playwright tests for deterministic gameplay:
+
+```typescript
+import { executeRLAction } from './utils/harness';
+import { loadTrajectory, findLatestTrajectory } from './utils/trajectory-loader';
+
+test('AI achieves high combo', async ({ page }) => {
+    const trajectory = loadTrajectory(findLatestTrajectory(1337)!);
+    await quickStartGameplay(page, 1337);
+    
+    let paddleX = 400;
+    for (const step of trajectory.steps.slice(0, 100)) {
+        await executeRLAction(page, step.action, paddleX);
+        paddleX = step.observation.paddle.position.x;
+        await page.waitForTimeout(8);
+    }
+    
+    const combo = await getComboState(page);
+    expect(combo.currentCombo).toBeGreaterThan(5);
+});
+```
+
+Run AI-assisted tests: `pnpm test:e2e ai-agent.spec.ts`
+
+#### Trajectory Analysis
+
+Analyze agent performance and extract strategies:
+
+```bash
+# Analyze a single trajectory
+python analyze_trajectory.py trajectories/trajectory_seed1337_ep0001.jsonl --verbose
+
+# Batch analysis across multiple episodes
+python batch_analyze.py --dir trajectories --output results.json
+
+# Convert trajectory to visual replay
+python trajectory_to_replay.py trajectories/trajectory_seed1337_ep0001.jsonl
+pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --replay trajectory_seed1337_ep0001_replay.json
+```
+
+#### Architecture
+
+```
+TypeScript Simulator (CLI) ←→ Python Gym Environment ←→ Stable Baselines3
+         ↓                              ↓
+    JSON Protocol                  Trajectories (JSONL)
+         ↓                              ↓
+   E2E Tests (Playwright)        Analysis Scripts
+```
+
+**Action Space**: 6 discrete actions (0=no-op, 1=left, 2=right, 3=launch, 4=left+launch, 5=right+launch)
+
+**Observation Space**: 19-element vector (ball pos/vel, paddle state, session metrics)
+
+**Training**: Uses deterministic seed 1337 for reproducible experiments
+
+See `packages/ml-trainer/README.md` for complete documentation on observation space, training workflows, and analysis tools.
 
 ## Workspace Layout
 

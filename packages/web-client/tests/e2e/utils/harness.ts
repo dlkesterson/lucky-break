@@ -442,3 +442,71 @@ export const quickStartGameplay = async (page: Page, seed: number = 1337): Promi
     await startGameplay(page);
     await waitForSceneTransition(page, 'gameplay', 'enter');
 };
+
+/**
+ * Move paddle to a specific X coordinate.
+ * @param page - Playwright page
+ * @param targetX - Target X coordinate for paddle
+ */
+export const movePaddleTo = async (page: Page, targetX: number): Promise<void> => {
+    await callHarness(page, 'movePaddleTo', [targetX]);
+};
+
+/**
+ * Replay a single step from an ML trajectory.
+ * Moves paddle and launches ball based on the agent's action.
+ * 
+ * @param page - Playwright page
+ * @param action - RL action to execute (0-5)
+ * @param paddleX - Current paddle X position
+ * @param movementSpeed - How much to move paddle (default: 50)
+ * @returns Whether a launch was triggered
+ */
+export const executeRLAction = async (
+    page: Page,
+    action: number,
+    paddleX: number,
+    movementSpeed: number = 50,
+): Promise<boolean> => {
+    const playAreaWidth = 800; // Standard play area width
+    let targetX = paddleX;
+    let shouldLaunch = false;
+
+    // RL action space: 0=noop, 1=left, 2=right, 3=launch, 4=left+launch, 5=right+launch
+    switch (action) {
+        case 1: // MOVE_LEFT
+            targetX = Math.max(0, paddleX - movementSpeed);
+            break;
+        case 2: // MOVE_RIGHT
+            targetX = Math.min(playAreaWidth, paddleX + movementSpeed);
+            break;
+        case 3: // LAUNCH
+            shouldLaunch = true;
+            break;
+        case 4: // LEFT_LAUNCH
+            targetX = Math.max(0, paddleX - movementSpeed);
+            shouldLaunch = true;
+            break;
+        case 5: // RIGHT_LAUNCH
+            targetX = Math.min(playAreaWidth, paddleX + movementSpeed);
+            shouldLaunch = true;
+            break;
+        case 0: // NOOP
+        default:
+            // Keep current position
+            break;
+    }
+
+    // Move paddle if target changed
+    if (targetX !== paddleX) {
+        const canvas = page.locator('canvas').first();
+        await canvas.click({ position: { x: targetX, y: 650 } });
+    }
+
+    // Launch if action requires it
+    if (shouldLaunch) {
+        await launchBall(page);
+    }
+
+    return shouldLaunch;
+};

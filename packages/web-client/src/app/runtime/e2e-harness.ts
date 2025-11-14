@@ -117,6 +117,7 @@ interface E2EHarnessControls {
     resumeGameplay?: () => Promise<void> | void;
     quitToMenu?: () => Promise<void> | void;
     launchBall?: (direction?: { x: number; y: number }) => Promise<void> | void;
+    movePaddleTo?: (targetX: number) => void;
     getRuntimeState?: () => E2EHarnessRuntimeState;
     getBiasPhaseState?: () => BiasPhaseState;
     commitBiasSelection?: (optionId: string) => boolean;
@@ -320,6 +321,23 @@ export const registerE2EHarnessControls = ({
                 y: launchDirection.y,
             },
             speed: MatterVector.magnitude(ball.physicsBody.velocity),
+        });
+    };
+    controls.movePaddleTo = (targetX: number) => {
+        if (!isGameplaySceneActive()) {
+            return;
+        }
+        // Clamp targetX to play area bounds (accounting for paddle half-width)
+        const paddleHalfWidth = 50; // Default paddle width is 100
+        const minX = paddleHalfWidth;
+        const maxX = 800 - paddleHalfWidth; // Play area width - half paddle
+        const clampedX = Math.max(minX, Math.min(maxX, targetX));
+
+        // Directly set paddle position (bypassing normal input smoothing for precise control)
+        const Body = require('physics/matter').Body as typeof import('physics/matter').Body;
+        Body.setPosition(paddle.physicsBody, {
+            x: clampedX,
+            y: paddle.physicsBody.position.y,
         });
     };
     controls.getRuntimeState = () => {

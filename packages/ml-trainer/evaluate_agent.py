@@ -10,7 +10,7 @@ import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from lucky_break_env import LuckyBreakEnv, TRAJECTORY_DIR
+from lucky_break_env import TRAJECTORY_DIR, LuckyBreakEnv
 
 
 def parse_args() -> argparse.Namespace:

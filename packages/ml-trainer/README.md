@@ -2,7 +2,32 @@
 
 Offline reinforcement learning harness built around the Lucky Break CLI simulator.
 
-## Getting Started
+## Quick Start
+
+### GPU-Accelerated Training (Recommended)
+
+For significantly faster training, enable GPU acceleration:
+
+1. **Install PyTorch with CUDA support:**
+
+   ```bash
+   pip uninstall torch torchvision torchaudio -y
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+
+2. **Verify GPU setup:**
+
+   ```bash
+   python setup_gpu.py
+   ```
+
+3. **Start GPU training:**
+
+   ```bash
+   python train_agent.py --device cuda --timesteps 2000000 --n-envs 4 --batch-size 512
+   ```
+
+### Standard Setup (CPU)
 
 1. Create a virtual environment and install dependencies:
 

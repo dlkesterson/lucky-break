@@ -288,6 +288,9 @@ test('combo momentum increases with sustained rallies', async ({ page }) => {
 test('high combo values show increased multipliers', async ({ page }) => {
     test.slow();
 
+    // NOTE: For more reliable high-combo testing, see ai-agent.spec.ts
+    // which uses trained agent trajectories to consistently achieve combos
+
     await gotoLuckyBreak(page);
     await page.waitForSelector('canvas', { state: 'attached' });
     await expect(page.locator('.lb-preloader')).toHaveCount(0);

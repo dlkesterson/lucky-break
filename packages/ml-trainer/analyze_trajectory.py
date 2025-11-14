@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -289,7 +289,7 @@ def print_summary(
     print("=" * 80)
     print("TRAJECTORY ANALYSIS SUMMARY")
     print("=" * 80)
-    print(f"\nMetadata:")
+    print("\nMetadata:")
     print(f"  Seed: {metadata.get('seed')}")
     print(f"  Round: {metadata.get('round')}")
     print(f"  Total Steps: {metadata.get('steps')}")
@@ -301,7 +301,7 @@ def print_summary(
 
     # Combos
     combo_analysis = analyze_combos(events)
-    print(f"\nCombo Analysis:")
+    print("\nCombo Analysis:")
     print(f"  Milestones Reached: {combo_analysis['milestones_reached']}")
     print(f"  Max Combo: {combo_analysis['max_combo']}")
     print(f"  Max Multiplier: {combo_analysis['max_multiplier']:.2f}x")
@@ -309,7 +309,7 @@ def print_summary(
 
     # Bricks
     brick_analysis = analyze_bricks(events, steps)
-    print(f"\nBrick Analysis:")
+    print("\nBrick Analysis:")
     print(f"  Total Breaks: {brick_analysis['total_breaks']}")
     print(f"  Total Hits: {brick_analysis['total_hits']}")
     print(f"  Brick Types: {brick_analysis['brick_types']}")
@@ -327,13 +327,13 @@ def print_summary(
 
     # Hazards
     hazard_analysis = analyze_hazards(events, steps)
-    print(f"\nHazard Analysis:")
+    print("\nHazard Analysis:")
     print(f"  Total Contacts: {hazard_analysis['total_contacts']}")
     print(f"  Contacts by Type: {hazard_analysis['contacts_by_type']}")
 
     # Paddle
     paddle_analysis = analyze_paddle_behavior(steps)
-    print(f"\nPaddle Behavior:")
+    print("\nPaddle Behavior:")
     print(f"  Avg Position: {paddle_analysis['avg_position']:.1f}")
     print(f"  Avg Velocity: {paddle_analysis['avg_absolute_velocity']:.2f}")
     print(f"  Avg Target Deviation: {paddle_analysis['avg_target_deviation']:.2f}")
@@ -341,7 +341,7 @@ def print_summary(
 
     # Ball
     ball_analysis = analyze_ball_behavior(steps)
-    print(f"\nBall Behavior:")
+    print("\nBall Behavior:")
     print(f"  Launch Frame: {ball_analysis['launch_frame']}")
     print(f"  Avg Speed: {ball_analysis['avg_speed']:.2f}")
     print(f"  Max Speed: {ball_analysis['max_speed']:.2f}")
@@ -349,7 +349,7 @@ def print_summary(
 
     # Scoring
     scoring_analysis = analyze_scoring(steps)
-    print(f"\nScoring:")
+    print("\nScoring:")
     print(f"  Initial Score: {scoring_analysis['initial_score']:.0f}")
     print(f"  Final Score: {scoring_analysis['final_score']:.0f}")
     print(f"  Total Reward: {scoring_analysis['total_reward']:.0f}")
@@ -358,7 +358,7 @@ def print_summary(
 
     # Survival
     survival_analysis = analyze_survival(steps, events)
-    print(f"\nSurvival:")
+    print("\nSurvival:")
     print(f"  Initial Lives: {survival_analysis['initial_lives']}")
     print(f"  Final Lives: {survival_analysis['final_lives']}")
     print(f"  Lives Lost: {survival_analysis['lives_lost']}")

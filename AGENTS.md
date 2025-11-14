@@ -19,7 +19,8 @@
 
 ### Reinforcement Learning Commands
 - `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate-rl --seed 1337 --round 1` runs the RL-enabled interactive simulator that communicates via JSON over stdin/stdout.
-- See `packages/ml-trainer/README.md` for Python-side training, evaluation, and trajectory analysis workflows.
+- See the AI & Machine Learning section in [README.md](README.md) for complete training, evaluation, and E2E testing workflows.
+- See `packages/ml-trainer/README.md` for detailed Python API documentation.
 
 ## Coding Style & Naming Conventions
 - Use TypeScript with four-space indentation and file-scoped `import` order enforced by ESLint.
