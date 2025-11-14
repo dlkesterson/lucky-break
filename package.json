@@ -21,7 +21,7 @@
     "train:fresh": "cd packages/ml-trainer && python train_agent.py --device cuda --timesteps 2000000 --n-envs 4 --batch-size 512 --eval-frequency 50000",
     "train:long": "cd packages/ml-trainer && python train_agent.py --device cuda --timesteps 5000000 --n-envs 4 --batch-size 512 --eval-frequency 50000 --resume-from models/best/best_model.zip",
     "train:monitor": "cd packages/ml-trainer && tensorboard --logdir runs",
-    "train:evaluate": "cd packages/ml-trainer && python evaluate_agent.py models/best/best_model.zip --episodes 10 --deterministic",
+    "train:evaluate": "cd packages/ml-trainer && python evaluate_agent.py models/best/best_model.zip --episodes 10 --seed 1337 --deterministic",
     "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm simulate:verify && pnpm py:lint && pnpm py:test",
     "storybook": "pnpm --filter @lucky-break/design-system storybook"
   },

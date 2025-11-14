@@ -133,6 +133,11 @@ export class RLSimulator {
     private eventCollector: EventCollector | null = null;
     private collisionHandler?: (event: IEventCollision<PhysicsEngine>) => void;
     private disposed = true;
+    // Reward shaping tracking
+    private lastPaddleHits = 0;
+    private lastBrickBreaks = 0;
+    private lastLivesRemaining = 3;
+    private framesSinceLastBrickBreak = 0;
 
     public constructor(options?: RLSimulatorOptions) {
         const resolvedOptions: Required<RLSimulatorOptions> = {
@@ -197,6 +202,11 @@ export class RLSimulator {
         this.bricksRemaining = 0;
         this.ballAttached = true;
         this.pendingLaunch = false;
+        // Reset reward shaping tracking
+        this.lastPaddleHits = 0;
+        this.lastBrickBreaks = 0;
+        this.lastLivesRemaining = 3;
+        this.framesSinceLastBrickBreak = 0;
 
         this.bus = createSimulationBus(() => Math.round(this.elapsedMs));
         this.physics = createSimulationPhysics();
@@ -509,8 +519,57 @@ export class RLSimulator {
         this.metrics.frames += 1;
 
         const snapshot = this.session.snapshot();
-        const reward = snapshot.score - this.lastScore;
+
+        // ====================================================================
+        // REWARD SHAPING: Provide dense feedback to guide learning
+        // ====================================================================
+        let reward = 0;
+
+        // 1. Base reward: score increase (primary objective)
+        const scoreGain = snapshot.score - this.lastScore;
+        reward += scoreGain;
+
+        // 2. Paddle hit reward: encourage keeping ball alive
+        const paddleHitsThisFrame = this.metrics.paddleHits - this.lastPaddleHits;
+        if (paddleHitsThisFrame > 0) {
+            reward += 0.5 * paddleHitsThisFrame;  // Small reward for paddle contact
+        }
+
+        // 3. Brick break reward: additional encouragement beyond score
+        const brickBreaksThisFrame = this.metrics.brickBreaks - this.lastBrickBreaks;
+        if (brickBreaksThisFrame > 0) {
+            reward += 2.0 * brickBreaksThisFrame;  // Bonus for breaking bricks
+            this.framesSinceLastBrickBreak = 0;
+        } else {
+            this.framesSinceLastBrickBreak += 1;
+        }
+
+        // 4. Life loss penalty: heavily punish losing lives
+        const livesLostThisFrame = this.lastLivesRemaining - snapshot.livesRemaining;
+        if (livesLostThisFrame > 0) {
+            reward -= 10.0 * livesLostThisFrame;  // Heavy penalty for losing life
+        }
+
+        // 5. Level completion bonus
+        if (this.bricksRemaining === 0 && snapshot.livesRemaining > 0) {
+            reward += 50.0;  // Large bonus for clearing level
+        }
+
+        // 6. Time pressure: small penalty for inactivity
+        if (this.framesSinceLastBrickBreak > 200 && !this.ballAttached) {
+            reward -= 0.02;  // Gentle urgency nudge if no progress
+        }
+
+        // 7. Game over penalty: additional punishment for losing all lives
+        if (snapshot.livesRemaining <= 0) {
+            reward -= 20.0;  // Extra penalty for game over
+        }
+
+        // Update tracking for next frame
         this.lastScore = snapshot.score;
+        this.lastPaddleHits = this.metrics.paddleHits;
+        this.lastBrickBreaks = this.metrics.brickBreaks;
+        this.lastLivesRemaining = snapshot.livesRemaining;
 
         const done = snapshot.livesRemaining <= 0 || this.bricksRemaining <= 0;
         if (done && this.bricksRemaining <= 0 && snapshot.status !== 'completed') {
