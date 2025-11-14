@@ -87,24 +87,80 @@ pnpm dev
 - `pnpm --filter @lucky-break/design-system build-storybook` – Build static Storybook bundle.
 - `pnpm --filter @lucky-break/cli-sim exec tsx src/index.ts simulate --seed 42` – Run the headless CLI without building.
 
+### AI Training Commands
+
+- `pnpm train` – Continue training from best model (2M timesteps, ~40 min on GPU).
+- `pnpm train:fresh` – Start fresh training run from scratch (2M timesteps).
+- `pnpm train:long` – Extended training session (5M timesteps, ~1.7 hours on GPU).
+- `pnpm train:monitor` – Launch TensorBoard to monitor training progress.
+- `pnpm train:evaluate` – Evaluate best trained model over 10 episodes.
+
 ### AI & Machine Learning
 
 The `@lucky-break/ml-trainer` package enables reinforcement learning agent training and AI-assisted testing.
 
 #### Quick Start: Train an Agent
 
+**With GPU acceleration (recommended):**
+
+```bash
+# One-time setup: Install CUDA-enabled PyTorch
+pip uninstall torch torchvision torchaudio -y
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Verify GPU setup
+cd packages/ml-trainer
+python setup_gpu.py
+
+# Train with convenient commands from root
+pnpm train              # Resume from best model (2M steps, ~40 min)
+pnpm train:monitor      # Monitor progress with TensorBoard
+```
+
+**Without GPU (CPU only):**
+
 ```bash
 cd packages/ml-trainer
 python -m venv .venv
-.venv\Scripts\activate  # Windows: .venv\Scripts\activate
+.venv\Scripts\activate  # Windows
 pip install -r requirements-dev.txt
 
-# Train a PPO agent (10-15 minutes)
-python train_agent.py --timesteps 1000000 --seed 1337
+# Train a PPO agent (slower on CPU)
+python train_agent.py --timesteps 1000000 --seed 1337 --n-envs 8
 
 # Evaluate the trained model
 python evaluate_agent.py models/ppo_lucky_break.zip --episodes 5
 ```
+
+See `packages/ml-trainer/GPU_TRAINING.md` for detailed GPU setup, performance tuning, and troubleshooting.
+
+#### Training Workflow
+
+**Typical workflow in two terminals:**
+
+Terminal 1 - Training:
+```bash
+pnpm train              # Start/resume training
+```
+
+Terminal 2 - Monitoring:
+```bash
+pnpm train:monitor      # Launch TensorBoard at http://localhost:6006
+```
+
+**After training completes:**
+```bash
+pnpm train:evaluate     # Test performance and generate trajectories
+```
+
+**Training commands:**
+- `pnpm train` – Continue from best model (2M timesteps, GPU-optimized)
+- `pnpm train:fresh` – Start new training from scratch
+- `pnpm train:long` – Extended 5M timestep session for breaking plateaus
+- `pnpm train:monitor` – Real-time TensorBoard metrics
+- `pnpm train:evaluate` – Run best model for 10 episodes
+
+Models save to `packages/ml-trainer/models/`, trajectories to `packages/ml-trainer/trajectories/`.
 
 #### What You Get
 
